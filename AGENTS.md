@@ -9,7 +9,7 @@ This project is a persistent YouTube discussion reader built toward Electron + R
 - [Architecture and security boundary](docs/ARCHITECTURE.md)
 - [Open decisions and ADR process](docs/decisions/README.md)
 
-The initial milestone establishes documentation only. The repository currently contains the Electron Forge/Vite/TypeScript scaffold; documented application behavior is a target, not evidence of implementation. Implement only the increment requested by the owner. Keep unrelated scaffold changes out of scope.
+The first application milestone implements a React/domain/UI foundation with synthetic discussions and in-memory state. Most documented application behavior remains a target, especially persistence, acquisition, filtering, virtualization, and the ruler. See [ADR 0001](docs/decisions/0001-synthetic-reader-foundation.md) and [testing status](docs/TESTING.md). Implement only the increment requested by the owner. Keep unrelated scaffold changes out of scope.
 
 ## Invariants to protect
 
@@ -38,4 +38,4 @@ The initial milestone establishes documentation only. The repository currently c
 
 ## Useful commands at this milestone
 
-`npm start`, `npm run package`, `npm run make`, and `npm run lint` are declared by the scaffold. A declaration is not a verified working check; see [testing status](docs/TESTING.md). There is currently no application test command. Do not install a stack or start feature implementation merely to validate a documentation change.
+`npm test` runs deterministic domain/localization/component tests. `npm run typecheck` and `npm run lint` check the source. `npm run build:renderer` builds only the renderer; `npm run package` also invokes Forge's main/preload/renderer builds. `npm start` starts development. On Windows PowerShell with script execution disabled, use `npm.cmd`. See [testing status](docs/TESTING.md) for verified results and packaging limitations. Do not install a stack or start feature implementation merely to validate a documentation change.

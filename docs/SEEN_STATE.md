@@ -1,6 +1,6 @@
 # Seen state
 
-Seen/unseen is a durable, manual property of each individual comment. It is the reader's record of processing a contribution, not evidence that the application displayed it. This document specifies required behavior for future implementation; the scaffold does not implement it yet. See [product requirements](PRODUCT_REQUIREMENTS.md) and the [domain model](DOMAIN_MODEL.md).
+Seen/unseen is a durable, manual property of each individual comment in the target product. It is the reader's record of processing a contribution, not evidence that the application displayed it. The first application milestone implements and tests ordinary and Ctrl+click behavior in memory only. Viewing, scrolling, tabs, language, and appearance changes do not mark comments seen. Persistence, filtered-view integration, bulk operations, and refresh preservation remain unimplemented. See [product requirements](PRODUCT_REQUIREMENTS.md) and the [domain model](DOMAIN_MODEL.md).
 
 ## Invariants
 

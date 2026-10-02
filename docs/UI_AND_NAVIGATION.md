@@ -1,6 +1,6 @@
 # UI and navigation
 
-This document describes the intended desktop reader. The current scaffold does not implement these screens. Read the [product requirements](PRODUCT_REQUIREMENTS.md) for scope, [how it works](HOW_IT_WORKS.md) for the complete flow, and [filtering and search](FILTERING_AND_SEARCH.md) for what a displayed result means.
+This document describes the intended desktop reader. The first application milestone demonstrates two pre-opened synthetic discussion tabs, item headers, nested replies, optional metadata, publication times, manual checkboxes, and separate UNSEEN/NEW examples. Counts cover all comments in each demo discussion. Panels retain session scroll positions; seen state is shared in memory and changes only by checkbox actions. There is no saved workspace, tab opening/closing, search/filtering, real refresh, virtualization, or ruler yet. Fixed NEW examples do not settle marker lifetime. See [ADR 0001](decisions/0001-synthetic-reader-foundation.md). Read the [product requirements](PRODUCT_REQUIREMENTS.md) for scope, [how it works](HOW_IT_WORKS.md) for the complete flow, and [filtering and search](FILTERING_AND_SEARCH.md) for what a displayed result means.
 
 Windows is the initial target platform. Other platform support is a later possibility; see [packaging](PACKAGING.md).
 

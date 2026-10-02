@@ -1,8 +1,108 @@
-body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
-    sans-serif;
-  margin: auto;
-  max-width: 38rem;
-  padding: 2rem;
+:root {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color-scheme: light;
+  --background: #f2f4f6;
+  --surface: #ffffff;
+  --surface-raised: #f7f9fb;
+  --text: #202b37;
+  --muted: #596778;
+  --border: #d7dfe7;
+  --accent: #235ba8;
+  --accent-soft: #eaf2fd;
+  --unseen: #235ba8;
+  --new-text: #715000;
+  --new-surface: #fff0bd;
+  --focus: #005fcc;
+}
+:root[data-appearance='dark'] {
+  color-scheme: dark;
+  --background: #151b23;
+  --surface: #1d2530;
+  --surface-raised: #242e3b;
+  --text: #e5eaf0;
+  --muted: #abb8c8;
+  --border: #3a4859;
+  --accent: #9dc7ff;
+  --accent-soft: #223956;
+  --unseen: #9dc7ff;
+  --new-text: #ffdc88;
+  --new-surface: #4e4021;
+  --focus: #9dc7ff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-appearance='light']):not([data-appearance='dark']) {
+    color-scheme: dark;
+    --background: #151b23;
+    --surface: #1d2530;
+    --surface-raised: #242e3b;
+    --text: #e5eaf0;
+    --muted: #abb8c8;
+    --border: #3a4859;
+    --accent: #9dc7ff;
+    --accent-soft: #223956;
+    --unseen: #9dc7ff;
+    --new-text: #ffdc88;
+    --new-surface: #4e4021;
+    --focus: #9dc7ff;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--background); color: var(--text); font-size: 14px; }
+button, select, input { font: inherit; }
+button, select { color: var(--text); }
+button, select, input, time { outline-offset: 4px; }
+:focus-visible { outline: 2px solid var(--focus); }
+button, input, select { cursor: pointer; }
+.app-shell { height: 100vh; display: flex; flex-direction: column; }
+.app-toolbar { padding: 18px 28px; display: flex; align-items: center; justify-content: space-between; gap: 24px; background: var(--surface); }
+.brand, .preferences, .preferences label { display: flex; align-items: center; gap: 12px; }
+.brand { font-size: 17px; }
+.brand-icon { color: var(--accent); font-size: 28px; line-height: 1; }
+.demo-label { font-size: 10px; font-weight: 700; letter-spacing: .09em; color: var(--muted); border: 1px solid var(--border); padding: 4px 6px; border-radius: 4px; }
+.preferences { gap: 20px; font-size: 12px; }
+select { background: var(--surface-raised); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; }
+.tabs { display: flex; gap: 6px; padding: 10px 28px 0; border-bottom: 1px solid var(--border); }
+.tabs button { text-align: left; max-width: 370px; min-width: 200px; padding: 10px 16px; border: 1px solid var(--border); border-bottom: 0; border-radius: 8px 8px 0 0; background: var(--background); }
+.tabs button[aria-selected='true'] { background: var(--surface); box-shadow: inset 0 3px var(--accent); }
+.tabs button:hover { background: var(--surface-raised); }
+.tab-kind { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+.tab-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.demo-notice { padding: 9px 28px; color: var(--muted); background: var(--surface); border-bottom: 1px solid var(--border); font-size: 12px; }
+.reader-panel { overflow-y: auto; flex: 1; min-height: 0; scrollbar-gutter: stable; }
+[hidden] { display: none !important; }
+.reading-column { max-width: 1100px; margin: 0 auto; padding: 32px 40px 48px; }
+.item-header { padding-bottom: 28px; border-bottom: 1px solid var(--border); }
+.eyebrow { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .06em; margin-bottom: 12px; }
+h1 { font-size: 28px; line-height: 1.3; margin: 0 0 14px; letter-spacing: -.025em; }
+.item-description { color: var(--muted); line-height: 1.6; max-width: 760px; }
+.post-text { white-space: pre-wrap; font-size: 17px; line-height: 1.65; max-width: 780px; }
+.item-meta { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 12px; margin-top: 20px; }
+.item-meta strong { color: var(--text); }
+.discussion-heading { display: flex; align-items: baseline; gap: 16px; margin-top: 24px; }
+h2 { font-size: 18px; margin: 0; }
+.discussion-heading > span, .reader-help { color: var(--muted); font-size: 12px; }
+.reader-help { line-height: 1.6; margin-bottom: 22px; }
+.comment-tree { list-style: none; margin: 0; padding: 0; }
+.comment-tree .comment-tree { margin-left: 25px; padding-left: 22px; border-left: 2px solid var(--border); }
+.comment { display: flex; align-items: flex-start; gap: 12px; padding: 17px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; margin-bottom: 10px; }
+.comment.is-unseen { border-left: 3px solid var(--unseen); padding-left: 14px; }
+.comment-tree > li { margin-bottom: 16px; }
+.avatar { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 600; }
+.comment-body { flex: 1; min-width: 0; }
+.comment-byline { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px; font-size: 12px; }
+.comment-byline strong { font-size: 13px; }
+time, .muted { color: var(--muted); }
+.comment-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; margin: 9px 0 12px; }
+.comment-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 11px; min-height: 18px; }
+.badge { display: inline-block; font-size: 10px; letter-spacing: .03em; font-weight: 600; border-radius: 4px; padding: 3px 6px; background: var(--surface-raised); color: var(--muted); }
+.unseen-badge { background: var(--accent-soft); color: var(--unseen); }
+.new-badge { background: var(--new-surface); color: var(--new-text); }
+.seen-control { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); font-size: 10px; cursor: pointer; padding: 2px; }
+.seen-control input { accent-color: var(--accent); width: 18px; height: 18px; margin: 0; }
+.reader-footer { border-top: 1px solid var(--border); color: var(--muted); margin-top: 26px; font-size: 12px; line-height: 1.6; }
+@media (max-width: 850px) {
+  .app-toolbar { flex-wrap: wrap; padding: 14px 18px; gap: 14px; }
+  .reading-column { padding: 24px 18px; }
+  .tabs { padding-left: 18px; }
+  .comment-tree .comment-tree { margin-left: 10px; padding-left: 10px; }
 }

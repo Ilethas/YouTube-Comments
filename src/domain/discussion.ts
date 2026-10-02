@@ -1,0 +1,111 @@
+/** Opaque demo application IDs supplement source identity, never names or row positions.
+ * This model is not a persistence DTO or a claim about extractor ID guarantees. */
+export type ItemKind = 'video' | 'post';
+
+/** Available identity and display metadata; a display name is never an account ID. */
+export interface Author {
+  readonly sourceId?: string;
+  readonly displayName?: string;
+  readonly handle?: string;
+}
+
+interface ItemBase {
+  readonly id: string;
+  readonly sourceId: string;
+  readonly author?: Author;
+  readonly publishedAt?: string;
+  readonly baselineDiscoveryId: string;
+}
+
+/** Source-independent discussion content. The discriminant determines its header;
+ * application identity remains separate from the opaque source ID. */
+export type ContentItem = ItemBase & (
+  | { readonly kind: 'video'; readonly title: string; readonly description?: string }
+  | { readonly kind: 'post'; readonly text: string }
+);
+
+/** One comment, including replies. Only explicit user actions change `seen`.
+ * Optional metadata stays absent. Demo timestamps are ISO instants, not a final
+ * policy for missing/imprecise source timestamps or database serialization. */
+export interface Comment {
+  readonly id: string;
+  readonly itemId: string;
+  readonly source: { readonly kind: ItemKind; readonly itemId: string; readonly commentId: string };
+  readonly parentId: string | null;
+  readonly author?: Author;
+  readonly text: string;
+  readonly publishedAt?: string;
+  readonly discovery: {
+    readonly firstDiscoveredAt: string;
+    readonly lastObservedAt: string;
+    readonly firstDiscoveryId: string;
+  };
+  readonly likeCount?: number;
+  readonly isCreator?: boolean;
+  readonly isPinned?: boolean;
+  readonly seen: boolean;
+}
+
+export interface CommentNode {
+  readonly comment: Comment;
+  readonly children: readonly CommentNode[];
+}
+
+/** Constructs a forest for one complete, valid in-memory discussion, retaining
+ * input sibling order. Parents may follow children. Invalid fixtures throw;
+ * this is a precondition check, not a source repair/partial-acquisition policy. */
+export function buildCommentTree(comments: readonly Comment[]): readonly CommentNode[] {
+  const nodes = new Map<string, { comment: Comment; children: CommentNode[] }>();
+  for (const comment of comments) {
+    if (nodes.has(comment.id)) throw new Error('Duplicate application comment ID');
+    if (comment.itemId !== comments[0].itemId) throw new Error('Mixed discussions');
+    nodes.set(comment.id, { comment, children: [] });
+  }
+  const roots: CommentNode[] = [];
+  for (const node of nodes.values()) {
+    if (node.comment.parentId === null) roots.push(node);
+    else {
+      const parent = nodes.get(node.comment.parentId);
+      if (!parent) throw new Error('Missing parent in complete discussion');
+      parent.children.push(node);
+    }
+  }
+  if (walkComments(roots).length !== comments.length) throw new Error('Cyclic comment relationships');
+  return roots;
+}
+
+/** Preorder traversal over data, independent of displayed or mounted rows. */
+export function walkComments(roots: readonly CommentNode[]): readonly Comment[] {
+  const result: Comment[] = [];
+  const pending = [...roots].reverse();
+  while (pending.length) {
+    const node = pending.pop();
+    if (!node) break;
+    result.push(node.comment);
+    for (let i = node.children.length - 1; i >= 0; i--) pending.push(node.children[i]);
+  }
+  return result;
+}
+
+/** Toggles the target once. Ctrl applies that resulting value to every stored
+ * descendant; ancestors/siblings and discovery metadata are never changed.
+ * Returns new data without mutating its input. Persistence is not implemented. */
+export function toggleSeen(comments: readonly Comment[], id: string, subtree = false): readonly Comment[] {
+  const roots = buildCommentTree(comments);
+  const target = comments.find(comment => comment.id === id);
+  if (!target) throw new Error('Unknown comment');
+  const ids = new Set([id]);
+  if (subtree) {
+    const pending = [...roots];
+    while (pending.length) {
+      const node = pending.pop();
+      if (!node) break;
+      if (node.comment.id === id) {
+        for (const comment of walkComments([node])) ids.add(comment.id);
+        break;
+      }
+      pending.push(...node.children);
+    }
+  }
+  return comments.map(comment => ids.has(comment.id) ? { ...comment, seen: !target.seen } : comment);
+}

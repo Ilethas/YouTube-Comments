@@ -2,7 +2,7 @@
 
 [Documentation map](../README.md) · [Product requirements](../PRODUCT_REQUIREMENTS.md) · [Architecture](../ARCHITECTURE.md)
 
-This directory will hold small architecture decision records (ADRs). This register includes the owner's clarification of 2026-10-02, separates settled requirements from remaining choices, and does not fabricate accepted ADRs for technologies not selected. Detailed contracts remain in their owning documents.
+This directory holds small architecture decision records (ADRs). This register includes the owner's clarification of 2026-10-02 and the first application foundation decision, separating settled requirements from remaining choices. Detailed contracts remain in their owning documents.
 
 ## Accepted foundations
 
@@ -33,6 +33,8 @@ The original IDs are retained for traceability. Related entries below contain on
 | Q-01 | Initial search/filtering and default all-comments bulk scope is the active discussion. Library-wide search is future scope; generic Mark all must never imply it. | [Filtering](../FILTERING_AND_SEARCH.md), [Seen state](../SEEN_STATE.md) |
 | Q-02 | Matching bulk actions use the last applied active-filter matching set. Pending seen edits do not trigger a fresh target query. Apply or successful explicit Refresh creates a new evaluation. | [Seen state](../SEEN_STATE.md), [UI](../UI_AND_NAVIGATION.md) |
 | Q-04 | Discovery-based "new since refresh" is separate from publication-date filtering. The vague publication preset is not part of the specification. Selection/lifetime for any discovery presentation is still covered by Q-05. | [Refresh](../REFRESH_AND_MERGE.md), [Filtering](../FILTERING_AND_SEARCH.md) |
+| Q-22 (partial) | Foundation uses React state and Vite TSX, typed translation dictionaries with Intl, semantic CSS tokens/native System following, and Vitest plus jsdom/Testing Library. IPC/query contracts and later E2E tools remain open. | [ADR 0001](0001-synthetic-reader-foundation.md) |
+| Q-13 (partial) | Foundation matches the first supported browser-language base, formats with en/pl and host timezone, falls back to English, and labels a fixed demo reference clock. Production time cadence, timezone controls, and optional follow-system language remain open. | [Localization](../LOCALIZATION_AND_THEMING.md), [ADR 0001](0001-synthetic-reader-foundation.md) |
 
 Q-05's initial baseline, Q-06's successful Refresh and applied-set behavior, Q-11's filtered-match navigation, Q-13's System default, and Q-20's Windows initial target are likewise settled in the foundations above. They are not reopened by the narrower questions below.
 
@@ -53,7 +55,7 @@ The questions below do not weaken the accepted invariants. Resolve each before i
 | Q-10 | **Tab restoration:** Decide duplicate-tab behavior, saved pending-result reconstruction, missing scroll-anchor fallback, cross-tab update timing, and optional unseen-badge scope. Shared comments retain one durable seen state. | [UI](../UI_AND_NAVIGATION.md), [Database](../DATABASE.md) |
 | Q-11 | **Navigation details and shortcuts:** Choose wrap/reveal behavior, persistence of navigation-triggered expansion, specialized unseen/search navigation freshness within the applicable view, and formal shortcut/focus policy. Filtered-reader match navigation uses the last applied active-filter set; Ctrl+click is required and Ctrl+Enter/F5 are likely/default bindings. | [UI](../UI_AND_NAVIGATION.md), [Seen state](../SEEN_STATE.md) |
 | Q-12 | **Ruler geometry and presentation:** Define variable-height/collapsed-tree marker positions, overlapping categories, aggregation, and marker lifetime. Also settle field layout, supported text formatting, avatar loading/caching, and external-link policy. The ruler and its unseen/search/new categories are required. | [UI](../UI_AND_NAVIGATION.md), [Architecture](../ARCHITECTURE.md) |
-| Q-13 | **Localization details:** Define regional locale/formatting matching, optional follow-system language, timezone controls, missing-key fallback, and relative-time update cadence. English fallback, persisted explicit language selection, and default System appearance are settled. | [Localization and theming](../LOCALIZATION_AND_THEMING.md) |
+| Q-13 | **Remaining localization details:** Optional follow-system language, timezone controls, richer regional formatting needs, and production relative-time update cadence. Foundation base-locale matching and English key fallback are selected in ADR 0001; persistence remains a target. | [Localization and theming](../LOCALIZATION_AND_THEMING.md) |
 
 ### Data, execution, and distribution
 
@@ -67,14 +69,14 @@ The questions below do not weaken the accepted invariants. Resolve each before i
 | Q-19 | **Helper compatibility:** Verify helper versions, commands, flags, output/completeness contracts, runtime needs, resolution precedence, and missing-helper UX. Preserve the development PATH to app-local/bundled transition behind a resolver. | [Extractors](../EXTRACTORS.md), [Packaging](../PACKAGING.md) |
 | Q-20 | **Windows release details and later platforms:** Choose supported Windows versions/architectures, application identity, helper distribution/licensing/update mechanics, native SQLite packaging, signing, release channels, and app updates. Future Linux/macOS support and timing remain open; initial Windows targeting is settled independently of template makers. | [Packaging](../PACKAGING.md) |
 | Q-21 | **Query performance:** Select virtualization/measurement, query scheduling, batching, worker placement, regex responsiveness strategy, and measurable performance budgets. Indexes must preserve substring/regex semantics and complete results. | [Architecture](../ARCHITECTURE.md), [Filtering](../FILTERING_AND_SEARCH.md), [UI](../UI_AND_NAVIGATION.md), [Testing](../TESTING.md) |
-| Q-22 | **Libraries and contracts:** Select React integration, state/query contracts, runtime IPC validation, localization library, theme token palette, test runner, and later UI test tooling. Vitest and i18next/react-i18next are candidates, not installed commitments. | [Architecture](../ARCHITECTURE.md), [Localization](../LOCALIZATION_AND_THEMING.md), [Testing](../TESTING.md) |
+| Q-22 | **Remaining libraries and contracts:** Select durable state/query contracts, runtime IPC validation, and later E2E tooling. React integration, in-memory state, localization, initial theme tokens, and unit/component tooling are selected in ADR 0001; no backend contracts are implied. | [Architecture](../ARCHITECTURE.md), [Localization](../LOCALIZATION_AND_THEMING.md), [Testing](../TESTING.md) |
 | Q-23 | **Future source/library scope:** Channel-wide Community Post browsing, authenticated/member-only extraction, and library-wide search are possible future features with unresolved scope and behavior. None is required by the initial product; no generic bulk command grants future library-wide mutation scope. | [Product requirements](../PRODUCT_REQUIREMENTS.md), [Extractors](../EXTRACTORS.md), [UI](../UI_AND_NAVIGATION.md) |
 
 The local open-question sections may contain finer implementation details; these grouped entries provide a shared index. Update both the owning document and this register when resolving a question. Record which acceptance tests demonstrate the resulting rule.
 
 ## Implementation dependencies, not a new roadmap
 
-The exact deliverables of the first implementation milestone have not been specified. These notes identify what would block its dependent behavior without inventing a milestone or requiring every open question to be closed first. The settled rules already permit foundational domain types, deterministic fixture/test infrastructure, a typed boundary, and a Windows UI foundation.
+The first implementation milestone delivers the synthetic React/domain/UI foundation described in [ADR 0001](0001-synthetic-reader-foundation.md). These notes identify dependencies for later increments without requiring every open question to be closed first. No storage, acquisition, IPC service, search, or bulk behavior is implemented yet.
 
 | Before implementing this behavior | Decisions or evidence actually needed |
 | --- | --- |
@@ -100,4 +102,4 @@ Prefer small records about significant decisions, such as SQLite integration, pa
 
 ## ADR index
 
-No individual ADRs have been accepted in this documentation-only milestone. The foundations above are the supplied product constraints; the open register makes the remaining choices visible without pretending they have been made.
+- [0001 — Synthetic React reader foundation](0001-synthetic-reader-foundation.md): accepted; scopes the React, localization, theme, domain preconditions, and deterministic testing choices to the in-memory milestone.

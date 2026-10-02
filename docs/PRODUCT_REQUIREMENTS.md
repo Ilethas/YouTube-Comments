@@ -1,6 +1,6 @@
 # Product requirements
 
-Status: persistent target specification; application features are not implemented by this milestone. [Documentation map](README.md) · [Owner's walkthrough](HOW_IT_WORKS.md) · [Open decisions](decisions/README.md)
+Status: persistent target specification; the synthetic reader foundation implements a limited in-memory subset. [Documentation map](README.md) · [Owner's walkthrough](HOW_IT_WORKS.md) · [Open decisions](decisions/README.md)
 
 ## Purpose and scope
 
@@ -82,4 +82,4 @@ These scenarios illustrate required behavior and should become tests in the rele
 
 ## Scope of this milestone and future increments
 
-This task updates the persistent specification and guidance only. It does not migrate the scaffold to React, add dependencies, design final SQL migrations, implement adapters, or run live YouTube extraction. Initial-product requirements may be delivered incrementally, but core search and the overview ruler are requirements, not optional future ideas. Library-wide search, channel-wide Community Post browsing, and authenticated/member-only extraction are future possibilities with unresolved scope. Future increments must satisfy relevant requirements and [tests](TESTING.md), resolve decisions that block their own behavior, and keep this specification current. The first implementation milestone's exact deliverables have not been fixed; see the [implementation dependencies](decisions/README.md) without treating every open question as an upfront gate.
+The first application milestone implements the React/domain/UI foundation using synthetic video and Community Post discussions only. It demonstrates manual per-comment/subtree seen behavior, nested reading, basic tabs, English/Polish, and System/Light/Dark with deterministic tests. All state is in memory. [ADR 0001](decisions/0001-synthetic-reader-foundation.md) records the engineering choices and limits. Acquisition, SQLite, refresh/merge, bulk operations, filtering/search/date rules, virtualization, overview ruler, durable preferences/workspace, and backup/export remain unimplemented. Core search and the overview ruler remain requirements. Library-wide search, channel-wide Community Post browsing, and authenticated/member-only extraction remain future possibilities with unresolved scope. Future increments must satisfy relevant requirements and [tests](TESTING.md), and resolve only decisions needed for their own behavior.

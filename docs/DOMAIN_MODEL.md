@@ -1,6 +1,6 @@
 # Domain model
 
-This is the target application model, not a description of implemented classes or an existing database schema. The repository currently contains an Electron Forge scaffold. [Product requirements](PRODUCT_REQUIREMENTS.md) define the required behavior; [architecture](ARCHITECTURE.md) describes where that behavior belongs.
+This is the target application model, not a database schema. The first application milestone implements a small subset in `src/domain/discussion.ts`: content/author/comment types, complete-tree construction/traversal, and immutable manual seen actions. `src/fixtures` supplies synthetic observations; there are no extractor contracts or persistence DTOs. String IDs, ISO fixture instants, input ordering, and strict valid-tree preconditions are scoped to this increment in [ADR 0001](decisions/0001-synthetic-reader-foundation.md); real source identity and malformed-observation policy remain unresolved. [Product requirements](PRODUCT_REQUIREMENTS.md) define the target; [architecture](ARCHITECTURE.md) describes ownership.
 
 The model uses the same application concepts for video discussions and Community Post discussions. Extractor-specific fields belong in [adapter input types](EXTRACTORS.md), never in React component contracts.
 

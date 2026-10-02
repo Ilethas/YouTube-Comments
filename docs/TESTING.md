@@ -1,12 +1,25 @@
 # Testing strategy
 
-Automated testing is a product requirement. The current repository has the Electron Forge/Vite/TypeScript scaffold and an ESLint script; it has no application test suite or test script. This document describes the target strategy, not checks already implemented. See [Architecture](ARCHITECTURE.md) for testable boundaries and [Product requirements](PRODUCT_REQUIREMENTS.md) for scope.
+Automated testing is a product requirement. The first application milestone adds Vitest domain/localization tests and focused jsdom/Testing Library interaction tests. The broader matrix below remains the target strategy, not a claim that persistence/acquisition/search have been tested. See [Architecture](ARCHITECTURE.md) and [Product requirements](PRODUCT_REQUIREMENTS.md).
+
+## Current execution and verification
+
+- `npm test`: 15 deterministic tests pass across domain, localization, and renderer suites. No Electron, network, database, or real YouTube data is required. Tree precondition checks do not select real-source repair policy. Ctrl+click tests cover both resulting states and all stored descendants; component tests exercise actual Ctrl modifier and Space-key activation.
+- `npm run typecheck`: passes with strict TypeScript and TSX.
+- `npm run lint`: passes without warnings. Generated `.vite` and `out` artifacts are excluded. The scaffold's legacy ESLint import resolver cannot resolve Vitest's package export; a documented single-line exception leaves TypeScript and the runner to validate that import.
+- `npm run build:renderer`: passes; emits the React bundle and relative local asset paths.
+- `npm run package`: Forge production main/preload/renderer builds passed on Windows x64. The process returned exit code 0 during packaging without producing a final executable in `out`; a completed distributable is **not verified**. No packaging/maker changes were made to address this scaffold/environment limitation.
+- An actual Electron runtime smoke check loaded the Forge-built app, rendered all 24 synthetic comments, opened the Community Post, verified live Polish selection, checked unchanged seen flags, verified no renderer Node globals plus sandbox/context isolation, and exercised native light-to-dark System changes and an explicit Light override. No renderer errors were observed. Light/dark and Polish screenshots were inspected locally. The temporary harness/profile/screenshots are ignored `.vite` artifacts, not a new E2E framework or production feature.
+
+Commands were run on Windows with Node 26.7.0 using `npm.cmd` because PowerShell blocks `npm.ps1`. esbuild config loading required a sandbox retry with broader filesystem access. The runtime check removed the inherited `ELECTRON_RUN_AS_NODE` environment variable for its process so Electron could run as a desktop app. Vite's existing CommonJS Node API emits a deprecation notice; it does not fail these checks.
+
+`npm start` is the development entry point. `npm run build:renderer` provides an independent renderer build. A manual acceptance pass can switch both tabs and languages, click and Ctrl+click mixed subtrees, check that NEW survives marking seen, and change System/Light/Dark. The app explicitly reports that all changes reset on reload. No restart persistence, real acquisition/merge, search/filter behavior, virtualization/ruler performance, or packaged installer is claimed by these checks.
 
 ## Test layers
 
 | Layer | Purpose | Environment |
 | --- | --- | --- |
-| Domain/unit | Prove tree, state, merge planning, filtering, search, and sorting behavior quickly. | Plain deterministic TypeScript; Vitest is the likely runner, not an installed dependency or final choice. |
+| Domain/unit | Prove tree, state, merge planning, filtering, search, and sorting behavior quickly. | Vitest is installed; tree/manual-state foundation tests exist. Merge/search/filter/sort tests await those increments. |
 | Persistence/integration | Prove transactions, migrations, queries, restart persistence, backup/restore, and data isolation. | A fresh temporary SQLite database for each independent test case or deliberately isolated suite. |
 | Adapter/fixture | Prove backend output becomes valid domain data without exposing backend types. | Saved extractor output and controlled process-runner responses; no YouTube or helper installation required. |
 | Focused UI/end-to-end | Later, prove a small number of meaningful workflows across the Electron boundary and actual UI. | A test profile and fixture data; UI automation tooling remains undecided. |
@@ -90,4 +103,4 @@ Generate reproducible datasets containing thousands and tens of thousands of com
 
 The normal suite must run without live YouTube access, credentials, or external helper installation. Future optional smoke tests must have a distinct command/opt-in switch and disposable database. They can reveal upstream drift but must not make ordinary domain validation depend on remote availability.
 
-No test tooling is installed by this documentation task. When implementation introduces test commands, document the exact commands here and update the [agent guidance](../AGENTS.md). Behavior changes require corresponding tests and documentation; significant policy choices belong in [ADRs](decisions/README.md).
+The foundation selects Vitest, jsdom, and Testing Library in [ADR 0001](decisions/0001-synthetic-reader-foundation.md). Keep commands and current verification above in sync with [agent guidance](../AGENTS.md). Behavior changes require corresponding tests and documentation; significant policy choices belong in [ADRs](decisions/README.md).

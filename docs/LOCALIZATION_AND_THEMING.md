@@ -1,6 +1,6 @@
 # Localization and theming
 
-English and Polish UI localization and System/Light/Dark appearance are product requirements from the beginning. They are target capabilities, not features already present in the scaffold. This document describes their boundaries; [UI and navigation](UI_AND_NAVIGATION.md) describes the reader and [architecture](ARCHITECTURE.md) describes the process boundary.
+English and Polish UI localization and System/Light/Dark appearance are implemented for the synthetic reader, with live switching and System as default. Preferences are in memory only. [ADR 0001](decisions/0001-synthetic-reader-foundation.md) selects typed dictionaries, named interpolation, Intl plural/number/date formatting, first supported browser-language base with English fallback, host-timezone display, semantic tokens, and native CSS color-scheme following. Fixture reference time is fixed and labeled. The durable and broader requirements below remain targets; timezone controls, follow-system language, and production relative-time cadence remain open. [UI and navigation](UI_AND_NAVIGATION.md) describes the reader and [architecture](ARCHITECTURE.md) describes the boundary.
 
 ## Interface language
 
@@ -8,9 +8,9 @@ Support at least English (`en`) and Polish (`pl`). Use stable, language-independ
 
 On first run, use a supported operating-system locale where practical and otherwise fall back to English. Let the user explicitly select a language and persist that preference in the application's durable settings. Apply language changes without an application restart where practical. An explicit saved choice takes precedence over first-run detection.
 
-Regional locale matching, whether a separate “follow system language” preference is offered, and how the language choice maps to a formatting locale remain unresolved. These details must be documented before implementation, particularly for regional date formats. The initial language set does not require automatic translation of remote content.
+The foundation matches supported language bases and uses `en`/`pl` for formatting as recorded in ADR 0001. Finer regional formatting and a separate “follow system language” preference remain open. The initial language set does not require automatic translation of remote content.
 
-`i18next` with `react-i18next` is an acceptable candidate. It is not installed or selected by this documentation task. A materially simpler alternative can be chosen with an explanation of how it handles translation keys, interpolation, plurals, missing keys, and live updates. Record a significant choice in the [decision register](decisions/README.md).
+The foundation selects a small typed dictionary instead of adding `i18next`/`react-i18next`; [ADR 0001](decisions/0001-synthetic-reader-foundation.md) explains key coverage, interpolation, plurals, English fallback, and live updates. Revisit a library when richer localization requirements warrant it.
 
 ### Translation boundaries
 
@@ -32,7 +32,7 @@ Use locale-aware `Intl` APIs for dates, numbers, and relative times. The reader 
 
 Store time values in a language-independent representation as defined by the [database design](DATABASE.md). Locale and time zone are related presentation concerns but are not interchangeable: choosing Polish must not by itself redefine the time zone of a stored instant.
 
-The governing time zone for display and date predicates, timestamp precision, relative-time update cadence, and exact timestamp presentation are unresolved. Publication-date filtering uses each comment's `publishedAt`; useful preset examples such as **Today**, **Last 24 hours**, and **Last 7 days** need explicit date rules if selected. They are examples, not a fixed mandatory list. **New since refresh** is a separate discovery-history concept, not a publication-date shortcut. See [filtering and search](FILTERING_AND_SEARCH.md). Formatting a boundary differently must not silently change the comments it selects, and exact timestamps must remain discoverable.
+The demo uses the host timezone, exact timestamps on hover/accessibility labels, and a labeled fixed reference clock. Production timestamp precision, relative-time update cadence, timezone controls, and date-predicate timezone remain unresolved. Publication-date filtering uses each comment's `publishedAt`; useful preset examples such as **Today**, **Last 24 hours**, and **Last 7 days** need explicit date rules if selected. They are examples, not a fixed mandatory list. **New since refresh** is a separate discovery-history concept, not a publication-date shortcut. See [filtering and search](FILTERING_AND_SEARCH.md). Formatting a boundary differently must not silently change the comments it selects, and exact timestamps must remain discoverable.
 
 ## Interface language must not change search
 
@@ -80,4 +80,4 @@ The test plan should verify English and Polish key coverage, translated validati
 
 Theme verification should cover System as the first-run default, explicit Light/Dark, System reacting to simulated OS appearance changes, preference surviving restart, and readable interactive states in both palettes. Later focused UI tests should check layout with longer translated strings and combined markers/highlights rather than relying only on translation-file completeness. See [testing](TESTING.md).
 
-The translation library, formatting-locale policy, time-zone controls, missing-key fallback policy, palette, and platform-event implementation remain open. Resolve each when the relevant feature is implemented and record decisions where they affect multiple subsystems.
+The foundation dictionary, base formatting locale, English fallback, initial palette, and CSS platform-event mechanism are selected in ADR 0001. Time-zone controls, durable preferences, production relative-time updates, and richer localization requirements remain open.

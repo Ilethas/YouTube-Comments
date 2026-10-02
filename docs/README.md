@@ -1,6 +1,6 @@
 # Documentation map
 
-This is the persistent specification for a YouTube discussion inbox/reader. It describes the target product; the current repository is an Electron Forge/Vite/TypeScript scaffold. This documentation milestone adds no application features, dependencies, database, or tests.
+This is the persistent specification for a YouTube discussion inbox/reader. The repository now includes the first application milestone: an Electron/React reader with synthetic video and Community Post discussions, pure domain tree/seen rules, English/Polish, System/Light/Dark, and deterministic tests. All state is in memory and resets on reload. Acquisition, persistence, filtering, virtualization, and the overview ruler remain target requirements. See [the foundation ADR](decisions/0001-synthetic-reader-foundation.md) and [verification status](TESTING.md).
 
 The initial product targets Windows and one active discussion at a time for normal search/filtering and generic bulk actions. Core search and the overview ruler are required target features. The owner's clarified decisions are recorded under [accepted foundations](decisions/README.md); remaining questions do not reopen those decisions.
 

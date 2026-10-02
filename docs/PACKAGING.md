@@ -18,7 +18,7 @@ The repository currently uses Electron Forge with Vite and TypeScript. [package.
 
 These maker declarations come from the scaffold and do not expand the initial Windows target into a cross-platform release commitment. Windows versions/architectures, installer details, signing, and release channels remain unresolved. Linux/macOS makers may remain in the scaffold without making those platforms initial requirements.
 
-The scaffold still has placeholder application metadata, a template renderer, a preload placeholder without an application API, and automatic DevTools opening in the main entry. React, SQLite, localization, application services, extraction adapters, and tests have not been added. This documentation increment deliberately leaves the scaffold unchanged; these items must be handled in appropriate later implementation increments.
+The first application milestone replaces the template renderer with React and synthetic discussions, adds English/Polish and themes, and removes automatic DevTools opening. Preload remains empty, while main explicitly disables Node integration and enables sandbox/context isolation. SQLite, application services, extraction adapters, and release metadata remain future work. Forge main/preload/renderer production builds and an Electron runtime smoke check passed; final package output was not produced/verified in the current environment. See [Testing](TESTING.md). Maker configuration is unchanged.
 
 ## Target packaging responsibilities
 

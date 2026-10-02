@@ -4,9 +4,9 @@ Status: target architecture, with proposed organization explicitly identified. [
 
 ## Current scaffold
 
-The repository uses Electron Forge with the Vite plugin and TypeScript. [src/main.ts](../src/main.ts) creates the window, [src/preload.ts](../src/preload.ts) is a placeholder, and [src/renderer.ts](../src/renderer.ts) imports scaffold CSS and logs a message. [index.html](../index.html) contains the welcome page. [package.json](../package.json) does not yet declare React, a SQLite driver, localization, virtualization, or an application test runner.
+The repository uses Electron Forge/Vite and strict TypeScript. [src/main.ts](../src/main.ts) creates a sandboxed, context-isolated window with Node integration disabled; navigation/new windows are blocked. [src/preload.ts](../src/preload.ts) exposes no API. [src/renderer.tsx](../src/renderer.tsx) mounts the React reader, with components and localization in `src/renderer`, pure domain rules in `src/domain`, and explicitly synthetic data in `src/fixtures`.
 
-The documentation milestone changes none of these files. The target below is not a claim that the scaffold already implements application services or satisfies a completed security review. See [Packaging](PACKAGING.md) for the existing Forge configuration and [Testing](TESTING.md) for current verification status.
+The first application milestone has in-memory state only, with no persistence, acquisition, IPC services, filtering, or virtualization. [ADR 0001](decisions/0001-synthetic-reader-foundation.md) records the React, localization, theme, and testing choices. The target below describes future ownership once privileged services exist; it is not a claim of a completed security review. See [Testing](TESTING.md) for verification status.
 
 Initial development and packaging target Windows. Platform integrations should avoid unnecessary barriers to later Linux/macOS support, but those platforms are not initial implementation or packaging requirements.
 
