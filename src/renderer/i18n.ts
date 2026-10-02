@@ -1,10 +1,16 @@
-export type Locale = 'en' | 'pl';
+export { initialLocale } from '../shared/preferences';
+export type { Locale } from '../shared/preferences';
+import type { Locale } from '../shared/preferences';
 
 const en = {
   appName: 'Discussion reader', demo: 'LOCAL DEMO', language: 'Language', appearance: 'Appearance',
   en: 'English', pl: 'Polski', system: 'System', light: 'Light', dark: 'Dark',
   discussions: 'Discussions', video: 'Video', post: 'Community Post', discussion: 'Discussion',
-  memoryNotice: 'Synthetic discussions · Changes stay in memory and reset when the app reloads.',
+  demoNotice: 'Synthetic discussions · Seen state and preferences are saved on this device.',
+  loading: 'Loading the reader…', loadError: 'The reader could not load its stored data.',
+  saveError: 'The change could not be confirmed. The previous state is still shown.',
+  unsupportedSchema: 'This database needs a newer version of the application.',
+  retry: 'Try again', empty: 'No discussions are stored in this profile.',
   seenHelp: 'Check a comment to mark it seen. Ctrl+click also sets all its replies to the same state.',
   newHelp: 'NEW shows fixed examples of later discoveries in this demo; it is independent of UNSEEN.',
   clockNote: 'Demo reference time', unknownAuthor: 'Unknown author', unknownTime: 'Publication time unavailable',
@@ -18,7 +24,11 @@ const pl: Record<Key, string> & Record<string, string> = {
   appName: 'Czytnik dyskusji', demo: 'LOKALNE DEMO', language: 'Język', appearance: 'Wygląd',
   en: 'English', pl: 'Polski', system: 'Systemowy', light: 'Jasny', dark: 'Ciemny',
   discussions: 'Dyskusje', video: 'Film', post: 'Post społeczności', discussion: 'Dyskusja',
-  memoryNotice: 'Przykładowe dyskusje · Zmiany są przechowywane w pamięci i znikają po ponownym wczytaniu aplikacji.',
+  demoNotice: 'Przykładowe dyskusje · Stan przeczytania i ustawienia są zapisywane na tym urządzeniu.',
+  loading: 'Wczytywanie czytnika…', loadError: 'Nie udało się wczytać zapisanych danych czytnika.',
+  saveError: 'Nie udało się potwierdzić zmiany. Nadal wyświetlany jest poprzedni stan.',
+  unsupportedSchema: 'Ta baza danych wymaga nowszej wersji aplikacji.',
+  retry: 'Spróbuj ponownie', empty: 'W tym profilu nie ma zapisanych dyskusji.',
   seenHelp: 'Zaznacz komentarz, aby oznaczyć go jako przeczytany. Ctrl+kliknięcie ustawia ten sam stan dla wszystkich jego odpowiedzi.',
   newHelp: 'NOWY oznacza stałe przykłady późniejszych odkryć w tym demo, niezależnie od stanu NIEPRZECZYTANY.',
   clockNote: 'Czas odniesienia demo', unknownAuthor: 'Nieznany autor', unknownTime: 'Brak daty publikacji',
@@ -30,16 +40,6 @@ const pl: Record<Key, string> & Record<string, string> = {
   unseenCount_many: '{count} nieprzeczytanych komentarzy', unseenCount_other: '{count} nieprzeczytanego komentarza',
 };
 export const messages: Record<Locale, Record<string, string>> = { en, pl };
-
-/** First supported browser language wins; base language selects en/pl resources.
- * No persisted preference yet. Content and domain state never enter this function. */
-export function initialLocale(languages: readonly string[]): Locale {
-  for (const language of languages) {
-    const base = language.toLowerCase().split('-')[0];
-    if (base === 'en' || base === 'pl') return base;
-  }
-  return 'en';
-}
 
 export function translator(locale: Locale) {
   return (key: Key, values: Record<string, string | number> = {}): string => {

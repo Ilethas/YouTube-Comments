@@ -1,6 +1,6 @@
 # Product requirements
 
-Status: persistent target specification; the synthetic reader foundation implements a limited in-memory subset. [Documentation map](README.md) · [Owner's walkthrough](HOW_IT_WORKS.md) · [Open decisions](decisions/README.md)
+Status: persistent target specification; the synthetic reader now includes the bounded SQLite/typed-boundary persistence foundation. [Documentation map](README.md) · [Owner's walkthrough](HOW_IT_WORKS.md) · [Open decisions](decisions/README.md)
 
 ## Purpose and scope
 
@@ -82,4 +82,4 @@ These scenarios illustrate required behavior and should become tests in the rele
 
 ## Scope of this milestone and future increments
 
-The first application milestone implements the React/domain/UI foundation using synthetic video and Community Post discussions only. It demonstrates manual per-comment/subtree seen behavior, nested reading, basic tabs, English/Polish, and System/Light/Dark with deterministic tests. All state is in memory. [ADR 0001](decisions/0001-synthetic-reader-foundation.md) records the engineering choices and limits. Acquisition, SQLite, refresh/merge, bulk operations, filtering/search/date rules, virtualization, overview ruler, durable preferences/workspace, and backup/export remain unimplemented. Core search and the overview ruler remain requirements. Library-wide search, channel-wide Community Post browsing, and authenticated/member-only extraction remain future possibilities with unresolved scope. Future increments must satisfy relevant requirements and [tests](TESTING.md), and resolve only decisions needed for their own behavior.
+The synthetic React/domain/UI reader demonstrates manual per-comment/subtree seen behavior, nested reading, basic tabs, English/Polish, and System/Light/Dark. The persistence milestone adds main-owned SQLite, schema/migrations, isolated profiles, typed validated IPC, and durable seen state and preferences. The UI holds acknowledged snapshots; restart recovery comes from SQLite. [ADR 0001](decisions/0001-synthetic-reader-foundation.md) and [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) record the choices and limits. Acquisition, refresh/merge, bulk operations, filtering/search/date rules, virtualization, overview ruler, workspace restoration, and backup/export remain unimplemented. Core search and the overview ruler remain requirements. Library-wide search, channel-wide Community Post browsing, and authenticated/member-only extraction remain future possibilities with unresolved scope. Future increments must satisfy relevant requirements and [tests](TESTING.md), and resolve only decisions needed for their own behavior.

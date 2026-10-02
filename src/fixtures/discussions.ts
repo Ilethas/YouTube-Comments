@@ -1,8 +1,9 @@
 import type { Author, Comment, ContentItem } from '../domain/discussion';
+import { demoNow } from '../shared/demo-presentation';
+export { demoNow, demoNewCommentIds } from '../shared/demo-presentation';
 
 // Entirely synthetic application data; not captured or inferred extractor output.
 const creator: Author = { sourceId: 'demo-author-studio', displayName: 'Quiet Workshop', handle: '@quietworkshop' };
-export const demoNow = Date.parse('2026-09-20T12:00:00Z');
 export const items: readonly ContentItem[] = [
   { id: 'video-demo', sourceId: 'synthetic-video', kind: 'video', title: 'A quieter desk, built one detail at a time',
     description: 'An afternoon in the workshop: a solid-wood desk, a cable tray, and a little more room to think.',
@@ -63,6 +64,3 @@ export const initialComments: Readonly<Record<string, readonly Comment[]>> = {
   'video-demo': makeComments(items[0], videoSeeds),
   'post-demo': makeComments(items[1], postSeeds),
 };
-
-// Fixed presentation examples only. No production NEW lifetime/window is selected.
-export const demoNewCommentIds: ReadonlySet<string> = new Set(['v3', 'p3']);

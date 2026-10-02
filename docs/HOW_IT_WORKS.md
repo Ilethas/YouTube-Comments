@@ -1,6 +1,6 @@
 # How it works
 
-This guide is for the technically capable project owner who wants to understand the whole application without having written each subsystem. It describes the **intended system**. Today the repository contains the Electron scaffold and this specification. Start with the [documentation map](README.md) for status conventions or [product requirements](PRODUCT_REQUIREMENTS.md) for the full contract.
+This guide is for the technically capable project owner who wants to understand the whole application without having written each subsystem. It describes the **intended system**. Today the repository implements the synthetic reader with main-owned SQLite, durable manual seen state/preferences, migrations, isolated profiles, and a typed preload API. Real acquisition/refresh and the broader workflows below remain targets. Start with the [documentation map](README.md) for status or [product requirements](PRODUCT_REQUIREMENTS.md) for the full contract.
 
 ## The local library is the center
 
@@ -83,6 +83,6 @@ English and Polish interface text uses stable translation keys. Dates, relative 
 
 ## What protects the library as the application grows
 
-SQLite migrations, backup/restore, isolated development/test databases, and future export keep the user's accumulated work valuable across releases. These need designed workflows; they are not already present in the scaffold. React reaches a privileged backend owned by the Electron main side through a narrow typed preload bridge. That backend owns persistence; it may later delegate database work to an internal worker without giving the renderer SQLite access. Only main invokes extractors. See [Database](DATABASE.md), [Architecture](ARCHITECTURE.md), and [Packaging](PACKAGING.md).
+The current SQLite foundation has transactional schema migration, isolated development/test profiles, and typed main-owned persistence. Backup/restore and export still need designed workflows before they can protect released data across upgrades. React reaches main through a narrow typed preload bridge and receives acknowledged snapshots; it cannot open SQLite. Main may later delegate database work to an internal worker without changing that boundary. Future extractors will also be invoked only by main. See [Database](DATABASE.md), [Architecture](ARCHITECTURE.md), and [Packaging](PACKAGING.md).
 
 Deterministic tests exercise the rules above without live YouTube access. Saved helper fixtures test normalization; temporary databases test transactions and migrations. A small meaningful UI/E2E suite is expected later, focused on important workflows rather than an exhaustive UI matrix. Optional live smoke tests cannot replace deterministic checks. See [Testing](TESTING.md). Unsettled behavior and when it blocks implementation are collected in the [decision register](decisions/README.md).

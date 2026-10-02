@@ -1,6 +1,6 @@
 # Seen state
 
-Seen/unseen is a durable, manual property of each individual comment in the target product. It is the reader's record of processing a contribution, not evidence that the application displayed it. The first application milestone implements and tests ordinary and Ctrl+click behavior in memory only. Viewing, scrolling, tabs, language, and appearance changes do not mark comments seen. Persistence, filtered-view integration, bulk operations, and refresh preservation remain unimplemented. See [product requirements](PRODUCT_REQUIREMENTS.md) and the [domain model](DOMAIN_MODEL.md).
+Seen/unseen is a durable, manual property of each individual comment. It is the reader's record of processing a contribution, not evidence that the application displayed it. Ordinary and Ctrl+click behavior now persists in main-owned SQLite through the typed bridge. The service reads the current target state, resolves the pure domain action, and commits all subtree changes in one transaction. The UI waits for acknowledgment and reports failure while retaining its last acknowledged state. Viewing, scrolling, tabs, language, and appearance do not mark comments seen. Reopen and late-write rollback tests cover these invariants. Filtered-view integration, bulk operations, and refresh preservation remain unimplemented. See [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [product requirements](PRODUCT_REQUIREMENTS.md), and the [domain model](DOMAIN_MODEL.md).
 
 ## Invariants
 

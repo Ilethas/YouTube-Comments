@@ -1,6 +1,6 @@
 # Localization and theming
 
-English and Polish UI localization and System/Light/Dark appearance are implemented for the synthetic reader, with live switching and System as default. Preferences are in memory only. [ADR 0001](decisions/0001-synthetic-reader-foundation.md) selects typed dictionaries, named interpolation, Intl plural/number/date formatting, first supported browser-language base with English fallback, host-timezone display, semantic tokens, and native CSS color-scheme following. Fixture reference time is fixed and labeled. The durable and broader requirements below remain targets; timezone controls, follow-system language, and production relative-time cadence remain open. [UI and navigation](UI_AND_NAVIGATION.md) describes the reader and [architecture](ARCHITECTURE.md) describes the boundary.
+English and Polish UI localization and System/Light/Dark appearance are implemented for the synthetic reader, with live switching and System as default. Preferences now persist in main-owned SQLite through acknowledged typed IPC writes. [ADR 0001](decisions/0001-synthetic-reader-foundation.md) selects typed dictionaries, named interpolation, Intl formatting, host-timezone display, semantic tokens, and native CSS color-scheme following. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) selects main-side first-run detection using the first supported `app.getPreferredSystemLanguages()` base with English fallback; an explicit stored selection overrides detection. Browser-language detection remains a provisional loading/error presentation choice. Fixture reference time stays fixed and labeled. Timezone controls, a separate follow-system-language option, and production relative-time cadence remain open. [UI and navigation](UI_AND_NAVIGATION.md) describes the reader and [architecture](ARCHITECTURE.md) describes the boundary.
 
 ## Interface language
 
@@ -24,7 +24,7 @@ The foundation selects a small typed dictionary instead of adding `i18next`/`rea
 
 Avoid constructing sentences by concatenating translated fragments. English and Polish need room for different word order and plural forms. Keep source content distinct from application markup when inserting it into localized messages.
 
-Typed errors crossing IPC should carry stable error codes and structured context where practical, so the UI can localize the explanation without using an English sentence as a protocol value. This is a proposed design approach; the exact error contract is unresolved. See [extractor diagnostics](EXTRACTORS.md) and [architecture](ARCHITECTURE.md).
+Implemented IPC errors carry stable codes in structured results; bootstrap/save context uses localized keys rather than English protocol sentences. Driver details and paths stay in privileged diagnostics. Broader extractor diagnostics/context and request-ID policy remain open. See [extractor diagnostics](EXTRACTORS.md), [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md), and [architecture](ARCHITECTURE.md).
 
 ## Format dates and numbers; preserve meaning
 

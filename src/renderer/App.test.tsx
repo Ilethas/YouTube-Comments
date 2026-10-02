@@ -1,9 +1,29 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
-import { initialComments } from '../fixtures/discussions';
+import { initialComments, items } from '../fixtures/discussions';
+import { toggleSeen } from '../domain/discussion';
+import type { ReaderApi, ReaderState, Result } from '../shared/reader-api';
+
+let api: ReaderApi;
+beforeEach(() => {
+  let state: ReaderState = { items, comments: initialComments, preferences: { locale: 'en', appearance: 'system' } };
+  api = {
+    bootstrap: vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true, value: state })),
+    toggleSeen: vi.fn<ReaderApi['toggleSeen']>(async request => {
+      const comments = toggleSeen(state.comments[request.itemId], request.commentId, request.subtree);
+      state = { ...state, comments: { ...state.comments, [request.itemId]: comments } };
+      return { ok: true, value: comments };
+    }),
+    updatePreferences: vi.fn<ReaderApi['updatePreferences']>(async change => {
+      state = { ...state, preferences: { ...state.preferences, ...change } };
+      return { ok: true, value: state.preferences };
+    }),
+  };
+});
+async function showReader() { render(<App api={api} />); await screen.findByRole('tabpanel'); }
 
 beforeEach(() => {
   // A value avoids spying on jsdom's branded Navigator prototype getter.
@@ -15,7 +35,7 @@ const checked = () => checkboxes().map(input => input.checked);
 
 it('reading, scrolling, tab navigation and language changes do not mark comments seen', async () => {
   const user = userEvent.setup();
-  render(<App />);
+  await showReader();
   const original = checked();
   fireEvent.scroll(screen.getByRole('tabpanel'), { target: { scrollTop: 500 } });
   await user.click(screen.getByText(initialComments['video-demo'][0].text));
@@ -32,7 +52,7 @@ it('reading, scrolling, tab navigation and language changes do not mark comments
 
 it('ordinary click, Ctrl+click and Space apply manual state without removing NEW', async () => {
   const user = userEvent.setup();
-  render(<App />);
+  await showReader();
   const original = checked();
   await user.click(checkboxes()[2]);
   expect(checked()).toEqual(original.map((state, index) => index === 2 ? !state : state));
@@ -52,7 +72,7 @@ it('ordinary click, Ctrl+click and Space apply manual state without removing NEW
 
 it('defaults to System and switches appearance without resetting seen state', async () => {
   const user = userEvent.setup();
-  render(<App />);
+  await showReader();
   expect(document.documentElement.dataset.appearance).toBe('system');
   const original = checked();
   for (const appearance of ['dark', 'light', 'system']) {
@@ -60,4 +80,62 @@ it('defaults to System and switches appearance without resetting seen state', as
     expect(document.documentElement.dataset.appearance).toBe(appearance);
     expect(checked()).toEqual(original);
   }
+});
+
+it('shows loading without fixture state, then shows an actionable bootstrap error', async () => {
+  api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }));
+  render(<App api={api} />);
+  expect(screen.getByRole('status').textContent).toContain('Loading');
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  await screen.findByRole('alert');
+  await userEvent.click(screen.getByText('Try again'));
+  await waitFor(() => expect(api.bootstrap).toHaveBeenCalledTimes(2));
+});
+
+it('a storage retry can recover and display the reader', async () => {
+  const bootstrap = api.bootstrap;
+  api.bootstrap = vi.fn<ReaderApi['bootstrap']>()
+    .mockResolvedValueOnce({ ok: false, error: { code: 'STORAGE_UNAVAILABLE' } })
+    .mockImplementation(bootstrap);
+  render(<App api={api} />);
+  await screen.findByRole('alert');
+  await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+  await screen.findByRole('tabpanel');
+  expect(api.bootstrap).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('unsupported schema explains the failure without presenting Retry', async () => {
+  api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: false, error: { code: 'UNSUPPORTED_SCHEMA' } }));
+  render(<App api={api} />);
+  expect((await screen.findByRole('alert')).textContent).toContain('needs a newer version');
+  expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(api.bootstrap).toHaveBeenCalledTimes(1);
+});
+
+it('keeps acknowledged checkbox state during a pending write and after a failed save', async () => {
+  let finish: (result: Result<readonly import('../domain/discussion').Comment[]>) => void = () => { throw new Error('Not started'); };
+  api.toggleSeen = vi.fn<ReaderApi['toggleSeen']>(() => new Promise(resolve => { finish = resolve; }));
+  await showReader();
+  const original = checked();
+  await userEvent.click(checkboxes()[1]);
+  expect(checked()).toEqual(original);
+  expect(checkboxes().every(input => input.disabled)).toBe(true);
+  finish({ ok: false, error: { code: 'STORAGE_UNAVAILABLE' } });
+  await screen.findByRole('alert');
+  expect(checked()).toEqual(original);
+  expect(checkboxes().every(input => !input.disabled)).toBe(true);
+});
+
+it('failed preferences keep saved language/appearance and rejected transport is visible', async () => {
+  api.updatePreferences = vi.fn(async () => { throw new Error('Transport failed'); });
+  await showReader();
+  await userEvent.selectOptions(screen.getByLabelText('Language'), 'pl');
+  await screen.findByRole('alert');
+  expect(document.documentElement.lang).toBe('en');
+  expect((screen.getByLabelText('Language') as HTMLSelectElement).value).toBe('en');
+  await userEvent.selectOptions(screen.getByLabelText('Appearance'), 'dark');
+  await screen.findByRole('alert');
+  expect(document.documentElement.dataset.appearance).toBe('system');
 });

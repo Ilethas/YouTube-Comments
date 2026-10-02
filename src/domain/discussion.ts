@@ -89,7 +89,8 @@ export function walkComments(roots: readonly CommentNode[]): readonly Comment[] 
 
 /** Toggles the target once. Ctrl applies that resulting value to every stored
  * descendant; ancestors/siblings and discovery metadata are never changed.
- * Returns new data without mutating its input. Persistence is not implemented. */
+ * Returns new data without mutating its input. The main service persists this
+ * result atomically; this pure function has no storage dependency. */
 export function toggleSeen(comments: readonly Comment[], id: string, subtree = false): readonly Comment[] {
   const roots = buildCommentTree(comments);
   const target = comments.find(comment => comment.id === id);

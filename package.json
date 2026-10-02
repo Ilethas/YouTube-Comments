@@ -5,6 +5,7 @@
   "description": "My Electron application description",
   "main": ".vite/build/main.js",
   "private": true,
+  "engines": { "node": ">=24.13.0" },
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
@@ -12,6 +13,7 @@
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "vitest run",
+    "test:electron": "node scripts/smoke-electron.cjs",
     "typecheck": "tsc --noEmit",
     "build:renderer": "vite build --config vite.renderer.config.ts --outDir .vite/renderer-preview"
   },
@@ -34,6 +36,7 @@
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
     "@types/electron-squirrel-startup": "^1.0.2",
+    "@types/node": "^26.6.3",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@typescript-eslint/eslint-plugin": "^5.62.0",

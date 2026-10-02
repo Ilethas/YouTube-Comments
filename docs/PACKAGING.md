@@ -18,7 +18,7 @@ The repository currently uses Electron Forge with Vite and TypeScript. [package.
 
 These maker declarations come from the scaffold and do not expand the initial Windows target into a cross-platform release commitment. Windows versions/architectures, installer details, signing, and release channels remain unresolved. Linux/macOS makers may remain in the scaffold without making those platforms initial requirements.
 
-The first application milestone replaces the template renderer with React and synthetic discussions, adds English/Polish and themes, and removes automatic DevTools opening. Preload remains empty, while main explicitly disables Node integration and enables sandbox/context isolation. SQLite, application services, extraction adapters, and release metadata remain future work. Forge main/preload/renderer production builds and an Electron runtime smoke check passed; final package output was not produced/verified in the current environment. See [Testing](TESTING.md). Maker configuration is unchanged.
+The reader uses React, synthetic discussions, English/Polish, and themes. The persistence milestone adds main-owned built-in `node:sqlite`, migrations, an application service, and the typed validated preload API, while keeping sandbox/context isolation enabled and renderer Node integration disabled. The main Vite build leaves `node:sqlite` external for Electron to supply. No ABI-specific SQLite add-on, rebuild, or ASAR unpacking configuration is needed. Forge main/preload/renderer production builds and real runtime/restart checks passed against Electron 44.4.5 (embedded Node 24.21.0 / SQLite 3.53.4). Forge again exited during packaging without a completed executable in `out`; a final package/installer is not verified. See [Testing](TESTING.md) and [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md). Makers/fuses are unchanged; adapters and release metadata remain future work.
 
 ## Target packaging responsibilities
 
@@ -26,7 +26,7 @@ The packaged application must preserve the renderer → typed preload/contextBri
 
 The main-side backend owns persistence and may use an internal database worker. That is an implementation option behind the same security boundary, not renderer SQLite access. External extractors remain invoked only by the Electron main process.
 
-The build must eventually carry the React renderer, English and Polish translations, theme assets, and the selected SQLite integration. If a chosen SQLite library or helper introduces native/platform-specific artifacts, its compatibility must be tested against each supported Electron/platform/architecture combination. The library choice and bundling mechanics are unresolved; no native dependency has been selected by this document.
+The build carries the React renderer, English/Polish translations, theme assets, and main-side code using Electron's built-in SQLite. Recheck built-in SQLite compatibility during Electron upgrades; Node test/development scripts require 24.13+ and are verified on the installed Node 26.7.0. `@types/node` is a direct development dependency only. If a future driver or helper adds platform-specific artifacts, verify it against each supported Electron/platform/architecture combination. Completed distributable/installer verification is still outstanding.
 
 System is the first-run appearance default. System, Light, and Dark preferences and live OS appearance changes must work in the packaged app. Language selection and locale-aware formatting must also work without relying on development-only asset paths. See [Localization and theming](LOCALIZATION_AND_THEMING.md).
 
@@ -46,7 +46,7 @@ The application license in `package.json` does not establish redistribution righ
 
 ## Protecting durable data
 
-SQLite is valuable user data. Store the application database and durable preferences separately from replaceable application binaries and extraction scratch files. Exact paths and profile identifiers remain to be selected, with distinct production, development, and test databases required from the beginning. Never use the real user database as a convenient integration-test fixture.
+SQLite is valuable user data. The database and durable preferences live outside replaceable binaries: `<appData>/youtube-comments-development/reader.sqlite` for unpackaged development and `<appData>/youtube-comments-production/reader.sqlite` for packaged production (Windows normally `%APPDATA%`). Main resolves the paths and sets Chromium `userData` to the matching profile directory. Tests explicitly own temporary directories. `YOUTUBE_COMMENTS_DEMO_ROOT` is an optional absolute root selecting the development profile even for packaged smoke checks; an empty/relative value fails. It always appends the development-directory suffix and never substitutes for the production profile. Only development/demo mode seeds synthetic fixtures; normal packaged production currently opens an empty library. Final product identity changes need a deliberate profile migration, not a renamed default that loses data. See [Database](DATABASE.md) and [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md).
 
 Installer and update planning must account for:
 
@@ -79,4 +79,4 @@ Live YouTube smoke tests remain optional and separate from the normal determinis
 
 ## Decisions still open
 
-Within the initial Windows target, supported versions/architectures, product branding/app identity, SQLite driver and native packaging, helper bundling/version/update strategy, application update mechanism, signing/release destinations, database paths/profile identifiers, backup retention, downgrade support, and uninstall-data policy remain unresolved. Future Linux/macOS support would need its own decisions. Resolve these as needed for implementation and record significant choices under [decisions](decisions/README.md); do not infer commitments merely from the Forge template.
+Within the initial Windows target, supported versions/architectures, final branding/app identity, packaging completion, helper distribution/version/update strategy, application updates, signing/release destinations, backup retention, supported released upgrades/downgrades, and uninstall-data policy remain unresolved. The initial built-in SQLite integration and distinct profile identifiers are selected in ADR 0002; newer schemas fail safely instead of being downgraded. Future Linux/macOS support would need its own verification. Resolve remaining choices as needed under [decisions](decisions/README.md); do not infer release commitments from the Forge template.

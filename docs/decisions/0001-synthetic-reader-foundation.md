@@ -2,6 +2,8 @@
 
 Date: 2026-10-02. Status: accepted for the first application milestone.
 
+Implementation note: [ADR 0002](0002-sqlite-and-typed-reader-boundary.md) replaces the in-memory durable authority and empty preload for the persistence milestone. The original decision below remains the historical foundation rationale.
+
 ## Context
 
 The owner authorized a usable in-memory reader for evaluating video and Community Post discussions, without acquisition or storage. [Q-22](README.md) leaves implementation libraries open; [localization](../LOCALIZATION_AND_THEMING.md) requires stable keys and English/Polish from the start.

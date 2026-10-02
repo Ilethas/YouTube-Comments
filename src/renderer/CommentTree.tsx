@@ -1,14 +1,15 @@
 import type { CommentNode } from '../domain/discussion';
-import { demoNewCommentIds, demoNow } from '../fixtures/discussions';
+import { demoNewCommentIds, demoNow } from '../shared/demo-presentation';
 import { Locale, publicationTime, translator } from './i18n';
 
 interface Props {
   nodes: readonly CommentNode[];
   locale: Locale;
+  disabled: boolean;
   onToggle: (id: string, subtree: boolean) => void;
 }
 
-export function CommentTree({ nodes, locale, onToggle }: Props) {
+export function CommentTree({ nodes, locale, disabled, onToggle }: Props) {
   const t = translator(locale);
   return <ol className="comment-tree">
     {nodes.map(({ comment, children }) => {
@@ -33,14 +34,14 @@ export function CommentTree({ nodes, locale, onToggle }: Props) {
             </div>
           </div>
           <label className="seen-control" title={t('seenHelp')}>
-            <input type="checkbox" checked={comment.seen}
+            <input type="checkbox" checked={comment.seen} disabled={disabled}
               aria-label={t(comment.seen ? 'markUnseen' : 'markSeen', { author })}
               onChange={() => { /* Click owns the action so its Ctrl modifier is retained. */ }}
               onClick={event => onToggle(comment.id, event.ctrlKey)} />
             <span>{t('seen')}</span>
           </label>
         </article>
-        {children.length > 0 && <CommentTree nodes={children} locale={locale} onToggle={onToggle} />}
+        {children.length > 0 && <CommentTree nodes={children} locale={locale} disabled={disabled} onToggle={onToggle} />}
       </li>;
     })}
   </ol>;

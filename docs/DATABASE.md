@@ -1,8 +1,22 @@
 # Database and durable data
 
-SQLite is the required durable store. The database contains valuable reader state, not a disposable cache of downloadable comments: remote data cannot reconstruct which individual comments the user processed. The current Electron Forge scaffold does not yet include SQLite integration, a schema or migrations.
+SQLite is the durable store. The database contains valuable reader state, not a disposable cache of downloadable comments: remote data cannot reconstruct which individual comments the user processed. The synthetic persistence milestone implements main-owned built-in `node:sqlite`, schema 1, and ordered transactional migrations. See [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md).
 
-This document describes a conceptual storage design. Table names, the SQLite driver, migration runner and SQL definitions are unresolved. Read the [domain model](DOMAIN_MODEL.md) for meanings and [architecture](ARCHITECTURE.md) for ownership.
+The implementation below is deliberately small. Later sections describe the broader conceptual target and must not be read as implemented tables/features. Read the [domain model](DOMAIN_MODEL.md) for meanings and [architecture](ARCHITECTURE.md) for ownership.
+
+## Implemented schema 1
+
+`src/main/persistence` owns path resolution, connection setup, migrations, and explicit row/domain mapping. `content_items` and `comments` store current synthetic content/author metadata and parent relationships; `comment_state` stores local seen state separately; singleton `preferences` stores an explicit optional en/pl choice and System/Light/Dark intent. Fixture ordering is stored so reopen does not reorder the reader. Only internal application IDs are primary keys; no real-source uniqueness constraint is inferred from synthetic IDs. Same-item parent foreign keys, boolean/enumeration/content constraints, and the parent lookup index are tested. Required local state is created atomically with each fixture comment and missing state fails reads.
+
+Timestamps use ISO 8601 UTC TEXT (Z suffix, supplied fixture precision retained). Optional publication timestamps remain NULL; they never receive discovery-time substitutes. Synthetic baseline/first-discovery IDs are stored as labels without refresh-attempt tables. There are no raw payload, undo, search/FTS, backup/export, or workspace tables.
+
+One main-owned synchronous connection configures foreign keys ON explicitly, `busy_timeout=5000`, and `synchronous=FULL`; new files use SQLite's default DELETE rollback journal. Multi-comment state writes and demo inserts use `BEGIN IMMEDIATE`/commit/rollback. This is appropriate for the current tiny dataset, not a large-data responsiveness claim. No pooling, WAL transition, or worker design is selected.
+
+An ordered migration list uses `PRAGMA user_version`: an empty database starts at 0 and migration 1 introduces the complete initial schema/preferences. All pending migrations and their version updates share one transaction. A newer version is rejected before any migration; failures close the connection without resetting/deleting/recreating the file. Tests exercise both version-0 data preservation and a failed later migration over committed version 1. Backup-before-migration remains to be selected before a released schema evolves.
+
+Development uses `<Electron appData>/youtube-comments-development/reader.sqlite`; future packaged production uses `<appData>/youtube-comments-production/reader.sqlite`. Tests supply explicit absolute files in newly created temporary directories and clean only directories they own. Missing/relative test paths or profile roots fail. The privileged `YOUTUBE_COMMENTS_DEMO_ROOT` option selects an absolute alternative development root with the same development-directory suffix, including for packaged checks. Empty/relative values never fall back. Main also separates Chromium `userData` using the chosen profile directory. On Windows the normal appData root is `%APPDATA%`; the renderer receives none of these paths.
+
+Development initialization inserts the two synthetic discussions only into a database with zero content items, transactionally. It never upserts existing fixture data or resets preferences/seen state. Packaged production is not seeded. Explicit preferences and manual comment state survive restart; final tabs/workspace restoration remains open.
 
 ## Ownership and access
 
@@ -36,7 +50,7 @@ Parent relationships, refresh references and local state should have enforceable
 
 Expected lookup patterns include source identity, item membership, parent/child traversal, publication ranges, seen state, refresh discovery membership and tab restoration. Initial search/filter queries cover all stored comments in the active discussion; default bulk scope is also the active discussion. Index choices should follow those queries and measured representative datasets. Do not commit to an index or full-text strategy without verifying the required ordinary substring, case and opt-in regex semantics. A full-text index alone may not satisfy those semantics. See [filtering and search](FILTERING_AND_SEARCH.md).
 
-Comments without reliable publication times must not receive discovery times in that field just to satisfy a schema constraint. Timestamp precision/storage format, author normalization, optional metadata representation, and orphan handling remain open.
+Comments without reliable publication times must not receive discovery times in that field just to satisfy a schema constraint. Schema 1 chooses fixture UTC TEXT and nullable optional fields with inline author metadata. Timestamp precision/canonicalization for future real observations, normalized author identity, and real orphan handling remain open.
 
 ## Transaction boundaries
 
@@ -78,7 +92,7 @@ Choose a backup-before-migration policy, failure/retry behavior and supported up
 
 ## Data locations and environment isolation
 
-Production, development and test data must be isolated deliberately. A proposed configuration resolves a separate application data root/database path for each runtime mode, with tests always receiving a temporary path. The exact paths and platform conventions remain open and belong with [packaging](PACKAGING.md).
+Production, development and test data are isolated through the implemented profile strategy above and [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md). Tests always receive explicit temporary paths. Final backup/raw-file retention, uninstall behavior, and export locations remain open with [packaging](PACKAGING.md).
 
 Never let a missing development/test path fall back to the installed application's database. Test and reset utilities must validate the intended environment and target before modifying data. Tests should own and clean up only the temporary directories they create. A packaged build should have a stable production data location that application upgrades do not overwrite.
 

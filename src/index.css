@@ -47,6 +47,9 @@
   }
 }
 * { box-sizing: border-box; }
+.startup-state { padding: 40px; }
+.save-error { padding: 12px 28px; background: var(--new-surface); color: var(--new-text); }
+:disabled { cursor: wait; opacity: .65; }
 body { margin: 0; background: var(--background); color: var(--text); font-size: 14px; }
 button, select, input { font: inherit; }
 button, select { color: var(--text); }

@@ -9,7 +9,7 @@ This project is a persistent YouTube discussion reader built toward Electron + R
 - [Architecture and security boundary](docs/ARCHITECTURE.md)
 - [Open decisions and ADR process](docs/decisions/README.md)
 
-The first application milestone implements a React/domain/UI foundation with synthetic discussions and in-memory state. Most documented application behavior remains a target, especially persistence, acquisition, filtering, virtualization, and the ruler. See [ADR 0001](docs/decisions/0001-synthetic-reader-foundation.md) and [testing status](docs/TESTING.md). Implement only the increment requested by the owner. Keep unrelated scaffold changes out of scope.
+The current implementation is a React/domain/UI reader with synthetic discussions, main-owned SQLite persistence, migrations, isolated profiles, and a typed validated preload boundary. Acquisition/refresh, filtering, workspace restoration, virtualization, and the ruler remain targets. See [ADR 0001](docs/decisions/0001-synthetic-reader-foundation.md), [ADR 0002](docs/decisions/0002-sqlite-and-typed-reader-boundary.md), and [testing status](docs/TESTING.md). Implement only the increment requested by the owner. Keep unrelated scaffold changes out of scope.
 
 ## Invariants to protect
 
@@ -38,4 +38,4 @@ The first application milestone implements a React/domain/UI foundation with syn
 
 ## Useful commands at this milestone
 
-`npm test` runs deterministic domain/localization/component tests. `npm run typecheck` and `npm run lint` check the source. `npm run build:renderer` builds only the renderer; `npm run package` also invokes Forge's main/preload/renderer builds. `npm start` starts development. On Windows PowerShell with script execution disabled, use `npm.cmd`. See [testing status](docs/TESTING.md) for verified results and packaging limitations. Do not install a stack or start feature implementation merely to validate a documentation change.
+`npm test` runs deterministic domain/localization/component, IPC, and temporary SQLite integration tests (Node 24.13+). `npm run typecheck` and `npm run lint` check the source. `npm run build:renderer` builds only the renderer; `npm run package` also invokes Forge's main/preload/renderer builds. `npm run test:electron` verifies built-entry IPC/persistence across real restarts in a disposable profile. `npm start` starts the isolated development profile. On Windows PowerShell with script execution disabled, use `npm.cmd`. See [testing status](docs/TESTING.md) for verified results and packaging limitations. Do not install a stack or start feature implementation merely to validate a documentation change.
