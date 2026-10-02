@@ -1,5 +1,5 @@
 /** Pure specifications only. Executable resolution, configuration-file creation and process
- * execution belong to a later main-side service. Environment additions apply to a child only. */
+ * execution belong to the main-side live acquisition service. Environment additions apply to a child only. */
 export interface HelperCommandSpec {
   readonly backend: 'yt-dlp' | 'post-archiver-improved';
   readonly executable: 'yt-dlp' | 'post-archiver';

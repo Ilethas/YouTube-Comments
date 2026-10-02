@@ -65,6 +65,13 @@ button, input, select { cursor: pointer; }
 .preferences { gap: 20px; font-size: 12px; }
 select { background: var(--surface-raised); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; }
 .tabs { display: flex; gap: 6px; padding: 10px 28px 0; border-bottom: 1px solid var(--border); }
+.tabs { overflow-x: auto; flex-shrink: 0; }
+.acquisition-bar { display: flex; align-items: center; gap: 12px; padding: 12px 28px; background: var(--surface); border-top: 1px solid var(--border); }
+.acquisition-bar label { color: var(--muted); white-space: nowrap; }
+.acquisition-bar input { flex: 1; min-width: 120px; cursor: text; background: var(--surface-raised); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 9px 12px; }
+.acquisition-bar button, .item-actions button { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--border); border-radius: 6px; padding: 9px 16px; white-space: nowrap; }
+.acquisition-status { padding: 9px 28px; color: var(--muted); background: var(--surface); }
+.item-actions { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
 .tabs button { text-align: left; max-width: 370px; min-width: 200px; padding: 10px 16px; border: 1px solid var(--border); border-bottom: 0; border-radius: 8px 8px 0 0; background: var(--background); }
 .tabs button[aria-selected='true'] { background: var(--surface); box-shadow: inset 0 3px var(--accent); }
 .tabs button:hover { background: var(--surface-raised); }

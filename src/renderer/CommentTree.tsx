@@ -6,15 +6,16 @@ interface Props {
   nodes: readonly CommentNode[];
   locale: Locale;
   disabled: boolean;
+  now?: number;
   onToggle: (id: string, subtree: boolean) => void;
 }
 
-export function CommentTree({ nodes, locale, disabled, onToggle }: Props) {
+export function CommentTree({ nodes, locale, disabled, onToggle, now = demoNow }: Props) {
   const t = translator(locale);
   return <ol className="comment-tree">
     {nodes.map(({ comment, children }) => {
       const author = comment.author?.displayName ?? comment.author?.handle ?? t('unknownAuthor');
-      const time = comment.publishedAt ? publicationTime(comment.publishedAt, locale, demoNow) : undefined;
+      const time = comment.publishedAt ? publicationTime(comment.publishedAt, locale, now) : undefined;
       return <li key={comment.id}>
         <article className={`comment ${comment.seen ? 'is-seen' : 'is-unseen'}`} aria-label={author}>
           <div className="avatar" aria-hidden="true">{author.slice(0, 1).toLocaleUpperCase(locale)}</div>
@@ -41,7 +42,7 @@ export function CommentTree({ nodes, locale, disabled, onToggle }: Props) {
             <span>{t('seen')}</span>
           </label>
         </article>
-        {children.length > 0 && <CommentTree nodes={children} locale={locale} disabled={disabled} onToggle={onToggle} />}
+        {children.length > 0 && <CommentTree nodes={children} locale={locale} now={now} disabled={disabled} onToggle={onToggle} />}
       </li>;
     })}
   </ol>;

@@ -5,12 +5,14 @@ import userEvent from '@testing-library/user-event';
 import { App } from './App';
 import { initialComments, items } from '../fixtures/discussions';
 import { toggleSeen } from '../domain/discussion';
-import type { ReaderApi, ReaderState, Result } from '../shared/reader-api';
+import type { AcquisitionResult, ReaderApi, ReaderState, Result } from '../shared/reader-api';
 
 let api: ReaderApi;
 beforeEach(() => {
   let state: ReaderState = { items, comments: initialComments, preferences: { locale: 'en', appearance: 'system' } };
   api = {
+    acquire: vi.fn<ReaderApi['acquire']>(async () => ({ ok: false, error: { code: 'ACQUISITION_FAILED' } })),
+    refresh: vi.fn<ReaderApi['refresh']>(async () => ({ ok: false, error: { code: 'ACQUISITION_FAILED' } })),
     bootstrap: vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true, value: state })),
     toggleSeen: vi.fn<ReaderApi['toggleSeen']>(async request => {
       const comments = toggleSeen(state.comments[request.itemId], request.commentId, request.subtree);
@@ -138,4 +140,94 @@ it('failed preferences keep saved language/appearance and rejected transport is 
   await userEvent.selectOptions(screen.getByLabelText('Appearance'), 'dark');
   await screen.findByRole('alert');
   expect(document.documentElement.dataset.appearance).toBe('system');
+});
+
+function acquired(): AcquisitionResult {
+  const item = { ...items[0], id: 'acquired-video', sourceId: 'abcdefghijk', title: 'Acquired video' };
+  const comment = { ...initialComments['video-demo'][0], id: 'acquired-comment', itemId: item.id, parentId: null, seen: false, text: 'Acquired comment' };
+  return { state: { items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system' } },
+    summary: { itemId: item.id, coverage: 'unknown', inserted: 1, updated: 0, warnings: 0 } };
+}
+it('URL Enter submission adds and activates acknowledged discussion, then Refresh updates while retaining active item', async () => {
+  const value = acquired();
+  api.acquire = vi.fn<ReaderApi['acquire']>(async () => ({ ok: true, value }));
+  api.refresh = vi.fn<ReaderApi['refresh']>(async () => ({ ok: true, value: { ...value, state: { ...value.state,
+    comments: { ...value.state.comments, 'acquired-video': [{ ...value.state.comments['acquired-video'][0], text: 'Refreshed comment' }] } } } }));
+  await showReader();
+  expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
+  await userEvent.type(screen.getByLabelText('YouTube URL'), 'https://youtu.be/abcdefghijk{Enter}');
+  expect(api.acquire).toHaveBeenCalledWith({ url: 'https://youtu.be/abcdefghijk' });
+  await screen.findByText('Acquired comment');
+  expect(screen.getByRole('tabpanel').id).toBe('panel-acquired-video');
+  expect(screen.queryByText(/Synthetic discussions/)).toBeNull();
+  expect(within(screen.getByRole('tabpanel')).queryByText(/Demo reference time/)).toBeNull();
+  expect(screen.getByRole('status').textContent).toContain('Discussion saved');
+  await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  expect(api.refresh).toHaveBeenCalledWith({ itemId: 'acquired-video' });
+  await screen.findByText('Refreshed comment');
+  expect(screen.getByRole('tabpanel').id).toBe('panel-acquired-video');
+});
+it('acquisition shows busy but checkboxes remain usable; failure retains visible stored data and is localized', async () => {
+  let finish: (result: Result<AcquisitionResult>) => void = () => { throw new Error('Not started'); };
+  api.acquire = vi.fn<ReaderApi['acquire']>(() => new Promise(resolve => { finish = resolve; }));
+  await showReader();
+  const original = checked();
+  await userEvent.type(screen.getByLabelText('YouTube URL'), 'https://youtu.be/abcdefghijk');
+  await userEvent.click(screen.getByRole('button', { name: 'Add / Open' }));
+  expect(screen.getByRole('status').textContent).toContain('Acquiring');
+  expect((screen.getByRole('button', { name: 'Add / Open' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(checkboxes().every(input => !input.disabled)).toBe(true);
+  await userEvent.click(checkboxes()[0]);
+  expect(checked()[0]).toBe(!original[0]);
+  await userEvent.selectOptions(screen.getByLabelText('Language'), 'pl');
+  finish({ ok: false, error: { code: 'HELPER_UNAVAILABLE' } });
+  expect((await screen.findByRole('alert')).textContent).toContain('niedostępny');
+  expect(screen.getByRole('tabpanel').id).toBe('panel-video-demo');
+  expect(checked()[0]).toBe(!original[0]);
+  expect(screen.queryByRole('status')).toBeNull();
+});
+it('refresh failure preserves acquired comments and reports incompatible helper distinctly', async () => {
+  api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true, value: acquired().state }));
+  api.refresh = vi.fn<ReaderApi['refresh']>(async () => ({ ok: false, error: { code: 'HELPER_INCOMPATIBLE' } }));
+  await showReader();
+  await userEvent.click(screen.getByRole('tab', { name: /Acquired video/ }));
+  await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('version');
+  expect(screen.getByText('Acquired comment')).toBeTruthy();
+});
+it('overlapping acknowledgments preserve newer seen edits and newly acquired membership', async () => {
+  const value = acquired();
+  api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true, value: value.state }));
+  let finish: (result: Result<AcquisitionResult>) => void = () => { throw new Error('Not started'); };
+  api.refresh = vi.fn<ReaderApi['refresh']>(() => new Promise(resolve => { finish = resolve; }));
+  api.toggleSeen = vi.fn<ReaderApi['toggleSeen']>(async () => ({ ok: true, value: [{ ...value.state.comments['acquired-video'][0], seen: true }] }));
+  await showReader();
+  await userEvent.click(screen.getByRole('tab', { name: /Acquired video/ }));
+  await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await userEvent.click(checkboxes()[0]);
+  const comments = value.state.comments['acquired-video'];
+  finish({ ok: true, value: { ...value, state: { ...value.state, comments: { ...value.state.comments,
+    'acquired-video': [...comments, { ...comments[0], id: 'new-comment', text: 'New discovery' }] } } } });
+  await screen.findByText('New discovery');
+  expect(checked()).toEqual([true, false]);
+});
+
+it('a seen acknowledgment arriving after refresh changes only seen and keeps new comments/remote fields', async () => {
+  const value = acquired(), rows = value.state.comments['acquired-video'];
+  api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true, value: value.state }));
+  let finishSeen: (result: Result<typeof rows>) => void = () => { throw new Error('Not started'); };
+  let finishRefresh: (result: Result<AcquisitionResult>) => void = () => { throw new Error('Not started'); };
+  api.toggleSeen = vi.fn<ReaderApi['toggleSeen']>(() => new Promise(resolve => { finishSeen = resolve; }));
+  api.refresh = vi.fn<ReaderApi['refresh']>(() => new Promise(resolve => { finishRefresh = resolve; }));
+  await showReader();
+  await userEvent.click(screen.getByRole('tab', { name: /Acquired video/ }));
+  await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await userEvent.click(checkboxes()[0]);
+  finishRefresh({ ok: true, value: { ...value, state: { ...value.state, comments: { ...value.state.comments,
+    'acquired-video': [{ ...rows[0], text: 'Updated remote comment' }, { ...rows[0], id: 'later-discovery', text: 'Later discovery' }] } } } });
+  await screen.findByText('Later discovery');
+  finishSeen({ ok: true, value: [{ ...rows[0], seen: true }] });
+  await waitFor(() => expect(checked()).toEqual([true, false]));
+  expect(screen.getByText('Updated remote comment')).toBeTruthy();
+  expect(screen.getByText('Later discovery')).toBeTruthy();
 });

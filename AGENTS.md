@@ -9,7 +9,7 @@ This project is a persistent YouTube discussion reader built toward Electron + R
 - [Architecture and security boundary](docs/ARCHITECTURE.md)
 - [Open decisions and ADR process](docs/decisions/README.md)
 
-The current implementation is a React/domain/UI reader with synthetic discussions, main-owned SQLite persistence, migrations, isolated profiles, a typed validated preload boundary, and durable normalized fixture ingestion/merge/history. Live acquisition/refresh execution and UI, filtering, workspace restoration, virtualization, and the ruler remain targets. See [ADR 0001](docs/decisions/0001-synthetic-reader-foundation.md), [ADR 0002](docs/decisions/0002-sqlite-and-typed-reader-boundary.md), [ADR 0004](docs/decisions/0004-durable-observation-merge.md), and [testing status](docs/TESTING.md). Implement only the increment requested by the owner. Keep unrelated scaffold changes out of scope.
+The current implementation is a React/domain/UI reader with synthetic discussions, main-owned SQLite persistence, migrations, isolated profiles, a typed validated preload boundary, and durable normalized ingestion/merge/history. Live public acquisition/refresh through development PATH helpers and minimal English/Polish UI are implemented. Filtering, workspace restoration, virtualization, and the ruler remain targets. See [ADR 0001](docs/decisions/0001-synthetic-reader-foundation.md), [ADR 0002](docs/decisions/0002-sqlite-and-typed-reader-boundary.md), [ADR 0004](docs/decisions/0004-durable-observation-merge.md), [ADR 0005](docs/decisions/0005-live-helper-execution-and-acquisition-ipc.md), and [testing status](docs/TESTING.md). Implement only the increment requested by the owner. Keep unrelated scaffold changes out of scope.
 
 ## Invariants to protect
 

@@ -4,7 +4,7 @@ The SQLite library is an accumulating local history. Pure normalized observation
 planning and transactional ingestion are implemented in
 [ADR 0004](decisions/0004-durable-observation-merge.md), using the adapters from
 [ADR 0003](decisions/0003-extractor-observations-and-normalization.md).
-Live helper execution, acquisition/refresh IPC and renderer UI are not implemented.
+Live public helper execution, acquisition/refresh IPC and minimal renderer UI are implemented in [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md).
 
 ## Accepted identity and field rules
 
@@ -44,8 +44,7 @@ second failure-history write after a database rollback.
 
 The clock and ID factory are injected; main defaults to UTC time and UUIDs. Existing
 seen state is neither read into the plan nor written back, so manual edits completed
-during future extraction cannot be lost. Process scheduling, overlapping refresh
-ordering, cancellation, retries and crash-interrupted attempts remain unresolved.
+during extraction cannot be lost. ADR 0005 selects a temporary global single-live-operation lock and bounded helper retries/deadlines; local seen/preference writes remain available. User cancellation, final scheduling and crash-interrupted attempts remain unresolved.
 
 ## Coverage, conflicts and relationships
 
@@ -96,8 +95,7 @@ an empty library and never resets an existing library. See [Database](DATABASE.m
 Remote Refresh remains separate from Apply changes / Update view. Apply recomputes
 using local data and performs no extraction. A successful explicit Refresh must
 commit its merge then automatically recompute the active applied-filter matching
-set. That orchestration/UI is future scope. Partial/unknown accepted outcomes must
-remain visible as such in the eventual reporting; presentation details remain open.
+set. ADR 0005 now updates the acknowledged unfiltered reader snapshot after successful explicit Refresh; no filtering layer exists yet. Partial/unknown accepted outcomes show a compact localized coverage notice. Richer reporting remains open.
 
 Seen edits alone preserve displayed membership/order and the last applied matching
 set. Matching bulk actions use that set rather than raw matches or contextual rows.
@@ -111,6 +109,7 @@ need a future policy; absence never supplies one.
 [Offline tests](TESTING.md) exercise real-style normalized fixtures, scoped identity,
 authority, baseline/later discoveries, missing comments, missing/cyclic relationships,
 later resolution, conflicts, true coverage, schema-1 preservation, migration and
-merge rollback, local-state protection and reopen. Future execution/UI tests must
-cover lifecycle and automatic active-view recomputation without making ordinary
-tests depend on YouTube or installed helpers.
+merge rollback, local-state protection and reopen. ADR 0005's injected execution/UI
+tests cover lifecycle and acknowledged unfiltered view updates without making
+ordinary tests depend on YouTube or installed helpers. Future filtering will need
+its own active matching-set recomputation tests.

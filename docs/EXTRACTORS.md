@@ -1,6 +1,6 @@
 # Extractors and normalization
 
-Pure backend adapters, a source-independent observation contract, sanitized fixtures, and command-spec builders are implemented in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). Normalized fixture ingestion into SQLite is implemented in [ADR 0004](decisions/0004-durable-observation-merge.md). Production process execution, acquisition/refresh orchestration and renderer acquisition remain targets. Start with [How it works](HOW_IT_WORKS.md); the surrounding process boundary is described in [Architecture](ARCHITECTURE.md).
+Pure backend adapters, a source-independent observation contract, sanitized fixtures, and command-spec builders are implemented in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). Normalized fixture ingestion into SQLite is implemented in [ADR 0004](decisions/0004-durable-observation-merge.md). Main-only live public helper execution, acquisition/refresh orchestration and minimal renderer controls are implemented in [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md). Helpers remain development PATH dependencies, not bundled artifacts. Start with [How it works](HOW_IT_WORKS.md); the surrounding process boundary is described in [Architecture](ARCHITECTURE.md).
 
 ## Supported acquisition targets
 
@@ -33,6 +33,41 @@ Both adapters derive canonical YouTube item URLs explicitly from their source it
 
 Command specs ignore config/plugins, disable playlists/media download, enable comments, request single JSON and require explicit finite retry/timeout inputs for yt-dlp. They use no unavailable-format tolerance flags. Community requires an individual post URL, comments, explicit output/config locations and comment/reply limits, with child-only `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`; broken `--quiet` is omitted. Builders neither create config files nor decide helper path precedence, overall process deadlines or distribution.
 
+## Development runner contract
+
+Resolve `yt-dlp.exe` / `post-archiver.exe` from absolute PATH directories on
+Windows; `.bat` wrappers are excluded because no shell is allowed. Probe the
+selected executable every run with isolated yt-dlp `--version`, or Community
+`--version` verified in installed 0.4.0 `cli.py` and by executable output.
+Exact 2026.08.19 / `post-archiver 0.4.0` responses are required.
+
+If a development shell finds only a batch wrapper, prepend the directory that
+already contains the supported helper `.exe` to that shell's PATH before
+`npm.cmd start`. This is launch environment configuration, not an app installer
+or renderer-selected executable. No batch-wrapper contents are read by the app.
+
+Trusted builders use 15-second network timeouts and two helper retries; the
+overall deadline is 180 seconds including a probe of at most ten seconds.
+Community caps are 1,000 comments/1,000 replies and preserve partial invocation
+evidence. yt-dlp ordinary coverage is unknown; reported warnings conservatively
+downgrade it to partial. No zero exit/count heuristic proves completeness.
+Every nonzero exit fails without parsing/ingesting convenient output.
+
+A unique OS-temp workspace holds minimal explicit anonymous JSON config and
+an output subdirectory. Installed `config.py` proves explicit config bypasses
+ambient search; installed `scraper.py`/`output.py` prove individual-post output
+actually uses `posts_<author channel or unknown>_YYYYMMDD_HHMMSS.json`.
+Require one matching archive and no other JSON; validate normalized target
+identity, reject nonregular/oversized output, and remove the workspace in finally.
+Child-only Python UTF-8 settings prevent the known Windows stdout failure.
+No cookies, image downloads or broken quiet flag. No raw archive retention.
+
+Stdout/archive is bounded at 128 MiB and stderr at 64 KiB. Fixed failure tokens,
+exit codes and adapter issues feed existing history; raw stderr, paths and
+payloads do not. Deadline/quit kills the owned process tree on Windows and waits
+for close before cleanup. Normal quit awaits cleanup; abrupt crash recovery,
+distribution, cancellation/progress and history retention remain open.
+
 ## Boundary and responsibilities
 
 ```mermaid
@@ -50,7 +85,7 @@ flowchart LR
 
 Only the Electron main process may invoke external extractors. The renderer requests a domain operation such as acquiring or refreshing a content item through the typed API. It does not receive a command runner, filesystem access, shell fragments, raw backend types, or arbitrary process arguments. Database work may use an internal worker owned by the main-side backend without changing this boundary or giving that worker responsibility for extractor invocation. See [Electron boundaries](ARCHITECTURE.md) and [packaging security checks](PACKAGING.md).
 
-The responsibilities below describe the target design; exact TypeScript interfaces and module paths remain implementation decisions.
+The responsibilities below are implemented by the focused main-side acquisition target, process, extraction and service modules; broader scheduling/distribution remains future scope.
 
 | Component | Owns | Must not own |
 | --- | --- | --- |
@@ -81,15 +116,15 @@ The adapter does not determine whether a comment is unseen or visually NEW. The 
 
 Process failure, malformed output, unsupported output versions, cancellation, and interrupted acquisition must be represented explicitly. Previously valid stored content must survive these outcomes. A zero exit status alone is not sufficient evidence that every comment was returned.
 
-Do not stream partially parsed records directly into stored data. Valid partial/unknown observations are accepted as observational input for a later non-destructive transactional merge; missing records have no deletion meaning and unknown fields cannot clear existing values. Ordinary successful output stays unknown even if counts match. Known truncation/limits require specific capture/runner evidence outside JSON; current adapters never emit complete. Failed refreshes must not publish success. ADR 0004 implements conflict skipping, accepted partial/unknown baselines and durable history. Future reporting/view UI remains open. See [refresh and merge](REFRESH_AND_MERGE.md).
+Do not stream partially parsed records directly into stored data. Valid partial/unknown observations are accepted as observational input for a later non-destructive transactional merge; missing records have no deletion meaning and unknown fields cannot clear existing values. Ordinary successful output stays unknown even if counts match. Known truncation/limits require specific capture/runner evidence outside JSON; current adapters never emit complete. Failed refreshes must not publish success. ADR 0004 implements conflict skipping, accepted partial/unknown baselines and durable history. Minimal reporting/view UI now exists in ADR 0005; richer diagnostics and filtering remain open. See [refresh and merge](REFRESH_AND_MERGE.md).
 
-Record useful diagnostics without presenting raw backend terminology as the only explanation to the user. Application context and recovery messages must be localized; raw extractor messages may be retained for diagnosis. See [Localization and theming](LOCALIZATION_AND_THEMING.md).
+Record useful diagnostics without presenting raw backend terminology as the only explanation to the user. Application context and recovery messages must be localized; arbitrary raw extractor messages are not retained by this milestone. See [Localization and theming](LOCALIZATION_AND_THEMING.md).
 
 ## Finding and distributing helpers
 
 Windows is the initial development and packaging target. During development, a resolver may locate helpers through `PATH`. The design must also permit app-local or bundled helpers later and leave room for future Linux/macOS support without requiring those platforms initially. Keep helper resolution separate from backend invocation and normalization so packaging can change without rewriting domain logic.
 
-The following are unresolved: which helper versions to support, Windows distribution artifacts and architecture support, runtime dependencies, resolver precedence, whether a user-configured helper path is needed, update ownership, and offline failure/retry behavior. Future Linux/macOS artifacts need their own decisions if those platforms are added. A helper found on `PATH` is not proof that it is a supported or compatible version. Product-facing diagnostics should explain a missing or incompatible helper without requiring renderer access to process execution.
+ADR 0005 pins exact live versions and ordered absolute PATH lookup, rejects Windows batch wrappers, and defines stable failures with no extra application retries. Windows distribution artifacts/architectures, runtime dependencies, future bundled precedence and update ownership remain unresolved. Future Linux/macOS artifacts need their own decisions if those platforms are added. A helper found on `PATH` is not proof that it is a supported or compatible version. Product-facing diagnostics should explain a missing or incompatible helper without requiring renderer access to process execution.
 
 Bundling requires checking the actual redistribution licenses and obligations for selected artifacts and their dependencies. This document does not assume that the application's own license settles helper redistribution. Distribution, signing, integrity, and update choices belong in [Packaging](PACKAGING.md) and, when decided, small [ADRs](decisions/README.md).
 
@@ -97,4 +132,4 @@ Bundling requires checking the actual redistribution licenses and obligations fo
 
 Adapter tests should use saved representative output fixtures, including unavailable metadata, malformed records, unexpected parent order, and partial output. Tests must prove that backend-specific types stop at the adapter boundary. Normal CI must not require network access or an installed extractor. Optional live checks are a separate suite; see [Testing](TESTING.md).
 
-This pure milestone settles observation types, investigated versions/invocation intent, unknown/partial evidence and fixture provenance in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). ADR 0004 implements normalized ingestion, identity/conflict/relationship policy and baseline/history. Before live execution, resolve resolver/version checks, safe config/output lifecycle, process failure/limits, timeouts/cancellation/concurrency and process diagnostic retention. Do not silently turn one backend's incidental behavior into a product guarantee.
+This pure milestone settles observation types, investigated versions/invocation intent, unknown/partial evidence and fixture provenance in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). ADR 0004 implements normalized ingestion, identity/conflict/relationship policy and baseline/history. ADR 0005 selects development resolution/version checks, owned config/output cleanup, conservative process failure, buffers/deadlines, one-live-operation scheduling and structured diagnostic storage. User cancellation, crash-temp recovery and diagnostic retention duration remain open. Do not silently turn one backend's incidental behavior into a product guarantee.

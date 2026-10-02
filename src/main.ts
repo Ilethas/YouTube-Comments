@@ -67,7 +67,14 @@ app.on('ready', () => {
   registerReaderIpc(service, () => mainWindow, documentUrl);
   createWindow();
 });
-app.on('will-quit', () => service?.close());
+let shutdownStarted = false;
+app.on('before-quit', event => {
+  if (!shutdownStarted && service) {
+    event.preventDefault();
+    shutdownStarted = true;
+    void service.shutdown().finally(() => app.quit());
+  }
+});
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

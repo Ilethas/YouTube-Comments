@@ -1,8 +1,26 @@
 # UI and navigation
 
-This document describes the intended desktop reader. The synthetic reader demonstrates two pre-opened discussion tabs, item headers, nested replies, optional metadata, publication times, manual checkboxes, and separate UNSEEN/NEW examples. Counts cover all stored comments in each demo discussion. Panels retain session scroll positions; seen state now persists in main-owned SQLite through acknowledged typed IPC and changes only by checkbox actions. Loading/error presentation avoids showing fixture state before bootstrap; failed saves retain the last acknowledged snapshot. Language/appearance also persist. There is no saved workspace, tab opening/closing, search/filtering, real refresh, virtualization, or ruler yet. Tab selection/scroll still reset on restart; Q-10 remains open. Fixed NEW examples do not settle marker lifetime. See [ADR 0001](decisions/0001-synthetic-reader-foundation.md) and [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md). Read the [product requirements](PRODUCT_REQUIREMENTS.md) for scope, [how it works](HOW_IT_WORKS.md) for the complete flow, and [filtering and search](FILTERING_AND_SEARCH.md) for what a displayed result means.
+This document describes the intended desktop reader. The synthetic reader demonstrates two pre-opened discussion tabs, item headers, nested replies, optional metadata, publication times, manual checkboxes, and separate UNSEEN/NEW examples. Counts cover all stored comments in each demo discussion. Panels retain session scroll positions; seen state now persists in main-owned SQLite through acknowledged typed IPC and changes only by checkbox actions. Loading/error presentation avoids showing fixture state before bootstrap; failed saves retain the last acknowledged snapshot. Language/appearance also persist. Live URL acquisition and real-item Refresh now exist in [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md). There is no saved workspace, tab closing, search/filtering, virtualization, or ruler yet. Tab selection/scroll still reset on restart; Q-10 remains open. Fixed NEW examples do not settle marker lifetime. See [ADR 0001](decisions/0001-synthetic-reader-foundation.md) and [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md). Read the [product requirements](PRODUCT_REQUIREMENTS.md) for scope, [how it works](HOW_IT_WORKS.md) for the complete flow, and [filtering and search](FILTERING_AND_SEARCH.md) for what a displayed result means.
 
 Windows is the initial target platform. Other platform support is a later possibility; see [packaging](PACKAGING.md).
+
+## Implemented acquisition controls
+
+The compact URL form accepts supported public video/individual-post URLs; Enter
+and Add / Open submit. Main validates/canonicalizes the target. Successful
+acquisition merges known sources instead of opening duplicate items and activates
+the acknowledged item. Real items have Refresh; demo items do not. Refresh uses
+stored source identity and retains the current tab selection. All stored comments
+are shown, including those missing from the newest extraction and new unseen ones.
+
+Acquiring/Refreshing status disables live submission only; reading, tabs and local
+seen/preference saves remain available. Failure shows localized stable error
+context and preserves the current discussion. Accepted partial/unknown output
+shows a modest coverage notice. English and Polish cover every new label/error.
+Real items use local-library wording and current render time; fixed demo-clock
+and NEW examples are confined to synthetic items. NEW lifetime stays unresolved.
+Renderer acknowledgment reconciliation preserves local seen edits across overlapping
+save/acquisition responses without overwriting newly merged membership/remote text.
 
 ## Organize reading around discussions
 

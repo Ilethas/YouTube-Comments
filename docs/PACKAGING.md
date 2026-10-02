@@ -18,7 +18,7 @@ The repository currently uses Electron Forge with Vite and TypeScript. [package.
 
 These maker declarations come from the scaffold and do not expand the initial Windows target into a cross-platform release commitment. Windows versions/architectures, installer details, signing, and release channels remain unresolved. Linux/macOS makers may remain in the scaffold without making those platforms initial requirements.
 
-The reader uses React, synthetic discussions, English/Polish, and themes. The persistence milestone adds main-owned built-in `node:sqlite`, migrations, an application service, and the typed validated preload API, while keeping sandbox/context isolation enabled and renderer Node integration disabled. The main Vite build leaves `node:sqlite` external for Electron to supply. No ABI-specific SQLite add-on, rebuild, or ASAR unpacking configuration is needed. Forge main/preload/renderer production builds and real runtime/restart checks passed against Electron 44.4.5 (embedded Node 24.21.0 / SQLite 3.53.4). Forge again exited during packaging without a completed executable in `out`; a final package/installer is not verified. See [Testing](TESTING.md) and [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md). Makers/fuses are unchanged; adapters and release metadata remain future work.
+The reader uses React, synthetic discussions, English/Polish, and themes. The persistence milestone adds main-owned built-in `node:sqlite`, migrations, an application service, and the typed validated preload API, while keeping sandbox/context isolation enabled and renderer Node integration disabled. The main Vite build leaves `node:sqlite` external for Electron to supply. No ABI-specific SQLite add-on, rebuild, or ASAR unpacking configuration is needed. Forge main/preload/renderer production builds and real runtime/restart checks passed against Electron 44.4.5 (embedded Node 24.21.0 / SQLite 3.53.4). Forge again exited during packaging without a completed executable in `out`; a final package/installer is not verified. See [Testing](TESTING.md) and [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md). Makers/fuses are unchanged; live adapters/execution now exist in [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md), while helper distribution and release metadata remain future work.
 
 ## Target packaging responsibilities
 
@@ -32,7 +32,7 @@ System is the first-run appearance default. System, Light, and Dark preferences 
 
 ## External helper distribution
 
-Initial backends are `yt-dlp` for video discussions and `post-archiver-improved` for public individual Community Posts. Main-process helper resolution may use `PATH` during development and must permit app-local/bundled helpers later. A development installation that happens to find a helper on the owner's machine is not sufficient evidence that an end-user package can acquire discussions.
+Initial backends are `yt-dlp` for video discussions and `post-archiver-improved` for public individual Community Posts. Main-process helper resolution may use `PATH` during development and must permit app-local/bundled helpers later. ADR 0005 implements exact-version-checked PATH-only development lookup, requiring direct .exe files on Windows. Helpers are not bundled/downloaded/installed, and no Python environment is managed. A development installation that happens to find a helper on the owner's machine is not sufficient evidence that an end-user package can acquire discussions.
 
 Before committing to helper bundling, decide and document:
 

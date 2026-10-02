@@ -35,8 +35,14 @@ async function verifyWindow(window, nativeTheme) {
       && !document.querySelector('.preferences select:disabled')`, `preference ${value}`);
   }
 
-  await waitFor("document.querySelectorAll('input[type=checkbox]').length === 24", 'bootstrap');
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['bootstrap', 'toggleSeen', 'updatePreferences']);
+  await waitFor("document.querySelectorAll('input[type=checkbox]').length >= 24", 'bootstrap');
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'bootstrap', 'refresh', 'toggleSeen', 'updatePreferences']);
+  assert.deepEqual(await js("window.reader.acquire({url:'https://www.youtube.com/watch?v=abcdefghijk',executable:'evil'})"),
+    { ok: false, error: { code: 'INVALID_REQUEST' } });
+  assert.deepEqual(await js("window.reader.refresh({itemId:'video-demo',url:'https://example.com'})"),
+    { ok: false, error: { code: 'INVALID_REQUEST' } });
+  assert.deepEqual(await js("window.reader.refresh({itemId:'video-demo'})"),
+    { ok: false, error: { code: 'NOT_REFRESHABLE' } });
   assert.equal(await js('typeof window.require'), 'undefined');
   assert.equal(await js('typeof window.process'), 'undefined');
   const options = contents.getLastWebPreferences();
@@ -80,6 +86,47 @@ async function verifyWindow(window, nativeTheme) {
     assert.deepEqual(state.comments['video-demo'].map(comment => comment.seen), original.comments['video-demo'].map(comment =>
       ['v2', 'v3', 'v4'].includes(comment.id) ? false : comment.id === 'v6' ? true : comment.seen));
     assert.deepEqual(state.comments['post-demo'], original.comments['post-demo']);
+    async function acquire(url) {
+      await js(`(() => { const input = document.querySelector('#source-url');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(url)});
+        input.dispatchEvent(new Event('input', {bubbles:true})); })()`);
+      await waitFor("!document.querySelector('.acquisition-bar button').disabled", 'URL ready');
+      await js("document.querySelector('.acquisition-bar button').click()");
+      await waitFor("document.querySelector('.acquisition-status') !== null", 'acquisition progress');
+      assert.equal(await js("Array.from(document.querySelectorAll('input[type=checkbox]')).every(input => !input.disabled)"), true);
+      await waitFor("document.querySelector('#source-url').value === '' && !document.body.innerText.includes('Pobieranie…')", 'acquisition acknowledgment');
+      assert.equal(await js("document.querySelector('[role=alert]') === null"), true);
+      return snapshot();
+    }
+    state = await acquire('https://www.youtube.com/watch?v=VidDemo_001');
+    const video = state.items.find(item => item.sourceId === 'VidDemo_001');
+    assert.ok(video);
+    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), `panel-${video.id}`);
+    assert.equal(state.comments[video.id].length, 3);
+    assert.ok(state.comments[video.id].every(comment => !comment.seen));
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) input').click()");
+    await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) input').checked && !document.querySelector('input[type=checkbox]:disabled')", 'acquired seen');
+    state = await snapshot();
+    const seenId = state.comments[video.id].find(comment => comment.seen).id;
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
+    await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .comment-text').textContent.includes('Updated smoke root')", 'refresh acknowledgment');
+    state = await snapshot();
+    assert.equal(state.items.length, 3);
+    assert.equal(state.comments[video.id].length, 4);
+    assert.equal(state.comments[video.id].find(comment => comment.id === seenId).seen, true);
+    assert.equal(state.comments[video.id].find(comment => comment.source.commentId === 'smoke-new').seen, false);
+    const validState = state;
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
+    await waitFor("document.querySelector('[role=alert]') !== null", 'failed refresh');
+    assert.deepEqual(await snapshot(), validState);
+    state = await acquire('https://www.youtube.com/post/UgkDemoPost_0123456789');
+    const post = state.items.find(item => item.sourceId === 'UgkDemoPost_0123456789');
+    assert.ok(post);
+    assert.equal(state.comments[post.id].length, 4);
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
+    await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').disabled", 'Community refresh');
+    state = await snapshot();
+    assert.equal(state.items.length, 4);
     fs.writeFileSync(checkpoint, JSON.stringify(state));
   } else {
     const saved = JSON.parse(fs.readFileSync(checkpoint, 'utf8'));
@@ -112,6 +159,40 @@ async function verifyWindow(window, nativeTheme) {
 }
 
 if (process.versions.electron && process.type === 'browser') {
+  // Test-only process injection before the built entry imports node:child_process.
+  // No fake-execution switch or generic process capability is shipped in the app.
+  const childProcess = require('node:child_process');
+  const originalSpawn = childProcess.spawn;
+  const { EventEmitter } = require('node:events');
+  const { PassThrough } = require('node:stream');
+  const helpers = path.join(process.env.YOUTUBE_COMMENTS_DEMO_ROOT, 'helpers');
+  let videoRuns = 0;
+  childProcess.spawn = (file, args, options) => {
+    if (path.dirname(file) !== helpers) return originalSpawn(file, args, options);
+    assert.equal(options.shell, false);
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+    setTimeout(() => {
+      let code = 0;
+      if (args.includes('--version')) child.stdout.emit('data', Buffer.from(path.basename(file) === 'yt-dlp.exe' ? '2026.08.19\n' : 'post-archiver 0.4.0\n'));
+      else if (path.basename(file) === 'yt-dlp.exe') {
+        const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/main/extractors/__fixtures__/yt-nested-a.json'), 'utf8')).raw;
+        videoRuns++;
+        if (videoRuns > 1) raw.comments = [{ ...raw.comments[2], text: 'Updated smoke root' }, { id: 'smoke-new', parent: 'root', text: 'New smoke comment' }];
+        if (videoRuns === 3) code = 1;
+        child.stdout.emit('data', Buffer.from(JSON.stringify(raw)));
+      } else {
+        assert.equal(options.env.PYTHONUTF8, '1');
+        assert.equal(options.env.PYTHONIOENCODING, 'utf-8');
+        const output = args[args.indexOf('--output') + 1];
+        const config = args[args.indexOf('--config') + 1];
+        assert.deepEqual(JSON.parse(fs.readFileSync(config, 'utf8')), { scraping: { cookies_file: null, download_images: false } });
+        const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/main/extractors/__fixtures__/community-thread-a.json'), 'utf8')).raw;
+        fs.writeFileSync(path.join(output, 'posts_unknown_20261003_120000.json'), JSON.stringify(raw));
+      }
+      child.emit('close', code);
+    }, args.includes('--version') ? 0 : 150);
+    return child;
+  };
   const { app, nativeTheme } = require('electron');
   const watchdog = setTimeout(() => { console.error('Electron smoke timed out'); app.exit(1); }, 30000);
   let rendererFailed = false;
@@ -135,8 +216,13 @@ if (process.versions.electron && process.type === 'browser') {
     if (!fs.existsSync(entry)) throw new Error('Build Forge main/preload/renderer bundles first with npm run package');
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'youtube-comments-electron-test-'));
     try {
+      const helpers = path.join(directory, 'helpers');
+      fs.mkdirSync(helpers);
+      for (const name of ['yt-dlp.exe', 'post-archiver.exe']) fs.writeFileSync(path.join(helpers, name), 'test-only fake executable');
       for (const phase of ['write', 'read', 'readsystem']) {
         const environment = { ...process.env, YOUTUBE_COMMENTS_DEMO_ROOT: directory, YOUTUBE_COMMENTS_SMOKE_PHASE: phase };
+        environment.PATH = `${helpers}${path.delimiter}${process.env.PATH ?? process.env.Path ?? ''}`;
+        delete environment.Path;
         delete environment.ELECTRON_RUN_AS_NODE;
         const child = spawn(require('electron'), [__filename], { env: environment, stdio: 'inherit', windowsHide: true });
         await new Promise((resolve, reject) => {
@@ -148,9 +234,9 @@ if (process.versions.electron && process.type === 'browser') {
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
         assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2);
-        assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 4);
-        assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 0);
-        assert.equal(db.prepare('SELECT count(*) AS count FROM comments').get().count, 24);
+        assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 9);
+        assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 5);
+        assert.equal(db.prepare('SELECT count(*) AS count FROM comments').get().count, 32);
         assert.deepEqual({ ...db.prepare('SELECT locale, appearance FROM preferences').get() }, { locale: 'en', appearance: 'system' });
       } finally { db.close(); }
       console.log('Electron smoke PASS: two real restarts and closed-file SQLite persistence');

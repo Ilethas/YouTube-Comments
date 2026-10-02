@@ -1,6 +1,6 @@
 # Database and durable data
 
-SQLite is the durable store. The database contains valuable reader state, not a disposable cache of downloadable comments: remote data cannot reconstruct which individual comments the user processed. Main-owned built-in `node:sqlite` now uses schema 2 and ordered transactional migrations. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) records the foundation; [ADR 0004](decisions/0004-durable-observation-merge.md) records normalized fixture ingestion/history. No live helper execution or acquisition UI is implemented.
+SQLite is the durable store. The database contains valuable reader state, not a disposable cache of downloadable comments: remote data cannot reconstruct which individual comments the user processed. Main-owned built-in `node:sqlite` now uses schema 2 and ordered transactional migrations. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) records the foundation; [ADR 0004](decisions/0004-durable-observation-merge.md) records normalized fixture ingestion/history. Live execution/UI now feed this same schema-2 ingestion/history path under [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md); no additional migration is needed.
 
 The implementation below is deliberately small. Later sections describe the broader conceptual target and must not be read as implemented tables/features. Read the [domain model](DOMAIN_MODEL.md) for meanings and [architecture](ARCHITECTURE.md) for ownership.
 

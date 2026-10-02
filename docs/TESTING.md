@@ -1,8 +1,62 @@
 # Testing strategy
 
-Automated testing is a product requirement. Vitest covers pure domain/localization, focused component interactions, temporary SQLite integration, typed IPC/bridge/sender boundaries, and pure extractor observations/invocation specs. Durable normalized fixture merge/history is implemented in [ADR 0004](decisions/0004-durable-observation-merge.md); live acquisition/refresh execution and UI, search, backup and workspace restoration remain unimplemented. See [Architecture](ARCHITECTURE.md), [Product requirements](PRODUCT_REQUIREMENTS.md), and [ADR 0003](decisions/0003-extractor-observations-and-normalization.md).
+Automated testing is a product requirement. Vitest covers domain/localization, components, temporary SQLite, IPC/bridge/sender validation, adapters/specs and injected live-style processes/workspaces. [ADR 0004](decisions/0004-durable-observation-merge.md) owns merge/history; [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) adds live acquisition/refresh and minimal UI. Search, backup and workspace restoration remain unimplemented.
 
-## Current execution and verification
+## Live acquisition verification (2026-10-03)
+
+- `npm test`: **186 deterministic tests pass in 14 suites**. No internet,
+  installed helpers, Python or authenticated access is required. Added coverage
+  includes target canonicalization/rejection; no-shell argument/environment/stream
+  boundaries; executable absence/version checks; deadlines/abort/buffer bounds;
+  Community owned config/output cleanup on success/nonzero/timeout/invalid output;
+  adapters through SQLite; repeated acquisition/refresh identity, absence, unseen
+  discoveries and seen preservation; BUSY with concurrent local writes; shutdown;
+  exact IPC payloads/sender checks; UI Enter/activation/refresh, localized failures
+  and local checkbox use during acquisition, including response reconciliation.
+- Strict typecheck and lint pass without warnings. Renderer-only build and Forge
+  production main/preload/renderer builds pass. Forge again exits 0 at finalizing
+  without a completed `out` executable; helper distribution/installer is unverified.
+- `npm run test:electron` passes the real built-entry write phase and two real
+  restarts. Its privileged test harness injects fake process execution before
+  importing the application, with test-owned executable placeholders in PATH.
+  No fake-execution switch is shipped in the app. It exercises both adapters,
+  acquired-item activation, refresh/new/missing comments, seen persistence,
+  failed-refresh preservation, isolated SQLite and preferences. Closed-file checks
+  confirm schema 2, 32 comments, nine attempts (four synthetic, four accepted
+  helper-style and one failed), and the five-method isolated bridge.
+- Windows sandbox restrictions require escalation for esbuild config loading and
+  real Electron GPU subprocesses. The successful smoke run still emits the known
+  shutdown GPU diagnostic without assertion/exit failure.
+
+### Optional anonymous live verification (separate from normal tests)
+
+The installed direct executables returned yt-dlp **2026.08.19** and
+`post-archiver 0.4.0`. The first normal yt-dlp PATH lookup was a `.bat` wrapper;
+the disposable live harness prepended the existing executable's directory to
+its child PATH only. Production resolver code contains no machine-specific path.
+Installed Community `cli.py`, `config.py`, `scraper.py` and `output.py` were read
+to verify the version command, minimal anonymous config and actual archive naming.
+
+Through the real built Electron main/bridge in a disposable development profile:
+
+| Owner-supplied target | Acquire | Refresh | Restart |
+| --- | --- | --- | --- |
+| [Video IFPKfypw2CQ](https://www.youtube.com/watch?v=IFPKfypw2CQ) | 153 comments inserted unseen; partial helper-warning evidence; no adapter issues | Same item, 153 existing observations, zero insertions; manually marked comment retained seen | Item and seen state retained |
+| [Post UgkxLEL8EllifRA8ZLoEkkTXSJaa0s_cWf6n](https://www.youtube.com/post/UgkxLEL8EllifRA8ZLoEkkTXSJaa0s_cWf6n) | 34 comments inserted unseen; partial configured-limit evidence; 34 optional-metadata adapter warnings | Same item, 34 existing observations, zero insertions; manually marked comment retained seen | Item and seen state retained |
+
+Both helper executions and refreshes exited zero. Unknown/partial coverage was
+not promoted to complete. Real Community output matched the verified channel-based
+archive filename. Its optional-metadata warnings did not reject useful observations
+or change authoritative adapter rules. No raw comments/archives were committed;
+the disposable profile and temporary output were removed afterward.
+
+Earlier attempts against the public extractor test video `BaW_jenozKc` and the
+Community package's example post `UgkxMVl0vgxzNvE3I52s0oKlEHO3KyfocebU` returned
+`ACQUISITION_FAILED`; their precise remote causes were not established. They made
+no replacement discussion. These are separate from the successful owner targets
+and from deterministic verification; live availability is not a test requirement.
+
+## Persistence foundation verification (historical)
 
 - `npm test`: **131 deterministic tests pass in eleven suites**: the prior 97 plus 8 pure merge/projection tests and 26 temporary SQLite ingestion/migration/history tests. Tests need Node 24.13+ with built-in SQLite, no live Electron/network/YouTube or installed helpers. Every SQLite case owns its temporary database. Existing Ctrl/Space, acknowledgment/failure, safe retry, schema and preference coverage remains unchanged. The new extractor coverage is detailed below.
 - `npm run typecheck`: passes with strict TypeScript and TSX.
@@ -20,7 +74,7 @@ Hidden-window smoke runs emitted a Chromium GPU diagnostic during shutdown; the 
 
 `npm start` uses the separate development profile and idempotently seeds the two fixtures. `npm run build:renderer` provides an independent renderer build. To run just the new integration suite, use `npm test -- src/main/persistence/reader-repository.test.ts`. A manual acceptance pass can switch tabs/languages, click and Ctrl+click mixed subtrees, check that NEW survives marking seen, change all appearance modes, quit, and restart: seen state and explicit preferences should remain while tab selection resets (Q-10 remains open).
 
-For an alternate disposable development root in PowerShell, set `$env:YOUTUBE_COMMENTS_DEMO_ROOT` to an absolute directory before `npm.cmd start`; it appends `youtube-comments-development/reader.sqlite` and never uses production fallback. Clear that environment variable afterward to return to the usual development profile. When this environment inherits `ELECTRON_RUN_AS_NODE=1`, clear it for desktop execution. Empty/relative demo-root configuration fails. Never point verification at real production data. No live acquisition/refresh execution or UI, search/filter behavior, virtualization/ruler performance, backup/restore, or packaged installer is claimed.
+For an alternate disposable development root in PowerShell, set `$env:YOUTUBE_COMMENTS_DEMO_ROOT` to an absolute directory before `npm.cmd start`; it appends `youtube-comments-development/reader.sqlite` and never uses production fallback. Clear that environment variable afterward to return to the usual development profile. When this environment inherits `ELECTRON_RUN_AS_NODE=1`, clear it for desktop execution. Empty/relative demo-root configuration fails. Never point verification at real production data. Those historical foundation checks did not claim live acquisition/refresh. Current live verification is recorded above; search/filter behavior, virtualization/ruler performance, backup/restore and a packaged installer remain unverified.
 
 ## Durable normalized ingestion verification (2026-10-02)
 
@@ -123,7 +177,8 @@ sets normalize changing membership independently with no deletion actions.
 Required malformed shapes and unsupported versions fail without publishing
 observations; malformed optional fields stay unknown. Tests check version and
 preparation provenance, generic-contract separation, missing/cyclic references,
-and pure arguments/child-environment specs. No process runner is implemented.
+and pure arguments/child-environment specs. ADR 0005 adds the injected process
+runner/workspace/orchestration tests described above.
 
 The [eleven-file fixture matrix](../src/main/extractors/__fixtures__/README.md)
 documents ten reconstructed-sanitized fixtures from verified investigated

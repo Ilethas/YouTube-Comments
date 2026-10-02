@@ -3,6 +3,16 @@ export type { Locale } from '../shared/preferences';
 import type { Locale } from '../shared/preferences';
 
 const en = {
+  sourceUrl: 'YouTube URL', urlPlaceholder: 'Public video or individual Community Post URL', acquire: 'Add / Open', refresh: 'Refresh',
+  acquiring: 'Acquiring… You can keep reading and marking comments.', refreshing: 'Refreshing… You can keep reading and marking comments.',
+  coverageNotice: 'Discussion saved. Some comments may not have been returned by YouTube.',
+  localNotice: 'Stored on this device · Seen state is changed only by you.',
+  invalidUrl: 'Enter a supported HTTPS YouTube video or individual Community Post URL.',
+  helperUnavailable: 'The required development helper (yt-dlp or post-archiver) is unavailable on PATH. Windows requires an .exe helper.',
+  helperIncompatible: 'The helper version could not be verified as supported. This build requires yt-dlp 2026.08.19 or post-archiver 0.4.0.',
+  acquisitionFailed: 'The discussion could not be acquired. Stored comments are unchanged. Check the connection and try again.',
+  acquisitionBusy: 'Another acquisition is already running. Wait for it to finish.',
+  notRefreshable: 'This discussion cannot be refreshed from YouTube.', itemNotFound: 'This stored discussion could not be found.',
   appName: 'Discussion reader', demo: 'LOCAL DEMO', language: 'Language', appearance: 'Appearance',
   en: 'English', pl: 'Polski', system: 'System', light: 'Light', dark: 'Dark',
   discussions: 'Discussions', video: 'Video', post: 'Community Post', discussion: 'Discussion',
@@ -21,6 +31,16 @@ const en = {
 };
 type Key = keyof typeof en;
 const pl: Record<Key, string> & Record<string, string> = {
+  sourceUrl: 'Adres YouTube', urlPlaceholder: 'Adres publicznego filmu lub pojedynczego postu społeczności', acquire: 'Dodaj / Otwórz', refresh: 'Odśwież',
+  acquiring: 'Pobieranie… Możesz nadal czytać i oznaczać komentarze.', refreshing: 'Odświeżanie… Możesz nadal czytać i oznaczać komentarze.',
+  coverageNotice: 'Dyskusja zapisana. YouTube mógł nie zwrócić wszystkich komentarzy.',
+  localNotice: 'Zapisane na tym urządzeniu · Tylko Ty zmieniasz stan przeczytania.',
+  invalidUrl: 'Podaj obsługiwany adres HTTPS filmu YouTube lub pojedynczego postu społeczności.',
+  helperUnavailable: 'Wymagany program pomocniczy (yt-dlp lub post-archiver) jest niedostępny w PATH. Windows wymaga pliku .exe.',
+  helperIncompatible: 'Nie udało się potwierdzić obsługiwanej wersji programu. Wymagane są yt-dlp 2026.08.19 lub post-archiver 0.4.0.',
+  acquisitionFailed: 'Nie udało się pobrać dyskusji. Zapisane komentarze pozostały bez zmian. Sprawdź połączenie i spróbuj ponownie.',
+  acquisitionBusy: 'Trwa już inne pobieranie. Poczekaj na jego zakończenie.',
+  notRefreshable: 'Tej dyskusji nie można odświeżyć z YouTube.', itemNotFound: 'Nie znaleziono zapisanej dyskusji.',
   appName: 'Czytnik dyskusji', demo: 'LOKALNE DEMO', language: 'Język', appearance: 'Wygląd',
   en: 'English', pl: 'Polski', system: 'Systemowy', light: 'Jasny', dark: 'Ciemny',
   discussions: 'Dyskusje', video: 'Film', post: 'Post społeczności', discussion: 'Dyskusja',
