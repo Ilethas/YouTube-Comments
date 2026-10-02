@@ -147,7 +147,9 @@ if (process.versions.electron && process.type === 'browser') {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 1);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2);
+        assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 4);
+        assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 0);
         assert.equal(db.prepare('SELECT count(*) AS count FROM comments').get().count, 24);
         assert.deepEqual({ ...db.prepare('SELECT locale, appearance FROM preferences').get() }, { locale: 'en', appearance: 'system' });
       } finally { db.close(); }

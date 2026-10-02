@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { buildCommentTree, toggleSeen } from '../../domain/discussion';
 import type { Author, Comment, ContentItem } from '../../domain/discussion';
 import { initialComments, items } from '../../fixtures/discussions';
@@ -8,6 +9,10 @@ import { initialLocale } from '../../shared/preferences';
 import type { Preferences } from '../../shared/preferences';
 import type { PreferenceChange, ReaderState, ToggleSeenRequest } from '../../shared/reader-api';
 import { migrateDatabase, transaction } from './migrations';
+import { establishSyntheticHistory } from './synthetic-history';
+import type { ContentObservation, CommentObservation, NormalizedExtraction } from '../../domain/extraction-observation';
+import { observedValue, planObservationMerge, projectRelationships } from '../../domain/observation-merge';
+import type { AttemptTarget, MergeAttempt, StoredCommentObservation, StoredContentObservation, StoredObservationDiscussion } from '../../domain/observation-merge';
 
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 function optionalText(row: Row, key: string): string | undefined {
@@ -22,6 +27,26 @@ function author(row: Row): Author | undefined {
 function authorValues(value?: Author) { return [value?.sourceId ?? null, value?.displayName ?? null, value?.handle ?? null]; }
 function booleanValue(value?: boolean) { return value === undefined ? null : Number(value); }
 export class MissingCommentError extends Error {}
+
+/** Privileged dependency injection, never a renderer capability. */
+export interface IngestionDependencies { readonly now: () => string; readonly newId: () => string }
+const ingestionDefaults: IngestionDependencies = { now: () => new Date().toISOString(), newId: randomUUID };
+function authorObservationValues(remote: ContentObservation | CommentObservation) {
+  return [observedValue(remote.author.sourceId) ?? null, observedValue(remote.author.displayName) ?? null, observedValue(remote.author.handle) ?? null];
+}
+const diagnosticText = (value: string) => Array.from(value).filter(character => character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127).join('').slice(0, 240);
+function diagnosticAttempt(attempt: MergeAttempt): MergeAttempt {
+  return { ...attempt,
+    provenance: { backend: diagnosticText(attempt.provenance.backend), version: diagnosticText(attempt.provenance.version),
+      evidence: attempt.provenance.evidence.slice(0, 32).map(diagnosticText),
+      ...(attempt.provenance.fixture ? { fixture: { id: diagnosticText(attempt.provenance.fixture.id), preparation: attempt.provenance.fixture.preparation } } : {}) },
+    coverage: attempt.coverage.kind === 'failed' ? { kind: 'failed', reason: diagnosticText(attempt.coverage.reason) }
+      : attempt.coverage.kind === 'unknown' ? { kind: 'unknown' } : { kind: attempt.coverage.kind, evidence: attempt.coverage.evidence.slice(0, 32).map(diagnosticText) },
+    issues: attempt.issues.map(issue => ({ code: issue.code, severity: issue.severity, location: diagnosticText(issue.location),
+      ...(issue.sourceId === undefined ? {} : { sourceId: issue.sourceId }),
+      ...(issue.relatedLocations === undefined ? {} : { relatedLocations: issue.relatedLocations.map(diagnosticText) }) })),
+  };
+}
 
 /** Shared connection setup for main-owned repositories and isolated integration
  * tests. Foreign keys are enabled on every connection, never assumed globally. */
@@ -40,12 +65,12 @@ export function openReaderDatabase(databasePath: string): DatabaseSync {
 /** Main-side SQLite authority. Remote fixture inserts and local state writes are
  * separate operations; no row type or driver handle is exposed through IPC. */
 export class ReaderRepository {
-  private constructor(private readonly db: DatabaseSync) {}
+  private constructor(private readonly db: DatabaseSync, private readonly ingestion: IngestionDependencies) {}
 
   /** Requires a resolved absolute path. Failure closes the connection and keeps
    * the existing file; no reset/recovery fallback is performed. */
-  static open(databasePath: string): ReaderRepository {
-    return new ReaderRepository(openReaderDatabase(databasePath));
+  static open(databasePath: string, ingestion: IngestionDependencies = ingestionDefaults): ReaderRepository {
+    return new ReaderRepository(openReaderDatabase(databasePath), ingestion);
   }
 
   close(): void { this.db.close(); }
@@ -78,12 +103,15 @@ export class ReaderRepository {
           insertState.run(comment.id, Number(comment.seen));
         });
       });
+      establishSyntheticHistory(this.db, this.ingestion.newId);
     });
   }
 
   private readItems(): readonly ContentItem[] {
     return this.db.prepare('SELECT * FROM content_items ORDER BY position').all().map(row => {
-      const base = { id: String(row.id), sourceId: String(row.source_id), author: author(row),
+      if (row.remote_json === null) throw new Error('Missing durable item evidence');
+      const remote = JSON.parse(String(row.remote_json)) as StoredContentObservation;
+      const base = { id: String(row.id), sourceId: String(row.source_id), author: author(row), remote, sourceKind: remote.sourceKind,
         publishedAt: optionalText(row, 'published_at'), baselineDiscoveryId: String(row.baseline_discovery_id) };
       return row.kind === 'video'
         ? { ...base, kind: 'video', title: String(row.title), description: optionalText(row, 'description') }
@@ -92,20 +120,106 @@ export class ReaderRepository {
   }
 
   private readComments(item: ContentItem): readonly Comment[] {
-    return this.db.prepare(`SELECT c.*, s.seen FROM comments c
-      LEFT JOIN comment_state s ON s.comment_id = c.id WHERE c.item_id = ? ORDER BY c.position`).all(item.id).map(row => {
+    const rows = this.db.prepare(`SELECT c.*, s.seen FROM comments c
+      LEFT JOIN comment_state s ON s.comment_id = c.id WHERE c.item_id = ? ORDER BY c.position`).all(item.id);
+    const evidence = rows.map(row => {
+      if (row.remote_json === null) throw new Error('Missing durable comment evidence');
+      return { id: String(row.id), remote: JSON.parse(String(row.remote_json)) as StoredCommentObservation };
+    });
+    const projection = projectRelationships(evidence);
+    return rows.map((row, index) => {
       if (row.seen !== 0 && row.seen !== 1) throw new Error('Missing local comment state');
+      const relationship = projection.get(String(row.id));
+      if (!relationship) throw new Error('Missing relationship projection');
       return {
-        id: String(row.id), itemId: item.id, parentId: row.parent_id === null ? null : String(row.parent_id),
+        id: String(row.id), itemId: item.id, parentId: relationship.parentId,
+        directParentId: relationship.directParentId, remote: evidence[index].remote,
+        relationshipStatus: relationship.status,
+        relationship: evidence[index].remote.relationship, publication: evidence[index].remote.publication,
         source: { kind: item.kind, itemId: item.sourceId, commentId: String(row.source_comment_id) },
         author: author(row), text: String(row.text), publishedAt: optionalText(row, 'published_at'),
         discovery: { firstDiscoveredAt: String(row.first_discovered_at), lastObservedAt: String(row.last_observed_at),
-          firstDiscoveryId: String(row.first_discovery_id) },
+          firstDiscoveryId: String(row.first_discovery_id), lastObservationId: String(row.last_attempt_id) },
         likeCount: row.like_count === null ? undefined : Number(row.like_count),
         isCreator: row.is_creator === null ? undefined : row.is_creator === 1,
         isPinned: row.is_pinned === null ? undefined : row.is_pinned === 1, seen: row.seen === 1,
       };
     });
+  }
+
+  private storedDiscussion(target: AttemptTarget): StoredObservationDiscussion | undefined {
+    const row = this.db.prepare('SELECT * FROM content_items WHERE kind = ? AND source_id = ?')
+      .get(target.sourceKind === 'youtube-video' ? 'video' : 'post', target.sourceId);
+    if (!row) return undefined;
+    if (row.remote_json === null) throw new Error('Missing durable item evidence');
+    return { id: String(row.id), baselineId: String(row.baseline_attempt_id), remote: JSON.parse(String(row.remote_json)),
+      comments: this.db.prepare('SELECT * FROM comments WHERE item_id = ? ORDER BY position').all(row.id).map(comment => {
+        if (comment.remote_json === null) throw new Error('Missing durable comment evidence');
+        return { id: String(comment.id), remote: JSON.parse(String(comment.remote_json)),
+          firstDiscoveredAt: String(comment.first_discovered_at), firstDiscoveryId: String(comment.first_attempt_id),
+          lastObservedAt: String(comment.last_observed_at), lastObservationId: String(comment.last_attempt_id) };
+      }) };
+  }
+
+  /** Receives normalized data only. Reads/plans/writes/history share one short transaction.
+   * Extractor execution/parsing must precede this call. Existing local state is never written.
+   * Failed normalization records history only, optionally associated with a caller-owned target. */
+  ingest(extraction: NormalizedExtraction, target?: AttemptTarget): MergeAttempt {
+    const attemptId = this.ingestion.newId(), at = this.ingestion.now();
+    return transaction(this.db, () => {
+      const actualTarget = extraction.item ? { sourceKind: extraction.item.sourceKind, sourceId: extraction.item.sourceId } : target;
+      const current = actualTarget ? this.storedDiscussion(actualTarget) : undefined;
+      const plan = planObservationMerge(current, extraction, { attemptId, at, newId: this.ingestion.newId, target });
+      const attempt = diagnosticAttempt(plan.attempt);
+      this.db.prepare(`INSERT INTO extraction_attempts
+        (id,item_id,source_kind,source_id,at,backend,backend_version,coverage,outcome,collection,details)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(attempt.id, attempt.itemId ?? null, attempt.target?.sourceKind ?? null,
+          attempt.target?.sourceId ?? null, attempt.at, attempt.provenance.backend, attempt.provenance.version,
+          attempt.coverage.kind, attempt.outcome, attempt.collection,
+          JSON.stringify({ provenance: attempt.provenance, coverage: attempt.coverage, counts: attempt.counts, issues: attempt.issues }));
+      if (!plan.item) return attempt;
+      const item = plan.item, remote = item.remote;
+      const kind = remote.sourceKind === 'youtube-video' ? 'video' : 'post';
+      const itemValues = [kind === 'video' ? observedValue(remote.title) ?? '' : null,
+        kind === 'video' ? observedValue(remote.text) ?? null : null, kind === 'post' ? observedValue(remote.text) ?? '' : null,
+        ...authorObservationValues(remote), observedValue(remote.publication.instant) ?? null, JSON.stringify(remote)];
+      if (plan.insertItem) {
+        const position = Number(this.db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM content_items').get()?.next);
+        this.db.prepare(`INSERT INTO content_items (id,position,kind,source_id,title,description,text,author_source_id,
+          author_display_name,author_handle,published_at,remote_json,baseline_discovery_id,baseline_attempt_id)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(item.id, position, kind, remote.sourceId, ...itemValues, item.baselineId, item.baselineId);
+      } else {
+        this.db.prepare(`UPDATE content_items SET title=?,description=?,text=?,author_source_id=?,author_display_name=?,
+          author_handle=?,published_at=?,remote_json=? WHERE id=?`).run(...itemValues, item.id);
+      }
+      let position = Number(this.db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM comments WHERE item_id=?').get(item.id)?.next);
+      const insertedIds = new Set(plan.inserts.map(comment => comment.id));
+      for (const comment of [...plan.inserts, ...plan.updates]) {
+        const remote = comment.remote;
+        const values = [...authorObservationValues(remote), observedValue(remote.text) ?? '', observedValue(remote.publication.instant) ?? null,
+          observedValue(remote.likeCount) ?? null, booleanValue(observedValue(remote.creator)), booleanValue(observedValue(remote.pinned)),
+          JSON.stringify(remote), comment.lastObservedAt, comment.lastObservationId];
+        if (insertedIds.has(comment.id)) {
+          this.db.prepare(`INSERT INTO comments (id,item_id,parent_id,position,source_comment_id,author_source_id,author_display_name,
+            author_handle,text,published_at,like_count,is_creator,is_pinned,remote_json,last_observed_at,last_attempt_id,
+            first_discovered_at,first_discovery_id,first_attempt_id) VALUES (?,?,NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+            .run(comment.id, item.id, position++, remote.sourceId, ...values, comment.firstDiscoveredAt, comment.firstDiscoveryId, comment.firstDiscoveryId);
+          this.db.prepare('INSERT INTO comment_state VALUES (?,0)').run(comment.id);
+        } else {
+          this.db.prepare(`UPDATE comments SET author_source_id=?,author_display_name=?,author_handle=?,text=?,published_at=?,
+            like_count=?,is_creator=?,is_pinned=?,remote_json=?,last_observed_at=?,last_attempt_id=? WHERE id=?`).run(...values, comment.id);
+        }
+      }
+      return attempt;
+    });
+  }
+
+  /** Main-only durable attempt history; no acquisition/preload command is exposed. */
+  history(itemId?: string): readonly MergeAttempt[] {
+    return this.db.prepare(`SELECT * FROM extraction_attempts ${itemId === undefined ? '' : 'WHERE item_id = ?'} ORDER BY at, rowid`)
+      .all(...itemId === undefined ? [] : [itemId]).map(row => ({ ...JSON.parse(String(row.details)), id: String(row.id),
+        itemId: optionalText(row, 'item_id'), target: row.source_kind === null ? undefined : { sourceKind: String(row.source_kind), sourceId: String(row.source_id) },
+        at: String(row.at), outcome: row.outcome, collection: row.collection }));
   }
 
   preferences(languages: readonly string[]): Preferences {

@@ -1,5 +1,7 @@
-/** Opaque demo application IDs supplement source identity, never names or row positions.
- * This model is not a persistence DTO or a claim about extractor ID guarantees. */
+import type { CommentRelationship, ContentSourceKind } from './extraction-observation';
+import type { StoredCommentObservation, StoredContentObservation, StoredPublication } from './observation-merge';
+/** Reader content discriminants map one-to-one to the two current source families.
+ * Internal application IDs remain separate from opaque remote IDs. */
 export type ItemKind = 'video' | 'post';
 
 /** Available identity and display metadata; a display name is never an account ID. */
@@ -15,6 +17,9 @@ interface ItemBase {
   readonly author?: Author;
   readonly publishedAt?: string;
   readonly baselineDiscoveryId: string;
+  readonly sourceKind?: ContentSourceKind;
+  /** Stored normalized evidence, including labels/precision and remote attachments. */
+  readonly remote?: StoredContentObservation;
 }
 
 /** Source-independent discussion content. The discriminant determines its header;
@@ -24,14 +29,21 @@ export type ContentItem = ItemBase & (
   | { readonly kind: 'post'; readonly text: string }
 );
 
-/** One comment, including replies. Only explicit user actions change `seen`.
- * Optional metadata stays absent. Demo timestamps are ISO instants, not a final
- * policy for missing/imprecise source timestamps or database serialization. */
+/** One stored reader comment. Only explicit user actions change `seen`.
+ * Publication stays distinct from discovery, with honest precision/label evidence.
+ * Optional evidence properties also permit the original pure synthetic fixtures. */
 export interface Comment {
   readonly id: string;
   readonly itemId: string;
   readonly source: { readonly kind: ItemKind; readonly itemId: string; readonly commentId: string };
+  /** Safe display placement; containment is not direct replied-to evidence. */
   readonly parentId: string | null;
+  /** Source truth is separate from best-effort display parentId. */
+  readonly relationship?: CommentRelationship;
+  readonly relationshipStatus?: 'top-level' | 'resolved' | 'unresolved' | 'cyclic';
+  readonly directParentId?: string | null;
+  readonly publication?: StoredPublication;
+  readonly remote?: StoredCommentObservation;
   readonly author?: Author;
   readonly text: string;
   readonly publishedAt?: string;
@@ -39,6 +51,7 @@ export interface Comment {
     readonly firstDiscoveredAt: string;
     readonly lastObservedAt: string;
     readonly firstDiscoveryId: string;
+    readonly lastObservationId?: string;
   };
   readonly likeCount?: number;
   readonly isCreator?: boolean;

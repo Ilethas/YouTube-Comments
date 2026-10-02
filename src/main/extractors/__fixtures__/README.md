@@ -15,8 +15,10 @@ Original investigation dumps were not present in the repository. These are
 completed anonymous investigation with inspection of the installed versions:
 
 - yt-dlp **2026.08.19**, YouTube `_extract_comment` / `_extract_comment_old`
-  and CLI option definitions. Installed release head:
-  `594bd50c2c78ac432f81600d309fdc4e0a92d82c`.
+  and CLI option definitions. Release commit:
+  `3a08beaf031ab68f966401ead017ac81fe8486cf`.
+  `594bd50c2c78ac432f81600d309fdc4e0a92d82c` is its immediate pre-release
+  parent; the relevant extractor source did not differ across the release commit.
   [Versioned upstream source](https://github.com/yt-dlp/yt-dlp/blob/2026.08.19/yt_dlp/extractor/youtube/_video.py).
 - post-archiver-improved **0.4.0**, executable `post-archiver`, installed
   `models.py`, `output.py`, `scraper.py`, `extractors.py`, and `cli.py`;

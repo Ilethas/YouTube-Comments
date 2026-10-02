@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { establishSyntheticHistory } from './synthetic-history';
 
 export class UnsupportedSchemaError extends Error {}
 export interface Migration { readonly version: number; readonly apply: (db: DatabaseSync) => void }
@@ -43,7 +44,56 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
     appearance TEXT NOT NULL CHECK(appearance IN ('system','light','dark'))
   ) STRICT;
   INSERT INTO preferences VALUES (1, NULL, 'system');
-`) }];
+`) }, { version: 2, apply: db => {
+  db.exec(`
+    CREATE UNIQUE INDEX content_source_identity ON content_items(kind, source_id);
+    CREATE UNIQUE INDEX comment_source_identity ON comments(item_id, source_comment_id);
+    CREATE TABLE extraction_attempts (
+      id TEXT PRIMARY KEY NOT NULL,
+      item_id TEXT REFERENCES content_items(id) DEFERRABLE INITIALLY DEFERRED,
+      source_kind TEXT CHECK(source_kind IN ('youtube-video','youtube-community-post')),
+      source_id TEXT,
+      at TEXT NOT NULL, backend TEXT NOT NULL, backend_version TEXT NOT NULL,
+      coverage TEXT NOT NULL CHECK(coverage IN ('unknown','partial','complete','failed')),
+      outcome TEXT NOT NULL CHECK(outcome IN ('accepted','failed')),
+      collection TEXT NOT NULL CHECK(collection IN ('present','unavailable','failed')),
+      details TEXT NOT NULL CHECK(json_valid(details)),
+      CHECK((source_kind IS NULL) = (source_id IS NULL)),
+      CHECK((outcome = 'failed') = (coverage = 'failed')),
+      CHECK(outcome = 'failed' OR (item_id IS NOT NULL AND source_kind IS NOT NULL))
+    ) STRICT;
+    ALTER TABLE content_items ADD COLUMN remote_json TEXT CHECK(remote_json IS NULL OR json_valid(remote_json));
+    ALTER TABLE content_items ADD COLUMN baseline_attempt_id TEXT REFERENCES extraction_attempts(id);
+    ALTER TABLE comments ADD COLUMN remote_json TEXT CHECK(remote_json IS NULL OR json_valid(remote_json));
+    ALTER TABLE comments ADD COLUMN first_attempt_id TEXT REFERENCES extraction_attempts(id);
+    ALTER TABLE comments ADD COLUMN last_attempt_id TEXT REFERENCES extraction_attempts(id);
+  `);
+  establishSyntheticHistory(db);
+  // The nullable columns allow staged schema-1 demo inserts in ONE transaction.
+  // Once evidence is present, identity/history consistency is enforced by SQLite.
+  for (const event of ['INSERT', 'UPDATE']) {
+    db.exec(`CREATE TRIGGER item_evidence_${event.toLowerCase()} BEFORE ${event} ON content_items
+      WHEN NEW.remote_json IS NOT NULL BEGIN
+        SELECT CASE WHEN json_extract(NEW.remote_json, '$.sourceId') IS NOT NEW.source_id
+          OR json_extract(NEW.remote_json, '$.sourceKind') IS NOT CASE NEW.kind WHEN 'video' THEN 'youtube-video' ELSE 'youtube-community-post' END
+          OR NEW.baseline_discovery_id IS NOT NEW.baseline_attempt_id
+          OR NOT EXISTS (SELECT 1 FROM extraction_attempts WHERE id = NEW.baseline_attempt_id AND item_id = NEW.id AND outcome = 'accepted')
+          THEN RAISE(ABORT, 'Invalid item evidence/history') END;
+      END;
+      CREATE TRIGGER comment_evidence_${event.toLowerCase()} BEFORE ${event} ON comments
+      WHEN NEW.remote_json IS NOT NULL BEGIN
+        SELECT CASE WHEN json_extract(NEW.remote_json, '$.sourceId') IS NOT NEW.source_comment_id
+          OR json_extract(NEW.remote_json, '$.relationship.kind') NOT IN ('top-level','direct-parent','thread-containment')
+          OR json_extract(NEW.remote_json, '$.relationship.kind') IS NULL
+          OR (json_extract(NEW.remote_json, '$.relationship.kind') = 'direct-parent' AND COALESCE(length(json_extract(NEW.remote_json, '$.relationship.parentSourceId')),0) = 0)
+          OR (json_extract(NEW.remote_json, '$.relationship.kind') = 'thread-containment' AND COALESCE(length(json_extract(NEW.remote_json, '$.relationship.rootSourceId')),0) = 0)
+          OR NEW.first_discovery_id IS NOT NEW.first_attempt_id
+          OR NOT EXISTS (SELECT 1 FROM extraction_attempts WHERE id = NEW.first_attempt_id AND item_id = NEW.item_id AND outcome = 'accepted')
+          OR NOT EXISTS (SELECT 1 FROM extraction_attempts WHERE id = NEW.last_attempt_id AND item_id = NEW.item_id AND outcome = 'accepted')
+          THEN RAISE(ABORT, 'Invalid comment evidence/history') END;
+      END;`);
+  }
+} }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 
 /** Short synchronous main-owned transaction; any failure rolls back all writes. */

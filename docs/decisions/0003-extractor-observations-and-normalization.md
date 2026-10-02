@@ -2,6 +2,10 @@
 
 Date: 2026-10-02. Status: accepted for the fixture/adapter milestone.
 
+This record describes the earlier pure-adapter increment. Its remaining persistence
+choices are now settled in [ADR 0004](0004-durable-observation-merge.md); live
+execution and acquisition UI remain unimplemented.
+
 ## Context and evidence
 
 The owner completed investigation of yt-dlp **2026.08.19** and

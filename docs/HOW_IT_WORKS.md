@@ -29,7 +29,7 @@ The user opens a supported item. React asks the main process to acquire it throu
 
 The helper's output is not yet our application data. The adapter validates and converts it into our own identities, comment text, parent relationships, authors, and available metadata. A missing timestamp or author property must remain honestly missing. Neither the UI nor the domain rules should need to know how one helper happens to spell a field. This separation lets us change helper versions or replace a backend without rewriting the reader. See [Extractors](EXTRACTORS.md) and [Architecture](ARCHITECTURE.md).
 
-Validated observations are merged into SQLite in a transaction. The first acquisition and later refreshes share the important preservation rules: new identities get unseen state; existing identities keep their local state. Refresh history records what happened. Exact helper commands, completeness signals, and source field capabilities still need fixture-backed verification.
+Validated observations are merged into SQLite in a transaction. The first acquisition and later refreshes share the important preservation rules: new identities get unseen state; existing identities keep their local state. Refresh history records what happened. Pure helper command specifications and source field/coverage observations have offline fixtures (ADR 0003); normalized transactional ingestion/history is implemented in ADR 0004. Live execution and acquisition/refresh UI remain future work.
 
 The first successful acquisition establishes the discussion's local baseline. Every imported comment gets `firstDiscoveredAt` and starts unseen, but the reader does not label thousands of baseline comments visually NEW. The same recorded discovery history can later distinguish comments first discovered by subsequent refreshes.
 
@@ -45,7 +45,7 @@ Three times answer different questions:
 
 "New" refers to discovery history, while "unseen" is your durable choice. Visual NEW is intended for discoveries after the initial successful baseline. An old discovered comment may stay unseen for months; a later newly discovered comment may immediately be marked seen. Editing an existing comment does not create a newly discovered identity. NEW-marker lifetime/removal remains [unresolved](decisions/README.md).
 
-The helper runs before the final database merge, so a long network operation need not hold a database write transaction open. A failure cannot wipe out the last valid stored discussion. Whether a validated partial extraction may safely contribute additions/updates is an explicit policy decision still to make. See [Refresh and merge](REFRESH_AND_MERGE.md) for the sequence and failure rules.
+The helper runs before the final database merge, so a long network operation need not hold a database write transaction open. A failure cannot wipe out the last valid stored discussion. Valid partial/unknown batches can contribute safe additions/authoritative updates and establish the first baseline, retaining their true coverage. Ambiguous identities are skipped while independent observations remain eligible. See [Refresh and merge](REFRESH_AND_MERGE.md) for the sequence and failure rules.
 
 ## Matching a comment does not remove its conversation
 
@@ -63,7 +63,7 @@ This creates two distinct kinds of state: durable comment state in SQLite, and t
 
 An ordinary click changes only its comment. Ctrl+click takes the clicked comment's resulting seen value and applies it to that comment and its descendants. It does not independently invert every reply. Generic Mark all means all comments in the active discussion, never the entire library. Date-based bulk actions instead test each comment's own publication time, without extending to parents or replies. Recoverability is required design work; its undo mechanism is still open. See [Seen state](SEEN_STATE.md).
 
-Apply performs local view recomputation only. A successful explicit Refresh runs the helper, safely merges the observations, then automatically recomputes the active view. A new unseen reply can therefore appear immediately under Unseen without a second Apply action. That recomputation also incorporates seen edits already saved. Ctrl+Enter and F5 are the likely/default shortcuts for Apply and Refresh pending formal shortcut policy. Partial/unknown-result acceptance and its view consequences are still governed by the open refresh policy; success must not be silently assumed.
+Apply performs local view recomputation only. A successful explicit Refresh runs the helper, safely merges the observations, then automatically recomputes the active view. A new unseen reply can therefore appear immediately under Unseen without a second Apply action. That recomputation also incorporates seen edits already saved. Ctrl+Enter and F5 are the likely/default shortcuts for Apply and Refresh pending formal shortcut policy. Partial/unknown batches are accepted non-destructively and retain their true coverage in history. The eventual refresh UI must report that coverage; its presentation details remain open.
 
 ## Searching and navigating a large discussion
 

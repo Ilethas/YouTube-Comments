@@ -1,18 +1,18 @@
 # Testing strategy
 
-Automated testing is a product requirement. Vitest covers pure domain/localization, focused component interactions, temporary SQLite integration, typed IPC/bridge/sender boundaries, and pure extractor observations/invocation specs. Live acquisition, refresh/merge, search, backup and workspace restoration remain unimplemented. See [Architecture](ARCHITECTURE.md), [Product requirements](PRODUCT_REQUIREMENTS.md), and [ADR 0003](decisions/0003-extractor-observations-and-normalization.md).
+Automated testing is a product requirement. Vitest covers pure domain/localization, focused component interactions, temporary SQLite integration, typed IPC/bridge/sender boundaries, and pure extractor observations/invocation specs. Durable normalized fixture merge/history is implemented in [ADR 0004](decisions/0004-durable-observation-merge.md); live acquisition/refresh execution and UI, search, backup and workspace restoration remain unimplemented. See [Architecture](ARCHITECTURE.md), [Product requirements](PRODUCT_REQUIREMENTS.md), and [ADR 0003](decisions/0003-extractor-observations-and-normalization.md).
 
 ## Current execution and verification
 
-- `npm test`: **97 deterministic tests pass in nine suites**: the existing 62 plus 32 adapter/contract/fixture tests and 3 pure invocation tests. Tests need Node 24.13+ with built-in SQLite, no live Electron/network/YouTube or installed helpers. Every SQLite case owns its temporary database. Existing Ctrl/Space, acknowledgment/failure, safe retry, schema and preference coverage remains unchanged. The new extractor coverage is detailed below.
+- `npm test`: **131 deterministic tests pass in eleven suites**: the prior 97 plus 8 pure merge/projection tests and 26 temporary SQLite ingestion/migration/history tests. Tests need Node 24.13+ with built-in SQLite, no live Electron/network/YouTube or installed helpers. Every SQLite case owns its temporary database. Existing Ctrl/Space, acknowledgment/failure, safe retry, schema and preference coverage remains unchanged. The new extractor coverage is detailed below.
 - `npm run typecheck`: passes with strict TypeScript and TSX.
 - `npm run lint`: passes without warnings. Generated `.vite` and `out` artifacts are excluded. The scaffold's legacy ESLint import resolver cannot resolve Vitest's package export; a documented single-line exception leaves TypeScript and the runner to validate that import.
 - `npm run build:renderer`: passes; emits the React bundle and relative local asset paths.
 - `npm run package`: Forge production main/preload/renderer builds passed on Windows x64. Generated main uses external `node:sqlite`; preload exposes only the three application methods. The process again returned exit code 0 during packaging without producing a completed executable in `out`; a distributable is **not verified**. No makers/fuses or release settings were changed to address this existing limitation.
 - Actual Electron 44.4.5 main-side SQLite probe passed with embedded Node 24.21.0 / SQLite 3.53.4. A hidden runtime harness loaded the real Forge-built entry points, rendered all 24 stored synthetic comments, exercised ordinary click and Ctrl+click, checked ancestors/siblings/other discussion preservation, opened the Community Post, and tested malformed payload rejection through the real bridge. It verified exactly three bridge methods, no renderer Node globals, sandbox/context isolation, both languages, all appearance modes, live native light-to-dark System changes, and explicit Light override. Light/dark Polish screenshots were inspected locally.
-- The harness closed and restarted the **real Electron process twice** against one freshly created isolated development root. First restart restored Polish/Dark and both ordinary/subtree comment edits; second restored English/System with the same comments. A separate read-only opening of the closed SQLite file confirmed schema 1, 24 stored comments, and durable preferences. The reusable focused check is [scripts/smoke-electron.cjs](../scripts/smoke-electron.cjs), run with `npm run test:electron` after Forge builds. It creates/cleans only its own temporary profile, clears inherited Node-only Electron mode for its children, and uses no additional UI framework. Earlier screenshot artifacts were inspected locally; no screenshot/database is committed. These checks prove built-app persistence and IPC, not an installed/distributable package.
+- The harness closed and restarted the **real Electron process twice** against one freshly created isolated development root. First restart restored Polish/Dark and both ordinary/subtree comment edits; second restored English/System with the same comments. A separate read-only opening of the closed SQLite file confirmed schema 2, 24 stored comments, four explicitly synthetic history attempts, and durable preferences. The reusable focused check is [scripts/smoke-electron.cjs](../scripts/smoke-electron.cjs), run with `npm run test:electron` after Forge builds. It creates/cleans only its own temporary profile, clears inherited Node-only Electron mode for its children, and uses no additional UI framework. Earlier screenshot artifacts were inspected locally; no screenshot/database is committed. These checks prove built-app persistence and IPC, not an installed/distributable package.
 
-Persistence coverage includes empty 0→1 migration, metadata/ordering reopen, unsupported newer-schema rejection without file changes, profile/configuration isolation, idempotent demo initialization, ordinary/subtree restart state and unrelated comments, language and all appearance modes, configured foreign keys/constraints, a late-write trigger failure rolling back the whole subtree, version-0 migration failure preserving data, a real initial-schema collision, and ordered later-migration rollback/retry. A supported app does not silently recreate a failed database.
+Persistence coverage includes empty 0→2 migration, metadata/ordering reopen, unsupported newer-schema rejection without file changes, profile/configuration isolation, idempotent demo initialization, ordinary/subtree restart state and unrelated comments, language and all appearance modes, configured foreign keys/constraints, a late-write trigger failure rolling back the whole subtree, version-0 migration failure preserving data, a real initial-schema collision, and ordered later-migration rollback/retry. A supported app does not silently recreate a failed database.
 
 Commands were run on Windows with Node 26.7.0 using `npm.cmd` because PowerShell blocks `npm.ps1`. esbuild config loading required a sandbox retry with broader filesystem access. The runtime check removed the inherited `ELECTRON_RUN_AS_NODE` environment variable for its process so Electron could run as a desktop app. Vite's existing CommonJS Node API emits a deprecation notice; it does not fail these checks.
 
@@ -20,13 +20,37 @@ Hidden-window smoke runs emitted a Chromium GPU diagnostic during shutdown; the 
 
 `npm start` uses the separate development profile and idempotently seeds the two fixtures. `npm run build:renderer` provides an independent renderer build. To run just the new integration suite, use `npm test -- src/main/persistence/reader-repository.test.ts`. A manual acceptance pass can switch tabs/languages, click and Ctrl+click mixed subtrees, check that NEW survives marking seen, change all appearance modes, quit, and restart: seen state and explicit preferences should remain while tab selection resets (Q-10 remains open).
 
-For an alternate disposable development root in PowerShell, set `$env:YOUTUBE_COMMENTS_DEMO_ROOT` to an absolute directory before `npm.cmd start`; it appends `youtube-comments-development/reader.sqlite` and never uses production fallback. Clear that environment variable afterward to return to the usual development profile. When this environment inherits `ELECTRON_RUN_AS_NODE=1`, clear it for desktop execution. Empty/relative demo-root configuration fails. Never point verification at real production data. No real acquisition/merge, search/filter behavior, virtualization/ruler performance, backup/restore, or packaged installer is claimed.
+For an alternate disposable development root in PowerShell, set `$env:YOUTUBE_COMMENTS_DEMO_ROOT` to an absolute directory before `npm.cmd start`; it appends `youtube-comments-development/reader.sqlite` and never uses production fallback. Clear that environment variable afterward to return to the usual development profile. When this environment inherits `ELECTRON_RUN_AS_NODE=1`, clear it for desktop execution. Empty/relative demo-root configuration fails. Never point verification at real production data. No live acquisition/refresh execution or UI, search/filter behavior, virtualization/ruler performance, backup/restore, or packaged installer is claimed.
+
+## Durable normalized ingestion verification (2026-10-02)
+
+All 131 offline tests pass, including all 24 schema-1 demo comments migrating with
+seen/preferences/IDs/order intact, actual schema-2 migration rollback/retry,
+unsupported-newer rejection, source scope, authority (all unknown reasons and
+trustworthy empty/zero/false), accepted unknown/partial baselines, later discoveries,
+absence, relationship updates, Community containment, unresolved/later-resolved
+relationships, cycle-safe projection, identical/conflicting duplicate skipping,
+same-item history constraints, complete evidence retention, sanitized history,
+mid-merge rollback, seen-write exclusion and close/reopen.
+
+`npm run typecheck` and `npm run lint` pass without warnings. The independent
+renderer build and Forge production main/preload/renderer builds pass. Forge
+again exits 0 during finalizing without a completed executable; no distributable
+claim or packaging fix is made. `npm run test:electron` passes writes and two real
+restarts against a disposable profile, including schema 2/four synthetic attempts,
+the unchanged three-method bridge, manual seen behavior and preferences. The
+existing shutdown GPU diagnostic was emitted without assertion/exit failure.
+
+Run the new suites alone with `npm test -- src/domain/observation-merge.test.ts src/main/persistence/observation-ingestion.test.ts`. All normal
+tests remain offline and require neither helpers nor Python. Publication labels
+are not converted against the test clock. Future NEW lifetime and process/UI
+behavior are not asserted as implemented.
 
 ## Test layers
 
 | Layer | Purpose | Environment |
 | --- | --- | --- |
-| Domain/unit | Prove tree, state, merge planning, filtering, search, and sorting behavior quickly. | Vitest is installed; tree/manual-state foundation tests exist. Merge/search/filter/sort tests await those increments. |
+| Domain/unit | Prove tree, state, merge planning, filtering, search, and sorting behavior quickly. | Vitest is installed; tree/manual-state foundation tests exist. Pure merge/projection tests exist; search/filter/sort await those increments. |
 | Persistence/integration | Prove transactions, migrations, queries, restart persistence, backup/restore, and data isolation. | A fresh temporary SQLite database for each independent test case or deliberately isolated suite. |
 | Adapter/fixture | Prove backend output becomes valid domain data without exposing backend types. | Saved extractor output and controlled process-runner responses; no YouTube or helper installation required. |
 | Focused UI/end-to-end | Later, prove a small number of meaningful workflows across the Electron boundary and actual UI. | A test profile and fixture data; UI automation tooling remains undecided. |

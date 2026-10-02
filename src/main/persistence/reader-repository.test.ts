@@ -40,8 +40,8 @@ it('migrates an empty explicit temporary file from 0 to current schema', () => {
 it('round-trips normalized synthetic metadata, absent fields, identities and ordering', () => {
   const first = repo(); first.initializeDemo();
   const state = reopen(first).bootstrap(['en']);
-  expect(state.items).toEqual(items);
-  expect(state.comments).toEqual(initialComments);
+  expect(state.items).toMatchObject(items);
+  expect(state.comments).toMatchObject(initialComments);
 });
 
 it('rejects a newer schema without changing the file or stored data', () => {
@@ -84,8 +84,8 @@ it('ordinary toggle survives reopen and changes only its selected comment', () =
   const first = repo(); first.initializeDemo();
   first.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: false });
   const state = reopen(first).bootstrap(['en']);
-  expect(state.comments['video-demo']).toEqual(initialComments['video-demo'].map(comment => comment.id === 'v2' ? { ...comment, seen: false } : comment));
-  expect(state.comments['post-demo']).toEqual(initialComments['post-demo']);
+  expect(state.comments['video-demo']).toMatchObject(initialComments['video-demo'].map(comment => comment.id === 'v2' ? { ...comment, seen: false } : comment));
+  expect(state.comments['post-demo']).toMatchObject(initialComments['post-demo']);
 });
 
 it.each([['v2', false, ['v2', 'v3', 'v4']], ['v3', true, ['v3', 'v4']]] as const)(
@@ -93,16 +93,17 @@ it.each([['v2', false, ['v2', 'v3', 'v4']], ['v3', true, ['v3', 'v4']]] as const
     const first = repo(); first.initializeDemo();
     first.toggleSeen({ itemId: 'video-demo', commentId: id, subtree: true });
     const state = reopen(first).bootstrap(['en']);
-    expect(state.comments['video-demo']).toEqual(initialComments['video-demo'].map(comment => ids.some(id => id === comment.id) ? { ...comment, seen } : comment));
-    expect(state.comments['post-demo']).toEqual(initialComments['post-demo']);
+    expect(state.comments['video-demo']).toMatchObject(initialComments['video-demo'].map(comment => ids.some(id => id === comment.id) ? { ...comment, seen } : comment));
+    expect(state.comments['post-demo']).toMatchObject(initialComments['post-demo']);
   });
 
 it('a failed SQLite write after earlier subtree updates rolls back the entire operation', () => {
   const first = repo(); first.initializeDemo();
+  const before = first.bootstrap(['en']);
   raw().exec(`CREATE TRIGGER fail_late BEFORE UPDATE ON comment_state
     WHEN NEW.comment_id = 'v4' BEGIN SELECT RAISE(ABORT, 'injected failure'); END;`);
   expect(() => first.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: true })).toThrow('injected failure');
-  expect(reopen(first).bootstrap(['en']).comments).toEqual(initialComments);
+  expect(reopen(first).bootstrap(['en'])).toEqual(before);
 });
 
 it('explicit language survives reopen and overrides later OS languages', () => {
@@ -118,7 +119,7 @@ it.each(['system', 'light', 'dark'] as const)('appearance %s survives reopen wit
   first.updatePreferences({ appearance }, ['en']);
   const next = reopen(first);
   expect(next.preferences(['en'])).toEqual({ locale: 'pl', appearance });
-  expect(next.bootstrap(['en']).comments).toEqual(initialComments);
+  expect(next.bootstrap(['en']).comments).toMatchObject(initialComments);
 });
 
 it('enables foreign keys per connection and enforces same-item parents and local state constraints', () => {
@@ -161,14 +162,14 @@ it('a later ordered migration runs only pending versions and preserves the prior
   first.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: false });
   const before = first.bootstrap(['en']);
   const db = raw();
-  const earlier = { version: 1, apply: () => { throw new Error('Already applied migration must not run'); } };
-  expect(() => migrateDatabase(db, [earlier, { version: 2, apply: database => {
+  const earlier = [1, 2].map(version => ({ version, apply: () => { throw new Error('Already applied migration must not run'); } }));
+  expect(() => migrateDatabase(db, [...earlier, { version: 3, apply: database => {
     database.exec('CREATE TABLE future_test_table (id INTEGER)');
     throw new Error('Upgrade failed');
   } }])).toThrow('Upgrade failed');
-  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(1);
-  expect(first.bootstrap(['en'])).toEqual(before);
-  migrateDatabase(db, [earlier, { version: 2, apply: database => database.exec('CREATE TABLE future_test_table (id INTEGER)') }]);
   expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(2);
+  expect(first.bootstrap(['en'])).toEqual(before);
+  migrateDatabase(db, [...earlier, { version: 3, apply: database => database.exec('CREATE TABLE future_test_table (id INTEGER)') }]);
+  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(3);
   expect(first.bootstrap(['en'])).toEqual(before);
 });
