@@ -68,7 +68,7 @@ flowchart LR
     F -. any error .-> H
 ```
 
-All discussion changes accepted from a refresh belong to one transaction, along with the committed history/discovery information that describes them. A process failure outside that transaction may still produce a failed-attempt history record without touching the prior snapshot. [Refresh and merge](REFRESH_AND_MERGE.md) describes the unresolved partial/uncertain-result policy and crash reconciliation.
+All discussion changes accepted from a refresh belong to one transaction, along with the committed history/discovery information that describes them. A process failure outside that transaction may still produce a failed-attempt history record without touching the prior snapshot. [ADR 0003](decisions/0003-extractor-observations-and-normalization.md) accepts valid partial/unknown observational input without implementing any database writes. [Refresh and merge](REFRESH_AND_MERGE.md) describes remaining conflict/baseline/history/outcome policy and crash reconciliation.
 
 Multi-comment seen operations should be atomic. Undo/recoverability is a required part of bulk-action design, but its mechanism is unresolved. Capturing previous states in the same transaction is an optional candidate, not a mandated implementation; a future decision must define how the chosen mechanism remains consistent with state changes. An operation cannot report success after only part of its target set was written. Apply changes / Update view does not commit seen edits; they have already been persisted.
 

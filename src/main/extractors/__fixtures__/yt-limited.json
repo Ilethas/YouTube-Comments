@@ -1,0 +1,48 @@
+{
+  "context": {
+    "provenance": {
+      "backend": "yt-dlp",
+      "version": "2026.08.19",
+      "fixture": {
+        "id": "yt-limited",
+        "preparation": "reconstructed-sanitized"
+      },
+      "evidence": [
+        "Owner investigation of 2026-10-02.",
+        "Installed 2026.08.19 YouTube comment serializer verified."
+      ]
+    },
+    "partialEvidence": [
+      "Invocation deliberately limited comments to one."
+    ]
+  },
+  "documentation": {
+    "origin": "Reconstructed sanitized fixture from verified backend format and owner investigation; original captures unavailable in repository.",
+    "behavior": "Successful bounded extraction with no serialized partial flag.",
+    "preserved": "Opaque identities/references, root sentinel, field types/presence, optional metadata, relative timestamp label, coverage category.",
+    "invocation": "ignore config/plugins; no playlist; skip download; single JSON; comments; bounded retries/timeout; max_comments=1"
+  },
+  "raw": {
+    "id": "VidDemo_001",
+    "title": "Invented workshop — Żółw",
+    "description": "Invented description.\nDruga linia.",
+    "channel": "Example Creator",
+    "channel_id": "UC_DemoCreator",
+    "channel_url": "https://www.youtube.com/@example-creator",
+    "comment_count": 1,
+    "comments": [
+      {
+        "id": "Ug.demo-root:01",
+        "parent": "root",
+        "text": "Invented root.\nZażółć gęślą jaźń.",
+        "author": "Example A",
+        "author_id": "UC_DemoA",
+        "timestamp": 1758000000,
+        "_time_text": "2 weeks ago",
+        "like_count": 12,
+        "is_pinned": true,
+        "author_is_uploader": true
+      }
+    ]
+  }
+}

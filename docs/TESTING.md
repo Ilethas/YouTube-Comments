@@ -1,10 +1,10 @@
 # Testing strategy
 
-Automated testing is a product requirement. Vitest now covers pure domain/localization, focused jsdom/Testing Library interactions, temporary SQLite integration, and typed IPC/bridge/sender boundaries. The broader matrix remains the target strategy; acquisition, refresh, search, backup, and workspace restoration are not implemented/tested. See [Architecture](ARCHITECTURE.md) and [Product requirements](PRODUCT_REQUIREMENTS.md).
+Automated testing is a product requirement. Vitest covers pure domain/localization, focused component interactions, temporary SQLite integration, typed IPC/bridge/sender boundaries, and pure extractor observations/invocation specs. Live acquisition, refresh/merge, search, backup and workspace restoration remain unimplemented. See [Architecture](ARCHITECTURE.md), [Product requirements](PRODUCT_REQUIREMENTS.md), and [ADR 0003](decisions/0003-extractor-observations-and-normalization.md).
 
 ## Current execution and verification
 
-- `npm test`: 62 deterministic tests pass in seven suites: 8 domain, 4 localization, 8 renderer, 17 SQLite persistence, 23 service/validation, 1 sender-routing, and 1 bridge-capability test. Tests need Node 24.13+ with built-in SQLite, no live Electron/network/YouTube. Every integration case creates its own temporary directory and explicitly supplies an absolute database path; cleanup checks ownership. Ctrl tests cover both resulting states; component tests exercise actual Ctrl modifier and Space-key activation, asynchronous loading, pending-write acknowledgment, and failed/rejected saves. Retry tests cover initialization failure followed by recovery, repeated sanitized failures, successful-startup repository reuse, and unsupported schemas with no reopen or renderer Retry action.
+- `npm test`: **97 deterministic tests pass in nine suites**: the existing 62 plus 32 adapter/contract/fixture tests and 3 pure invocation tests. Tests need Node 24.13+ with built-in SQLite, no live Electron/network/YouTube or installed helpers. Every SQLite case owns its temporary database. Existing Ctrl/Space, acknowledgment/failure, safe retry, schema and preference coverage remains unchanged. The new extractor coverage is detailed below.
 - `npm run typecheck`: passes with strict TypeScript and TSX.
 - `npm run lint`: passes without warnings. Generated `.vite` and `out` artifacts are excluded. The scaffold's legacy ESLint import resolver cannot resolve Vitest's package export; a documented single-line exception leaves TypeScript and the runner to validate that import.
 - `npm run build:renderer`: passes; emits the React bundle and relative local asset paths.
@@ -87,6 +87,28 @@ Integration tests should cover:
 Exact migration support windows, backup formats, and undo retention are unresolved in [Database](DATABASE.md) and the [decision register](decisions/README.md). Tests should encode the policy that is selected, not invent it.
 
 ## Fixtures and process tests
+
+Implemented extractor tests cover yt-dlp root/direct-parent depth with parents
+after children, opaque IDs, absent versus explicit zero/false metadata,
+estimated publication labels/instants, unavailable/null versus empty comments,
+ordinary unknown and externally evidenced partial coverage. Community tests
+cover top-level/thread containment (including deeper nesting without fabricated
+direct parents), default collapse, unreliable flags/counts, image/link metadata,
+publication labels, and conflicting duplicate candidates. Both paired fixture
+sets normalize changing membership independently with no deletion actions.
+Required malformed shapes and unsupported versions fail without publishing
+observations; malformed optional fields stay unknown. Tests check version and
+preparation provenance, generic-contract separation, missing/cyclic references,
+and pure arguments/child-environment specs. No process runner is implemented.
+
+The [eleven-file fixture matrix](../src/main/extractors/__fixtures__/README.md)
+documents ten reconstructed-sanitized fixtures from verified investigated
+formats and one synthetic duplicate conflict. Names/text are invented,
+IDs/references are consistently remapped and attachment URLs are harmless.
+An offline development-only round trip through the installed Community 0.4.0
+serializer passed for all five raw archive examples. Python/helpers are not
+required by normal tests. Run just this boundary with
+`npm test -- src/main/extractors`.
 
 Use saved backend output for `yt-dlp` and `post-archiver-improved` adapter tests. Keep fixture schemas separate from application domain fixtures. Record each fixture's backend/version where known, what behavior it exercises, and whether it is captured, redacted, or synthetic. Avoid committing credentials or unnecessary personal information.
 

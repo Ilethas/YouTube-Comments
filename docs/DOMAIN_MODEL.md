@@ -1,6 +1,6 @@
 # Domain model
 
-This is the target application model, not a database schema. `src/domain/discussion.ts` implements content/author/comment types, complete-tree construction/traversal, and immutable manual seen actions. The persistence milestone maps SQLite rows explicitly into these domain objects through main-owned repositories; shared IPC contracts contain no SQL/driver types. `src/fixtures` supplies synthetic main-side initialization, with no extractor contract. String fixture IDs, input ordering, and strict valid-tree preconditions remain scoped as in [ADR 0001](decisions/0001-synthetic-reader-foundation.md). [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) chooses initial ISO UTC TEXT storage and separate local-state writes. Real source identity, malformed observations, and real timestamp precision remain unresolved. [Product requirements](PRODUCT_REQUIREMENTS.md) define the target; [architecture](ARCHITECTURE.md) describes ownership.
+This is the target application model, not a database schema. `src/domain/discussion.ts` implements the stored synthetic reader's content/author/comment types, complete-tree construction/traversal, and immutable manual seen actions. Main-owned repositories map SQLite rows explicitly; shared IPC contracts contain no SQL/driver types. `src/fixtures` supplies synthetic initialization only. Strict valid-tree preconditions remain scoped as in [ADR 0001](decisions/0001-synthetic-reader-foundation.md); [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) chooses fixture UTC TEXT and separate local-state writes. `src/domain/extraction-observation.ts` now separately describes pure remote observations in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). No observation ingestion, merge, or real timestamp storage is implemented. [Product requirements](PRODUCT_REQUIREMENTS.md) define the target; [architecture](ARCHITECTURE.md) describes ownership.
 
 The model uses the same application concepts for video discussions and Community Post discussions. Extractor-specific fields belong in [adapter input types](EXTRACTORS.md), never in React component contracts.
 
@@ -8,7 +8,7 @@ The model uses the same application concepts for video discussions and Community
 
 A **content item** is one YouTube video or one public individual Community Post whose discussion is stored locally. A **comment** is one individually addressable contribution to that discussion, including a top-level comment or any reply. A **thread** is the top-level comment and its complete descendant conversation tree. A thread is a structural grouping, not a separately processed inbox item.
 
-The proposed source identity is `(source kind, source content item ID, source comment ID)`. This conservatively scopes a comment to its discussion rather than assuming that an extractor ID is globally unique. Source kind identifies the content family, such as a YouTube video or Community Post; it does not identify the extractor executable. Switching adapters must not create a second identity for the same remote comment.
+Observation source identity is `(content source kind, opaque source content item ID, opaque source comment ID)`. This conservatively scopes a comment to its discussion rather than assuming global uniqueness. `youtube-video` and `youtube-community-post` identify content families, not executable backends. Switching adapters must not create a second identity for the same remote comment. Internal/database constraints are not finalized by this observation contract.
 
 Preserve source IDs as opaque values. Display names, text, timestamps, array positions, current sort order, and DOM positions are not identities. The exact source ID guarantees, canonical URL parsing, and relationship between source kinds must be verified with fixtures and recorded before finalizing constraints. See [extractors](EXTRACTORS.md) and [database constraints](DATABASE.md).
 
@@ -47,11 +47,13 @@ The model should expose only metadata actually available from a source. An absen
 
 ## Comment relationships and authors
 
-Parent references describe conversation structure. Sorting threads must not detach children from parents. A direct replied-to author is derived from the immediate parent when that relationship is reliable; the top-level thread author is derived from the root. These are distinct [search targets](FILTERING_AND_SEARCH.md).
+Observation relationships explicitly distinguish `top-level`, `direct-parent` and `thread-containment`. yt-dlp's literal root sentinel and direct IDs are preserved; Community's nested output establishes only containing-root membership in the verified contract. Sorting must preserve relationship evidence. A direct replied-to author may be derived only from a genuinely known direct parent, never from a containing root fallback. These are distinct [search targets](FILTERING_AND_SEARCH.md).
 
 Author identity and author display information are also different. A display name or handle can change and need not uniquely identify an account. Preserve available stable source author identifiers separately from names, handles and avatars. An author search must state which fields it searches rather than treating a display label as an ID.
 
-The policy for absent parents, cyclic parent references, conflicting roots, or deleted/missing author information is unresolved. Do not silently invent relationships or promote an orphan to a new top-level thread without a documented policy. [Extractor normalization](EXTRACTORS.md), [refresh validation](REFRESH_AND_MERGE.md), and [tree tests](TESTING.md) must agree on that policy.
+Adapters report missing/cyclic references and duplicate identities without repairing relationships or choosing a candidate. All duplicate observations remain available with occurrence diagnostics. Invalid required shape is unusable; invalid optional fields become unknown. Final ingestion arbitration, orphan handling and conversion into stored reader trees remain unresolved. The current strict reader tree builder does not accept arbitrary observation batches. [Extractor normalization](EXTRACTORS.md), [refresh validation](REFRESH_AND_MERGE.md), and [tree tests](TESTING.md) must agree before ingestion.
+
+`ObservedField<T>` distinguishes an observed value from unknown, including unavailable, lossy-default, unreliable, invalid and unsupported reasons. A trustworthy explicit empty/zero/false can be observed; a helper default cannot clear useful remote data. Publication observations retain available instants, source labels, precision and estimatedness independently. yt-dlp comment instants remain coarse estimates; Community relative labels are not converted using a clock. Collection availability is independent of unknown/partial/failed coverage. There is no seen state, discovery or deletion action in an extractor observation.
 
 ## Remote fields and local fields
 
@@ -74,7 +76,7 @@ The physical representation and precision of instants remain open. Missing or im
 
 **New** concerns discovery history, with the initial successful acquisition treated as a baseline for visual NEW indicators. **Unseen** describes the user's current durable per-comment state. A **raw search match** satisfies the search condition alone. An **applied active-filter match** satisfies the complete active filter combination in the last applied evaluation. A **contextual comment** is included because another comment in its thread is an applied active-filter match, without itself belonging to that matching set.
 
-The first successful acquisition establishes the content item's baseline. Its imported comments are unseen and receive `firstDiscoveredAt` and discovery history, but do not receive visual NEW badges or markers. Comments first discovered by subsequent refreshes are eligible for visual NEW indicators. Whether a first extraction with partial or unknown completeness can establish a baseline depends on the still-open acceptance policy; see [refresh and merge](REFRESH_AND_MERGE.md).
+The first successful acquisition establishes the content item's baseline. Its imported comments are unseen and receive `firstDiscoveredAt` and discovery history, but do not receive visual NEW badges or markers. Comments first discovered by subsequent refreshes are eligible for visual NEW indicators. Valid partial/unknown observations are accepted as input, while application outcome and first-baseline treatment remain open; see [refresh and merge](REFRESH_AND_MERGE.md).
 
 For example, after a baseline exists, a reply published months ago can be first discovered today, making it eligible for NEW in today's refresh and inserted unseen. Marking it seen immediately changes its durable state without erasing that discovery event. Its root may be seen and fail an Unseen-only filter, yet still appear as conversational context. A “New since refresh” query concerns discovery history; publication-date filters instead evaluate `publishedAt`.
 
@@ -94,10 +96,10 @@ Counts distinguish matching comments from containing threads. Navigation targets
 
 ## Decisions still to make
 
-- Validate stable ID scope and canonical URL rules for both initial adapters.
-- Choose concrete domain type names, identifier representations and timestamp precision during implementation.
-- Define absent-parent, malformed-tree and incomplete-metadata policies.
-- Define NEW indicator lifetime/reset behavior after the baseline, separately from recorded discoveries, and baseline handling under the partial/unknown acceptance policy.
+- Observation source scope and adapter canonical URL rules are selected in ADR 0003; database uniqueness/internal IDs and broader URL input validation remain open.
+- Observation publication precision is explicit; real precision storage and date-query semantics remain open.
+- Define ingestion acceptance/repair for absent parents and malformed/conflicting trees; observation field authority and diagnostics are already explicit.
+- Define NEW indicator lifetime/reset behavior after the baseline, separately from recorded discoveries, and application baseline treatment of accepted partial/unknown observations.
 - Define exact visual treatment and supplementary indicators for pending view updates, which parts of an applied view are reconstructed versus restored after restart, scroll reconciliation after refresh and behavior for inactive tabs.
 - Choose the exact representation of undoable changes and their retention.
 

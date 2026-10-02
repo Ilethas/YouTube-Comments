@@ -1,0 +1,78 @@
+{
+  "context": {
+    "provenance": {
+      "backend": "post-archiver-improved",
+      "version": "0.4.0",
+      "fixture": {
+        "id": "community-lossy",
+        "preparation": "reconstructed-sanitized"
+      },
+      "evidence": [
+        "Owner investigation of 2026-10-02.",
+        "Installed 0.4.0 models.py/output.py serializers verified against upstream v0.4.0 investigation."
+      ]
+    }
+  },
+  "documentation": {
+    "origin": "Reconstructed sanitized fixture from verified backend format and owner investigation; original captures unavailable in repository.",
+    "behavior": "Serializer defaults lose empty/missing/zero/false distinctions.",
+    "preserved": "Flattened archive envelope, serializer field types/defaults, opaque identities/references, nested thread containment, attachment shape, coverage category.",
+    "invocation": "individual public post; comments; explicit output/config; UTF-8 child environment; no --quiet; max-comments=100; max-replies=200"
+  },
+  "raw": {
+    "channel_id": "post_UgkDemoPost_0123456789",
+    "scrape_date": "2026-10-02T10:00:00",
+    "scrape_timestamp": 1790935200,
+    "posts_count": 1,
+    "total_comments": 1,
+    "total_images": 0,
+    "images_downloaded": 0,
+    "config_used": {
+      "max_posts": "unlimited",
+      "extract_comments": true,
+      "max_comments_per_post": 100,
+      "max_replies_per_comment": 200,
+      "download_images": false,
+      "request_timeout": 20,
+      "max_retries": 2
+    },
+    "posts": [
+      {
+        "post_id": "UgkDemoPost_0123456789",
+        "content": "",
+        "timestamp": "",
+        "timestamp_estimated": false,
+        "likes": "0",
+        "comments_count": "0",
+        "members_only": false,
+        "author": "",
+        "author_id": "",
+        "author_url": "",
+        "author_thumbnail": "",
+        "author_is_verified": false,
+        "author_is_member": false,
+        "images": [],
+        "links": [],
+        "comments": [
+          {
+            "id": "Ug.lossy:01",
+            "text": "",
+            "like_count": "0",
+            "timestamp": "",
+            "timestamp_estimated": true,
+            "author_id": "",
+            "author": "",
+            "author_thumbnail": "",
+            "author_is_verified": false,
+            "author_is_member": false,
+            "author_url": "",
+            "is_favorited": false,
+            "is_pinned": false,
+            "reply_count": "0",
+            "replies": []
+          }
+        ]
+      }
+    ]
+  }
+}

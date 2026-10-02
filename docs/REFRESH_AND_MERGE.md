@@ -1,6 +1,6 @@
 # Refresh and merge
 
-Refresh acquires remote discussion data and merges it into the local discussion already owned by the reader. It is not a replace-all import. A downloaded snapshot has less authority than the user's durable local state. This document specifies target behavior; no refresh service is implemented in the scaffold.
+Refresh acquires remote discussion data and merges it into the local discussion already owned by the reader. The database is an accumulating local history, not a replacement mirror of one extraction. A downloaded snapshot has less authority than the user's durable local state. Pure observations/adapters are implemented in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md); no acquisition or refresh/merge service is implemented.
 
 Read [how the application works](HOW_IT_WORKS.md) for the full journey, [extractors](EXTRACTORS.md) for adapter responsibilities, and [database design](DATABASE.md) for transaction boundaries.
 
@@ -18,7 +18,7 @@ Read [how the application works](HOW_IT_WORKS.md) for the full journey, [extract
 
 These guarantees also govern the first acquisition, where there is no existing discussion snapshot to merge into. The first successful acquisition establishes a local baseline: every imported comment receives `firstDiscoveredAt` and starts unseen, but the initial acquisition must not label its imported comments visually NEW. Comments first discovered in subsequent refreshes are eligible for NEW indicators. Marker lifetime/reset behavior remains unresolved.
 
-Whether a partial or unknown-completeness first extraction can establish that baseline depends on the unresolved acceptance policy. Do not silently call an uncertain result a successful baseline or decide how its accepted observations affect later NEW eligibility without resolving that policy.
+Valid partial/unknown observations are accepted as input, but their application outcome and first-baseline treatment remain unresolved. Do not silently decide how accepting them establishes a successful baseline or affects later NEW eligibility.
 
 ## Proposed processing path
 
@@ -29,12 +29,11 @@ flowchart TD
     C --> D[External helper produces raw output]
     D --> E[Adapter parses and normalizes observations]
     E --> F{Identity, shape and coverage validation}
-    F -->|Usable complete result| G[Prepare merge from normalized data]
+    F -->|Usable observations| G[Prepare non-destructive merge from normalized data]
     F -->|Failed or invalid| H[Record failure; retain prior snapshot]
-    F -->|Partial| I[Explicit partial or uncertain-result policy required]
-    F -->|Unknown completeness| I
-    I -->|Safe subset accepted by policy| G
-    I -->|Not accepted| H
+    F -->|Conflict or malformed relationships| I[Ingestion conflict policy still required]
+    I -->|Validated candidates accepted| G
+    I -->|Unusable| H
     G --> J[SQLite transaction reads current local state]
     J --> K[Insert new comments; optionally update eligible remote fields]
     K --> L[Record observations, discoveries and committed outcome]
@@ -45,7 +44,7 @@ flowchart TD
 
 Run the external process and parse/validate its output outside the write transaction. A helper may be slow or fail; it should not keep a database write transaction open for its whole lifetime. The exact orchestration and staging format remain implementation choices. The renderer receives typed progress/results rather than executable paths or raw SQL access.
 
-The partial and unknown-completeness branches deliberately describe an unresolved policy. Neither a successful process exit code nor receiving some parseable comments proves complete coverage. Adapter results need enough coverage information and diagnostics for the application to distinguish a known-complete result, a known-partial result, a result of unknown completeness and a failure without silently conflating them. Unknown completeness must not be promoted to complete merely because no explicit truncation was reported.
+Validated partial and unknown-completeness observations are acceptable non-destructive input; an entire discussion need not be proven complete. Neither a successful process exit nor parseable comments/count equality proves complete coverage. Adapter contracts distinguish unknown, known-partial with evidence, failed/unusable, and reserved complete with affirmative evidence. Current backends never emit complete. Conflict/orphan acceptance and baseline/history/reporting/view behavior still require design before persistence.
 
 ## Merge rules by field ownership
 
@@ -56,7 +55,7 @@ The partial and unknown-completeness branches deliberately describe an unresolve
 | Stored comment was observed again | Advance its last-observed information according to the accepted observation |
 | Stored comment is absent from this result | Keep the comment and its local state; do not advance its last-observed information |
 | Text or other remote metadata changes | May apply newer valid remote information without resetting seen or first discovery; mutation is not required on every refresh |
-| Incoming field is missing/unknown | Do not treat it as an explicit deletion or empty replacement without adapter semantics |
+| Incoming field is missing/unknown, lossy-default or unreliable | Preserve the existing useful field; only a positively observed meaningful value (including trustworthy empty/zero/false) can authorize a remote update |
 | Duplicate/conflicting identity or invalid structure | Validate and follow an explicit conflict policy; do not silently corrupt stored relationships |
 | Commit fails | Roll back discussion changes, including discoveries associated with the failed commit |
 
@@ -86,7 +85,7 @@ Publication time (`publishedAt`) answers when the comment was posted. First-disc
 
 Expected failure cases include helper absence, invocation failure, interruption, network failure, unsupported/private URLs, parse failure, malformed normalized data, partial pagination and database errors. Preserve the prior valid data and user state in all cases. Present localized context around useful raw diagnostics; see [localization](LOCALIZATION_AND_THEMING.md).
 
-The commit policy for partial output and unknown completeness remains open. Two possible policies are rejecting all discussion changes for that attempt, or accepting validated non-destructive observations transactionally and clearly reporting the actual coverage classification. Choosing the latter requires rules for field absence, parent relationships, observation timing and whether the observations are sufficient to update metadata. Neither policy permits deleting comments absent from the result or replacing a valid snapshot with an incomplete or uncertain one. A result of unknown completeness remains unknown even if selected observations are accepted.
+The owner accepts valid partial/unknown observations as input for a later safe non-destructive merge. The field-authority and direct-parent/thread-containment rules are explicit in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). This does not implement commits or settle which conflicting candidates are eligible, baseline implications, observation timing/history schema, or partial/unknown reporting and active-view behavior. Missing comments remain completely untouched, including last-observed data. Unknown completeness remains unknown when observations are accepted. Explicit trustworthy deletion evidence would need a future separate policy.
 
 Cancellation semantics, retries, helper timeouts, concurrent refreshes of the same content item and ordering of overlapping attempts remain unresolved. These choices must prevent older observations from accidentally overwriting a newer accepted snapshot and must preserve manual seen edits. Deterministic [tests](TESTING.md) should exercise the eventual policies.
 
@@ -96,10 +95,10 @@ After commit, the UI can report how many comments were first discovered and how 
 
 Remote Refresh remains separate from Apply changes / Update view. Apply uses already stored data and recomputes the active filter results; it must not invoke an extractor. A successful explicit remote Refresh safely merges the remote data and then automatically recomputes the active view, producing the next applied active-filter matching set. The user does not need a separate Apply action after that success.
 
-Seen edits alone preserve visible membership, ordering and the last applied active-filter matching set. Matching-only bulk actions continue to use that set until Apply or a successful explicit Refresh produces its replacement. Raw search matches and contextual comments do not define the target set. Failed refreshes must not masquerade as successful updates; view handling for accepted partial/uncertain outcomes belongs with their still-open acceptance policy. Exact scroll reconciliation, inactive-tab behavior, styling and supplementary live indicators remain design choices. See [seen state](SEEN_STATE.md) and [UI and navigation](UI_AND_NAVIGATION.md).
+Seen edits alone preserve visible membership, ordering and the last applied active-filter matching set. Matching-only bulk actions continue to use that set until Apply or a successful explicit Refresh produces its replacement. Raw search matches and contextual comments do not define the target set. Failed refreshes must not masquerade as successful updates; application reporting and view handling for partial/unknown outcomes remain open despite accepted observational input. Exact scroll reconciliation, inactive-tab behavior, styling and supplementary live indicators remain design choices. See [seen state](SEEN_STATE.md) and [UI and navigation](UI_AND_NAVIGATION.md).
 
 ## Required verification and decision points
 
 [Tests](TESTING.md) should use saved extractor fixtures and temporary databases to cover baseline imports that are unseen with first-discovery history but no visual NEW, subsequent late discovery, unchanged re-observation, eligible newer text, duplicate input, missing comments, failed extraction, partial output and unknown completeness under the selected policy, transaction rollback and an in-flight manual seen edit. Verify that successful explicit Refresh recomputes the active view and its applied matching set, while Apply invokes no extractor. A failed commit must leave neither partial comment changes nor false committed-discovery records.
 
-Before an increment accepts extracted comments into durable data, resolve source ID/collision handling, field-presence semantics, parent/malformed-tree handling and partial/uncertain-result acceptance, including its baseline implications. Resolve refresh concurrency/cancellation before enabling overlapping operations. NEW marker lifetime, detailed scroll reconciliation and explicit-tombstone behavior can be decided when their dependent features enter scope; they do not reopen the baseline or successful-Refresh behavior specified here. These are dependency notes, not a definition of the first implementation milestone. Record significant choices in [decision records](decisions/README.md).
+Observation identity, field authority, partial/unknown input acceptance and relationship evidence are settled in ADR 0003. Before durable ingestion, resolve identity constraints/collision arbitration, orphan/malformed-tree handling, merge/history storage and partial/unknown baseline/reporting implications. Resolve concurrency/cancellation before overlapping operations. NEW lifetime, scroll reconciliation and explicit tombstones remain separate future decisions; they do not reopen baseline or successful-Refresh requirements. Record significant choices in [decision records](decisions/README.md).

@@ -1,0 +1,33 @@
+{
+  "context": {
+    "provenance": {
+      "backend": "yt-dlp",
+      "version": "2026.08.19",
+      "fixture": {
+        "id": "yt-disabled",
+        "preparation": "reconstructed-sanitized"
+      },
+      "evidence": [
+        "Owner investigation of 2026-10-02.",
+        "Installed 2026.08.19 YouTube comment serializer verified."
+      ]
+    },
+    "commentsDisabled": true
+  },
+  "documentation": {
+    "origin": "Reconstructed sanitized fixture from verified backend format and owner investigation; original captures unavailable in repository.",
+    "behavior": "Null comments plus investigated-category side-channel comments-disabled evidence.",
+    "preserved": "Opaque identities/references, root sentinel, field types/presence, optional metadata, relative timestamp label, coverage category.",
+    "invocation": "ignore config/plugins; no playlist; skip download; single JSON; comments; bounded retries/timeout"
+  },
+  "raw": {
+    "id": "VidDemo_001",
+    "title": "Invented workshop — Żółw",
+    "description": "Invented description.\nDruga linia.",
+    "channel": "Example Creator",
+    "channel_id": "UC_DemoCreator",
+    "channel_url": "https://www.youtube.com/@example-creator",
+    "comment_count": null,
+    "comments": null
+  }
+}

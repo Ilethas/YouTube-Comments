@@ -1,6 +1,6 @@
 # Extractors and normalization
 
-This document specifies the target extraction boundary. No application adapter or extractor invocation is implemented in the current scaffold. Start with [How it works](HOW_IT_WORKS.md); the surrounding process boundary is described in [Architecture](ARCHITECTURE.md).
+Pure backend adapters, a source-independent observation contract, sanitized fixtures, and command-spec builders are implemented in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). Production process execution, acquisition/refresh orchestration, persistence ingestion and renderer acquisition remain targets. Start with [How it works](HOW_IT_WORKS.md); the surrounding process boundary is described in [Architecture](ARCHITECTURE.md).
 
 ## Supported acquisition targets
 
@@ -11,7 +11,27 @@ This document specifies the target extraction boundary. No application adapter o
 
 Channel-wide Community Post browsing, authenticated access, and member-only content are later possibilities, not requirements for the initial implementation. Posting, replying, likes, subscriptions, and account integration are outside the [product scope](PRODUCT_REQUIREMENTS.md).
 
-These backend names are requirements, not a claim that a particular installed version supports every desired metadata field or reliably reports extraction completeness. Before implementing an adapter, verify the selected backend version, its actual output, and its invocation against representative fixtures. No command flags or backend output schema are prescribed here.
+The investigated contracts are yt-dlp **2026.08.19** and post-archiver-improved **0.4.0**, executable `post-archiver` (upstream sadadYes/post-archiver-improved v0.4.0). The parsers intentionally accept these versions only. Neither ordinarily proves complete coverage. Future helper versions require fixture validation rather than assumed compatibility.
+
+## Implemented pure boundary
+
+| Module | Implemented responsibility |
+| --- | --- |
+| `src/domain/extraction-observation.ts` | Remote item/comment fields, source identity, field authority, publication precision, direct-parent versus thread containment, collection availability, coverage, provenance and issues. No local seen/discovery state or persistence DTOs. |
+| `src/main/extractors/yt-dlp.ts` | Parse single-video JSON, validate required IDs/text/collection structure, normalize root/direct-parent evidence and optional metadata. |
+| `src/main/extractors/community.ts` | Parse flattened archive JSON containing exactly one post; validate post/comment/reply shape and preserve nested thread containment. |
+| `src/main/extractors/invocation.ts` | Pure structured command descriptions, never process spawning or resolution. |
+| `src/main/extractors/__fixtures__` | Eleven deterministic saved examples with per-file provenance; [matrix and sanitization details](../src/main/extractors/__fixtures__/README.md). |
+
+Raw fields are read only inside the explicit adapters. Input is JSON text; adapters decode privately and never mutate caller data. Invalid required structure yields failed/unusable with no published item. Invalid optional metadata yields an unknown field and structured warning. Duplicates retain all candidates with occurrence diagnostics; missing/cyclic references are reported without repair. These candidate batches are not guaranteed complete stored trees, and must not be passed directly to the existing strict reader tree builder. Conflict/orphan ingestion policy remains open.
+
+yt-dlp preserves opaque IDs verbatim; literal parent `root` is top-level and other observed parent IDs are direct. Integer comment timestamps are coarse estimates; `_time_text` preserves the label evidence, and absent timestamps stay absent. Valid optional likes and explicit pin/creator booleans are observations, including zero/false. Post-fetch `comment_count` is not an authoritative remote total. Null/omitted comments are unavailable; a present empty array is distinct. Disabled status requires external evidence.
+
+Community `post_id` and comment IDs remain opaque. Replies in the nested archive prove thread/root containment, including under deeper nested test shapes; the verified format cannot prove their direct parent. Its `""`, `"0"`, false estimation flags and empty attachment lists cannot clear useful stored fields. Pinning/counts are unreliable; favorite/member/verified flags do not prove creator identity. Relative timestamps remain labels, never clock-derived instants. Images and links map to remote observations without local download paths or UI loading policy. No poll contract is introduced.
+
+Both adapters derive canonical YouTube item URLs explicitly from their source item ID, percent-encoding the ID as a query value/path segment. Author handles derive only from explicit HTTPS YouTube `/@handle` author URLs. Names never become identities. These adapter rules do not finalize all future URL input validation or database constraints.
+
+Command specs ignore config/plugins, disable playlists/media download, enable comments, request single JSON and require explicit finite retry/timeout inputs for yt-dlp. They use no unavailable-format tolerance flags. Community requires an individual post URL, comments, explicit output/config locations and comment/reply limits, with child-only `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`; broken `--quiet` is omitted. Builders neither create config files nor decide helper path precedence, overall process deadlines or distribution.
 
 ## Boundary and responsibilities
 
@@ -53,7 +73,7 @@ Adapters must return source-independent data as defined by the [domain model](DO
 - Evidence about the extraction attempt: backend identity/version where obtainable, when it ran, diagnostics, and whether the result is known to be complete, partial, failed, or of unknown completeness.
 - Enough information to distinguish a field that was supplied from a field that is unavailable, so absent optional metadata does not accidentally erase a previously useful value.
 
-This is a conceptual contract, not a finalized serialized shape. Availability differs by source and backend. Unknown values must remain unknown; do not invent timestamps, authors, parent records, or metadata to make a row look complete. The exact stable-ID namespace, handling of conflicting duplicate IDs, and representation of missing parents are decisions to settle with [tree construction](DOMAIN_MODEL.md) and fixture evidence.
+The observation shape is now explicit in `src/domain/extraction-observation.ts`. `ObservedField<T>` carries an observed value or unknown with an unavailable/lossy-default/unreliable/invalid/unsupported reason. Only trustworthy observed values, including meaningful empty/zero/false where supported, can authorize later remote updates. Do not invent timestamps, authors, parent records, or metadata. Source identity uses content kind/item/comment IDs independently of the executable. Observation diagnostics are implemented; final database uniqueness, duplicate arbitration and orphan/tree repair remain open.
 
 The adapter does not determine whether a comment is unseen or visually NEW. The merge service recognizes an existing comment by stable source identity, preserves its local state, and inserts a newly discovered comment as unseen. The first successful acquisition establishes the baseline: its comments have `firstDiscoveredAt` and start unseen, but do not receive visual NEW indicators. Comments first discovered by later refreshes are eligible for NEW independently of `publishedAt`; the indicator's lifetime remains unresolved. The adapter also does not decide that a comment missing from output has been deleted. See [Seen state](SEEN_STATE.md) and [Refresh and merge](REFRESH_AND_MERGE.md).
 
@@ -61,7 +81,7 @@ The adapter does not determine whether a comment is unseen or visually NEW. The 
 
 Process failure, malformed output, unsupported output versions, cancellation, and interrupted acquisition must be represented explicitly. Previously valid stored content must survive these outcomes. A zero exit status alone is not sufficient evidence that every comment was returned.
 
-Do not stream partially parsed records directly into the active stored snapshot without the protections required by the refresh policy. Validate and stage candidate data before a transaction changes the discussion. Failed refreshes must not publish a success state; the policy for accepting useful records from partial or uncertain results remains unresolved. Any permitted partial merge must preserve existing records and local state, and describe its limited coverage in refresh history. See the [transaction and partial-refresh policy](REFRESH_AND_MERGE.md).
+Do not stream partially parsed records directly into stored data. Valid partial/unknown observations are accepted as observational input for a later non-destructive transactional merge; missing records have no deletion meaning and unknown fields cannot clear existing values. Ordinary successful output stays unknown even if counts match. Known truncation/limits require specific capture/runner evidence outside JSON; current adapters never emit complete. Failed refreshes must not publish success. Conflict acceptance, baseline/history treatment and reporting/view behavior remain open. See [refresh and merge](REFRESH_AND_MERGE.md).
 
 Record useful diagnostics without presenting raw backend terminology as the only explanation to the user. Application context and recovery messages must be localized; raw extractor messages may be retained for diagnosis. See [Localization and theming](LOCALIZATION_AND_THEMING.md).
 
@@ -77,4 +97,4 @@ Bundling requires checking the actual redistribution licenses and obligations fo
 
 Adapter tests should use saved representative output fixtures, including unavailable metadata, malformed records, unexpected parent order, and partial output. Tests must prove that backend-specific types stop at the adapter boundary. Normal CI must not require network access or an installed extractor. Optional live checks are a separate suite; see [Testing](TESTING.md).
 
-Before implementation, resolve only the decisions needed by that increment and record the outcome in the [decision register](decisions/README.md): exact helper versions/invocations, normalized result representation, completeness evidence, partial-result acceptance, missing-parent handling, timeouts/cancellation/concurrency, fixture provenance, and diagnostic retention. Do not silently turn one backend's incidental behavior into a product guarantee.
+This pure milestone settles observation types, investigated versions/invocation intent, unknown/partial evidence and fixture provenance in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). Before live execution or ingestion, resolve only their needed remaining choices: resolver/version checks, safe config/output lifecycle, process failure/limits, timeouts/cancellation/concurrency, diagnostic retention, conflict/orphan acceptance, baseline/history and persistence semantics. Do not silently turn one backend's incidental behavior into a product guarantee.

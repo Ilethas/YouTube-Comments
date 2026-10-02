@@ -1,0 +1,143 @@
+{
+  "context": {
+    "provenance": {
+      "backend": "post-archiver-improved",
+      "version": "0.4.0",
+      "fixture": {
+        "id": "community-thread-a",
+        "preparation": "reconstructed-sanitized"
+      },
+      "evidence": [
+        "Owner investigation of 2026-10-02.",
+        "Installed 0.4.0 models.py/output.py serializers verified against upstream v0.4.0 investigation."
+      ]
+    }
+  },
+  "documentation": {
+    "origin": "Reconstructed sanitized fixture from verified backend format and owner investigation; original captures unavailable in repository.",
+    "behavior": "Nested replies, post image/link metadata, relative labels, unreliable pin/count fields.",
+    "preserved": "Flattened archive envelope, serializer field types/defaults, opaque identities/references, nested thread containment, attachment shape, coverage category.",
+    "invocation": "individual public post; comments; explicit output/config; UTF-8 child environment; no --quiet; max-comments=100; max-replies=200"
+  },
+  "raw": {
+    "channel_id": "post_UgkDemoPost_0123456789",
+    "scrape_date": "2026-10-02T10:00:00",
+    "scrape_timestamp": 1790935200,
+    "posts_count": 1,
+    "total_comments": 4,
+    "total_images": 1,
+    "images_downloaded": 0,
+    "config_used": {
+      "max_posts": "unlimited",
+      "extract_comments": true,
+      "max_comments_per_post": 100,
+      "max_replies_per_comment": 200,
+      "download_images": false,
+      "request_timeout": 20,
+      "max_retries": 2
+    },
+    "posts": [
+      {
+        "post_id": "UgkDemoPost_0123456789",
+        "content": "Invented Community update.\nCześć, świecie 🌍!",
+        "timestamp": "2 days ago",
+        "timestamp_estimated": true,
+        "likes": "7",
+        "comments_count": "0",
+        "members_only": false,
+        "author": "Example Post Creator",
+        "author_id": "UC_DemoCreator",
+        "author_url": "https://www.youtube.com/@example-creator",
+        "author_thumbnail": "",
+        "author_is_verified": false,
+        "author_is_member": false,
+        "images": [
+          {
+            "src": "https://example.invalid/post-image.png",
+            "local_path": null,
+            "width": 640,
+            "height": 480,
+            "file_size": null
+          }
+        ],
+        "links": [
+          {
+            "text": "Invented resource",
+            "url": "https://example.invalid/resource"
+          }
+        ],
+        "comments": [
+          {
+            "id": "Ug.thread:01",
+            "text": "Invented top-level text.",
+            "like_count": "4",
+            "timestamp": "3 hours ago",
+            "timestamp_estimated": true,
+            "author_id": "UC_DemoC",
+            "author": "Example C",
+            "author_thumbnail": "",
+            "author_is_verified": false,
+            "author_is_member": false,
+            "author_url": "",
+            "is_favorited": false,
+            "is_pinned": true,
+            "reply_count": "0",
+            "replies": [
+              {
+                "id": "Ug.reply:02",
+                "text": "Odpowiedź.\nDruga linia.",
+                "like_count": "0",
+                "timestamp": "",
+                "timestamp_estimated": true,
+                "author_id": "UC_DemoD",
+                "author": "Example D",
+                "author_thumbnail": "",
+                "author_is_verified": false,
+                "author_is_member": false,
+                "author_url": "",
+                "is_favorited": false,
+                "is_pinned": false,
+                "reply_count": "0",
+                "replies": []
+              },
+              {
+                "id": "Ug.reply:03",
+                "text": "Another reply.",
+                "like_count": "0",
+                "timestamp": "",
+                "timestamp_estimated": true,
+                "author_id": "",
+                "author": "",
+                "author_thumbnail": "",
+                "author_is_verified": false,
+                "author_is_member": false,
+                "author_url": "",
+                "is_favorited": false,
+                "is_pinned": false,
+                "reply_count": "0",
+                "replies": []
+              }
+            ]
+          },
+          {
+            "id": "Ug.thread:04",
+            "text": "Second invented thread.",
+            "like_count": "0",
+            "timestamp": "",
+            "timestamp_estimated": true,
+            "author_id": "",
+            "author": "",
+            "author_thumbnail": "",
+            "author_is_verified": false,
+            "author_is_member": false,
+            "author_url": "",
+            "is_favorited": false,
+            "is_pinned": false,
+            "reply_count": "0",
+            "replies": []
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -2,7 +2,7 @@
 
 This is the persistent specification for a YouTube discussion inbox/reader. The repository includes the synthetic Electron/React reader and its SQLite persistence milestone: main-owned discussions and manual seen state, durable English/Polish and System/Light/Dark preferences, ordered migrations, isolated profiles, and a typed validated preload API. Development/demo initialization still uses only synthetic data. Acquisition, refresh, filtering, workspace restoration, virtualization, and the overview ruler remain targets. See [the foundation ADR](decisions/0001-synthetic-reader-foundation.md), [persistence ADR](decisions/0002-sqlite-and-typed-reader-boundary.md), and [verification status](TESTING.md).
 
-The initial product targets Windows and one active discussion at a time for normal search/filtering and generic bulk actions. Core search and the overview ruler are required target features. The owner's clarified decisions are recorded under [accepted foundations](decisions/README.md); remaining questions do not reopen those decisions.
+Pure extractor observation contracts, backend-specific parsers, command descriptions and sanitized deterministic fixtures are implemented in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). They have no live process, SQLite ingestion, preload or renderer integration. The initial product targets Windows and one active discussion at a time for normal search/filtering and generic bulk actions. Core search and the overview ruler remain required targets. The owner's clarified decisions are under [accepted foundations](decisions/README.md); remaining questions do not reopen them.
 
 ## Reading paths
 
