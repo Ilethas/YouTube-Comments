@@ -1,6 +1,7 @@
 import type { CommentNode } from '../domain/discussion';
 import { demoNewCommentIds, demoNow } from '../shared/demo-presentation';
 import { Locale, publicationTime, translator } from './i18n';
+import { Avatar } from './Avatar';
 
 interface Props {
   nodes: readonly CommentNode[];
@@ -18,14 +19,15 @@ export function CommentTree({ nodes, locale, disabled, onToggle, now = demoNow }
       const time = comment.publishedAt ? publicationTime(comment.publishedAt, locale, now) : undefined;
       return <li key={comment.id}>
         <article className={`comment ${comment.seen ? 'is-seen' : 'is-unseen'}`} aria-label={author}>
-          <div className="avatar" aria-hidden="true">{author.slice(0, 1).toLocaleUpperCase(locale)}</div>
+          <Avatar url={comment.author?.avatarUrl} author={author} locale={locale} />
           <div className="comment-body">
             <div className="comment-byline">
               <strong>{author}</strong>
               {comment.author?.handle && <span className="muted">{comment.author.handle}</span>}
               {comment.isCreator && <span className="badge">{t('creator')}</span>}
               {comment.isPinned && <span className="badge">{t('pinned')}</span>}
-              {time ? <time dateTime={comment.publishedAt} title={time.exact} tabIndex={0} aria-label={time.exact}>{time.relative}</time> : <span className="muted">{t('unknownTime')}</span>}
+              {time ? <time dateTime={comment.publishedAt} title={time.exact} tabIndex={0} aria-label={time.exact}>{time.relative}</time>
+                : <span className="muted">{comment.publication?.label.status === 'observed' ? comment.publication.label.value : t('unknownTime')}</span>}
             </div>
             <p className="comment-text">{comment.text}</p>
             <div className="comment-meta">

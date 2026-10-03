@@ -56,7 +56,8 @@ function field<T>(old: ObservedField<T> | undefined, incoming: ObservedField<T>)
   return incoming.status === 'observed' ? incoming : old ?? incoming;
 }
 function author(old: AuthorObservation | undefined, incoming: AuthorObservation): AuthorObservation {
-  return { sourceId: field(old?.sourceId, incoming.sourceId), displayName: field(old?.displayName, incoming.displayName), handle: field(old?.handle, incoming.handle) };
+  return { sourceId: field(old?.sourceId, incoming.sourceId), displayName: field(old?.displayName, incoming.displayName), handle: field(old?.handle, incoming.handle),
+    avatarUrl: field(old?.avatarUrl, incoming.avatarUrl) };
 }
 /** Precision belongs to each observed instant/label, never its serialized number format.
  * Retained evidence survives unknown fields; a newly observed instant uses its supplied

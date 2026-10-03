@@ -1,5 +1,6 @@
 import type { Comment, ContentItem } from '../domain/discussion';
 import type { Appearance, Locale, Preferences } from './preferences';
+import type { WorkspaceState } from '../domain/workspace';
 
 export type ErrorCode = 'INVALID_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA'
   | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'HELPER_INCOMPATIBLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE';
@@ -11,6 +12,7 @@ export interface ReaderState {
   readonly items: readonly ContentItem[];
   readonly comments: Readonly<Record<string, readonly Comment[]>>;
   readonly preferences: Preferences;
+  readonly workspace: WorkspaceState;
 }
 export interface ToggleSeenRequest {
   readonly itemId: string;
@@ -35,11 +37,15 @@ export interface ReaderApi {
   updatePreferences(change: PreferenceChange): Promise<Result<Preferences>>;
   acquire(request: AcquireRequest): Promise<Result<AcquisitionResult>>;
   refresh(request: RefreshRequest): Promise<Result<AcquisitionResult>>;
+  openStoredItem(request: RefreshRequest): Promise<Result<WorkspaceState>>;
+  activateTab(request: RefreshRequest): Promise<Result<WorkspaceState>>;
+  closeTab(request: RefreshRequest): Promise<Result<WorkspaceState>>;
 }
 
 export const readerChannels = {
   bootstrap: 'reader:bootstrap', toggleSeen: 'reader:toggle-seen', updatePreferences: 'reader:preferences',
   acquire: 'reader:acquire', refresh: 'reader:refresh',
+  openStoredItem: 'reader:open-stored-item', activateTab: 'reader:activate-tab', closeTab: 'reader:close-tab',
 } as const;
 export type ReaderOperation = keyof typeof readerChannels;
 

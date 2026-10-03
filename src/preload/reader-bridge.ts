@@ -9,5 +9,8 @@ export function createReaderBridge(invoke: (channel: string, ...args: unknown[])
     updatePreferences: change => invoke(readerChannels.updatePreferences, change) as ReturnType<ReaderApi['updatePreferences']>,
     acquire: request => invoke(readerChannels.acquire, request) as ReturnType<ReaderApi['acquire']>,
     refresh: request => invoke(readerChannels.refresh, request) as ReturnType<ReaderApi['refresh']>,
+    openStoredItem: request => invoke(readerChannels.openStoredItem, request) as ReturnType<ReaderApi['openStoredItem']>,
+    activateTab: request => invoke(readerChannels.activateTab, request) as ReturnType<ReaderApi['activateTab']>,
+    closeTab: request => invoke(readerChannels.closeTab, request) as ReturnType<ReaderApi['closeTab']>,
   } satisfies ReaderApi);
 }

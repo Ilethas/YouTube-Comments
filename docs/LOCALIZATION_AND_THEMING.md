@@ -4,6 +4,14 @@ English and Polish UI localization and System/Light/Dark appearance are implemen
 
 ## Interface language
 
+ADR 0006 adds stable English/Polish labels for Library/reopen, close-tab accessible
+names, empty workspace, URL reveal/cancel and description expansion. Helper errors
+refer to executable override or PATH without exposing paths. Compact comments
+retain semantic theme tokens, visible keyboard focus, checkboxes and text UNSEEN
+badges; state is not color-only. Avatars are decorative beside the author label and
+fall back to initials. Remote Community publication labels remain original source
+text, independently of UI language. No search/filter behavior is added.
+
 Support at least English (`en`) and Polish (`pl`). Use stable, language-independent translation keys for user-facing application strings. Do not scatter English literals through React components and later treat them as the localization system.
 
 On first run, use a supported operating-system locale where practical and otherwise fall back to English. Let the user explicitly select a language and persist that preference in the application's durable settings. Apply language changes without an application restart where practical. An explicit saved choice takes precedence over first-run detection.

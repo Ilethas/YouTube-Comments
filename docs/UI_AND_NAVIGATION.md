@@ -1,10 +1,33 @@
 # UI and navigation
 
-This document describes the intended desktop reader. The synthetic reader demonstrates two pre-opened discussion tabs, item headers, nested replies, optional metadata, publication times, manual checkboxes, and separate UNSEEN/NEW examples. Counts cover all stored comments in each demo discussion. Panels retain session scroll positions; seen state now persists in main-owned SQLite through acknowledged typed IPC and changes only by checkbox actions. Loading/error presentation avoids showing fixture state before bootstrap; failed saves retain the last acknowledged snapshot. Language/appearance also persist. Live URL acquisition and real-item Refresh now exist in [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md). There is no saved workspace, tab closing, search/filtering, virtualization, or ruler yet. Tab selection/scroll still reset on restart; Q-10 remains open. Fixed NEW examples do not settle marker lifetime. See [ADR 0001](decisions/0001-synthetic-reader-foundation.md) and [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md). Read the [product requirements](PRODUCT_REQUIREMENTS.md) for scope, [how it works](HOW_IT_WORKS.md) for the complete flow, and [filtering and search](FILTERING_AND_SEARCH.md) for what a displayed result means.
+The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Search/filtering, virtualization and the ruler are absent. Counts cover all stored comments of the discussion; synthetic fixed NEW examples do not settle marker lifetime. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
 
 Windows is the initial target platform. Other platform support is a later possibility; see [packaging](PACKAGING.md).
 
 ## Implemented acquisition controls
+
+[ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md) implements the next
+bounded workspace increment: one compact toolbar, on-demand URL input, Library
+popover and compact horizontally scrolling closable tabs. Local-storage/coverage
+details sit in the item header; progress is transient and failure remains visible.
+Video descriptions show two preview lines with Show/Hide description; their full
+stored contents are unchanged. Community bodies and source publication labels are
+readable. Compact comments use 32px avatars, bylines, metadata and reply indentation,
+with textual UNSEEN and explicit checkboxes. English/Polish and all themes remain.
+
+Library lists all stored items with video titles or post author/body previews.
+Selecting an item opens/activates one tab. Closing a background tab preserves active;
+closing active chooses right, otherwise left, otherwise an empty workspace with
+Library/Add controls. Nothing is deleted. SQLite persists open IDs/order/active ID;
+restart restores these only. Acquisition opens its item, Refresh preserves tab
+state, and response revisions protect newer workspace actions. Arrow keys/Home/End
+activate/focus tabs; close is a separate accessible button. No persistent scroll,
+filters, expansion or complete workspace restoration is claimed.
+
+Avatars use only usable HTTPS URLs, anonymous CORS, no-referrer, lazy loading,
+async decoding and fixed dimensions. Empty alt text avoids duplicating the byline;
+load/CORS failure falls back to initials. There is no image cache or authenticated
+loading, and source text never becomes HTML/SVG markup.
 
 The compact URL form accepts supported public video/individual-post URLs; Enter
 and Add / Open submit. Main validates/canonicalizes the target. Successful
@@ -26,7 +49,8 @@ save/acquisition responses without overwriting newly merged membership/remote te
 
 Use browser-like tabs for opened YouTube videos and individual Community Posts. The principal loop is **acquire → persist → refresh → identify what changed → read in context → manually mark processed → search/filter/navigate**. This is a persistent discussion inbox, so reopening the application must restore useful reading state instead of discarding it like a temporary download.
 
-Each tab independently remembers at least the following kinds of state:
+Beyond the implemented item IDs/order/active selection, the target for later
+independent per-tab view restoration includes the following state:
 
 | State | Purpose |
 | --- | --- |
@@ -37,7 +61,7 @@ Each tab independently remembers at least the following kinds of state:
 | Expanded/collapsed replies | Preserve how much of each conversation is revealed. |
 | Selected/navigation comment | Restore the current location for keyboard reading. |
 
-Tabs and useful view state survive restart through the application's durable storage, not localStorage. Seen state belongs to comments in the shared database, not to a tab. Two tabs referring to the same comment must not create two independent seen states. The policy for opening duplicate tabs is unresolved.
+Open item IDs, tab order and active ID now survive restart through SQLite. The additional useful view state in the table above remains a target. Seen belongs to shared comments, not tabs. Opening an already open item activates its single existing tab; reopening a closed item reuses its stored identity/state.
 
 Saving a stable comment anchor with an offset is a candidate for resilient scroll restoration when row heights or data change; the exact storage format and fallback when an anchor is unavailable are undecided. Persisting all ephemeral query result IDs across restart is not required by the current specification. The policy for restoring a view that had pending recomputation must be decided. See [database](DATABASE.md) and [seen state](SEEN_STATE.md).
 
@@ -49,7 +73,7 @@ The discussion should resemble YouTube's familiar comment/reply structure while 
 
 The design should accommodate an avatar, author/display name/handle, comment text, relative publication time, exact timestamp on hover or in details, like count, pinned status, uploader/creator indication, nested replies, a seen checkbox, and permalink/copy actions. Some source fields may be absent. Their absence must not be displayed as a fabricated value, and the initial exact field layout remains a UI decision.
 
-Rendering external content must respect the [Electron security boundary](ARCHITECTURE.md). Do not treat comment text or extractor output as trusted application markup. Avatar loading/caching, external-link opening, and supported text formatting need explicit policies before implementation.
+Rendering external content respects the [Electron security boundary](ARCHITECTURE.md). Remote text remains React text. ADR 0006 selects anonymous HTTPS avatars with fallback and no application cache; external-link opening and richer formatting remain open.
 
 Relative times and numbers use the chosen display locale; exact timestamps must remain discoverable. [Localization and theming](LOCALIZATION_AND_THEMING.md) describes live language/theme changes and semantic visual tokens.
 

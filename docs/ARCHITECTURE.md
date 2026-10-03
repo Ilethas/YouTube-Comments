@@ -12,8 +12,22 @@ Initial development and packaging target Windows. Platform integrations should a
 
 ## Live acquisition implementation
 
+[ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md) adds separate
+SQLite workspace tables and exact open/activate/close intents. ReaderState contains
+library data plus a compact ordered workspace DTO. Tab writes return workspace
+only and never mutate discussion/seen/history. Successful Acquire opens within the
+merge transaction; Refresh preserves workspace. A persisted workspace revision
+lets React reject older acknowledgments independently of seen reconciliation.
+Only tab IDs/order/active ID restore; view scroll/filter/expansion remain future.
+
+Author avatar evidence flows adapter → normalized remote JSON → source-independent
+Author → decorative anonymous HTTPS image/fallback. Older JSON defaults missing
+avatar evidence to unavailable in memory. CSP permits HTTPS images without relaxing
+script/process access. Main snapshots exact executable overrides before direct PATH
+lookup; values and paths never cross preload. See [Extractors](EXTRACTORS.md).
+
 `acquisition-target.ts` owns supported URL validation/canonicalization;
-`helper-process.ts` owns injectable PATH lookup and no-shell asynchronous spawning;
+`helper-process.ts` owns startup override/direct PATH lookup and no-shell asynchronous spawning;
 `live-extraction.ts` probes pinned versions, builds trusted commands, owns anonymous
 Community temporary config/output, enforces deadlines and normalizes before writes.
 `acquisition-service.ts` coordinates the temporary single-live-operation lock,
@@ -26,7 +40,8 @@ Successful acquire/refresh returns committed ReaderState plus item/coverage/coun
 summary. Existing seen state is never written by merge, including edits made
 while extraction runs. Structured fixed diagnostic tokens enter existing attempt
 history; full stderr/public payloads do not. See ADR 0005 for the Windows process
-tree termination, PATH-only development limitations and unresolved release work.
+tree termination and unresolved release work; ADR 0006 extends helper resolution
+with exact startup overrides.
 
 ## Required process boundary
 
@@ -59,7 +74,7 @@ flowchart TB
 
 The privilege boundary is renderer -> typed preload/contextBridge API -> privileged application backend owned by the Electron main side -> persistence/extractors. The renderer never directly owns or accesses SQLite and receives no generic Node, filesystem, SQL, shell, or process-launch capability. The main-side backend may later delegate database work to an internal worker if justified; that is an implementation decision within the same privilege boundary. Extractor processes are invoked only by Electron main. Backend output is untrusted data, not executable UI content.
 
-Implemented IPC maintains context isolation and disabled renderer Node integration, validates exact payload shapes and allowed senders, and limits commands to bootstrap, manual seen changes, preferences, acquire({url}) and refresh({itemId}). Only the owning window's top-level expected document is accepted. TypeScript types do not replace validation at process boundaries. Stable structured error codes support localized failure context while driver diagnostics stay on main; broader request-ID/diagnostic policy is future work.
+Implemented IPC maintains context isolation and disabled renderer Node integration, validates exact payload shapes/arity and allowed senders, and exposes bootstrap, manual seen changes, preferences, acquire({url}), refresh({itemId}), openStoredItem({itemId}), activateTab({itemId}) and closeTab({itemId}). Only the owning window's top-level expected document is accepted. TypeScript does not replace runtime validation. Stable error codes support localized failure context; broader request-ID/diagnostic policy remains future work.
 
 The bridge should express intent such as opening an item, querying comments, setting seen state for a validated scope, refreshing, or persisting tab preferences. These are conceptual operations, not finalized method signatures. Main resolves and validates identities, scope, executable selection, and arguments. Do not expose a generic `execute(command)`, `query(sql)`, or unrestricted IPC forwarding API. Permalink opening and copy actions also use appropriately constrained application capabilities. Detailed sandbox/CSP/navigation policy and API contracts must be finalized with the relevant implementation increment.
 

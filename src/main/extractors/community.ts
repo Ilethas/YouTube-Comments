@@ -1,5 +1,5 @@
 import type { AuthorObservation, CommentObservation, ContentObservation, ImageObservation, LinkObservation, NormalizationIssue, NormalizedExtraction, ObservedField, PublicationObservation } from '../../domain/extraction-observation';
-import { authorHandle, booleanValue, canonicalUrl, countValue, coverage, decode, failed, field, identity, object, observed, relationshipIssues, stringValue, unknown } from './normalization';
+import { avatar, authorHandle, booleanValue, canonicalUrl, countValue, coverage, decode, failed, field, identity, object, observed, relationshipIssues, stringValue, unknown } from './normalization';
 import type { CaptureContext } from './normalization';
 
 function text(value: unknown, location: string, issues: NormalizationIssue[]): ObservedField<string> {
@@ -8,9 +8,12 @@ function text(value: unknown, location: string, issues: NormalizationIssue[]): O
 
 function count(value: unknown, location: string, issues: NormalizationIssue[]): ObservedField<number> {
   if (value === undefined || value === null) return unknown();
-  if (value === '0') return unknown('lossy-default');
+  if (value === '0' || value === '0 likes') return unknown('lossy-default');
   // No suffix/locale guessing for abbreviated counts such as 1.2K.
-  if (typeof value === 'string' && /^[1-9][0-9]*$/.test(value) && countValue(Number(value))) return observed(Number(value));
+  // Verified anonymous 0.4.0 recapture: comment likeCountA11y is "N like(s)".
+  // Accept only that exact English grammar, without locale/suffix guessing.
+  const match = typeof value === 'string' ? /^([1-9][0-9]*)(?: likes?)?$/.exec(value) : null;
+  if (match && countValue(Number(match[1]))) return observed(Number(match[1]));
   issues.push({ code: 'invalid-field', severity: 'warning', location });
   return unknown('invalid');
 }
@@ -20,6 +23,7 @@ function author(raw: Record<string, unknown>, location: string, issues: Normaliz
     sourceId: raw.author_id === '' ? unknown('lossy-default') : field(raw.author_id, identity, `${location}.authorIdentity`, issues),
     displayName: raw.author === '' ? unknown('lossy-default') : field(raw.author, identity, `${location}.authorName`, issues),
     handle: authorHandle(raw.author_url),
+    avatarUrl: avatar(raw.author_thumbnail, `${location}.avatarUrl`, issues),
   };
 }
 

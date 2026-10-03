@@ -3,12 +3,15 @@ export type { Locale } from '../shared/preferences';
 import type { Locale } from '../shared/preferences';
 
 const en = {
+  library: 'Library', openStored: 'Open stored discussion', openUrl: 'Open URL', cancel: 'Cancel',
+  closeTab: 'Close tab: {title}', emptyWorkspace: 'No open tabs', reopenHelp: 'Your discussions are still saved. Open one from Library or add a YouTube URL.',
+  showMore: 'Show description', showLess: 'Hide description', savedShort: 'Saved locally', coverageShort: 'Coverage limited / unknown',
   sourceUrl: 'YouTube URL', urlPlaceholder: 'Public video or individual Community Post URL', acquire: 'Add / Open', refresh: 'Refresh',
   acquiring: 'Acquiring… You can keep reading and marking comments.', refreshing: 'Refreshing… You can keep reading and marking comments.',
   coverageNotice: 'Discussion saved. Some comments may not have been returned by YouTube.',
   localNotice: 'Stored on this device · Seen state is changed only by you.',
   invalidUrl: 'Enter a supported HTTPS YouTube video or individual Community Post URL.',
-  helperUnavailable: 'The required development helper (yt-dlp or post-archiver) is unavailable on PATH. Windows requires an .exe helper.',
+  helperUnavailable: 'The required development helper is unavailable. Check its executable override or PATH. Windows requires a direct .exe file.',
   helperIncompatible: 'The helper version could not be verified as supported. This build requires yt-dlp 2026.08.19 or post-archiver 0.4.0.',
   acquisitionFailed: 'The discussion could not be acquired. Stored comments are unchanged. Check the connection and try again.',
   acquisitionBusy: 'Another acquisition is already running. Wait for it to finish.',
@@ -31,12 +34,15 @@ const en = {
 };
 type Key = keyof typeof en;
 const pl: Record<Key, string> & Record<string, string> = {
+  library: 'Biblioteka', openStored: 'Otwórz zapisaną dyskusję', openUrl: 'Otwórz adres', cancel: 'Anuluj',
+  closeTab: 'Zamknij kartę: {title}', emptyWorkspace: 'Brak otwartych kart', reopenHelp: 'Twoje dyskusje są nadal zapisane. Otwórz jedną z Biblioteki lub dodaj adres YouTube.',
+  showMore: 'Pokaż opis', showLess: 'Ukryj opis', savedShort: 'Zapisano lokalnie', coverageShort: 'Zakres ograniczony / nieznany',
   sourceUrl: 'Adres YouTube', urlPlaceholder: 'Adres publicznego filmu lub pojedynczego postu społeczności', acquire: 'Dodaj / Otwórz', refresh: 'Odśwież',
   acquiring: 'Pobieranie… Możesz nadal czytać i oznaczać komentarze.', refreshing: 'Odświeżanie… Możesz nadal czytać i oznaczać komentarze.',
   coverageNotice: 'Dyskusja zapisana. YouTube mógł nie zwrócić wszystkich komentarzy.',
   localNotice: 'Zapisane na tym urządzeniu · Tylko Ty zmieniasz stan przeczytania.',
   invalidUrl: 'Podaj obsługiwany adres HTTPS filmu YouTube lub pojedynczego postu społeczności.',
-  helperUnavailable: 'Wymagany program pomocniczy (yt-dlp lub post-archiver) jest niedostępny w PATH. Windows wymaga pliku .exe.',
+  helperUnavailable: 'Wymagany program pomocniczy jest niedostępny. Sprawdź jego ścieżkę w konfiguracji lub PATH. Windows wymaga bezpośredniego pliku .exe.',
   helperIncompatible: 'Nie udało się potwierdzić obsługiwanej wersji programu. Wymagane są yt-dlp 2026.08.19 lub post-archiver 0.4.0.',
   acquisitionFailed: 'Nie udało się pobrać dyskusji. Zapisane komentarze pozostały bez zmian. Sprawdź połączenie i spróbuj ponownie.',
   acquisitionBusy: 'Trwa już inne pobieranie. Poczekaj na jego zakończenie.',

@@ -1,4 +1,5 @@
 import type { CommentObservation, ContentSourceKind, ExtractionProvenance, NormalizationIssue, NormalizedExtraction, ObservedField } from '../../domain/extraction-observation';
+import { isHttpsImageUrl } from '../../domain/remote-image';
 
 /** Trusted side-channel evidence; raw helper JSON has no reliable coverage status. */
 export interface CaptureContext {
@@ -32,6 +33,10 @@ export function field<T>(value: unknown, valid: (value: unknown) => value is T, 
 export const stringValue = (value: unknown): value is string => typeof value === 'string';
 export const countValue = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 export const booleanValue = (value: unknown): value is boolean => typeof value === 'boolean';
+
+export function avatar(value: unknown, location: string, issues: NormalizationIssue[]): ObservedField<string> {
+  return value === '' ? unknown('lossy-default') : field(value, isHttpsImageUrl, location, issues);
+}
 
 /** Explicit YouTube adapter rule. An unencodable identity remains opaque and observed;
  * only its derived URL becomes unavailable, rather than throwing on malformed Unicode. */

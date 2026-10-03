@@ -23,6 +23,29 @@ export interface ProcessOutcome {
 export type ExecuteProcess = (request: ProcessRequest) => Promise<ProcessOutcome>;
 export type ResolveHelper = (name: HelperName) => Promise<string | undefined>;
 
+export const helperOverrideVariables = {
+  'yt-dlp': 'YOUTUBE_COMMENTS_YTDLP_EXE',
+  'post-archiver': 'YOUTUBE_COMMENTS_POST_ARCHIVER_EXE',
+} as const;
+
+/** Main startup configuration wins over PATH. A configured invalid path fails closed
+ * as unavailable, including empty/relative/directory/batch paths; never fallback.
+ * Selection is not trust: live extraction must still probe the selected binary. */
+export function createHelperResolver(environment: NodeJS.ProcessEnv = process.env, platform = process.platform): ResolveHelper {
+  const startup = { ...environment };
+  return async name => {
+    const override = startup[helperOverrideVariables[name]];
+    if (override === undefined) return resolvePathHelper(name, startup, platform);
+    const root = path.parse(override).root;
+    if (!path.isAbsolute(override) || (platform === 'win32' && (path.extname(override).toLowerCase() !== '.exe'
+      || (process.platform === 'win32' && (root === '\\' || root === '/'))))) return undefined;
+    try {
+      await access(override, platform === 'win32' ? constants.F_OK : constants.X_OK);
+      return (await stat(override)).isFile() ? override : undefined;
+    } catch { return undefined; }
+  };
+}
+
 /** Development PATH lookup only. Windows requires .exe: batch wrappers need a shell.
  * Skip empty/relative PATH entries, so the application working directory is not a helper source. */
 export async function resolvePathHelper(name: HelperName, environment = process.env, platform = process.platform): Promise<string | undefined> {

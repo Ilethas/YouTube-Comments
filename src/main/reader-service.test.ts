@@ -5,6 +5,14 @@ import { MissingCommentError } from './persistence/reader-repository';
 import type { ReaderRepository } from './persistence/reader-repository';
 
 const failedOpen = () => { throw new Error('private path/diagnostic'); };
+it.each(['closeTab', 'activateTab', 'openStoredItem'] as const)('validates exact %s payload/arity before touching storage', operation => {
+  const service = new ReaderService(failedOpen, ['en'], vi.fn());
+  for (const payload of [null, [], {}, { itemId: '' }, { itemId: 'a', executable: 'evil' }, { itemId: 'a', position: 0 }, { itemId: 'a\0' }]) {
+    expect(service.dispatch(operation, [payload])).toEqual({ ok: false, error: { code: 'INVALID_REQUEST' } });
+  }
+  expect(service.dispatch(operation, [])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
+  expect(service.dispatch(operation, [{ itemId: 'a' }, {}])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
+});
 it.each([
   null, undefined, [], {}, { itemId: 'video-demo', commentId: 'v1', subtree: 'true' },
   { itemId: '', commentId: 'v1', subtree: false },

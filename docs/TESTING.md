@@ -1,6 +1,72 @@
 # Testing strategy
 
-Automated testing is a product requirement. Vitest covers domain/localization, components, temporary SQLite, IPC/bridge/sender validation, adapters/specs and injected live-style processes/workspaces. [ADR 0004](decisions/0004-durable-observation-merge.md) owns merge/history; [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) adds live acquisition/refresh and minimal UI. Search, backup and workspace restoration remain unimplemented.
+Automated testing is a product requirement. Vitest covers domain/localization, components, temporary SQLite, IPC/bridge/sender validation, adapters and injected processes. [ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md) adds compact reading, avatars, helper overrides and bounded tab persistence. Search, backup, persisted scroll/filter/expansion and full view restoration remain unimplemented.
+
+## Compact reader/workspace verification (2026-10-03)
+
+- `npm test`: **214 deterministic tests pass in 16 suites**, offline without helpers,
+  Python or network. Added coverage includes avatar extraction/URL safety/lossy
+  preservation/newer updates/old JSON and image fallback; populated schema-2→3
+  preserving migration/rollback; open/close/restart/order/active/empty behavior;
+  Library reopen/same-item reacquisition/seen-history protection; failed tab writes;
+  compact URL reveal/hide/submit, descriptions, accessible close controls and stale
+  workspace responses; exact workspace IPC shapes; override precedence/invalid paths,
+  startup snapshot, pinned probes and unchanged no-shell execution; verified English
+  like labels and the retained protocol-relative post-avatar warning.
+- Typecheck and lint pass without warnings. Renderer-only build and Forge production
+  main/preload/renderer bundle checks pass. Forge again exits 0 at finalizing without
+  a completed executable; this milestone makes no packaged release claim.
+- `npm run test:electron` passes writes plus **two real process restarts**, schema 3,
+  eight-method isolated bridge, tab close/Library reopen/order/active identity and
+  closed discussion preservation, as well as the prior seen/preferences/security
+  checks. Fake helpers and avatar omission keep this smoke check offline; no
+  fake-execution switch is shipped in product code. The known shutdown GPU diagnostic
+  remains nonfatal. esbuild/GPU subprocess checks need Windows sandbox escalation.
+
+### Separate development/live checks
+
+The real `npm.cmd start` app launched with exact yt-dlp/post-archiver executable
+overrides, the owner's PATH unchanged, and a disposable OS-temp development root.
+An initial test profile inside the repository triggered Vite watching locked
+Chromium cache files; moving that verification profile outside the watched tree
+resolved it without a product/configuration change. Neither real development nor
+production user data was migrated/modified by these checks.
+
+The optional [live reader harness](../scripts/verify-live-reader.cjs) exercises the
+real Forge-built entry and UI in a separately owned temporary profile, with no fake
+process injection and no Python Scripts PATH addition. It verified live video
+acquisition, avatar loading and forced-error fallback, description expansion,
+manual seen saving, Refresh preserving avatar/seen/tab identity, tab close/reopen
+through Library, closed Community retention, and active/order/seen restoration after
+a real restart. Layout was inspected locally at 1680×900; the first video comment
+began about 320px down. This is a scripted live UI exercise plus visual inspection,
+not a claim of an exhaustive hand-operated native UI acceptance pass.
+
+Final live acquisition/Refresh outcomes through the real bridge:
+
+| Source | Stored comments / supplied commenter avatars | Acquire / Refresh adapter issues | Workspace/state |
+| --- | --- | --- | --- |
+| Video IFPKfypw2CQ | 154 / 154 | 0 / 0; coverage stays partial from helper warning evidence | Avatar/seen/active ID preserved; close/Library reopen uses same item |
+| Community UgkxLEL8EllifRA8ZLoEkkTXSJaa0s_cWf6n | 34 / 34 | 1 / 1: `invalid-field $.item.avatarUrl` (protocol-relative post-author URL) | Seen/active ID preserved; closed item remains in Library |
+
+The earlier Community profile was unavailable. A metadata-only recapture showed
+all 34 comment likes as integer English accessibility labels; the old parser's
+integer-only grammar explains the systematic `invalid-field` comment `.likes`
+warnings. The corrected grammar removes those 34 warnings while retaining the
+one newly modeled post-avatar warning. Counts/zero exit never prove completeness.
+A real restart restored three open tabs, four library items and the marked video
+comment; the closed Community item remained listed in Library.
+
+All temporary
+normalized profiles/archives are removed; no raw public dump or real source name/
+avatar URL is added to fixtures. The layout screenshot is a local ignored artifact.
+Normal test commands do not run this optional harness.
+
+To repeat it after Forge builds, configure `YOUTUBE_COMMENTS_YTDLP_EXE`, optionally
+`YOUTUBE_COMMENTS_POST_ARCHIVER_EXE`, and explicit public
+`YOUTUBE_COMMENTS_LIVE_VIDEO_URL` / `YOUTUBE_COMMENTS_LIVE_POST_URL`, then run
+`node scripts/verify-live-reader.cjs`. The latter two variables are test-script
+inputs only, not product configuration or renderer capabilities.
 
 ## Live acquisition verification (2026-10-03)
 

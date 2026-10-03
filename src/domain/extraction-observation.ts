@@ -12,6 +12,7 @@ export interface AuthorObservation {
   readonly sourceId: ObservedField<string>;
   readonly displayName: ObservedField<string>;
   readonly handle: ObservedField<string>;
+  readonly avatarUrl: ObservedField<string>;
 }
 
 /** An instant's spelling/resolution does not establish source precision. Relative labels

@@ -41,10 +41,10 @@ selected executable every run with isolated yt-dlp `--version`, or Community
 `--version` verified in installed 0.4.0 `cli.py` and by executable output.
 Exact 2026.08.19 / `post-archiver 0.4.0` responses are required.
 
-If a development shell finds only a batch wrapper, prepend the directory that
-already contains the supported helper `.exe` to that shell's PATH before
-`npm.cmd start`. This is launch environment configuration, not an app installer
-or renderer-selected executable. No batch-wrapper contents are read by the app.
+If a development shell finds only a batch wrapper, configure the exact
+`YOUTUBE_COMMENTS_YTDLP_EXE` or `YOUTUBE_COMMENTS_POST_ARCHIVER_EXE` startup override
+before `npm.cmd start`, as documented below and in Packaging. The PATH directory
+need not change. No batch contents are read and no renderer path input exists.
 
 Trusted builders use 15-second network timeouts and two helper retries; the
 overall deadline is 180 seconds including a probe of at most ten seconds.
@@ -121,6 +121,46 @@ Do not stream partially parsed records directly into stored data. Valid partial/
 Record useful diagnostics without presenting raw backend terminology as the only explanation to the user. Application context and recovery messages must be localized; arbitrary raw extractor messages are not retained by this milestone. See [Localization and theming](LOCALIZATION_AND_THEMING.md).
 
 ## Finding and distributing helpers
+
+ADR 0006 adds main-only startup overrides, before direct PATH resolution:
+`YOUTUBE_COMMENTS_YTDLP_EXE` and `YOUTUBE_COMMENTS_POST_ARCHIVER_EXE`.
+An unset variable permits PATH lookup. A configured value must be an absolute
+regular file, directly executable (`.exe` on Windows; executable permissions on
+other systems). Empty, missing, relative, root/drive-relative Windows, directory,
+`.bat` or `.cmd` paths fail closed with `HELPER_UNAVAILABLE`; no fallback to PATH.
+Selection still runs ADR 0005's same exact version probe on that executable before
+trusting output. Execution remains `shell:false`. No Python scanning, wrapper
+parsing, path Settings UI or renderer path capability exists.
+
+Author thumbnails normalize as explicit avatar evidence only for usable HTTPS URLs.
+Community empty-string defaults are lossy unknowns; neither absence nor invalid
+values can clear a previously observed avatar. Stored JSON carries field authority.
+Sanitized fixtures use example.invalid URLs and invented names.
+
+### Community 34-warning investigation
+
+The normal development profile contained no Community attempts; the earlier
+temporary verification profile was removed. A separate anonymous 0.4.0 recapture
+returned 34 comments, all with integer English `like_count` accessibility labels
+and HTTPS thumbnails. Installed `extractors.py` reads `likeCountA11y`; `models.py`
+serializes it verbatim. The prior parser would produce one `invalid-field` warning
+per comment at `$.posts[0].comments[*].likes` (nested replies use `.replies[*]`).
+This reproduces the earlier count/pattern rather than recovering unavailable
+original attempt issues. It is one systematic optional field shape.
+After correction, the live result retains one `invalid-field` warning at
+`$.item.avatarUrl`: the post author's thumbnail is protocol-relative (`//…`).
+It remains unknown under the HTTPS-only policy; all 34 commenter thumbnails are
+usable HTTPS. community-limited reproduces this shape with example.invalid.
+
+The adapter now recognizes only exact positive integer `N like(s)` or bare integer
+strings. Zero/default values remain lossy unknowns. Approximate/suffixed/localized
+counts and unexpected types retain warnings. The reconstructed sanitized
+community-thread-a fixture uses `"4 likes"`; deterministic regression tests cover
+accepted labels, zero and rejected formats. No raw public payload is committed.
+`scripts/inspect-community-issues.cjs [absolute-database-path]` reads aggregate
+issue patterns without content/IDs. Optional `scripts/diagnose-community-shapes.py`
+takes a direct helper executable and public post URL, prints type/grammar counts
+only and removes its temporary archive. See [Testing](TESTING.md) for live outcomes.
 
 Windows is the initial development and packaging target. During development, a resolver may locate helpers through `PATH`. The design must also permit app-local or bundled helpers later and leave room for future Linux/macOS support without requiring those platforms initially. Keep helper resolution separate from backend invocation and normalization so packaging can change without rewriting domain logic.
 

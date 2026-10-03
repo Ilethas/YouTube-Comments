@@ -162,14 +162,14 @@ it('a later ordered migration runs only pending versions and preserves the prior
   first.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: false });
   const before = first.bootstrap(['en']);
   const db = raw();
-  const earlier = [1, 2].map(version => ({ version, apply: () => { throw new Error('Already applied migration must not run'); } }));
-  expect(() => migrateDatabase(db, [...earlier, { version: 3, apply: database => {
+  const earlier = [1, 2, 3].map(version => ({ version, apply: () => { throw new Error('Already applied migration must not run'); } }));
+  expect(() => migrateDatabase(db, [...earlier, { version: 4, apply: database => {
     database.exec('CREATE TABLE future_test_table (id INTEGER)');
     throw new Error('Upgrade failed');
   } }])).toThrow('Upgrade failed');
-  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(2);
-  expect(first.bootstrap(['en'])).toEqual(before);
-  migrateDatabase(db, [...earlier, { version: 3, apply: database => database.exec('CREATE TABLE future_test_table (id INTEGER)') }]);
   expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(3);
+  expect(first.bootstrap(['en'])).toEqual(before);
+  migrateDatabase(db, [...earlier, { version: 4, apply: database => database.exec('CREATE TABLE future_test_table (id INTEGER)') }]);
+  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(4);
   expect(first.bootstrap(['en'])).toEqual(before);
 });

@@ -24,6 +24,18 @@ function item(result: NormalizedExtraction): ContentObservation {
 }
 
 describe('yt-dlp observations', () => {
+  it('maps HTTPS thumbnails and keeps missing/invalid avatars unknown', () => {
+    const input = fixture('yt-nested-a');
+    const normalized = comments(normalize('yt-nested-a'));
+    expect(normalized.find(comment => comment.author.displayName.status === 'observed' && comment.author.displayName.value === 'Example A')?.author.avatarUrl)
+      .toEqual({ status: 'observed', value: 'https://example.invalid/video-comment-author.png' });
+    expect(normalized[0].author.avatarUrl).toEqual({ status: 'unknown', reason: 'unavailable' });
+    for (const value of ['http://example.invalid/a', 'javascript:alert(1)', 'https://user:pass@example.invalid/a', 'not a URL', 12]) {
+      const result = normalizeYtDlp(JSON.stringify({ ...input.raw, comments: [{ id: 'a', text: 'text', parent: 'root', author_thumbnail: value }] }), input.context);
+      expect(comments(result)[0].author.avatarUrl).toEqual({ status: 'unknown', reason: 'invalid' });
+      expect(result.issues).toContainEqual({ code: 'invalid-field', severity: 'warning', location: '$.comments[0].avatarUrl' });
+    }
+  });
   it('preserves opaque IDs and out-of-order direct depth, without inventing parent records', () => {
     const result = normalize('yt-nested-a');
     expect(item(result).sourceId).toBe('VidDemo_001');
@@ -113,6 +125,30 @@ describe('yt-dlp observations', () => {
 });
 
 describe('Community archive observations', () => {
+  it('maps post/comment thumbnails while empty defaults are lossy, never authoritative clears', () => {
+    const result = normalize('community-thread-a');
+    expect(item(result).author.avatarUrl).toEqual({ status: 'observed', value: 'https://example.invalid/post-author.png' });
+    expect(comments(result)[0].author.avatarUrl).toEqual({ status: 'observed', value: 'https://example.invalid/comment-author.png' });
+    expect(comments(result)[1].author.avatarUrl).toEqual({ status: 'unknown', reason: 'lossy-default' });
+  });
+
+  it('retains the live-recaptured protocol-relative post thumbnail as unknown with a useful warning', () => {
+    const result = normalize('community-limited');
+    expect(item(result).author.avatarUrl).toEqual({ status: 'unknown', reason: 'invalid' });
+    expect(result.issues).toContainEqual({ code: 'invalid-field', severity: 'warning', location: '$.item.avatarUrl' });
+  });
+
+  it('accepts verified integer English accessibility like labels and keeps zero/lossy and approximate formats conservative', () => {
+    const input = fixture('community-thread-a');
+    const samples = ['1 like', '4 likes', '0 likes', '1.2K likes', '4 polubienia', '4 likes extra', 4];
+    const result = normalizeCommunityArchive(JSON.stringify({ channel_id: 'unknown', posts: [{ post_id: 'opaque', content: 'text',
+      comments: samples.map((value, index) => ({ id: `c${index}`, text: 'text', replies: [], like_count: value })) }] }), input.context);
+    expect(comments(result).map(comment => comment.likeCount)).toEqual([
+      { status: 'observed', value: 1 }, { status: 'observed', value: 4 }, { status: 'unknown', reason: 'lossy-default' },
+      ...Array.from({ length: 4 }, () => ({ status: 'unknown', reason: 'invalid' })),
+    ]);
+    expect(result.issues.map(issue => issue.location)).toEqual([3, 4, 5, 6].map(index => `$.posts[0].comments[${index}].likes`));
+  });
   it('maps opaque post/comment IDs and thread containment without direct-parent claims', () => {
     const result = normalize('community-thread-a');
     expect(item(result).sourceId).toBe('UgkDemoPost_0123456789');

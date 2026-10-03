@@ -51,7 +51,7 @@
         "author": "Example Post Creator",
         "author_id": "UC_DemoCreator",
         "author_url": "https://www.youtube.com/@example-creator",
-        "author_thumbnail": "",
+        "author_thumbnail": "//example.invalid/post-author.png",
         "author_is_verified": false,
         "author_is_member": false,
         "images": [

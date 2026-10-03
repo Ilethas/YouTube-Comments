@@ -1,5 +1,5 @@
 import type { CommentObservation, ContentObservation, NormalizationIssue, NormalizedExtraction, PublicationObservation } from '../../domain/extraction-observation';
-import { authorHandle, booleanValue, canonicalUrl, countValue, coverage, decode, failed, field, identity, object, observed, relationshipIssues, stringValue, unknown } from './normalization';
+import { avatar, authorHandle, booleanValue, canonicalUrl, countValue, coverage, decode, failed, field, identity, object, observed, relationshipIssues, stringValue, unknown } from './normalization';
 import type { CaptureContext } from './normalization';
 
 function publication(raw: Record<string, unknown>, location: string, issues: NormalizationIssue[], comment: boolean): PublicationObservation {
@@ -35,6 +35,7 @@ export function normalizeYtDlp(json: string, context: CaptureContext): Normalize
       sourceId: field(raw.channel_id, identity, '$.authorIdentity', issues),
       displayName: field(raw.channel, identity, '$.authorName', issues),
       handle: authorHandle(raw.channel_url),
+      avatarUrl: unknown('unsupported'),
     },
     publication: publication(raw, '$', issues, false),
     images: unknown('unsupported'), links: unknown('unsupported'),
@@ -62,6 +63,7 @@ export function normalizeYtDlp(json: string, context: CaptureContext): Normalize
         sourceId: field(input.author_id, identity, `${location}.authorIdentity`, issues),
         displayName: field(input.author, identity, `${location}.authorName`, issues),
         handle: authorHandle(input.author_url),
+        avatarUrl: avatar(input.author_thumbnail, `${location}.avatarUrl`, issues),
       },
       publication: publication(input, location, issues, true),
       likeCount: field(input.like_count, countValue, `${location}.likes`, issues),

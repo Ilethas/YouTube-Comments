@@ -1,5 +1,15 @@
 # Sanitized extractor fixture matrix
 
+ADR 0006 updates representative avatar fields with harmless HTTPS example.invalid
+URLs in yt-nested-a and community-thread-a. A separate anonymous 0.4.0 recapture
+verified integer English `like_count` accessibility labels (`"N like(s)"`); the
+invented `"4 likes"` in community-thread-a reproduces that type/grammar. All 34
+comment thumbnails were HTTPS; the post author used a protocol-relative URL.
+community-limited reproduces that still-invalid post avatar using
+`//example.invalid/post-author.png`. Existing fixtures remain honestly reconstructed,
+with no public source names/URLs/text copied. The old serializer checks below are
+historical; no helper is required to exercise these changes in normal tests.
+
 Normal Vitest tests read these JSON files only. They need no network, YouTube,
 helper installation, cookies, credentials, or Python. The optional development
 serializer check below is not part of the test suite.
@@ -44,8 +54,8 @@ completed anonymous investigation with inspection of the installed versions:
 
 Names and all commenter/post text are invented. Item/comment/author IDs are
 consistently remapped across pairs and references; punctuation in comment IDs
-exercises opacity. Avatar URLs are empty representative defaults; attachment and
-link URLs use `example.invalid`. Timestamps/labels are illustrative with their
+exercises opacity. Avatar URLs are empty defaults or harmless example.invalid
+examples as described above; attachments/links also use example.invalid. Timestamps/labels are illustrative with their
 types and estimation evidence preserved. No raw public dumps, source-person
 mapping, user paths, authentication, or unnecessary video media metadata are
 committed. These compact projections test the verified supported shapes, not

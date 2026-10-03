@@ -6,6 +6,7 @@ import { createLiveExtractor } from './live-extraction';
 import { ReaderRepository } from './persistence/reader-repository';
 import { ReaderService } from './reader-service';
 import type { ExecuteProcess, ProcessOutcome, ProcessRequest } from './helper-process';
+import { createHelperResolver } from './helper-process';
 
 const videoUrl = 'https://www.youtube.com/watch?v=VidDemo_001';
 const postUrl = 'https://www.youtube.com/post/UgkDemoPost_0123456789';
@@ -21,6 +22,17 @@ function extractor(execute: ExecuteProcess) { return createLiveExtractor({ execu
 function videoProcess(payload: Record<string, unknown>) {
   return vi.fn<ExecuteProcess>(async request => outcome(request.arguments.includes('--version') ? '2026.08.19\n' : JSON.stringify(payload)));
 }
+
+it('explicit override still undergoes the same exact probe and cannot bypass an incompatible version', async () => {
+  const selected = path.join(directory, 'selected.exe');
+  await writeFile(selected, 'test placeholder');
+  const execute = vi.fn<ExecuteProcess>(async () => outcome('2026.09.01'));
+  const extract = createLiveExtractor({ execute, resolve: createHelperResolver({ YOUTUBE_COMMENTS_YTDLP_EXE: selected }, 'win32') });
+  const result = await extract({ sourceKind: 'youtube-video', sourceId: 'VidDemo_001', url: videoUrl }, new AbortController().signal);
+  expect(result.error).toBe('HELPER_INCOMPATIBLE');
+  expect(execute).toHaveBeenCalledTimes(1);
+  expect(execute.mock.calls[0][0]).toMatchObject({ executable: selected, arguments: ['--ignore-config', '--no-plugin-dirs', '--version'] });
+});
 
 it('video fixture passes trusted builder, adapter, ingestion, repeat merge, seen edit, refresh and reopen', async () => {
   const payload = await raw('yt-nested-a'), execute = videoProcess(payload);

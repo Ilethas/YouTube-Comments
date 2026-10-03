@@ -17,7 +17,7 @@ export class AcquisitionService {
   async acquire(url: string): Promise<Result<AcquisitionResult>> {
     const target = parseAcquisitionTarget(url);
     if (!target) return { ok: false, error: { code: 'INVALID_REQUEST' } };
-    return this.run(target);
+    return this.run(target, true);
   }
   async refresh(itemId: string): Promise<Result<AcquisitionResult>> {
     if (this.busy) return { ok: false, error: { code: 'ACQUISITION_BUSY' } };
@@ -28,10 +28,10 @@ export class AcquisitionService {
         : item.sourceKind === 'youtube-community-post' ? `https://www.youtube.com/post/${encodeURIComponent(item.sourceId)}` : '';
       const target = parseAcquisitionTarget(url);
       if (!target) return { ok: false, error: { code: 'NOT_REFRESHABLE' } };
-      return this.run(target);
+      return this.run(target, false);
     } catch { return { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }; }
   }
-  private async run(target: AcquisitionTarget): Promise<Result<AcquisitionResult>> {
+  private async run(target: AcquisitionTarget, openTab: boolean): Promise<Result<AcquisitionResult>> {
     if (this.busy) return { ok: false, error: { code: 'ACQUISITION_BUSY' } };
     if (this.lifecycle.signal.aborted) return { ok: false, error: { code: 'ACQUISITION_FAILED' } };
     this.busy = true;
@@ -45,7 +45,7 @@ export class AcquisitionService {
           issues: [], coverage: { kind: 'failed' as const, reason: 'execution-failure' } } };
       }
       if (this.lifecycle.signal.aborted) return { ok: false, error: { code: 'ACQUISITION_FAILED' } };
-      const attempt = this.repository.ingest(result.extraction, target);
+      const attempt = this.repository.ingest(result.extraction, target, openTab);
       if (result.error || attempt.coverage.kind === 'failed' || !attempt.itemId) return { ok: false, error: { code: result.error ?? 'ACQUISITION_FAILED' } };
       return { ok: true, value: { state: this.repository.bootstrap(this.languages), summary: {
         itemId: attempt.itemId, coverage: attempt.coverage.kind, inserted: attempt.counts.inserted,

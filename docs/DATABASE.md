@@ -1,10 +1,31 @@
 # Database and durable data
 
-SQLite is the durable store. The database contains valuable reader state, not a disposable cache of downloadable comments: remote data cannot reconstruct which individual comments the user processed. Main-owned built-in `node:sqlite` now uses schema 2 and ordered transactional migrations. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) records the foundation; [ADR 0004](decisions/0004-durable-observation-merge.md) records normalized fixture ingestion/history. Live execution/UI now feed this same schema-2 ingestion/history path under [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md); no additional migration is needed.
+SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 3 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace.
 
 The implementation below is deliberately small. Later sections describe the broader conceptual target and must not be read as implemented tables/features. Read the [domain model](DOMAIN_MODEL.md) for meanings and [architecture](ARCHITECTURE.md) for ownership.
 
-## Implemented schema 2
+## Current schema 3 workspace extension
+
+Migration 3 adds `workspace_tabs(item_id, position)` referencing stored items with
+unique nonnegative order, and singleton `workspace(active_item_id, revision)` with
+a deferred foreign key to an open tab. It opens all existing items in library
+order and selects the first, or initializes empty/null. Earlier tables/rows remain
+unchanged, including old avatar-less JSON. All pending migrations/version updates
+remain one transaction; migration failure rolls back without replacing the file.
+
+Open/activate/close writes are immediate short transactions changing only workspace.
+Closed items remain in Library with their comments, history and local state. Closing
+active selects right, then left, then null; open appends or activates without
+duplicates. Successful Acquire opens in its merge transaction; Refresh does not.
+Revision protects acknowledgment ordering. `content_items.position` remains library
+insertion order. No persisted scroll/filter/expansion/reorder UI or deletion exists.
+
+Avatar evidence uses existing checked `remote_json`, with no avatar column/migration.
+Old authors default absent evidence to unavailable in memory; synthetic-history
+creation includes unknown avatar evidence. Author projection reads the observed
+usable HTTPS URL directly from normalized JSON; scalar author columns remain unchanged.
+
+## Schema 2 normalized history foundation
 
 Migration 2 extends schema 1 without deleting/recreating tables. Unique indexes enforce content identity in its kind scope and source comment identity within its item. Reader `video`/`post` kinds map one-to-one to the observation source families. Internal IDs remain distinct: new items/comments/attempts use an injected factory (main defaults to UUIDs); existing IDs survive migration.
 
@@ -20,7 +41,7 @@ Migration explicitly establishes synthetic history from old discovery labels and
 
 `src/main/persistence` owns path resolution, connection setup, migrations, and explicit row/domain mapping. `content_items` and `comments` store current synthetic content/author metadata and parent relationships; `comment_state` stores local seen state separately; singleton `preferences` stores an explicit optional en/pl choice and System/Light/Dark intent. Fixture ordering is stored so reopen does not reorder the reader. Internal application IDs remain primary keys. Schema 1 originally had no real-source uniqueness constraints; schema 2 adds the conservative owner-approved source scopes above. Same-item parent foreign keys, boolean/enumeration/content constraints, and the parent lookup index are tested. Required local state is created atomically with each fixture comment and missing state fails reads.
 
-Timestamps use ISO 8601 UTC TEXT (Z suffix, supplied fixture precision retained). Optional publication timestamps remain NULL; they never receive discovery-time substitutes. Original synthetic baseline/first-discovery labels remain preserved and now also identify explicitly synthetic attempt history. There are no raw payload, undo, search/FTS, backup/export, or workspace tables.
+Timestamps use ISO 8601 UTC TEXT (Z suffix, supplied precision retained). Optional publication timestamps remain NULL; they never receive discovery-time substitutes. Synthetic labels identify synthetic history. There are no raw payload, undo, search/FTS or backup/export tables. Schema 3 adds the separate bounded workspace above.
 
 One main-owned synchronous connection configures foreign keys ON explicitly, `busy_timeout=5000`, and `synchronous=FULL`; new files use SQLite's default DELETE rollback journal. Multi-comment state writes and demo inserts use `BEGIN IMMEDIATE`/commit/rollback. This is appropriate for the current tiny dataset, not a large-data responsiveness claim. No pooling, WAL transition, or worker design is selected.
 
@@ -28,7 +49,7 @@ An ordered migration list uses `PRAGMA user_version`: an empty database starts a
 
 Development uses `<Electron appData>/youtube-comments-development/reader.sqlite`; future packaged production uses `<appData>/youtube-comments-production/reader.sqlite`. Tests supply explicit absolute files in newly created temporary directories and clean only directories they own. Missing/relative test paths or profile roots fail. The privileged `YOUTUBE_COMMENTS_DEMO_ROOT` option selects an absolute alternative development root with the same development-directory suffix, including for packaged checks. Empty/relative values never fall back. Main also separates Chromium `userData` using the chosen profile directory. On Windows the normal appData root is `%APPDATA%`; the renderer receives none of these paths.
 
-Development initialization inserts the two synthetic discussions only into a database with zero content items, transactionally. It never upserts existing fixture data or resets preferences/seen state. Packaged production is not seeded. Explicit preferences and manual comment state survive restart; final tabs/workspace restoration remains open.
+Development initialization inserts/opens the two synthetic discussions only into a database with zero content items, transactionally. It never resets existing preferences/seen/workspace, including an empty workspace over a nonempty library. Packaged production is not seeded. Tab IDs/order/active selection, preferences and manual state survive restart; full view restoration remains open.
 
 ## Ownership and access
 

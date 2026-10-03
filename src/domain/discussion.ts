@@ -9,6 +9,7 @@ export interface Author {
   readonly sourceId?: string;
   readonly displayName?: string;
   readonly handle?: string;
+  readonly avatarUrl?: string;
 }
 
 interface ItemBase {

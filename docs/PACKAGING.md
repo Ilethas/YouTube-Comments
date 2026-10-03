@@ -32,7 +32,27 @@ System is the first-run appearance default. System, Light, and Dark preferences 
 
 ## External helper distribution
 
-Initial backends are `yt-dlp` for video discussions and `post-archiver-improved` for public individual Community Posts. Main-process helper resolution may use `PATH` during development and must permit app-local/bundled helpers later. ADR 0005 implements exact-version-checked PATH-only development lookup, requiring direct .exe files on Windows. Helpers are not bundled/downloaded/installed, and no Python environment is managed. A development installation that happens to find a helper on the owner's machine is not sufficient evidence that an end-user package can acquire discussions.
+[ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md) extends development
+lookup with exact main-startup executable overrides. The owner's small PATH
+directory can retain its forwarding `.bat`; the application launches the selected
+real `.exe` directly and never executes/parses the wrapper. Example PowerShell:
+
+```powershell
+$env:YOUTUBE_COMMENTS_YTDLP_EXE =
+  'C:\Users\Ilethas\AppData\Roaming\Python\Python312\Scripts\yt-dlp.exe'
+# Optional when Community is installed:
+$env:YOUTUBE_COMMENTS_POST_ARCHIVER_EXE =
+  'C:\Users\Ilethas\AppData\Roaming\Python\Python312\Scripts\post-archiver.exe'
+npm.cmd start
+```
+
+Override → safe direct PATH → HELPER_UNAVAILABLE. A configured invalid override
+fails closed without PATH fallback; unset it to use PATH. Windows requires an
+absolute regular `.exe`; the same pinned version probe verifies it. No helper
+download/bundling/installation discovery or Settings UI is introduced. Schema 3
+adds preserving workspace migration, without completing release/installer work.
+
+Initial backends are `yt-dlp` and `post-archiver-improved` for public individual posts. ADR 0005's exact-version-checked direct PATH lookup is extended by ADR 0006's explicit startup overrides above. Windows requires direct .exe files. Helpers are not bundled/downloaded/installed and no Python environment is managed. A working development installation does not establish end-user distribution support.
 
 Before committing to helper bundling, decide and document:
 

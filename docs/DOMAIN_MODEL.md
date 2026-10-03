@@ -6,6 +6,20 @@ The model uses the same application concepts for video discussions and Community
 
 ## Identity and ownership
 
+ADR 0006 distinguishes **library** (all stored items), **workspace** (ordered open
+item IDs and nullable active ID), **discussion** (remote/discovery/history/manual
+state), and **view** (temporary presentation). One tab per item opens/activates;
+closing never owns or deletes discussion data. WorkspaceState carries a persisted
+revision for response ordering. Only IDs/order/active selection persist in this
+bounded increment, not the other future tab view state described below.
+
+AuthorObservation now contains `avatarUrl: ObservedField<string>`. A usable HTTPS
+URL is remote evidence, never UI loading state. Missing/invalid/lossy values cannot
+clear known URLs; newer observed URLs update. Old stored JSON without the field
+loads with unavailable evidence. Reader Author exposes optional `avatarUrl`; failed
+image/fallback state belongs solely to the renderer. See
+[ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md).
+
 A **content item** is one YouTube video or one public individual Community Post whose discussion is stored locally. A **comment** is one individually addressable contribution to that discussion, including a top-level comment or any reply. A **thread** is the top-level comment and its complete descendant conversation tree. A thread is a structural grouping, not a separately processed inbox item.
 
 Observation source identity is `(content source kind, opaque source content item ID, opaque source comment ID)`. This conservatively scopes a comment to its discussion rather than assuming global uniqueness. `youtube-video` and `youtube-community-post` identify content families, not executable backends. Switching adapters must not create a second identity for the same remote comment. Schema 2 enforces source-kind-scoped item identity and item-scoped comment identity; backend provenance never changes source identity.

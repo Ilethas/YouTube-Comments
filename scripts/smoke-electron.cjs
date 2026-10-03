@@ -36,7 +36,7 @@ async function verifyWindow(window, nativeTheme) {
   }
 
   await waitFor("document.querySelectorAll('input[type=checkbox]').length >= 24", 'bootstrap');
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'bootstrap', 'refresh', 'toggleSeen', 'updatePreferences']);
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'closeTab', 'openStoredItem', 'refresh', 'toggleSeen', 'updatePreferences']);
   assert.deepEqual(await js("window.reader.acquire({url:'https://www.youtube.com/watch?v=abcdefghijk',executable:'evil'})"),
     { ok: false, error: { code: 'INVALID_REQUEST' } });
   assert.deepEqual(await js("window.reader.refresh({itemId:'video-demo',url:'https://example.com'})"),
@@ -71,8 +71,10 @@ async function verifyWindow(window, nativeTheme) {
     await js("document.querySelectorAll('#panel-video-demo input')[5].click()");
     await waitFor("document.querySelectorAll('#panel-video-demo input')[5].checked && !document.querySelector('input:disabled')", 'independent ordinary click');
     await js("document.querySelectorAll('[role=tab]')[1].click()");
+    await waitFor("document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-post-demo'", 'tab selection');
     assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), 'panel-post-demo');
     await js("document.querySelectorAll('[role=tab]')[0].click()");
+    await waitFor("document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-video-demo'", 'tab return');
     for (const mode of ['light', 'dark', 'system']) {
       await preference(1, mode);
       assert.equal(await js('document.documentElement.dataset.appearance'), mode);
@@ -87,6 +89,8 @@ async function verifyWindow(window, nativeTheme) {
       ['v2', 'v3', 'v4'].includes(comment.id) ? false : comment.id === 'v6' ? true : comment.seen));
     assert.deepEqual(state.comments['post-demo'], original.comments['post-demo']);
     async function acquire(url) {
+      assert.equal(await js("document.querySelector('#source-url') === null"), true);
+      await js("document.querySelector('[aria-controls=acquisition-form]').click()");
       await js(`(() => { const input = document.querySelector('#source-url');
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(url)});
         input.dispatchEvent(new Event('input', {bubbles:true})); })()`);
@@ -94,7 +98,7 @@ async function verifyWindow(window, nativeTheme) {
       await js("document.querySelector('.acquisition-bar button').click()");
       await waitFor("document.querySelector('.acquisition-status') !== null", 'acquisition progress');
       assert.equal(await js("Array.from(document.querySelectorAll('input[type=checkbox]')).every(input => !input.disabled)"), true);
-      await waitFor("document.querySelector('#source-url').value === '' && !document.body.innerText.includes('Pobieranie…')", 'acquisition acknowledgment');
+      await waitFor("document.querySelector('#source-url') === null && !document.body.innerText.includes('Pobieranie…')", 'acquisition acknowledgment');
       assert.equal(await js("document.querySelector('[role=alert]') === null"), true);
       return snapshot();
     }
@@ -127,10 +131,26 @@ async function verifyWindow(window, nativeTheme) {
     await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').disabled", 'Community refresh');
     state = await snapshot();
     assert.equal(state.items.length, 4);
+    const priorComments = state.comments;
+    await js(`document.getElementById('tab-${video.id}').nextElementSibling.click()`);
+    await waitFor(`document.getElementById('tab-${video.id}') === null`, 'close background video');
+    assert.equal((await snapshot()).workspace.activeItemId, post.id);
+    await js("document.querySelector('#library-toggle').click()");
+    await js(`Array.from(document.querySelectorAll('.library-panel button')).find(button => button.textContent.includes('Invented workshop')).click()`);
+    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-${video.id}'`, 'Library reopen video');
+    await js(`document.getElementById('tab-${post.id}').nextElementSibling.click()`);
+    await waitFor(`document.getElementById('tab-${post.id}') === null`, 'close Community workspace view');
+    state = await snapshot();
+    assert.deepEqual(state.comments, priorComments);
+    assert.equal(state.items.length, 4);
+    assert.deepEqual(state.workspace.openItemIds, ['video-demo', 'post-demo', video.id]);
+    assert.equal(state.workspace.activeItemId, video.id);
     fs.writeFileSync(checkpoint, JSON.stringify(state));
   } else {
     const saved = JSON.parse(fs.readFileSync(checkpoint, 'utf8'));
     assert.deepEqual(original, saved);
+    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), `panel-${saved.workspace.activeItemId}`);
+    assert.equal(await js("document.querySelectorAll('[role=tab]').length"), saved.workspace.openItemIds.length);
     assert.equal(await js('document.documentElement.lang'), saved.preferences.locale);
     assert.equal(await js('document.documentElement.dataset.appearance'), saved.preferences.appearance);
     // Check that the persisted states are actually reflected in the UI.
@@ -176,6 +196,7 @@ if (process.versions.electron && process.type === 'browser') {
       if (args.includes('--version')) child.stdout.emit('data', Buffer.from(path.basename(file) === 'yt-dlp.exe' ? '2026.08.19\n' : 'post-archiver 0.4.0\n'));
       else if (path.basename(file) === 'yt-dlp.exe') {
         const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/main/extractors/__fixtures__/yt-nested-a.json'), 'utf8')).raw;
+        for (const comment of raw.comments) delete comment.author_thumbnail; // Offline smoke makes no image network requests.
         videoRuns++;
         if (videoRuns > 1) raw.comments = [{ ...raw.comments[2], text: 'Updated smoke root' }, { id: 'smoke-new', parent: 'root', text: 'New smoke comment' }];
         if (videoRuns === 3) code = 1;
@@ -187,6 +208,9 @@ if (process.versions.electron && process.type === 'browser') {
         const config = args[args.indexOf('--config') + 1];
         assert.deepEqual(JSON.parse(fs.readFileSync(config, 'utf8')), { scraping: { cookies_file: null, download_images: false } });
         const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/main/extractors/__fixtures__/community-thread-a.json'), 'utf8')).raw;
+        delete raw.posts[0].author_thumbnail;
+        const pending = [...raw.posts[0].comments];
+        while (pending.length) { const comment = pending.pop(); delete comment.author_thumbnail; pending.push(...comment.replies); }
         fs.writeFileSync(path.join(output, 'posts_unknown_20261003_120000.json'), JSON.stringify(raw));
       }
       child.emit('close', code);
@@ -224,6 +248,8 @@ if (process.versions.electron && process.type === 'browser') {
         environment.PATH = `${helpers}${path.delimiter}${process.env.PATH ?? process.env.Path ?? ''}`;
         delete environment.Path;
         delete environment.ELECTRON_RUN_AS_NODE;
+        delete environment.YOUTUBE_COMMENTS_YTDLP_EXE;
+        delete environment.YOUTUBE_COMMENTS_POST_ARCHIVER_EXE;
         const child = spawn(require('electron'), [__filename], { env: environment, stdio: 'inherit', windowsHide: true });
         await new Promise((resolve, reject) => {
           child.on('error', reject);
@@ -233,7 +259,7 @@ if (process.versions.electron && process.type === 'browser') {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3);
         assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 9);
         assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 5);
         assert.equal(db.prepare('SELECT count(*) AS count FROM comments').get().count, 32);

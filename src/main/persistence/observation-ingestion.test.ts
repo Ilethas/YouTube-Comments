@@ -41,6 +41,22 @@ function state() { return repository.bootstrap(['en']); }
 function comments() { return Object.values(state().comments)[0]; }
 function later() { at = '2026-10-02T09:00:00.000Z'; }
 
+it('persists avatar evidence: lossy refresh preserves known URL, newer observed URL updates it across restart', () => {
+  const input = fixture('community-thread-a'), first = input.collection.comments[0];
+  repository.ingest(batch(input, [first]));
+  const id = comments()[0].id;
+  expect(comments()[0].author?.avatarUrl).toBe('https://example.invalid/comment-author.png');
+  repository.toggleSeen({ itemId: comments()[0].itemId, commentId: id, subtree: false });
+  for (const reason of ['unavailable', 'lossy-default', 'unreliable', 'invalid', 'unsupported'] as const) {
+    repository.ingest(batch(input, [{ ...first, author: { ...first.author, avatarUrl: unknown(reason) } }]));
+    expect(comments()[0].author?.avatarUrl).toBe('https://example.invalid/comment-author.png');
+  }
+  repository.ingest(batch(input, [{ ...first, author: { ...first.author, avatarUrl: observed('https://example.invalid/new.png') } }]));
+  handles.splice(handles.indexOf(repository), 1); repository.close(); repository = open();
+  expect(comments()[0]).toMatchObject({ id, seen: true, author: { avatarUrl: 'https://example.invalid/new.png' },
+    remote: { author: { avatarUrl: { status: 'observed', value: 'https://example.invalid/new.png' } } } });
+});
+
 it('establishes an accepted unknown baseline with opaque injected IDs, unseen comments and honest publication evidence', () => {
   const input = fixture(), result = repository.ingest(input);
   expect(result).toMatchObject({ id: 'local-1', itemId: 'local-2', outcome: 'accepted', coverage: { kind: 'unknown' }, counts: { inserted: input.collection.comments.length } });
@@ -93,7 +109,7 @@ it('updates observed text/metadata including trustworthy zero/false/empty while 
   const id = comments()[0].id; repository.toggleSeen({ itemId: comments()[0].itemId, commentId: id, subtree: false });
   for (const reason of ['unavailable', 'lossy-default', 'unreliable', 'invalid', 'unsupported'] as const) {
     later(); repository.ingest(batch(input, [{ ...first, text: observed('hello edited'), likeCount: unknown(reason), pinned: unknown(reason), creator: unknown(reason),
-      author: { sourceId: unknown(reason), displayName: unknown(reason), handle: unknown(reason) }, publication: { instant: unknown(reason), label: unknown(reason), estimated: unknown(reason), precision: 'unknown' } }]));
+      author: { sourceId: unknown(reason), displayName: unknown(reason), handle: unknown(reason), avatarUrl: unknown(reason) }, publication: { instant: unknown(reason), label: unknown(reason), estimated: unknown(reason), precision: 'unknown' } }]));
     expect(comments()[0]).toMatchObject({ id, text: 'hello edited', likeCount: 12, isPinned: true, isCreator: true, seen: true, author: { displayName: observedValue(first.author.displayName) } });
     expect(comments()[0].publication).toMatchObject(first.publication);
   }
@@ -267,7 +283,7 @@ it('stores bounded structural diagnostics/provenance and retains reserved comple
 
 function schemaOne(db: DatabaseSync) {
   // Use the actual ordered schema-1 migration, then populate real legacy columns.
-  db.exec('DROP TABLE comment_state; DROP TABLE comments; DROP TABLE content_items; DROP TABLE extraction_attempts; DROP TABLE preferences; PRAGMA user_version = 0');
+  db.exec('DROP TABLE workspace; DROP TABLE workspace_tabs; DROP TABLE comment_state; DROP TABLE comments; DROP TABLE content_items; DROP TABLE extraction_attempts; DROP TABLE preferences; PRAGMA user_version = 0');
   migrateDatabase(db, migrations.slice(0, 1));
   db.exec(`INSERT INTO content_items VALUES ('old-item',0,'video','opaque-item','title','description',NULL,'author','name',NULL,'2026-09-01T00:00:00Z','old-baseline');
     INSERT INTO comments VALUES ('old-root','old-item',NULL,0,'source-root',NULL,'name',NULL,'root text',NULL,'2026-09-02T00:00:00Z','2026-09-03T00:00:00Z','old-baseline',12,NULL,1);
@@ -279,7 +295,7 @@ it('schema 1 to 2 preserves legacy IDs, all remote fields, seen/preferences and 
   const db = raw(); schemaOne(db);
   const items = db.prepare('SELECT * FROM content_items').all(), old = db.prepare('SELECT * FROM comments ORDER BY position').all();
   migrateDatabase(db);
-  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(2);
+  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(3);
   expect(db.prepare('SELECT * FROM content_items').all()).toMatchObject(items);
   expect(db.prepare('SELECT * FROM comments ORDER BY position').all()).toMatchObject(old);
   expect(db.prepare('SELECT * FROM comment_state ORDER BY comment_id').all()).toEqual([{ comment_id: 'old-child', seen: 0 }, { comment_id: 'old-root', seen: 1 }]);

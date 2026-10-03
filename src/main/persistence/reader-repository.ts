@@ -10,19 +10,30 @@ import type { Preferences } from '../../shared/preferences';
 import type { PreferenceChange, ReaderState, ToggleSeenRequest } from '../../shared/reader-api';
 import { migrateDatabase, transaction } from './migrations';
 import { establishSyntheticHistory } from './synthetic-history';
-import type { ContentObservation, CommentObservation, NormalizedExtraction } from '../../domain/extraction-observation';
+import type { AuthorObservation, ContentObservation, CommentObservation, NormalizedExtraction } from '../../domain/extraction-observation';
 import { observedValue, planObservationMerge, projectRelationships } from '../../domain/observation-merge';
 import type { AttemptTarget, MergeAttempt, StoredCommentObservation, StoredContentObservation, StoredObservationDiscussion } from '../../domain/observation-merge';
+import { closeWorkspaceTab } from '../../domain/workspace';
+import type { WorkspaceState } from '../../domain/workspace';
+import { isHttpsImageUrl } from '../../domain/remote-image';
 
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 function optionalText(row: Row, key: string): string | undefined {
   return row[key] === null ? undefined : String(row[key]);
 }
-function author(row: Row): Author | undefined {
+function author(row: Row, remote: AuthorObservation): Author | undefined {
   const sourceId = optionalText(row, 'author_source_id');
   const displayName = optionalText(row, 'author_display_name');
   const handle = optionalText(row, 'author_handle');
-  return sourceId !== undefined || displayName !== undefined || handle !== undefined ? { sourceId, displayName, handle } : undefined;
+  const avatarUrl = observedValue(remote.avatarUrl);
+  return sourceId !== undefined || displayName !== undefined || handle !== undefined || avatarUrl !== undefined
+    ? { sourceId, displayName, handle, ...(isHttpsImageUrl(avatarUrl) ? { avatarUrl } : {}) } : undefined;
+}
+/** Older normalized JSON lacks this optional evidence; default in memory only.
+ * No data rewrite or avatar-only migration is needed. */
+function remoteEvidence<T extends StoredCommentObservation | StoredContentObservation>(json: string): T {
+  const remote = JSON.parse(json) as T;
+  return { ...remote, author: { ...remote.author, avatarUrl: remote.author.avatarUrl ?? { status: 'unknown', reason: 'unavailable' } } };
 }
 function authorValues(value?: Author) { return [value?.sourceId ?? null, value?.displayName ?? null, value?.handle ?? null]; }
 function booleanValue(value?: boolean) { return value === undefined ? null : Number(value); }
@@ -104,14 +115,15 @@ export class ReaderRepository {
         });
       });
       establishSyntheticHistory(this.db, this.ingestion.newId);
+      this.writeWorkspace({ openItemIds: items.map(item => item.id), activeItemId: items[0]?.id ?? null, revision: this.workspace().revision + 1 });
     });
   }
 
   private readItems(): readonly ContentItem[] {
     return this.db.prepare('SELECT * FROM content_items ORDER BY position').all().map(row => {
       if (row.remote_json === null) throw new Error('Missing durable item evidence');
-      const remote = JSON.parse(String(row.remote_json)) as StoredContentObservation;
-      const base = { id: String(row.id), sourceId: String(row.source_id), author: author(row), remote, sourceKind: remote.sourceKind,
+      const remote = remoteEvidence<StoredContentObservation>(String(row.remote_json));
+      const base = { id: String(row.id), sourceId: String(row.source_id), author: author(row, remote.author), remote, sourceKind: remote.sourceKind,
         publishedAt: optionalText(row, 'published_at'), baselineDiscoveryId: String(row.baseline_discovery_id) };
       return row.kind === 'video'
         ? { ...base, kind: 'video', title: String(row.title), description: optionalText(row, 'description') }
@@ -124,7 +136,7 @@ export class ReaderRepository {
       LEFT JOIN comment_state s ON s.comment_id = c.id WHERE c.item_id = ? ORDER BY c.position`).all(item.id);
     const evidence = rows.map(row => {
       if (row.remote_json === null) throw new Error('Missing durable comment evidence');
-      return { id: String(row.id), remote: JSON.parse(String(row.remote_json)) as StoredCommentObservation };
+      return { id: String(row.id), remote: remoteEvidence<StoredCommentObservation>(String(row.remote_json)) };
     });
     const projection = projectRelationships(evidence);
     return rows.map((row, index) => {
@@ -137,7 +149,7 @@ export class ReaderRepository {
         relationshipStatus: relationship.status,
         relationship: evidence[index].remote.relationship, publication: evidence[index].remote.publication,
         source: { kind: item.kind, itemId: item.sourceId, commentId: String(row.source_comment_id) },
-        author: author(row), text: String(row.text), publishedAt: optionalText(row, 'published_at'),
+        author: author(row, evidence[index].remote.author), text: String(row.text), publishedAt: optionalText(row, 'published_at'),
         discovery: { firstDiscoveredAt: String(row.first_discovered_at), lastObservedAt: String(row.last_observed_at),
           firstDiscoveryId: String(row.first_discovery_id), lastObservationId: String(row.last_attempt_id) },
         likeCount: row.like_count === null ? undefined : Number(row.like_count),
@@ -152,10 +164,10 @@ export class ReaderRepository {
       .get(target.sourceKind === 'youtube-video' ? 'video' : 'post', target.sourceId);
     if (!row) return undefined;
     if (row.remote_json === null) throw new Error('Missing durable item evidence');
-    return { id: String(row.id), baselineId: String(row.baseline_attempt_id), remote: JSON.parse(String(row.remote_json)),
+    return { id: String(row.id), baselineId: String(row.baseline_attempt_id), remote: remoteEvidence<StoredContentObservation>(String(row.remote_json)),
       comments: this.db.prepare('SELECT * FROM comments WHERE item_id = ? ORDER BY position').all(row.id).map(comment => {
         if (comment.remote_json === null) throw new Error('Missing durable comment evidence');
-        return { id: String(comment.id), remote: JSON.parse(String(comment.remote_json)),
+        return { id: String(comment.id), remote: remoteEvidence<StoredCommentObservation>(String(comment.remote_json)),
           firstDiscoveredAt: String(comment.first_discovered_at), firstDiscoveryId: String(comment.first_attempt_id),
           lastObservedAt: String(comment.last_observed_at), lastObservationId: String(comment.last_attempt_id) };
       }) };
@@ -164,7 +176,7 @@ export class ReaderRepository {
   /** Receives normalized data only. Reads/plans/writes/history share one short transaction.
    * Extractor execution/parsing must precede this call. Existing local state is never written.
    * Failed normalization records history only, optionally associated with a caller-owned target. */
-  ingest(extraction: NormalizedExtraction, target?: AttemptTarget): MergeAttempt {
+  ingest(extraction: NormalizedExtraction, target?: AttemptTarget, openTab = false): MergeAttempt {
     const attemptId = this.ingestion.newId(), at = this.ingestion.now();
     return transaction(this.db, () => {
       const actualTarget = extraction.item ? { sourceKind: extraction.item.sourceKind, sourceId: extraction.item.sourceId } : target;
@@ -210,6 +222,7 @@ export class ReaderRepository {
             like_count=?,is_creator=?,is_pinned=?,remote_json=?,last_observed_at=?,last_attempt_id=? WHERE id=?`).run(...values, comment.id);
         }
       }
+      if (openTab) this.openWorkspaceItem(item.id);
       return attempt;
     });
   }
@@ -232,7 +245,42 @@ export class ReaderRepository {
   bootstrap(languages: readonly string[]): ReaderState {
     const items = this.readItems();
     return { items, comments: Object.fromEntries(items.map(item => [item.id, this.readComments(item)])),
-      preferences: this.preferences(languages) };
+      preferences: this.preferences(languages), workspace: this.workspace() };
+  }
+
+  workspace(): WorkspaceState {
+    const row = this.db.prepare('SELECT active_item_id, revision FROM workspace WHERE id = 1').get();
+    if (!row) throw new Error('Missing workspace');
+    return { openItemIds: this.db.prepare('SELECT item_id FROM workspace_tabs ORDER BY position').all().map(tab => String(tab.item_id)),
+      activeItemId: row.active_item_id === null ? null : String(row.active_item_id), revision: Number(row.revision) };
+  }
+
+  private writeWorkspace(state: WorkspaceState): WorkspaceState {
+    this.db.exec('DELETE FROM workspace_tabs');
+    const insert = this.db.prepare('INSERT INTO workspace_tabs VALUES (?, ?)');
+    state.openItemIds.forEach((id, position) => insert.run(id, position));
+    this.db.prepare('UPDATE workspace SET active_item_id = ?, revision = ? WHERE id = 1').run(state.activeItemId, state.revision);
+    return state;
+  }
+
+  private openWorkspaceItem(itemId: string): WorkspaceState {
+    const state = this.workspace();
+    if (state.activeItemId === itemId) return state;
+    return this.writeWorkspace({ openItemIds: state.openItemIds.includes(itemId) ? state.openItemIds : [...state.openItemIds, itemId],
+      activeItemId: itemId, revision: state.revision + 1 });
+  }
+
+  /** Only workspace rows change. Discussion, comment state and history remain untouched.
+   * Acquiring opens inside the merge transaction; Refresh never changes workspace. */
+  changeWorkspace(operation: 'openStoredItem' | 'activateTab' | 'closeTab', itemId: string): WorkspaceState {
+    return transaction(this.db, () => {
+      if (!this.db.prepare('SELECT id FROM content_items WHERE id = ?').get(itemId)) throw new MissingCommentError('Unknown discussion');
+      const state = this.workspace();
+      if (operation === 'activateTab' && !state.openItemIds.includes(itemId)) throw new MissingCommentError('Unknown tab');
+      if (operation !== 'closeTab') return this.openWorkspaceItem(itemId);
+      const next = closeWorkspaceTab(state, itemId);
+      return next === state ? state : this.writeWorkspace(next);
+    });
   }
 
   /** Read current stored target state and resolve every descendant through the

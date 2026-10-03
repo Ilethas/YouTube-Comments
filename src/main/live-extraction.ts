@@ -7,7 +7,7 @@ import type { AcquisitionTarget } from './acquisition-target';
 import { buildCommunityCommand, buildYtDlpCommand } from './extractors/invocation';
 import { normalizeYtDlp } from './extractors/yt-dlp';
 import { normalizeCommunityArchive } from './extractors/community';
-import { executeProcess, resolvePathHelper } from './helper-process';
+import { executeProcess, createHelperResolver } from './helper-process';
 import type { ExecuteProcess, ResolveHelper, ProcessOutcome } from './helper-process';
 
 export type LiveExtraction = { readonly extraction: NormalizedExtraction; readonly error?: ErrorCode };
@@ -18,7 +18,7 @@ const maxOutput = 128 * 1024 * 1024;
  * raw output, paths and arbitrary stderr never enter attempt history or IPC. */
 export function createLiveExtractor(options: { readonly execute?: ExecuteProcess; readonly resolve?: ResolveHelper;
   readonly temporaryRoot?: string; readonly deadlineMs?: number } = {}): ExtractLive {
-  const execute = options.execute ?? executeProcess, resolve = options.resolve ?? resolvePathHelper;
+  const execute = options.execute ?? executeProcess, resolve = options.resolve ?? createHelperResolver();
   return async (target, signal) => {
     const community = target.sourceKind === 'youtube-community-post';
     const name = community ? 'post-archiver' : 'yt-dlp';

@@ -5,7 +5,7 @@ import type { AuthorObservation, CommentObservation, ContentObservation, ImageOb
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 const value = <T>(input: T | null): ObservedField<T> => input === null ? { status: 'unknown', reason: 'unavailable' } : { status: 'observed', value: input };
 function author(row: Row): AuthorObservation {
-  return { sourceId: value(row.author_source_id as string | null), displayName: value(row.author_display_name as string | null), handle: value(row.author_handle as string | null) };
+  return { sourceId: value(row.author_source_id as string | null), displayName: value(row.author_display_name as string | null), handle: value(row.author_handle as string | null), avatarUrl: value<string>(null) };
 }
 function publication(row: Row): PublicationObservation {
   return { instant: value(row.published_at as string | null), label: value<string>(null), precision: row.published_at === null ? 'unknown' : 'exact', estimated: value<boolean>(null) };

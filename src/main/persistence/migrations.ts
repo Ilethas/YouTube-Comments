@@ -93,7 +93,19 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
           THEN RAISE(ABORT, 'Invalid comment evidence/history') END;
       END;`);
   }
-} }];
+} }, { version: 3, apply: db => db.exec(`
+  CREATE TABLE workspace_tabs (
+    item_id TEXT PRIMARY KEY NOT NULL REFERENCES content_items(id),
+    position INTEGER NOT NULL UNIQUE CHECK(position >= 0)
+  ) STRICT;
+  CREATE TABLE workspace (
+    id INTEGER PRIMARY KEY CHECK(id = 1),
+    active_item_id TEXT REFERENCES workspace_tabs(item_id) DEFERRABLE INITIALLY DEFERRED,
+    revision INTEGER NOT NULL CHECK(revision >= 0)
+  ) STRICT;
+  INSERT INTO workspace_tabs SELECT id, position FROM content_items ORDER BY position;
+  INSERT INTO workspace VALUES (1, (SELECT item_id FROM workspace_tabs ORDER BY position LIMIT 1), 0);
+`) }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 
 /** Short synchronous main-owned transaction; any failure rolls back all writes. */

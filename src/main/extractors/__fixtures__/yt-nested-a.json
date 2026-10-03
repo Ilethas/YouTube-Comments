@@ -51,6 +51,7 @@
         "parent": "root",
         "text": "Invented root.\nZażółć gęślą jaźń.",
         "author": "Example A",
+        "author_thumbnail": "https://example.invalid/video-comment-author.png",
         "author_id": "UC_DemoA",
         "timestamp": 1758000000,
         "_time_text": "2 weeks ago",

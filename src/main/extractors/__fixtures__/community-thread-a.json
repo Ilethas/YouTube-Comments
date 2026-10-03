@@ -48,7 +48,7 @@
         "author": "Example Post Creator",
         "author_id": "UC_DemoCreator",
         "author_url": "https://www.youtube.com/@example-creator",
-        "author_thumbnail": "",
+        "author_thumbnail": "https://example.invalid/post-author.png",
         "author_is_verified": false,
         "author_is_member": false,
         "images": [
@@ -70,12 +70,12 @@
           {
             "id": "Ug.thread:01",
             "text": "Invented top-level text.",
-            "like_count": "4",
+            "like_count": "4 likes",
             "timestamp": "3 hours ago",
             "timestamp_estimated": true,
             "author_id": "UC_DemoC",
             "author": "Example C",
-            "author_thumbnail": "",
+            "author_thumbnail": "https://example.invalid/comment-author.png",
             "author_is_verified": false,
             "author_is_member": false,
             "author_url": "",

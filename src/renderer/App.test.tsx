@@ -6,11 +6,23 @@ import { App } from './App';
 import { initialComments, items } from '../fixtures/discussions';
 import { toggleSeen } from '../domain/discussion';
 import type { AcquisitionResult, ReaderApi, ReaderState, Result } from '../shared/reader-api';
+import { closeWorkspaceTab } from '../domain/workspace';
 
 let api: ReaderApi;
 beforeEach(() => {
-  let state: ReaderState = { items, comments: initialComments, preferences: { locale: 'en', appearance: 'system' } };
+  let state: ReaderState = { items, comments: initialComments, preferences: { locale: 'en', appearance: 'system' },
+    workspace: { openItemIds: items.map(item => item.id), activeItemId: items[0].id, revision: 0 } };
+  const open: ReaderApi['openStoredItem'] = async ({ itemId }) => {
+    state = { ...state, workspace: { openItemIds: state.workspace.openItemIds.includes(itemId) ? state.workspace.openItemIds : [...state.workspace.openItemIds, itemId],
+      activeItemId: itemId, revision: state.workspace.revision + 1 } };
+    return { ok: true, value: state.workspace };
+  };
   api = {
+    openStoredItem: vi.fn(open), activateTab: vi.fn(open),
+    closeTab: vi.fn<ReaderApi['closeTab']>(async ({ itemId }) => {
+      state = { ...state, workspace: closeWorkspaceTab(state.workspace, itemId) };
+      return { ok: true, value: state.workspace };
+    }),
     acquire: vi.fn<ReaderApi['acquire']>(async () => ({ ok: false, error: { code: 'ACQUISITION_FAILED' } })),
     refresh: vi.fn<ReaderApi['refresh']>(async () => ({ ok: false, error: { code: 'ACQUISITION_FAILED' } })),
     bootstrap: vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true, value: state })),
@@ -145,7 +157,8 @@ it('failed preferences keep saved language/appearance and rejected transport is 
 function acquired(): AcquisitionResult {
   const item = { ...items[0], id: 'acquired-video', sourceId: 'abcdefghijk', title: 'Acquired video' };
   const comment = { ...initialComments['video-demo'][0], id: 'acquired-comment', itemId: item.id, parentId: null, seen: false, text: 'Acquired comment' };
-  return { state: { items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system' } },
+  return { state: { items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system' },
+    workspace: { openItemIds: [...items.map(item => item.id), item.id], activeItemId: item.id, revision: 1 } },
     summary: { itemId: item.id, coverage: 'unknown', inserted: 1, updated: 0, warnings: 0 } };
 }
 it('URL Enter submission adds and activates acknowledged discussion, then Refresh updates while retaining active item', async () => {
@@ -155,13 +168,15 @@ it('URL Enter submission adds and activates acknowledged discussion, then Refres
     comments: { ...value.state.comments, 'acquired-video': [{ ...value.state.comments['acquired-video'][0], text: 'Refreshed comment' }] } } } }));
   await showReader();
   expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Add / Open' }));
   await userEvent.type(screen.getByLabelText('YouTube URL'), 'https://youtu.be/abcdefghijk{Enter}');
   expect(api.acquire).toHaveBeenCalledWith({ url: 'https://youtu.be/abcdefghijk' });
   await screen.findByText('Acquired comment');
   expect(screen.getByRole('tabpanel').id).toBe('panel-acquired-video');
   expect(screen.queryByText(/Synthetic discussions/)).toBeNull();
   expect(within(screen.getByRole('tabpanel')).queryByText(/Demo reference time/)).toBeNull();
-  expect(screen.getByRole('status').textContent).toContain('Discussion saved');
+  expect(screen.getByRole('status').title).toContain('Discussion saved');
+  expect(screen.queryByLabelText('YouTube URL')).toBeNull();
   await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   expect(api.refresh).toHaveBeenCalledWith({ itemId: 'acquired-video' });
   await screen.findByText('Refreshed comment');
@@ -172,10 +187,11 @@ it('acquisition shows busy but checkboxes remain usable; failure retains visible
   api.acquire = vi.fn<ReaderApi['acquire']>(() => new Promise(resolve => { finish = resolve; }));
   await showReader();
   const original = checked();
-  await userEvent.type(screen.getByLabelText('YouTube URL'), 'https://youtu.be/abcdefghijk');
   await userEvent.click(screen.getByRole('button', { name: 'Add / Open' }));
+  await userEvent.type(screen.getByLabelText('YouTube URL'), 'https://youtu.be/abcdefghijk');
+  await userEvent.click(screen.getByRole('button', { name: 'Open URL' }));
   expect(screen.getByRole('status').textContent).toContain('Acquiring');
-  expect((screen.getByRole('button', { name: 'Add / Open' }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button', { name: 'Open URL' }) as HTMLButtonElement).disabled).toBe(true);
   expect(checkboxes().every(input => !input.disabled)).toBe(true);
   await userEvent.click(checkboxes()[0]);
   expect(checked()[0]).toBe(!original[0]);
@@ -230,4 +246,78 @@ it('a seen acknowledgment arriving after refresh changes only seen and keeps new
   await waitFor(() => expect(checked()).toEqual([true, false]));
   expect(screen.getByText('Updated remote comment')).toBeTruthy();
   expect(screen.getByText('Later discovery')).toBeTruthy();
+});
+
+it('keeps the URL row hidden until Add / Open and supports cancel, Escape and retry without losing input', async () => {
+  await showReader();
+  expect(screen.queryByLabelText('YouTube URL')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Add / Open' }));
+  const input = screen.getByLabelText('YouTube URL');
+  expect(document.activeElement).toBe(input);
+  await userEvent.type(input, 'https://youtu.be/abcdefghijk');
+  await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByLabelText('YouTube URL')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Add / Open' }));
+  expect((screen.getByLabelText('YouTube URL') as HTMLInputElement).value).toBe('https://youtu.be/abcdefghijk');
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByLabelText('YouTube URL')).toBeNull();
+});
+
+it('closes a background tab independently and Library reopens it; closing all shows a useful empty workspace', async () => {
+  await showReader();
+  const title = items[0].kind === 'video' ? items[0].title : '';
+  await userEvent.click(screen.getByRole('button', { name: /^Close tab: Quiet Workshop/ }));
+  expect(api.closeTab).toHaveBeenCalledWith({ itemId: 'post-demo' });
+  expect(api.activateTab).not.toHaveBeenCalled();
+  expect(screen.getByRole('tabpanel').id).toBe('panel-video-demo');
+  await userEvent.click(screen.getByRole('button', { name: 'Library' }));
+  await userEvent.click(within(screen.getByRole('region', { name: 'Library' })).getByRole('button', { name: /Community Post/ }));
+  expect(api.openStoredItem).toHaveBeenCalledWith({ itemId: 'post-demo' });
+  expect(screen.getByRole('tabpanel').id).toBe('panel-post-demo');
+  await userEvent.click(screen.getByRole('button', { name: `Close tab: ${title}` }));
+  await userEvent.click(screen.getByRole('button', { name: /^Close tab: Quiet Workshop/ }));
+  expect(screen.queryByRole('tabpanel')).toBeNull();
+  expect(screen.getByText('No open tabs')).toBeTruthy();
+  expect(api.toggleSeen).not.toHaveBeenCalled();
+});
+
+it('starts with persisted tab selection and keeps complete stored description behind expand/collapse', async () => {
+  const value = acquired().state;
+  api.bootstrap = vi.fn(async () => ({ ok: true as const, value }));
+  await showReader();
+  expect(screen.getByRole('tabpanel').id).toBe('panel-acquired-video');
+  const button = screen.getByRole('button', { name: 'Show description' });
+  const description = document.getElementById(button.getAttribute('aria-controls') ?? '');
+  expect(description?.classList.contains('preview')).toBe(true);
+  expect(description?.textContent).toBe(value.items[2].kind === 'video' ? value.items[2].description : '');
+  await userEvent.click(button);
+  expect(screen.getByRole('button', { name: 'Hide description' }).getAttribute('aria-expanded')).toBe('true');
+  expect(description?.classList.contains('expanded')).toBe(true);
+  await userEvent.click(screen.getByRole('button', { name: 'Hide description' }));
+  expect(description?.classList.contains('preview')).toBe(true);
+});
+
+it('older acquisition workspace acknowledgment cannot reopen a tab closed after its snapshot', async () => {
+  const value = acquired();
+  api.bootstrap = vi.fn(async () => ({ ok: true as const, value: value.state }));
+  let finish: (value: Result<AcquisitionResult>) => void = () => undefined;
+  api.refresh = vi.fn<ReaderApi['refresh']>(() => new Promise(resolve => { finish = resolve; }));
+  api.closeTab = vi.fn<ReaderApi['closeTab']>(async () => ({ ok: true, value: { openItemIds: ['video-demo', 'post-demo'], activeItemId: 'post-demo', revision: 2 } }));
+  await showReader();
+  await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Close tab: Acquired video' }));
+  finish({ ok: true, value });
+  await waitFor(() => expect(screen.queryByRole('tab', { name: /Acquired video/ })).toBeNull());
+  expect(screen.getByRole('tabpanel').id).toBe('panel-post-demo');
+});
+
+it('a failed tab close retains the acknowledged view and presents localized save feedback', async () => {
+  api.closeTab = vi.fn<ReaderApi['closeTab']>(async () => ({ ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }));
+  await showReader();
+  const original = checked();
+  await userEvent.click(screen.getByRole('button', { name: /^Close tab: A quieter desk/ }));
+  expect((await screen.findByRole('alert')).textContent).toContain('could not be confirmed');
+  expect(screen.getAllByRole('tab')).toHaveLength(2);
+  expect(screen.getByRole('tabpanel').id).toBe('panel-video-demo');
+  expect(checked()).toEqual(original);
 });

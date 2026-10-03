@@ -7,7 +7,7 @@ import type { CommentObservation, ContentObservation, NormalizedExtraction, Obse
 const observed = <T>(value: T): ObservedField<T> => ({ status: 'observed', value });
 const unknown = <T>(): ObservedField<T> => ({ status: 'unknown', reason: 'unavailable' });
 const publication: PublicationObservation = { instant: unknown(), label: unknown(), precision: 'unknown', estimated: unknown() };
-const author = { sourceId: unknown<string>(), displayName: observed('author'), handle: unknown<string>() };
+const author = { sourceId: unknown<string>(), displayName: observed('author'), handle: unknown<string>(), avatarUrl: unknown<string>() };
 const comment: CommentObservation = { sourceId: 'opaque', text: observed('text'), author, publication, relationship: { kind: 'top-level' }, likeCount: observed(12), pinned: unknown(), creator: unknown() };
 function input(comments: readonly CommentObservation[] = [comment]): Extract<NormalizedExtraction, { item: ContentObservation }> {
   return { provenance: { backend: 'fixture', version: '1', evidence: [] }, coverage: { kind: 'unknown' }, issues: [],
