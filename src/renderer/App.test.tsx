@@ -6,40 +6,57 @@ import { App } from './App';
 import { initialComments, items } from '../fixtures/discussions';
 import { toggleSeen } from '../domain/discussion';
 import type { AcquisitionResult, ReaderApi, ReaderState, Result } from '../shared/reader-api';
-import { closeWorkspaceTab } from '../domain/workspace';
+import { closeWorkspaceTab, discussionTab, openWorkspaceTab, moveWorkspaceTab } from '../domain/workspace';
 
 let api: ReaderApi;
+let state: ReaderState;
 beforeEach(() => {
-  let state: ReaderState = { items, comments: initialComments, preferences: { locale: 'en', appearance: 'system' },
-    workspace: { openItemIds: items.map(item => item.id), activeItemId: items[0].id, revision: 0 } };
+  state = { items, comments: initialComments, preferences: { locale: 'en', appearance: 'system' },
+    workspace: { tabs: items.map(item => discussionTab(item.id)), activeTabId: discussionTab(items[0].id).id, revision: 0 } };
   const open: ReaderApi['openStoredItem'] = async ({ itemId }) => {
-    state = { ...state, workspace: { openItemIds: state.workspace.openItemIds.includes(itemId) ? state.workspace.openItemIds : [...state.workspace.openItemIds, itemId],
-      activeItemId: itemId, revision: state.workspace.revision + 1 } };
-    return { ok: true, value: state.workspace };
+    state = { ...state, workspace: openWorkspaceTab(state.workspace, discussionTab(itemId)) };
+    return { ok: true as const, value: state.workspace };
   };
   api = {
-    openStoredItem: vi.fn(open), activateTab: vi.fn(open),
-    closeTab: vi.fn<ReaderApi['closeTab']>(async ({ itemId }) => {
-      state = { ...state, workspace: closeWorkspaceTab(state.workspace, itemId) };
-      return { ok: true, value: state.workspace };
+    openStoredItem: vi.fn(open),
+    activateTab: vi.fn(async ({ tabId }) => {
+      state = { ...state, workspace: openWorkspaceTab(state.workspace, state.workspace.tabs.find(tab => tab.id === tabId) ?? discussionTab(tabId.replace(/^discussion:/, ''))) };
+      return { ok: true as const, value: state.workspace };
+    }),
+    openLibrary: vi.fn(async () => { state = { ...state, workspace: openWorkspaceTab(state.workspace, { id: 'library', kind: 'library' }) }; return { ok: true as const, value: state.workspace }; }),
+    openSettings: vi.fn(async () => { state = { ...state, workspace: openWorkspaceTab(state.workspace, { id: 'settings', kind: 'settings' }) }; return { ok: true as const, value: state.workspace }; }),
+    moveTab: vi.fn(async ({ tabId, toIndex }) => { state = { ...state, workspace: moveWorkspaceTab(state.workspace, tabId, toIndex) }; return { ok: true as const, value: state.workspace }; }),
+    removeLibraryItem: vi.fn(async ({ itemId }) => {
+      state = { ...state, items: state.items.filter(item => item.id !== itemId),
+        comments: Object.fromEntries(Object.entries(state.comments).filter(([id]) => id !== itemId)),
+        workspace: closeWorkspaceTab(state.workspace, discussionTab(itemId).id) };
+      return { ok: true as const, value: state };
+    }),
+    closeTab: vi.fn<ReaderApi['closeTab']>(async ({ tabId }) => {
+      state = { ...state, workspace: closeWorkspaceTab(state.workspace, tabId) };
+      return { ok: true as const, value: state.workspace };
     }),
     acquire: vi.fn<ReaderApi['acquire']>(async () => ({ ok: false, error: { code: 'ACQUISITION_FAILED' } })),
     refresh: vi.fn<ReaderApi['refresh']>(async () => ({ ok: false, error: { code: 'ACQUISITION_FAILED' } })),
-    bootstrap: vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true, value: state })),
+    bootstrap: vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true as const, value: state })),
     toggleSeen: vi.fn<ReaderApi['toggleSeen']>(async request => {
       const comments = toggleSeen(state.comments[request.itemId], request.commentId, request.subtree);
       state = { ...state, comments: { ...state.comments, [request.itemId]: comments } };
-      return { ok: true, value: comments };
+      return { ok: true as const, value: comments };
     }),
     updatePreferences: vi.fn<ReaderApi['updatePreferences']>(async change => {
       state = { ...state, preferences: { ...state.preferences, ...change } };
-      return { ok: true, value: state.preferences };
+      return { ok: true as const, value: state.preferences };
     }),
   };
 });
 async function showReader() { render(<App api={api} />); await screen.findByRole('tabpanel'); }
 
 beforeEach(() => {
+  vi.stubGlobal('PointerEvent', MouseEvent);
+  Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', { configurable: true, value: vi.fn() });
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function(this: HTMLDialogElement) { this.setAttribute('open', ''); } });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function(this: HTMLDialogElement) { this.removeAttribute('open'); } });
   // A value avoids spying on jsdom's branded Navigator prototype getter.
   Object.defineProperty(window.navigator, 'languages', { configurable: true, value: ['en'] });
 });
@@ -57,7 +74,9 @@ it('reading, scrolling, tab navigation and language changes do not mark comments
   expect(checked()).toEqual(initialComments['post-demo'].map(comment => comment.seen));
   await user.keyboard('{ArrowLeft}');
   expect(checked()).toEqual(original);
+  await user.click(screen.getByRole('button', { name: 'Settings' }));
   await user.selectOptions(screen.getByLabelText('Language'), 'pl');
+  await user.click(screen.getByRole('tab', { name: /A quieter desk/ }));
   expect(document.documentElement.lang).toBe('pl');
   expect(screen.getByText(initialComments['video-demo'][0].text)).toBeTruthy();
   expect(checked()).toEqual(original);
@@ -88,11 +107,11 @@ it('defaults to System and switches appearance without resetting seen state', as
   const user = userEvent.setup();
   await showReader();
   expect(document.documentElement.dataset.appearance).toBe('system');
-  const original = checked();
+  await user.click(screen.getByRole('button', { name: 'Settings' }));
   for (const appearance of ['dark', 'light', 'system']) {
     await user.selectOptions(screen.getByLabelText('Appearance'), appearance);
     expect(document.documentElement.dataset.appearance).toBe(appearance);
-    expect(checked()).toEqual(original);
+    expect(api.toggleSeen).not.toHaveBeenCalled();
   }
 });
 
@@ -145,6 +164,7 @@ it('keeps acknowledged checkbox state during a pending write and after a failed 
 it('failed preferences keep saved language/appearance and rejected transport is visible', async () => {
   api.updatePreferences = vi.fn(async () => { throw new Error('Transport failed'); });
   await showReader();
+  await userEvent.click(screen.getByRole('button', { name: 'Settings' }));
   await userEvent.selectOptions(screen.getByLabelText('Language'), 'pl');
   await screen.findByRole('alert');
   expect(document.documentElement.lang).toBe('en');
@@ -155,16 +175,16 @@ it('failed preferences keep saved language/appearance and rejected transport is 
 });
 
 function acquired(): AcquisitionResult {
-  const item = { ...items[0], id: 'acquired-video', sourceId: 'abcdefghijk', title: 'Acquired video' };
+  const item = { ...items[0], id: 'acquired-video', removable: true, sourceId: 'abcdefghijk', title: 'Acquired video' };
   const comment = { ...initialComments['video-demo'][0], id: 'acquired-comment', itemId: item.id, parentId: null, seen: false, text: 'Acquired comment' };
   return { state: { items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system' },
-    workspace: { openItemIds: [...items.map(item => item.id), item.id], activeItemId: item.id, revision: 1 } },
+    workspace: { tabs: [...items, item].map(item => discussionTab(item.id)), activeTabId: discussionTab(item.id).id, revision: 1 } },
     summary: { itemId: item.id, coverage: 'unknown', inserted: 1, updated: 0, warnings: 0 } };
 }
 it('URL Enter submission adds and activates acknowledged discussion, then Refresh updates while retaining active item', async () => {
   const value = acquired();
-  api.acquire = vi.fn<ReaderApi['acquire']>(async () => ({ ok: true, value }));
-  api.refresh = vi.fn<ReaderApi['refresh']>(async () => ({ ok: true, value: { ...value, state: { ...value.state,
+  api.acquire = vi.fn<ReaderApi['acquire']>(async () => ({ ok: true as const, value }));
+  api.refresh = vi.fn<ReaderApi['refresh']>(async () => ({ ok: true as const, value: { ...value, state: { ...value.state,
     comments: { ...value.state.comments, 'acquired-video': [{ ...value.state.comments['acquired-video'][0], text: 'Refreshed comment' }] } } } }));
   await showReader();
   expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
@@ -195,7 +215,9 @@ it('acquisition shows busy but checkboxes remain usable; failure retains visible
   expect(checkboxes().every(input => !input.disabled)).toBe(true);
   await userEvent.click(checkboxes()[0]);
   expect(checked()[0]).toBe(!original[0]);
+  await userEvent.click(screen.getByRole('button', { name: 'Settings' }));
   await userEvent.selectOptions(screen.getByLabelText('Language'), 'pl');
+  await userEvent.click(screen.getByRole('tab', { name: /A quieter desk/ }));
   finish({ ok: false, error: { code: 'HELPER_UNAVAILABLE' } });
   expect((await screen.findByRole('alert')).textContent).toContain('niedostępny');
   expect(screen.getByRole('tabpanel').id).toBe('panel-video-demo');
@@ -203,7 +225,7 @@ it('acquisition shows busy but checkboxes remain usable; failure retains visible
   expect(screen.queryByRole('status')).toBeNull();
 });
 it('refresh failure preserves acquired comments and reports incompatible helper distinctly', async () => {
-  api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true, value: acquired().state }));
+  api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true as const, value: acquired().state }));
   api.refresh = vi.fn<ReaderApi['refresh']>(async () => ({ ok: false, error: { code: 'HELPER_INCOMPATIBLE' } }));
   await showReader();
   await userEvent.click(screen.getByRole('tab', { name: /Acquired video/ }));
@@ -213,16 +235,16 @@ it('refresh failure preserves acquired comments and reports incompatible helper 
 });
 it('overlapping acknowledgments preserve newer seen edits and newly acquired membership', async () => {
   const value = acquired();
-  api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true, value: value.state }));
+  api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true as const, value: value.state }));
   let finish: (result: Result<AcquisitionResult>) => void = () => { throw new Error('Not started'); };
   api.refresh = vi.fn<ReaderApi['refresh']>(() => new Promise(resolve => { finish = resolve; }));
-  api.toggleSeen = vi.fn<ReaderApi['toggleSeen']>(async () => ({ ok: true, value: [{ ...value.state.comments['acquired-video'][0], seen: true }] }));
+  api.toggleSeen = vi.fn<ReaderApi['toggleSeen']>(async () => ({ ok: true as const, value: [{ ...value.state.comments['acquired-video'][0], seen: true }] }));
   await showReader();
   await userEvent.click(screen.getByRole('tab', { name: /Acquired video/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   await userEvent.click(checkboxes()[0]);
   const comments = value.state.comments['acquired-video'];
-  finish({ ok: true, value: { ...value, state: { ...value.state, comments: { ...value.state.comments,
+  finish({ ok: true as const, value: { ...value, state: { ...value.state, comments: { ...value.state.comments,
     'acquired-video': [...comments, { ...comments[0], id: 'new-comment', text: 'New discovery' }] } } } });
   await screen.findByText('New discovery');
   expect(checked()).toEqual([true, false]);
@@ -230,7 +252,7 @@ it('overlapping acknowledgments preserve newer seen edits and newly acquired mem
 
 it('a seen acknowledgment arriving after refresh changes only seen and keeps new comments/remote fields', async () => {
   const value = acquired(), rows = value.state.comments['acquired-video'];
-  api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true, value: value.state }));
+  api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true as const, value: value.state }));
   let finishSeen: (result: Result<typeof rows>) => void = () => { throw new Error('Not started'); };
   let finishRefresh: (result: Result<AcquisitionResult>) => void = () => { throw new Error('Not started'); };
   api.toggleSeen = vi.fn<ReaderApi['toggleSeen']>(() => new Promise(resolve => { finishSeen = resolve; }));
@@ -239,10 +261,10 @@ it('a seen acknowledgment arriving after refresh changes only seen and keeps new
   await userEvent.click(screen.getByRole('tab', { name: /Acquired video/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   await userEvent.click(checkboxes()[0]);
-  finishRefresh({ ok: true, value: { ...value, state: { ...value.state, comments: { ...value.state.comments,
+  finishRefresh({ ok: true as const, value: { ...value, state: { ...value.state, comments: { ...value.state.comments,
     'acquired-video': [{ ...rows[0], text: 'Updated remote comment' }, { ...rows[0], id: 'later-discovery', text: 'Later discovery' }] } } } });
   await screen.findByText('Later discovery');
-  finishSeen({ ok: true, value: [{ ...rows[0], seen: true }] });
+  finishSeen({ ok: true as const, value: [{ ...rows[0], seen: true }] });
   await waitFor(() => expect(checked()).toEqual([true, false]));
   expect(screen.getByText('Updated remote comment')).toBeTruthy();
   expect(screen.getByText('Later discovery')).toBeTruthy();
@@ -267,13 +289,14 @@ it('closes a background tab independently and Library reopens it; closing all sh
   await showReader();
   const title = items[0].kind === 'video' ? items[0].title : '';
   await userEvent.click(screen.getByRole('button', { name: /^Close tab: Quiet Workshop/ }));
-  expect(api.closeTab).toHaveBeenCalledWith({ itemId: 'post-demo' });
+  expect(api.closeTab).toHaveBeenCalledWith({ tabId: discussionTab('post-demo').id });
   expect(api.activateTab).not.toHaveBeenCalled();
   expect(screen.getByRole('tabpanel').id).toBe('panel-video-demo');
   await userEvent.click(screen.getByRole('button', { name: 'Library' }));
-  await userEvent.click(within(screen.getByRole('region', { name: 'Library' })).getByRole('button', { name: /Community Post/ }));
+  await userEvent.click(within(screen.getByRole('tabpanel')).getByRole('button', { name: 'Open' }));
   expect(api.openStoredItem).toHaveBeenCalledWith({ itemId: 'post-demo' });
   expect(screen.getByRole('tabpanel').id).toBe('panel-post-demo');
+  await userEvent.click(screen.getByRole('button', { name: 'Close tab: Library' }));
   await userEvent.click(screen.getByRole('button', { name: `Close tab: ${title}` }));
   await userEvent.click(screen.getByRole('button', { name: /^Close tab: Quiet Workshop/ }));
   expect(screen.queryByRole('tabpanel')).toBeNull();
@@ -302,11 +325,11 @@ it('older acquisition workspace acknowledgment cannot reopen a tab closed after 
   api.bootstrap = vi.fn(async () => ({ ok: true as const, value: value.state }));
   let finish: (value: Result<AcquisitionResult>) => void = () => undefined;
   api.refresh = vi.fn<ReaderApi['refresh']>(() => new Promise(resolve => { finish = resolve; }));
-  api.closeTab = vi.fn<ReaderApi['closeTab']>(async () => ({ ok: true, value: { openItemIds: ['video-demo', 'post-demo'], activeItemId: 'post-demo', revision: 2 } }));
+  api.closeTab = vi.fn<ReaderApi['closeTab']>(async () => ({ ok: true as const, value: { tabs: ['video-demo', 'post-demo'].map(discussionTab), activeTabId: discussionTab('post-demo').id, revision: 2 } }));
   await showReader();
   await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   await userEvent.click(screen.getByRole('button', { name: 'Close tab: Acquired video' }));
-  finish({ ok: true, value });
+  finish({ ok: true as const, value });
   await waitFor(() => expect(screen.queryByRole('tab', { name: /Acquired video/ })).toBeNull());
   expect(screen.getByRole('tabpanel').id).toBe('panel-post-demo');
 });
@@ -320,4 +343,103 @@ it('a failed tab close retains the acknowledged view and presents localized save
   expect(screen.getAllByRole('tab')).toHaveLength(2);
   expect(screen.getByRole('tabpanel').id).toBe('panel-video-demo');
   expect(checked()).toEqual(original);
+});
+
+it('Library and Settings are ordinary singleton closable tabs; toolbar contains no preference controls', async () => {
+  await showReader();
+  expect(document.querySelector('.app-toolbar select')).toBeNull();
+  for (const name of ['Library', 'Settings']) {
+    await userEvent.click(screen.getByRole('button', { name }));
+    await userEvent.click(screen.getByRole('button', { name }));
+    expect(screen.getAllByRole('tab', { name: new RegExp(name) })).toHaveLength(1);
+  }
+  expect(screen.getByRole('tabpanel').id).toBe('panel-settings');
+  await userEvent.click(screen.getByRole('button', { name: 'Close tab: Settings' }));
+  expect(screen.getByRole('tabpanel').id).toBe('panel-library');
+  await userEvent.click(screen.getByRole('button', { name: 'Close tab: Library' }));
+  expect(screen.getByRole('tabpanel').id).toBe('panel-post-demo');
+  await userEvent.click(screen.getByRole('button', { name: 'Library' }));
+  expect(screen.getAllByRole('tab').at(-1)?.textContent).toBe('Library');
+});
+it('Library filters metadata, shows open/closed counts and demo protection, and activates without duplication', async () => {
+  await showReader();
+  await userEvent.click(screen.getByRole('button', { name: /^Close tab: Quiet Workshop/ }));
+  await userEvent.click(screen.getByRole('button', { name: 'Library' }));
+  const panel = screen.getByRole('tabpanel');
+  expect(within(panel).getAllByText(/removal unavailable/)).toHaveLength(2);
+  expect(within(panel).queryByRole('button', { name: 'Remove from Library' })).toBeNull();
+  expect(within(panel).getAllByText('Open tab')).toHaveLength(1);
+  await userEvent.type(screen.getByRole('searchbox'), 'reading lamp');
+  expect(within(panel).getAllByRole('listitem')).toHaveLength(1);
+  await userEvent.click(within(panel).getByRole('button', { name: 'Open' }));
+  expect(screen.getByRole('tabpanel').id).toBe('panel-post-demo');
+  expect(screen.getAllByRole('tab')).toHaveLength(3);
+});
+it('confirmation is required, Cancel preserves item, and successful Remove updates Library and workspace', async () => {
+  state = acquired().state;
+  await showReader();
+  await userEvent.click(screen.getByRole('button', { name: 'Library' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Remove from Library' }));
+  const dialog = screen.getByRole('dialog');
+  expect(dialog.textContent).toContain('seen state, and refresh history');
+  expect(dialog.textContent).toContain('does not affect YouTube');
+  expect(api.removeLibraryItem).not.toHaveBeenCalled();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(api.removeLibraryItem).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole('button', { name: 'Remove from Library' }));
+  await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(api.removeLibraryItem).toHaveBeenCalledWith({ itemId: 'acquired-video' });
+  expect(screen.queryByRole('tab', { name: /Acquired video/ })).toBeNull();
+  expect(screen.getByRole('tabpanel').id).toBe('panel-library');
+  expect(within(screen.getByRole('tabpanel')).getAllByRole('listitem')).toHaveLength(2);
+});
+it('failed removal stays visible with storage feedback, and busy removal explains waiting', async () => {
+  state = acquired().state;
+  api.removeLibraryItem = vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } }));
+  await showReader();
+  await userEvent.click(screen.getByRole('button', { name: 'Library' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Remove from Library' }));
+  await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('remains in Library');
+  expect(screen.getByRole('tab', { name: /Acquired video/ })).toBeTruthy();
+  api.removeLibraryItem = vi.fn(async () => ({ ok: false as const, error: { code: 'ACQUISITION_BUSY' as const } }));
+  await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Wait for it'));
+});
+it('an older acquisition content snapshot cannot resurrect an unrelated removed item', async () => {
+  state = acquired().state;
+  const old = acquired();
+  let finish: (value: Result<AcquisitionResult>) => void = () => undefined;
+  api.refresh = vi.fn<ReaderApi['refresh']>(() => new Promise(resolve => { finish = resolve; }));
+  await showReader();
+  // Simulate a delayed acknowledgment from an already completed helper snapshot.
+  await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Library' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Remove from Library' }));
+  await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  finish({ ok: true, value: old });
+  await waitFor(() => expect(document.querySelector('.acquisition-status')).toBeNull());
+  expect(screen.queryByRole('tab', { name: /Acquired video/ })).toBeNull();
+  expect(within(screen.getByRole('tabpanel')).getAllByRole('listitem')).toHaveLength(2);
+});
+it('older acquisition acknowledgment preserves newer app opens and mixed reorder', async () => {
+  state = acquired().state;
+  const old = acquired();
+  let finish: (value: Result<AcquisitionResult>) => void = () => undefined;
+  api.refresh = vi.fn<ReaderApi['refresh']>(() => new Promise(resolve => { finish = resolve; }));
+  await showReader();
+  await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Library' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Settings' }));
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Settings: Settings' }), { key: 'ArrowLeft', altKey: true });
+  await waitFor(() => expect(api.moveTab).toHaveBeenCalledWith({ tabId: 'settings', toIndex: 3 }));
+  finish({ ok: true, value: old });
+  await waitFor(() => expect(document.querySelector('.acquisition-status')).toBeNull());
+  expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+    items[0].kind === 'video' ? items[0].title : '', expect.stringContaining('Quiet Workshop'), 'Acquired video', 'Settings', 'Library',
+  ]);
+  expect(screen.getByRole('tabpanel').id).toBe('panel-settings');
 });

@@ -8,6 +8,11 @@ import type { ExtractLive } from './live-extraction';
  * available while helpers run. Merge reads current remote evidence at commit. */
 export class AcquisitionService {
   private busy = false;
+  private activeTarget?: AcquisitionTarget;
+  /** Canonical source ownership is set before awaiting the helper. */
+  owns(sourceKind: string | undefined, sourceId: string): boolean {
+    return this.activeTarget?.sourceKind === sourceKind && this.activeTarget?.sourceId === sourceId;
+  }
   private readonly lifecycle = new AbortController();
   private settled?: () => void;
   private completion: Promise<void> = Promise.resolve();
@@ -35,6 +40,7 @@ export class AcquisitionService {
     if (this.busy) return { ok: false, error: { code: 'ACQUISITION_BUSY' } };
     if (this.lifecycle.signal.aborted) return { ok: false, error: { code: 'ACQUISITION_FAILED' } };
     this.busy = true;
+    this.activeTarget = target;
     this.completion = new Promise(resolve => { this.settled = resolve; });
     try {
       let result;
@@ -52,7 +58,7 @@ export class AcquisitionService {
         updated: attempt.counts.updated, warnings: attempt.issues.length,
       } } };
     } catch { return { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }; }
-    finally { this.busy = false; this.settled?.(); }
+    finally { this.activeTarget = undefined; this.busy = false; this.settled?.(); }
   }
   close(): Promise<void> { this.lifecycle.abort(); return this.completion; }
 }

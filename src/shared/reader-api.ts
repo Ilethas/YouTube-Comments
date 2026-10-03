@@ -3,7 +3,7 @@ import type { Appearance, Locale, Preferences } from './preferences';
 import type { WorkspaceState } from '../domain/workspace';
 
 export type ErrorCode = 'INVALID_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA'
-  | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'HELPER_INCOMPATIBLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE';
+  | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'HELPER_INCOMPATIBLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE' | 'NOT_REMOVABLE';
 /** Stable codes cross IPC; privileged diagnostics/paths never reach the renderer. */
 export type Result<T> = { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: { readonly code: ErrorCode } };
@@ -22,6 +22,8 @@ export interface ToggleSeenRequest {
 export type PreferenceChange = { readonly locale: Locale } | { readonly appearance: Appearance };
 
 export interface AcquireRequest { readonly url: string }
+export interface TabRequest { readonly tabId: string }
+export interface MoveTabRequest extends TabRequest { readonly toIndex: number }
 export interface RefreshRequest { readonly itemId: string }
 /** Compact acknowledgment, without raw output, process details or provenance. */
 export interface AcquisitionResult {
@@ -38,13 +40,18 @@ export interface ReaderApi {
   acquire(request: AcquireRequest): Promise<Result<AcquisitionResult>>;
   refresh(request: RefreshRequest): Promise<Result<AcquisitionResult>>;
   openStoredItem(request: RefreshRequest): Promise<Result<WorkspaceState>>;
-  activateTab(request: RefreshRequest): Promise<Result<WorkspaceState>>;
-  closeTab(request: RefreshRequest): Promise<Result<WorkspaceState>>;
+  activateTab(request: TabRequest): Promise<Result<WorkspaceState>>;
+  closeTab(request: TabRequest): Promise<Result<WorkspaceState>>;
+  openLibrary(): Promise<Result<WorkspaceState>>;
+  openSettings(): Promise<Result<WorkspaceState>>;
+  moveTab(request: MoveTabRequest): Promise<Result<WorkspaceState>>;
+  removeLibraryItem(request: RefreshRequest): Promise<Result<ReaderState>>;
 }
 
 export const readerChannels = {
   bootstrap: 'reader:bootstrap', toggleSeen: 'reader:toggle-seen', updatePreferences: 'reader:preferences',
   acquire: 'reader:acquire', refresh: 'reader:refresh',
+  openLibrary: 'reader:open-library', openSettings: 'reader:open-settings', moveTab: 'reader:move-tab', removeLibraryItem: 'reader:remove-library-item',
   openStoredItem: 'reader:open-stored-item', activateTab: 'reader:activate-tab', closeTab: 'reader:close-tab',
 } as const;
 export type ReaderOperation = keyof typeof readerChannels;
@@ -71,4 +78,12 @@ export function isAcquireRequest(value: unknown): value is AcquireRequest {
 }
 export function isRefreshRequest(value: unknown): value is RefreshRequest {
   return exactKeys(value, ['itemId']) && identifier(value.itemId);
+}
+
+export function isTabRequest(value: unknown): value is TabRequest {
+  return exactKeys(value, ['tabId']) && identifier(value.tabId);
+}
+export function isMoveTabRequest(value: unknown): value is MoveTabRequest {
+  return exactKeys(value, ['tabId', 'toIndex']) && identifier(value.tabId)
+    && Number.isSafeInteger(value.toIndex) && (value.toIndex as number) >= 0;
 }

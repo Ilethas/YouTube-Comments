@@ -295,7 +295,7 @@ it('schema 1 to 2 preserves legacy IDs, all remote fields, seen/preferences and 
   const db = raw(); schemaOne(db);
   const items = db.prepare('SELECT * FROM content_items').all(), old = db.prepare('SELECT * FROM comments ORDER BY position').all();
   migrateDatabase(db);
-  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(3);
+  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(4);
   expect(db.prepare('SELECT * FROM content_items').all()).toMatchObject(items);
   expect(db.prepare('SELECT * FROM comments ORDER BY position').all()).toMatchObject(old);
   expect(db.prepare('SELECT * FROM comment_state ORDER BY comment_id').all()).toEqual([{ comment_id: 'old-child', seen: 0 }, { comment_id: 'old-root', seen: 1 }]);

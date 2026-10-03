@@ -1,10 +1,33 @@
 # Database and durable data
 
-SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 3 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace.
+SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 4 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace.
 
 The implementation below is deliberately small. Later sections describe the broader conceptual target and must not be read as implemented tables/features. Read the [domain model](DOMAIN_MODEL.md) for meanings and [architecture](ARCHITECTURE.md) for ownership.
 
-## Current schema 3 workspace extension
+## Current schema 4 unified workspace and local removal
+
+[ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) migrates the old
+discussion-only workspace preserving exact open order, active identity and revision.
+It adds no app tabs and touches no content/comments/state/history/preferences.
+`workspace_tabs(id, kind, item_id, position)` uses application IDs
+`discussion:<internal item ID>`, `library`, `settings`. Kind/identity/ownership
+checks and unique item/order constraints enforce singletons. The singleton workspace
+references an open tab through `active_tab_id` with deferred FK and keeps revision.
+`content_items.position` is independent Library insertion order.
+
+All tab kinds open/close/activate/reorder through short transactions; reordering
+keeps active identity and commits only the final pointer/keyboard order. Close
+never deletes content. Removal advances revision even when the item was closed,
+applies ordinary mixed right/left/empty selection, then deletes local state,
+comments, content and attempts belonging to that item/target in one transaction.
+Because baseline and attempts form a FK cycle, checks are deferred to commit with
+foreign-key enforcement ON. No dangling references survive; late failures roll back
+everything. Unrelated items, preferences and app tabs stay untouched.
+Synthetic baselines cannot be removed. Main rejects removal of the active helper
+source, preventing stale results from recreating deleted content. There is no
+remote deletion/helper call or persistent remote tombstone.
+
+## Historical schema 3 workspace extension
 
 Migration 3 adds `workspace_tabs(item_id, position)` referencing stored items with
 unique nonnegative order, and singleton `workspace(active_item_id, revision)` with
@@ -18,7 +41,7 @@ Closed items remain in Library with their comments, history and local state. Clo
 active selects right, then left, then null; open appends or activates without
 duplicates. Successful Acquire opens in its merge transaction; Refresh does not.
 Revision protects acknowledgment ordering. `content_items.position` remains library
-insertion order. No persisted scroll/filter/expansion/reorder UI or deletion exists.
+insertion order. At schema 3 there was no reorder/deletion UI; schema 4 supplies these above. Persisted scroll/filter/expansion remain future work.
 
 Avatar evidence uses existing checked `remote_json`, with no avatar column/migration.
 Old authors default absent evidence to unavailable in memory; synthetic-history

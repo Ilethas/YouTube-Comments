@@ -29,14 +29,22 @@ async function verifyWindow(window, nativeTheme) {
     return JSON.parse(JSON.stringify(result.value));
   }
   async function preference(index, value) {
+    const previous = (await snapshot()).workspace.activeTabId;
+    await js("document.getElementById('settings-toggle').click()");
+    await waitFor("document.querySelector('#panel-settings:not([hidden])') !== null && !!document.querySelector('.preferences select')", 'Settings tab');
+
     await js(`(() => { const select = document.querySelectorAll('.preferences select')[${index}];
       select.value = '${value}'; select.dispatchEvent(new Event('change', {bubbles:true})); })()`);
     await waitFor(`document.querySelectorAll('.preferences select')[${index}].value === '${value}'
       && !document.querySelector('.preferences select:disabled')`, `preference ${value}`);
+    if (previous) {
+      await js(`document.getElementById(${JSON.stringify('tab-' + previous)}).click()`);
+      await waitFor(`document.querySelector('[role=tab][aria-selected=true]').id === ${JSON.stringify('tab-' + previous)}`, 'return from Settings');
+    }
   }
 
   await waitFor("document.querySelectorAll('input[type=checkbox]').length >= 24", 'bootstrap');
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'closeTab', 'openStoredItem', 'refresh', 'toggleSeen', 'updatePreferences']);
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'closeTab', 'moveTab', 'openLibrary', 'openSettings', 'openStoredItem', 'refresh', 'removeLibraryItem', 'toggleSeen', 'updatePreferences']);
   assert.deepEqual(await js("window.reader.acquire({url:'https://www.youtube.com/watch?v=abcdefghijk',executable:'evil'})"),
     { ok: false, error: { code: 'INVALID_REQUEST' } });
   assert.deepEqual(await js("window.reader.refresh({itemId:'video-demo',url:'https://example.com'})"),
@@ -132,25 +140,59 @@ async function verifyWindow(window, nativeTheme) {
     state = await snapshot();
     assert.equal(state.items.length, 4);
     const priorComments = state.comments;
-    await js(`document.getElementById('tab-${video.id}').nextElementSibling.click()`);
-    await waitFor(`document.getElementById('tab-${video.id}') === null`, 'close background video');
-    assert.equal((await snapshot()).workspace.activeItemId, post.id);
+    await js(`document.getElementById('tab-discussion:${video.id}').nextElementSibling.click()`);
+    await waitFor(`document.getElementById('tab-discussion:${video.id}') === null`, 'close background video');
+    assert.equal((await snapshot()).workspace.activeTabId, 'discussion:' + post.id);
     await js("document.querySelector('#library-toggle').click()");
-    await js(`Array.from(document.querySelectorAll('.library-panel button')).find(button => button.textContent.includes('Invented workshop')).click()`);
+    await waitFor("document.querySelector('#panel-library:not([hidden])') !== null", 'Library tab');
+    await js("Array.from(document.querySelectorAll('.library-entry')).find(row => row.textContent.includes('Invented workshop')).querySelector('button').click()");
     await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-${video.id}'`, 'Library reopen video');
-    await js(`document.getElementById('tab-${post.id}').nextElementSibling.click()`);
-    await waitFor(`document.getElementById('tab-${post.id}') === null`, 'close Community workspace view');
+    await js(`document.getElementById('tab-discussion:${post.id}').nextElementSibling.click()`);
+    await waitFor(`document.getElementById('tab-discussion:${post.id}') === null`, 'close Community workspace view');
     state = await snapshot();
     assert.deepEqual(state.comments, priorComments);
     assert.equal(state.items.length, 4);
-    assert.deepEqual(state.workspace.openItemIds, ['video-demo', 'post-demo', video.id]);
-    assert.equal(state.workspace.activeItemId, video.id);
+    assert.equal(state.workspace.tabs.filter(tab => tab.kind === 'discussion').length, 3);
+    // Real mouse dragging reorders a background app tab without activating it.
+    const activeBefore = state.workspace.activeTabId;
+    const start = await js("(() => { const r=document.getElementById('tab-library').getBoundingClientRect(); return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}; })()");
+    const target = await js("Math.round(document.querySelector('.tabs').getBoundingClientRect().left+4)");
+    contents.sendInputEvent({ type: 'mouseMove', ...start });
+    contents.sendInputEvent({ type: 'mouseDown', ...start, button: 'left', clickCount: 1 });
+    await pause(30);
+    contents.sendInputEvent({ type: 'mouseMove', x: target, y: start.y, button: 'left' });
+    await pause(50);
+    contents.sendInputEvent({ type: 'mouseUp', x: target, y: start.y, button: 'left', clickCount: 1 });
+    await waitFor("document.querySelector('.tab').dataset.tabId === 'library' && !document.querySelector('[role=tab]:disabled')", 'native pointer reorder');
+    state = await snapshot(); assert.equal(state.workspace.activeTabId, activeBefore);
+    await js("document.getElementById('tab-settings').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',altKey:true,bubbles:true}))");
+    await waitFor("!document.querySelector('[role=tab]:disabled')", 'keyboard reorder');
+    state = await snapshot();
+    // Delete the closed real Community discussion through the actual modal.
+    await js("document.getElementById('library-toggle').click()");
+    await waitFor("document.querySelector('#panel-library:not([hidden])') !== null", 'Library removal view');
+    await js("Array.from(document.querySelectorAll('.library-entry')).find(row => row.textContent.includes('Invented Community')).querySelector('.destructive').click()");
+    await waitFor("document.querySelector('dialog[open]') !== null", 'remove confirmation');
+    assert.equal(await js("document.getElementById('remove-description').textContent.includes('trwałe usunięcie')"), true);
+    assert.equal(await js("document.activeElement === document.querySelector('dialog .dialog-actions button')"), true);
+    assert.equal((await snapshot()).items.length, 4);
+    await js("document.querySelector('dialog .dialog-actions button').click()");
+    await waitFor("document.querySelector('dialog') === null", 'cancel removal');
+    await js("Array.from(document.querySelectorAll('.library-entry')).find(row => row.textContent.includes('Invented Community')).querySelector('.destructive').click()");
+    await waitFor("document.querySelector('dialog[open]') !== null", 'remove confirmation again');
+    await js("document.querySelector('dialog .destructive').click()");
+    await waitFor("document.querySelector('dialog') === null && document.querySelectorAll('.library-entry').length === 3", 'remove committed');
+    assert.equal((await snapshot()).items.some(item => item.id === post.id), false);
+    await js(`document.getElementById('tab-discussion:${video.id}').click()`);
+    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-${video.id}'`, 'active video checkpoint');
+    state = await snapshot();
+    assert.equal(state.workspace.activeTabId, 'discussion:' + video.id);
     fs.writeFileSync(checkpoint, JSON.stringify(state));
   } else {
     const saved = JSON.parse(fs.readFileSync(checkpoint, 'utf8'));
     assert.deepEqual(original, saved);
-    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), `panel-${saved.workspace.activeItemId}`);
-    assert.equal(await js("document.querySelectorAll('[role=tab]').length"), saved.workspace.openItemIds.length);
+    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), `panel-${saved.workspace.tabs.find(tab => tab.id === saved.workspace.activeTabId).itemId}`);
+    assert.equal(await js("document.querySelectorAll('[role=tab]').length"), saved.workspace.tabs.length);
     assert.equal(await js('document.documentElement.lang'), saved.preferences.locale);
     assert.equal(await js('document.documentElement.dataset.appearance'), saved.preferences.appearance);
     // Check that the persisted states are actually reflected in the UI.
@@ -259,10 +301,10 @@ if (process.versions.electron && process.type === 'browser') {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3);
-        assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 9);
-        assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 5);
-        assert.equal(db.prepare('SELECT count(*) AS count FROM comments').get().count, 32);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 4);
+        assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 7);
+        assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 3);
+        assert.equal(db.prepare('SELECT count(*) AS count FROM comments').get().count, 28);
         assert.deepEqual({ ...db.prepare('SELECT locale, appearance FROM preferences').get() }, { locale: 'en', appearance: 'system' });
       } finally { db.close(); }
       console.log('Electron smoke PASS: two real restarts and closed-file SQLite persistence');

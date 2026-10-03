@@ -44,7 +44,7 @@ if (process.versions.electron && process.type === 'browser') {
         let state = await snapshot();
         if (phase === 'write') {
           state = await acquire(process.env.YOUTUBE_COMMENTS_LIVE_VIDEO_URL);
-          const videoId = state.workspace.activeItemId;
+          const videoId = state.workspace.tabs.find(tab => tab.id === state.workspace.activeTabId).itemId;
           assert.ok(state.comments[videoId].length > 0);
           const y = await js("document.querySelector('[role=tabpanel]:not([hidden]) .comment').getBoundingClientRect().top");
           assert.ok(y < 360, 'Comments start too low in the viewport');
@@ -63,7 +63,7 @@ if (process.versions.electron && process.type === 'browser') {
           await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').disabled && !document.querySelector('.acquisition-status')", 'live refresh', 4000);
           assert.equal(await js("document.querySelector('[role=alert]') === null"), true);
           state = await snapshot();
-          assert.equal(state.workspace.activeItemId, videoId);
+          assert.equal(state.workspace.activeTabId, 'discussion:' + videoId);
           assert.equal(state.comments[videoId].find(comment => comment.id === seenId).seen, true);
           assert.equal(state.comments[videoId].find(comment => comment.id === seenId).author?.avatarUrl, avatarBefore);
           // Sanitize visible source text before a local layout-only screenshot.
@@ -83,7 +83,7 @@ if (process.versions.electron && process.type === 'browser') {
           let postId;
           if (process.env.YOUTUBE_COMMENTS_LIVE_POST_URL) {
             state = await acquire(process.env.YOUTUBE_COMMENTS_LIVE_POST_URL);
-            postId = state.workspace.activeItemId;
+            postId = state.workspace.tabs.find(tab => tab.id === state.workspace.activeTabId).itemId;
             assert.ok(state.comments[postId].length > 0);
             await waitFor("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) .avatar img')).some(img => img.complete && img.naturalWidth > 0)", 'Community avatar load');
             await js("document.querySelector('[role=tabpanel]:not([hidden]) input[type=checkbox]').click()");
@@ -94,21 +94,22 @@ if (process.versions.electron && process.type === 'browser') {
             await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').disabled && !document.querySelector('.acquisition-status')", 'Community refresh', 4000);
             assert.equal(await js("document.querySelector('[role=alert]') === null"), true);
             state = await snapshot();
-            assert.equal(state.workspace.activeItemId, postId);
+            assert.equal(state.workspace.activeTabId, 'discussion:' + postId);
             assert.equal(state.comments[postId].find(comment => comment.id === postSeenId).seen, true);
             console.log(JSON.stringify({ phase, source: 'Community', comments: state.comments[postId].length,
               avatars: state.comments[postId].filter(comment => comment.author?.avatarUrl).length }));
           }
-          await js(`document.getElementById('tab-${videoId}').nextElementSibling.click()`);
-          await waitFor(`document.getElementById('tab-${videoId}') === null`, 'close stored video');
+          await js(`document.getElementById('tab-discussion:${videoId}').nextElementSibling.click()`);
+          await waitFor(`document.getElementById('tab-discussion:${videoId}') === null`, 'close stored video');
           await js("document.querySelector('#library-toggle').click()");
-          await js("document.querySelectorAll('.library-panel button')[2].click()");
+          await waitFor("document.querySelector('#panel-library:not([hidden])') !== null", 'Library tab');
+          await js("document.querySelectorAll('.library-entry')[2].querySelector('button').click()");
           await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-${videoId}'`, 'reopen Library video');
           state = await snapshot();
           assert.equal(state.comments[videoId].find(comment => comment.id === seenId).seen, true);
           if (postId) {
-            await js(`document.getElementById('tab-${postId}').nextElementSibling.click()`);
-            await waitFor(`document.getElementById('tab-${postId}') === null`, 'close Community');
+            await js(`document.getElementById('tab-discussion:${postId}').nextElementSibling.click()`);
+            await waitFor(`document.getElementById('tab-discussion:${postId}') === null`, 'close Community');
           }
           state = await snapshot();
           fs.writeFileSync(checkpoint, JSON.stringify({ workspace: state.workspace, itemIds: state.items.map(item => item.id), seenId, videoId, postId }));
@@ -119,10 +120,11 @@ if (process.versions.electron && process.type === 'browser') {
           assert.deepEqual(state.items.map(item => item.id), saved.itemIds);
           assert.equal(state.comments[saved.videoId].find(comment => comment.id === saved.seenId).seen, true);
           assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), `panel-${saved.videoId}`);
-          if (saved.postId) assert.equal(await js(`document.getElementById('tab-${saved.postId}') === null`), true);
+          if (saved.postId) assert.equal(await js(`document.getElementById('tab-discussion:${saved.postId}') === null`), true);
           await js("document.querySelector('#library-toggle').click()");
-          assert.equal(await js("document.querySelectorAll('.library-panel button').length"), state.items.length);
-          console.log(JSON.stringify({ phase, restoredTabs: state.workspace.openItemIds.length, storedItems: state.items.length, seenRestored: true }));
+          await waitFor("document.querySelector('#panel-library:not([hidden])') !== null", 'Library restart tab');
+          assert.equal(await js("document.querySelectorAll('.library-entry').length"), state.items.length);
+          console.log(JSON.stringify({ phase, restoredTabs: state.workspace.tabs.length, storedItems: state.items.length, seenRestored: true }));
         }
         clearTimeout(watchdog); app.quit();
       } catch (error) { console.error(error); clearTimeout(watchdog); app.exit(1); }

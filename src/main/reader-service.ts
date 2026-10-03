@@ -1,12 +1,13 @@
-import { isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshRequest } from '../shared/reader-api';
+import { isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshRequest, isTabRequest, isMoveTabRequest } from '../shared/reader-api';
 import type { AcquisitionResult, ReaderOperation, ReaderState, Result } from '../shared/reader-api';
 import type { Comment } from '../domain/discussion';
 import type { Preferences } from '../shared/preferences';
-import { ReaderRepository, MissingCommentError } from './persistence/reader-repository';
+import { ReaderRepository, MissingCommentError, NotRemovableError } from './persistence/reader-repository';
 import { UnsupportedSchemaError } from './persistence/migrations';
 import { AcquisitionService } from './acquisition-service';
 import { createLiveExtractor } from './live-extraction';
 import type { ExtractLive } from './live-extraction';
+import { InvalidWorkspaceMoveError } from '../domain/workspace';
 import type { WorkspaceState } from '../domain/workspace';
 
 /** Small use-case boundary: validate before touching persistence; failures carry
@@ -36,10 +37,10 @@ export class ReaderService {
   }
 
   /** args preserve arity validation even for bootstrap's payload-free query. */
-  dispatch(operation: 'bootstrap', args: readonly unknown[]): Result<ReaderState>;
+  dispatch(operation: 'bootstrap' | 'removeLibraryItem', args: readonly unknown[]): Result<ReaderState>;
   dispatch(operation: 'toggleSeen', args: readonly unknown[]): Result<readonly Comment[]>;
   dispatch(operation: 'updatePreferences', args: readonly unknown[]): Result<Preferences>;
-  dispatch(operation: 'openStoredItem' | 'activateTab' | 'closeTab', args: readonly unknown[]): Result<WorkspaceState>;
+  dispatch(operation: 'openStoredItem' | 'activateTab' | 'closeTab' | 'openLibrary' | 'openSettings' | 'moveTab', args: readonly unknown[]): Result<WorkspaceState>;
   dispatch(operation: 'acquire' | 'refresh', args: readonly unknown[]): Promise<Result<AcquisitionResult>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | readonly Comment[] | Preferences | WorkspaceState> | Promise<Result<AcquisitionResult>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | readonly Comment[] | Preferences | WorkspaceState> | Promise<Result<AcquisitionResult>> {
@@ -51,9 +52,11 @@ export class ReaderService {
       return operation === 'acquire' && isAcquireRequest(args[0]) ? this.acquisition.acquire(args[0].url)
         : isRefreshRequest(args[0]) ? this.acquisition.refresh(args[0].itemId) : Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
     }
-    if ((operation === 'bootstrap' && args.length !== 0)
+    if ((['bootstrap', 'openLibrary', 'openSettings'].includes(operation) && args.length !== 0)
       || (operation === 'toggleSeen' && (args.length !== 1 || !isToggleSeenRequest(args[0])))
-      || (['openStoredItem', 'activateTab', 'closeTab'].includes(operation) && (args.length !== 1 || !isRefreshRequest(args[0])))
+      || (['openStoredItem', 'removeLibraryItem'].includes(operation) && (args.length !== 1 || !isRefreshRequest(args[0])))
+      || (['activateTab', 'closeTab'].includes(operation) && (args.length !== 1 || !isTabRequest(args[0])))
+      || (operation === 'moveTab' && (args.length !== 1 || !isMoveTabRequest(args[0])))
       || (operation === 'updatePreferences' && (args.length !== 1 || !isPreferenceChange(args[0])))) {
       return { ok: false, error: { code: 'INVALID_REQUEST' } };
     }
@@ -64,12 +67,21 @@ export class ReaderService {
       if (operation === 'bootstrap') value = this.repository.bootstrap(this.languages);
       else if (operation === 'toggleSeen' && isToggleSeenRequest(args[0])) value = this.repository.toggleSeen(args[0]);
       else if (operation === 'updatePreferences' && isPreferenceChange(args[0])) value = this.repository.updatePreferences(args[0], this.languages);
-      else if ((operation === 'openStoredItem' || operation === 'activateTab' || operation === 'closeTab') && isRefreshRequest(args[0])) value = this.repository.changeWorkspace(operation, args[0].itemId);
+      else if (operation === 'removeLibraryItem' && isRefreshRequest(args[0])) {
+        const itemId = args[0].itemId;
+        const item = this.repository.bootstrap(this.languages).items.find(item => item.id === itemId);
+        if (item && this.acquisition?.owns(item.sourceKind, item.sourceId)) return { ok: false, error: { code: 'ACQUISITION_BUSY' } };
+        value = this.repository.removeLibraryItem(args[0].itemId, this.languages);
+      }
+      else if (operation === 'openStoredItem' && isRefreshRequest(args[0])) value = this.repository.changeWorkspace(operation, args[0].itemId);
+      else if ((operation === 'activateTab' || operation === 'closeTab') && isTabRequest(args[0])) value = this.repository.changeWorkspace(operation, args[0].tabId);
+      else if (operation === 'moveTab' && isMoveTabRequest(args[0])) value = this.repository.changeWorkspace(operation, args[0].tabId, args[0].toIndex);
+      else if (operation === 'openLibrary' || operation === 'openSettings') value = this.repository.changeWorkspace(operation);
       else return { ok: false, error: { code: 'INVALID_REQUEST' } };
       return { ok: true, value };
     } catch (error) {
       this.diagnose(error);
-      return { ok: false, error: { code: error instanceof MissingCommentError ? 'NOT_FOUND' : 'STORAGE_UNAVAILABLE' } };
+      return { ok: false, error: { code: error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
     }
   }
   close(): void { void this.acquisition?.close(); this.repository?.close(); }

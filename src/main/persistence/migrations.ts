@@ -105,6 +105,26 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
   ) STRICT;
   INSERT INTO workspace_tabs SELECT id, position FROM content_items ORDER BY position;
   INSERT INTO workspace VALUES (1, (SELECT item_id FROM workspace_tabs ORDER BY position LIMIT 1), 0);
+`) }, { version: 4, apply: db => db.exec(`
+  CREATE TABLE unified_tabs (
+    id TEXT PRIMARY KEY NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('discussion','library','settings')),
+    item_id TEXT UNIQUE REFERENCES content_items(id),
+    position INTEGER NOT NULL UNIQUE CHECK(position >= 0),
+    CHECK((kind = 'discussion' AND item_id IS NOT NULL AND id = 'discussion:' || item_id)
+      OR (kind IN ('library','settings') AND item_id IS NULL AND id = kind))
+  ) STRICT;
+  CREATE TABLE unified_workspace (
+    id INTEGER PRIMARY KEY CHECK(id = 1),
+    active_tab_id TEXT REFERENCES unified_tabs(id) DEFERRABLE INITIALLY DEFERRED,
+    revision INTEGER NOT NULL CHECK(revision >= 0)
+  ) STRICT;
+  INSERT INTO unified_tabs SELECT 'discussion:' || item_id, 'discussion', item_id, position FROM workspace_tabs;
+  INSERT INTO unified_workspace SELECT id, CASE WHEN active_item_id IS NULL THEN NULL ELSE 'discussion:' || active_item_id END, revision FROM workspace;
+  DROP TABLE workspace;
+  DROP TABLE workspace_tabs;
+  ALTER TABLE unified_tabs RENAME TO workspace_tabs;
+  ALTER TABLE unified_workspace RENAME TO workspace;
 `) }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 

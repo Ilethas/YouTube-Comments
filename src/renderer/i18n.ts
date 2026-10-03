@@ -3,6 +3,16 @@ export type { Locale } from '../shared/preferences';
 import type { Locale } from '../shared/preferences';
 
 const en = {
+  settings: 'Settings', reorderHelp: 'Drag tabs to reorder, or use Alt+Left / Alt+Right on a focused tab.',
+  libraryFilter: 'Filter Library', libraryHelp: 'Filter titles, post text, authors and handles. Closing a tab keeps its discussion here.',
+  currentlyOpen: 'Open tab', activate: 'Activate', open: 'Open', noLibraryMatches: 'No discussions match this metadata filter.',
+  removeFromLibrary: 'Remove from Library', removeTitle: 'Remove locally stored discussion?', remove: 'Remove',
+  removeDescription: 'This permanently deletes the locally stored discussion and comments, seen state, and refresh history. It does not affect YouTube.',
+  demoProtected: 'Demo · removal unavailable', demoRemovalHelp: 'Synthetic demo discussions cannot be removed because development initialization may recreate them.',
+  removalBusy: 'This discussion is being acquired or refreshed. Wait for it to finish before removing it.',
+  removalFailed: 'Removal could not be saved. The discussion remains in Library.',
+  externalTools: 'External tools', externalToolsHelp: 'Development helper executable overrides are configured at application startup through environment configuration. Path editing is not available here.',
+
   library: 'Library', openStored: 'Open stored discussion', openUrl: 'Open URL', cancel: 'Cancel',
   closeTab: 'Close tab: {title}', emptyWorkspace: 'No open tabs', reopenHelp: 'Your discussions are still saved. Open one from Library or add a YouTube URL.',
   showMore: 'Show description', showLess: 'Hide description', savedShort: 'Saved locally', coverageShort: 'Coverage limited / unknown',
@@ -34,6 +44,16 @@ const en = {
 };
 type Key = keyof typeof en;
 const pl: Record<Key, string> & Record<string, string> = {
+  settings: 'Ustawienia', reorderHelp: 'Przeciągnij kartę lub użyj Alt+strzałka w lewo / w prawo na karcie z fokusem.',
+  libraryFilter: 'Filtruj Bibliotekę', libraryHelp: 'Filtruj tytuły, treść postów, autorów i nazwy użytkowników. Zamknięcie karty zachowuje tutaj dyskusję.',
+  currentlyOpen: 'Otwarta karta', activate: 'Aktywuj', open: 'Otwórz', noLibraryMatches: 'Brak dyskusji pasujących do filtra metadanych.',
+  removeFromLibrary: 'Usuń z Biblioteki', removeTitle: 'Usunąć lokalnie zapisaną dyskusję?', remove: 'Usuń',
+  removeDescription: 'Spowoduje to trwałe usunięcie lokalnie zapisanej dyskusji i komentarzy, stanu przeczytania oraz historii odświeżania. Nie wpłynie to na YouTube.',
+  demoProtected: 'Demo · usuwanie niedostępne', demoRemovalHelp: 'Dyskusji demonstracyjnych nie można usunąć, ponieważ inicjalizacja deweloperska może utworzyć je ponownie.',
+  removalBusy: 'Ta dyskusja jest właśnie pobierana lub odświeżana. Poczekaj na zakończenie przed usunięciem.',
+  removalFailed: 'Nie udało się zapisać usunięcia. Dyskusja pozostaje w Bibliotece.',
+  externalTools: 'Programy pomocnicze', externalToolsHelp: 'Ścieżki programów pomocniczych w wersji deweloperskiej są konfigurowane przy uruchamianiu aplikacji przez zmienne środowiskowe. Edycja ścieżek nie jest tutaj dostępna.',
+
   library: 'Biblioteka', openStored: 'Otwórz zapisaną dyskusję', openUrl: 'Otwórz adres', cancel: 'Anuluj',
   closeTab: 'Zamknij kartę: {title}', emptyWorkspace: 'Brak otwartych kart', reopenHelp: 'Twoje dyskusje są nadal zapisane. Otwórz jedną z Biblioteki lub dodaj adres YouTube.',
   showMore: 'Pokaż opis', showLess: 'Ukryj opis', savedShort: 'Zapisano lokalnie', coverageShort: 'Zakres ograniczony / nieznany',

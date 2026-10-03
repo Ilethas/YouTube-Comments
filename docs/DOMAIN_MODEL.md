@@ -6,12 +6,17 @@ The model uses the same application concepts for video discussions and Community
 
 ## Identity and ownership
 
-ADR 0006 distinguishes **library** (all stored items), **workspace** (ordered open
-item IDs and nullable active ID), **discussion** (remote/discovery/history/manual
-state), and **view** (temporary presentation). One tab per item opens/activates;
-closing never owns or deletes discussion data. WorkspaceState carries a persisted
-revision for response ordering. Only IDs/order/active selection persist in this
-bounded increment, not the other future tab view state described below.
+[ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) distinguishes
+**Library** (all stored items), **workspace** (ordered generic open tabs and nullable
+active application tab ID), **discussion** (remote/discovery/history/manual state),
+and **view** (temporary presentation). Discussion is singleton per internal item ID;
+Library/Settings are singleton app views. None has a reserved position. Close owns
+only the view; explicit confirmed Library removal owns deletion of local discussion
+data. WorkspaceState revision orders responses; pure open/close/move functions
+define singleton, mixed-neighbor and active-preserving reorder rules.
+Only identities/order/active selection restore, not later per-view scroll/filter/
+sort/expansion/selection. Structural rail styling never changes source relationships
+or manual per-comment seen state.
 
 AuthorObservation now contains `avatarUrl: ObservedField<string>`. A usable HTTPS
 URL is remote evidence, never UI loading state. Missing/invalid/lossy values cannot

@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { CommentNode } from '../domain/discussion';
 import { demoNewCommentIds, demoNow } from '../shared/demo-presentation';
 import { Locale, publicationTime, translator } from './i18n';
@@ -8,17 +9,20 @@ interface Props {
   locale: Locale;
   disabled: boolean;
   now?: number;
+  depth?: number;
   onToggle: (id: string, subtree: boolean) => void;
 }
 
-export function CommentTree({ nodes, locale, disabled, onToggle, now = demoNow }: Props) {
+export function CommentTree({ nodes, locale, disabled, onToggle, now = demoNow, depth = 0 }: Props) {
   const t = translator(locale);
-  return <ol className="comment-tree">
+  return <ol className={`comment-tree ${depth ? 'reply-rail' : 'root-tree'}`} data-depth={depth} data-compact={depth >= 5}
+    style={{ '--reply-indent': `${depth < 5 ? 22 : depth < 10 ? 10 : 3}px` } as CSSProperties}>
     {nodes.map(({ comment, children }) => {
       const author = comment.author?.displayName ?? comment.author?.handle ?? t('unknownAuthor');
       const time = comment.publishedAt ? publicationTime(comment.publishedAt, locale, now) : undefined;
-      return <li key={comment.id}>
-        <article className={`comment ${comment.seen ? 'is-seen' : 'is-unseen'}`} aria-label={author}>
+      return <li key={comment.id} className="comment-branch" data-comment-id={comment.id} data-depth={depth}>
+        {depth > 0 && <span className="reply-elbow" aria-hidden="true" />}
+        <article className={`comment ${comment.seen ? 'is-seen' : 'is-unseen'} ${children.length ? 'has-replies' : ''}`} aria-label={author}>
           <Avatar url={comment.author?.avatarUrl} author={author} locale={locale} />
           <div className="comment-body">
             <div className="comment-byline">
@@ -44,7 +48,7 @@ export function CommentTree({ nodes, locale, disabled, onToggle, now = demoNow }
             <span>{t('seen')}</span>
           </label>
         </article>
-        {children.length > 0 && <CommentTree nodes={children} locale={locale} now={now} disabled={disabled} onToggle={onToggle} />}
+        {children.length > 0 && <CommentTree nodes={children} depth={depth + 1} locale={locale} now={now} disabled={disabled} onToggle={onToggle} />}
       </li>;
     })}
   </ol>;

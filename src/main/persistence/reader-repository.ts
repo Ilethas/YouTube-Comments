@@ -13,8 +13,8 @@ import { establishSyntheticHistory } from './synthetic-history';
 import type { AuthorObservation, ContentObservation, CommentObservation, NormalizedExtraction } from '../../domain/extraction-observation';
 import { observedValue, planObservationMerge, projectRelationships } from '../../domain/observation-merge';
 import type { AttemptTarget, MergeAttempt, StoredCommentObservation, StoredContentObservation, StoredObservationDiscussion } from '../../domain/observation-merge';
-import { closeWorkspaceTab } from '../../domain/workspace';
-import type { WorkspaceState } from '../../domain/workspace';
+import { closeWorkspaceTab, discussionTab, openWorkspaceTab, moveWorkspaceTab } from '../../domain/workspace';
+import type { WorkspaceState, WorkspaceTab } from '../../domain/workspace';
 import { isHttpsImageUrl } from '../../domain/remote-image';
 
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
@@ -38,6 +38,7 @@ function remoteEvidence<T extends StoredCommentObservation | StoredContentObserv
 function authorValues(value?: Author) { return [value?.sourceId ?? null, value?.displayName ?? null, value?.handle ?? null]; }
 function booleanValue(value?: boolean) { return value === undefined ? null : Number(value); }
 export class MissingCommentError extends Error {}
+export class NotRemovableError extends Error {}
 
 /** Privileged dependency injection, never a renderer capability. */
 export interface IngestionDependencies { readonly now: () => string; readonly newId: () => string }
@@ -115,7 +116,7 @@ export class ReaderRepository {
         });
       });
       establishSyntheticHistory(this.db, this.ingestion.newId);
-      this.writeWorkspace({ openItemIds: items.map(item => item.id), activeItemId: items[0]?.id ?? null, revision: this.workspace().revision + 1 });
+      this.writeWorkspace({ tabs: items.map(item => discussionTab(item.id)), activeTabId: items[0] ? discussionTab(items[0].id).id : null, revision: this.workspace().revision + 1 });
     });
   }
 
@@ -123,7 +124,8 @@ export class ReaderRepository {
     return this.db.prepare('SELECT * FROM content_items ORDER BY position').all().map(row => {
       if (row.remote_json === null) throw new Error('Missing durable item evidence');
       const remote = remoteEvidence<StoredContentObservation>(String(row.remote_json));
-      const base = { id: String(row.id), sourceId: String(row.source_id), author: author(row, remote.author), remote, sourceKind: remote.sourceKind,
+      const removable = this.db.prepare('SELECT backend FROM extraction_attempts WHERE id=?').get(row.baseline_attempt_id)?.backend !== 'synthetic-demo';
+      const base = { id: String(row.id), removable, sourceId: String(row.source_id), author: author(row, remote.author), remote, sourceKind: remote.sourceKind,
         publishedAt: optionalText(row, 'published_at'), baselineDiscoveryId: String(row.baseline_discovery_id) };
       return row.kind === 'video'
         ? { ...base, kind: 'video', title: String(row.title), description: optionalText(row, 'description') }
@@ -249,37 +251,66 @@ export class ReaderRepository {
   }
 
   workspace(): WorkspaceState {
-    const row = this.db.prepare('SELECT active_item_id, revision FROM workspace WHERE id = 1').get();
+    const row = this.db.prepare('SELECT active_tab_id, revision FROM workspace WHERE id = 1').get();
     if (!row) throw new Error('Missing workspace');
-    return { openItemIds: this.db.prepare('SELECT item_id FROM workspace_tabs ORDER BY position').all().map(tab => String(tab.item_id)),
-      activeItemId: row.active_item_id === null ? null : String(row.active_item_id), revision: Number(row.revision) };
+    const tabs = this.db.prepare('SELECT id, kind, item_id FROM workspace_tabs ORDER BY position').all().map(tab =>
+      tab.kind === 'discussion' ? discussionTab(String(tab.item_id))
+        : { id: String(tab.id), kind: String(tab.kind) } as WorkspaceTab);
+    return { tabs, activeTabId: row.active_tab_id === null ? null : String(row.active_tab_id), revision: Number(row.revision) };
   }
 
   private writeWorkspace(state: WorkspaceState): WorkspaceState {
     this.db.exec('DELETE FROM workspace_tabs');
-    const insert = this.db.prepare('INSERT INTO workspace_tabs VALUES (?, ?)');
-    state.openItemIds.forEach((id, position) => insert.run(id, position));
-    this.db.prepare('UPDATE workspace SET active_item_id = ?, revision = ? WHERE id = 1').run(state.activeItemId, state.revision);
+    const insert = this.db.prepare('INSERT INTO workspace_tabs (id,kind,item_id,position) VALUES (?,?,?,?)');
+    state.tabs.forEach((tab, position) => insert.run(tab.id, tab.kind, tab.kind === 'discussion' ? tab.itemId : null, position));
+    this.db.prepare('UPDATE workspace SET active_tab_id = ?, revision = ? WHERE id = 1').run(state.activeTabId, state.revision);
     return state;
   }
 
   private openWorkspaceItem(itemId: string): WorkspaceState {
-    const state = this.workspace();
-    if (state.activeItemId === itemId) return state;
-    return this.writeWorkspace({ openItemIds: state.openItemIds.includes(itemId) ? state.openItemIds : [...state.openItemIds, itemId],
-      activeItemId: itemId, revision: state.revision + 1 });
+    const state = this.workspace(), next = openWorkspaceTab(state, discussionTab(itemId));
+    return next === state ? state : this.writeWorkspace(next);
   }
 
-  /** Only workspace rows change. Discussion, comment state and history remain untouched.
-   * Acquiring opens inside the merge transaction; Refresh never changes workspace. */
-  changeWorkspace(operation: 'openStoredItem' | 'activateTab' | 'closeTab', itemId: string): WorkspaceState {
+  /** Intent-only workspace writes never change Library data. */
+  changeWorkspace(operation: 'openStoredItem' | 'activateTab' | 'closeTab' | 'openLibrary' | 'openSettings' | 'moveTab',
+    identity?: string, toIndex?: number): WorkspaceState {
     return transaction(this.db, () => {
-      if (!this.db.prepare('SELECT id FROM content_items WHERE id = ?').get(itemId)) throw new MissingCommentError('Unknown discussion');
       const state = this.workspace();
-      if (operation === 'activateTab' && !state.openItemIds.includes(itemId)) throw new MissingCommentError('Unknown tab');
-      if (operation !== 'closeTab') return this.openWorkspaceItem(itemId);
-      const next = closeWorkspaceTab(state, itemId);
+      let next: WorkspaceState;
+      if (operation === 'openStoredItem') {
+        if (!this.db.prepare('SELECT id FROM content_items WHERE id = ?').get(identity ?? '')) throw new MissingCommentError('Unknown discussion');
+        return this.openWorkspaceItem(identity as string);
+      } else if (operation === 'openLibrary' || operation === 'openSettings') {
+        const kind = operation === 'openLibrary' ? 'library' : 'settings';
+        next = openWorkspaceTab(state, { id: kind, kind });
+      } else {
+        const tab = state.tabs.find(tab => tab.id === identity);
+        if (!tab) throw new MissingCommentError('Unknown tab');
+        next = operation === 'closeTab' ? closeWorkspaceTab(state, tab.id)
+          : operation === 'moveTab' ? moveWorkspaceTab(state, tab.id, toIndex as number) : openWorkspaceTab(state, tab);
+      }
       return next === state ? state : this.writeWorkspace(next);
+    });
+  }
+
+  /** Delete all item-owned rows and its view atomically, with FK enforcement on.
+   * The baseline/history cycle requires deferring FK checks until commit. */
+  removeLibraryItem(itemId: string, languages: readonly string[]): ReaderState {
+    return transaction(this.db, () => {
+      const item = this.readItems().find(item => item.id === itemId);
+      if (!item) throw new MissingCommentError('Unknown discussion');
+      if (!item.removable) throw new NotRemovableError('Synthetic discussion');
+      this.db.exec('PRAGMA defer_foreign_keys = ON');
+      const state = this.workspace(), next = closeWorkspaceTab(state, discussionTab(itemId).id);
+      // Revision advances even for a closed item: stale content acknowledgments
+      // must be distinguishable after a destructive mutation.
+      this.writeWorkspace({ ...next, revision: state.revision + 1 });
+      this.db.prepare('DELETE FROM comment_state WHERE comment_id IN (SELECT id FROM comments WHERE item_id=?)').run(itemId);
+      this.db.prepare('DELETE FROM comments WHERE item_id=?').run(itemId);
+      this.db.prepare('DELETE FROM content_items WHERE id=?').run(itemId);
+      this.db.prepare('DELETE FROM extraction_attempts WHERE item_id=? OR (source_kind=? AND source_id=?)').run(itemId, item.sourceKind ?? null, item.sourceId);
+      return this.bootstrap(languages);
     });
   }
 

@@ -1,28 +1,54 @@
 # UI and navigation
 
-The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Search/filtering, virtualization and the ruler are absent. Counts cover all stored comments of the discussion; synthetic fixed NEW examples do not settle marker lifetime. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
+The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Discussion search/filtering, virtualization and the ruler are absent. Counts cover all stored comments of the discussion; synthetic fixed NEW examples do not settle marker lifetime. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
 
 Windows is the initial target platform. Other platform support is a later possibility; see [packaging](PACKAGING.md).
 
 ## Implemented acquisition controls
 
-[ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md) implements the next
-bounded workspace increment: one compact toolbar, on-demand URL input, Library
-popover and compact horizontally scrolling closable tabs. Local-storage/coverage
-details sit in the item header; progress is transient and failure remains visible.
-Video descriptions show two preview lines with Show/Hide description; their full
-stored contents are unchanged. Community bodies and source publication labels are
-readable. Compact comments use 32px avatars, bylines, metadata and reply indentation,
-with textual UNSEEN and explicit checkboxes. English/Polish and all themes remain.
+[ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) implements one
+ordered workspace of singleton discussion, Library and Settings tabs. Every kind
+can close, move and become active. App launch actions activate an existing view
+or append a closed one. None is pinned or reserves a slot. Inline SVG icons,
+truncated titles and separate close buttons keep horizontal tabs compact;
+accessible names/tooltips announce Video, Community Post, Library and Settings.
 
-Library lists all stored items with video titles or post author/body previews.
-Selecting an item opens/activates one tab. Closing a background tab preserves active;
-closing active chooses right, otherwise left, otherwise an empty workspace with
-Library/Add controls. Nothing is deleted. SQLite persists open IDs/order/active ID;
-restart restores these only. Acquisition opens its item, Refresh preserves tab
-state, and response revisions protect newer workspace actions. Arrow keys/Home/End
-activate/focus tabs; close is a separate accessible button. No persistent scroll,
-filters, expansion or complete workspace restoration is claimed.
+Pointer dragging previews order with feedback and commits only its final slot.
+Alt+Left/Right on a focused tab reorders it without changing active identity;
+Arrow/Home/End activate/focus. Closing active chooses immediately right, otherwise
+left, otherwise empty. Closing background preserves active. Open/active/order
+persist in schema 4; acquisition opens its singleton discussion and Refresh does
+not alter workspace. Revision checks preserve newer local workspace acknowledgments.
+
+Library is a full workspace view of all stored discussions, including closed ones,
+with author/handle, comment/unseen counts and open status. Open reuses stored
+identity/state; Activate does not duplicate a tab. The simple metadata filter
+covers video title, post text, author display name and handle, independent of UI
+language. It is not discussion comment search. Remove from Library opens a modal
+confirmation describing permanent local comment/seen/history deletion and no
+effect on YouTube. Cancel is initially focused; Escape cancels unless a write is
+pending. Success updates Library and removes the discussion's view with ordinary
+neighbor rules; failure retains the item. Synthetic demo removal is unavailable
+with an explanation. Main rejects removal while that source is being acquired/
+refreshed; wait and retry. No undo or remote delete is implemented.
+
+Settings is a normal singleton tab containing durable Language and Appearance.
+The compact toolbar has branding, Add/Open, Library and Settings; preference
+dropdowns no longer occupy it. Helper configuration explanation contains no
+configured paths or editing UI. The on-demand URL form and compact source/coverage
+header remain. Video descriptions retain full text behind two-line Show/Hide;
+Community bodies remain readable.
+
+The comment tree keeps the safe projected relationships. Neutral ancestry rails
+continue through parent gutters and sibling branches; short elbows and last-child
+termination expose the nested structure. Nested lists retain depth semantics at
+all levels; reply indent is 22px, then 10px from depth 5 and 3px from depth 10. From depth 5 a neutral return connector joins the parent gutter to its compact rail.
+Unseen uses a subtle row tint plus UNSEEN text and the explicit checkbox. Rails
+never indicate seen state. Compact 32px avatars, bylines and multiline bodies stay.
+
+No persisted scroll, filters, sorting, expansion, selected comment or complete
+workspace restoration is claimed. Discussion search/filtering, virtualization,
+collapse and overview ruler remain targets.
 
 Avatars use only usable HTTPS URLs, anonymous CORS, no-referrer, lazy loading,
 async decoding and fixed dimensions. Empty alt text avoids duplicating the byline;
@@ -47,7 +73,7 @@ save/acquisition responses without overwriting newly merged membership/remote te
 
 ## Organize reading around discussions
 
-Use browser-like tabs for opened YouTube videos and individual Community Posts. The principal loop is **acquire → persist → refresh → identify what changed → read in context → manually mark processed → search/filter/navigate**. This is a persistent discussion inbox, so reopening the application must restore useful reading state instead of discarding it like a temporary download.
+Use browser-like tabs for opened YouTube videos, individual Community Posts, Library and Settings. The principal loop is **acquire → persist → refresh → identify what changed → read in context → manually mark processed → search/filter/navigate**. This is a persistent discussion inbox, so reopening the application must restore useful reading state instead of discarding it like a temporary download.
 
 Beyond the implemented item IDs/order/active selection, the target for later
 independent per-tab view restoration includes the following state:
@@ -69,7 +95,7 @@ A tab may show an unseen-comment count. If provided, define whether it counts th
 
 ## The comment reader
 
-The discussion should resemble YouTube's familiar comment/reply structure while supporting desktop reading. Keep replies visually attached to their conversations. Sorting primarily reorders top-level threads; it must not scatter replies into unrelated positions.
+The discussion uses Reddit-like neutral ancestry rails and elbows while supporting desktop reading. Keep replies visually attached to their conversations. Sorting primarily reorders top-level threads; it must not scatter replies into unrelated positions.
 
 The design should accommodate an avatar, author/display name/handle, comment text, relative publication time, exact timestamp on hover or in details, like count, pinned status, uploader/creator indication, nested replies, a seen checkbox, and permalink/copy actions. Some source fields may be absent. Their absence must not be displayed as a fabricated value, and the initial exact field layout remains a UI decision.
 

@@ -13,12 +13,23 @@ Initial development and packaging target Windows. Platform integrations should a
 ## Live acquisition implementation
 
 [ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md) adds separate
-SQLite workspace tables and exact open/activate/close intents. ReaderState contains
+SQLite workspace tables; [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) evolves them to generic tab identities and exact app-open/activate/close/move intents. ReaderState contains
 library data plus a compact ordered workspace DTO. Tab writes return workspace
 only and never mutate discussion/seen/history. Successful Acquire opens within the
 merge transaction; Refresh preserves workspace. A persisted workspace revision
 lets React reject older acknowledgments independently of seen reconciliation.
 Only tab IDs/order/active ID restore; view scroll/filter/expansion remain future.
+
+Main owns confirmed local removal transactions; the native renderer dialog is the
+user confirmation surface, not a privileged SQL capability. Synthetic baseline
+provenance produces the driver-free removable flag. The canonical active acquisition
+target blocks same-source removal with ACQUISITION_BUSY. Other local workspace
+operations/removals stay available. Deferred FK checks commit the item/history cycle
+atomically; failure preserves all rows. Renderer removed-ID reconciliation excludes
+deleted items from delayed content snapshots, alongside workspace revision protection.
+Settings owns preference controls, Library owns metadata-only filtering and listing.
+Structural rails are renderer CSS/DOM over the unchanged domain tree; no helper path,
+process or source relationship semantics cross this presentation change.
 
 Author avatar evidence flows adapter → normalized remote JSON → source-independent
 Author → decorative anonymous HTTPS image/fallback. Older JSON defaults missing
@@ -74,7 +85,7 @@ flowchart TB
 
 The privilege boundary is renderer -> typed preload/contextBridge API -> privileged application backend owned by the Electron main side -> persistence/extractors. The renderer never directly owns or accesses SQLite and receives no generic Node, filesystem, SQL, shell, or process-launch capability. The main-side backend may later delegate database work to an internal worker if justified; that is an implementation decision within the same privilege boundary. Extractor processes are invoked only by Electron main. Backend output is untrusted data, not executable UI content.
 
-Implemented IPC maintains context isolation and disabled renderer Node integration, validates exact payload shapes/arity and allowed senders, and exposes bootstrap, manual seen changes, preferences, acquire({url}), refresh({itemId}), openStoredItem({itemId}), activateTab({itemId}) and closeTab({itemId}). Only the owning window's top-level expected document is accepted. TypeScript does not replace runtime validation. Stable error codes support localized failure context; broader request-ID/diagnostic policy remains future work.
+Implemented IPC maintains context isolation and disabled renderer Node integration, validates exact payload shapes/arity and allowed senders, and exposes bootstrap, manual seen changes, preferences, acquire({url}), refresh({itemId}), openStoredItem({itemId}), openLibrary(), openSettings(), activateTab({tabId}), closeTab({tabId}), moveTab({tabId,toIndex}) and removeLibraryItem({itemId}). Only the owning window's top-level expected document is accepted. TypeScript does not replace runtime validation. Stable error codes support localized failure context; broader request-ID/diagnostic policy remains future work.
 
 The bridge should express intent such as opening an item, querying comments, setting seen state for a validated scope, refreshing, or persisting tab preferences. These are conceptual operations, not finalized method signatures. Main resolves and validates identities, scope, executable selection, and arguments. Do not expose a generic `execute(command)`, `query(sql)`, or unrestricted IPC forwarding API. Permalink opening and copy actions also use appropriately constrained application capabilities. Detailed sandbox/CSP/navigation policy and API contracts must be finalized with the relevant implementation increment.
 

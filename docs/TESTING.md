@@ -2,6 +2,76 @@
 
 Automated testing is a product requirement. Vitest covers domain/localization, components, temporary SQLite, IPC/bridge/sender validation, adapters and injected processes. [ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md) adds compact reading, avatars, helper overrides and bounded tab persistence. Search, backup, persisted scroll/filter/expansion and full view restoration remain unimplemented.
 
+## Unified workspace and Library removal verification (2026-10-03)
+
+ADR [0007](decisions/0007-unified-workspace-and-library-removal.md) adds schema 4,
+mixed singleton app/discussion tabs and local deletion. Normal tests stay offline.
+
+- `npm test`: **255 deterministic tests pass in 21 suites**, offline.
+- Typecheck and lint pass without warnings. Renderer build and Forge production
+  main/preload/renderer bundle checks pass. Forge still stops at finalizing with
+  exit 0 and no completed executable; no packaging fix/release claim is made.
+- `npm run test:electron` passes writes and **two actual process restarts**,
+  schema 4, mixed app/discussion order and active identity, pointer/keyboard reorder,
+  confirmed local removal and closed-file FK/state/history checks. The existing
+  nonfatal shutdown GPU diagnostic remains. esbuild and Electron GPU checks need
+  Windows sandbox escalation.
+
+Coverage includes populated schema-3 → 4 preserving migration (including empty
+workspace), rollback/retry with foreign keys ON, app/discussion singletons, mixed
+close neighbors and restart/order/active identity, first/middle/last move and invalid
+indexes, pointer preview/final commit/cancel and Alt+arrow reorder, accessible kind
+labels/separate close, full Library open/closed metadata/counts/filter/demo protection,
+Cancel/Remove confirmation and failed/busy deletion feedback, and Settings controls
+outside toolbar. Temporary SQLite deletion cases check content/comments/local state/
+history/workspace absence, unrelated data/preferences/app views, late transactional
+rollback, prior failed target history and restart without resurrection. Same-source
+Acquire/Refresh rejects removal while different-source removal remains available;
+stale content/workspace acknowledgments preserve newer deletion and mixed tabs.
+A 60-level tree retains structural DOM depth/rails/elbows across seen edits and
+Ctrl+click; no brittle pixel snapshots are used.
+
+The built-entry Electron smoke script now checks the twelve-method isolated bridge,
+native mouse tab dragging, keyboard reorder, Settings preferences, modal Cancel/
+Remove, deletion and mixed workspace persistence across two real process restarts.
+Its fake process injection stays only in the privileged test script; it is offline.
+
+### Separate development and visual verification
+
+The optional [development workspace check](../scripts/verify-workspace-dev.cjs)
+launches the real Forge start/development app with a freshly owned OS-temp profile
+and a loopback Chromium debugger used only by the verification script. It inherits
+the owner's PATH, uses explicit startup helper executable overrides and never changes
+the regular development/production databases. It exercises singleton open/close,
+Settings changes, live acquire/Refresh, native pointer reorder retaining active,
+Library reopen, real Community local removal with Cancel then confirmation, and
+a real development restart. Only aggregate results are logged. Screenshots substitute
+representative text and failed-avatar fallback in DOM only and remain ignored local
+artifacts. The profile is cleaned with an owned-directory guard.
+
+This is scripted UI interaction plus agent visual inspection, not an exhaustive
+hand-operated owner acceptance pass. The first development attempts failed to deliver
+toolbar clicks through debugger mouse events; the control path uses DOM click
+dispatch and the reorder path uses native debugger input. The built-entry smoke
+separately uses actual Electron mouse events. Visual review corrected parent gutter
+rail alignment; compact deep levels have a neutral return connector while retaining
+all semantic nesting. Executed with the existing exact yt-dlp/post-archiver executables in a disposable
+development profile: the previously verified video IFPKfypw2CQ acquired/refreshed
+**154 stored comments**, with projected depth up to **3**. Manual seen state survived
+Refresh; a real background Settings drag moved it to the first slot without changing
+active Library. Library reopened the closed video. The previously verified Community
+Post acquired/refreshed successfully, Cancel preserved it, and confirmed Remove
+deleted it locally while retaining the video/demos/preferences/app tabs. Restart
+restored the exact mixed order, active discussion, preferences and absence of the
+removed real item. Light/dark sanitized screenshots were visually inspected; the
+neutral rail and separate UNSEEN tint/badge/checkbox are distinct. These are live
+runtime checks, not remote completeness claims. Helper paths are not renderer data
+and no raw public archives/comments are committed.
+
+The owner's exhaustive hand-operated UX acceptance pass remains outstanding,
+especially high-depth rail readability and longer Library lists. The automated
+60-depth DOM test establishes nesting/structure, not a large-data layout benchmark.
+
 ## Compact reader/workspace verification (2026-10-03)
 
 - `npm test`: **214 deterministic tests pass in 16 suites**, offline without helpers,
@@ -138,7 +208,7 @@ Commands were run on Windows with Node 26.7.0 using `npm.cmd` because PowerShell
 
 Hidden-window smoke runs emitted a Chromium GPU diagnostic during shutdown; the renderer/preload checks, all assertions, and process exit results passed.
 
-`npm start` uses the separate development profile and idempotently seeds the two fixtures. `npm run build:renderer` provides an independent renderer build. To run just the new integration suite, use `npm test -- src/main/persistence/reader-repository.test.ts`. A manual acceptance pass can switch tabs/languages, click and Ctrl+click mixed subtrees, check that NEW survives marking seen, change all appearance modes, quit, and restart: seen state and explicit preferences should remain while tab selection resets (Q-10 remains open).
+`npm start` uses the separate development profile and idempotently seeds the two fixtures. `npm run build:renderer` provides an independent renderer build. To run just the new integration suite, use `npm test -- src/main/persistence/reader-repository.test.ts`. A manual acceptance pass can switch tabs/languages, click and Ctrl+click mixed subtrees, check that NEW survives marking seen, change all appearance modes, quit, and restart: seen state and explicit preferences should remain while the current milestone also restores open tab order/active selection (remaining Q-10 view state stays open).
 
 For an alternate disposable development root in PowerShell, set `$env:YOUTUBE_COMMENTS_DEMO_ROOT` to an absolute directory before `npm.cmd start`; it appends `youtube-comments-development/reader.sqlite` and never uses production fallback. Clear that environment variable afterward to return to the usual development profile. When this environment inherits `ELECTRON_RUN_AS_NODE=1`, clear it for desktop execution. Empty/relative demo-root configuration fails. Never point verification at real production data. Those historical foundation checks did not claim live acquisition/refresh. Current live verification is recorded above; search/filter behavior, virtualization/ruler performance, backup/restore and a packaged installer remain unverified.
 

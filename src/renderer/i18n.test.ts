@@ -29,3 +29,11 @@ describe('localization', () => {
     expect(publicationTime('2026-09-20T10:00:00Z', 'pl', now).relative).toBe('2 godziny temu');
   });
 });
+it('preserves Polish accents in workspace and destructive confirmation text', () => {
+  const t = translator('pl');
+  expect(t('removeFromLibrary')).toBe('Usuń z Biblioteki');
+  expect(t('removeDescription')).toContain('trwałe usunięcie');
+  expect(t('removeDescription')).toContain('historii odświeżania');
+  expect(t('externalToolsHelp')).toContain('Ścieżki');
+  expect(t('reorderHelp')).toContain('Przeciągnij kartę');
+});

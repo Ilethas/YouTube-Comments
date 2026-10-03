@@ -1,6 +1,13 @@
 # Seen state
 
-Seen/unseen is a durable, manual property of each individual comment. It is the reader's record of processing a contribution, not evidence that the application displayed it. Ordinary and Ctrl+click behavior now persists in main-owned SQLite through the typed bridge. The service reads the current target state, resolves the pure domain action, and commits all subtree changes in one transaction. The UI waits for acknowledgment and reports failure while retaining its last acknowledged state. Viewing, scrolling, tabs, language, and appearance do not mark comments seen. Reopen and late-write rollback tests cover these invariants. Filtered-view integration, bulk operations, and refresh preservation remain unimplemented. See [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [product requirements](PRODUCT_REQUIREMENTS.md), and the [domain model](DOMAIN_MODEL.md).
+Seen/unseen is a durable, manual property of each individual comment. It is the reader's record of processing a contribution, not evidence that the application displayed it. Ordinary and Ctrl+click behavior now persists in main-owned SQLite through the typed bridge. The service reads the current target state, resolves the pure domain action, and commits all subtree changes in one transaction. The UI waits for acknowledgment and reports failure while retaining its last acknowledged state. Viewing, scrolling, tabs, language, and appearance do not mark comments seen. Reopen and late-write rollback tests cover these invariants. Refresh preserves seen state; filtered-view integration and bulk operations remain unimplemented. See [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [product requirements](PRODUCT_REQUIREMENTS.md), and the [domain model](DOMAIN_MODEL.md).
+
+[ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) uses neutral
+ancestry rails/elbows for structure in both seen states. Unseen rows have a subtle
+accent-tinted background plus a text UNSEEN badge and explicit checkbox, never a
+structural line color. Reading, reordering and app-tab navigation do not mark seen.
+Confirmed removal deletes the item's local state with its comments/history; closing
+a view preserves it. The projected subtree and Ctrl+click rule are unchanged.
 
 ## Invariants
 

@@ -5,7 +5,7 @@ import { MissingCommentError } from './persistence/reader-repository';
 import type { ReaderRepository } from './persistence/reader-repository';
 
 const failedOpen = () => { throw new Error('private path/diagnostic'); };
-it.each(['closeTab', 'activateTab', 'openStoredItem'] as const)('validates exact %s payload/arity before touching storage', operation => {
+it.each(['openStoredItem', 'removeLibraryItem'] as const)('validates exact %s payload/arity before touching storage', operation => {
   const service = new ReaderService(failedOpen, ['en'], vi.fn());
   for (const payload of [null, [], {}, { itemId: '' }, { itemId: 'a', executable: 'evil' }, { itemId: 'a', position: 0 }, { itemId: 'a\0' }]) {
     expect(service.dispatch(operation, [payload])).toEqual({ ok: false, error: { code: 'INVALID_REQUEST' } });
@@ -107,4 +107,14 @@ it('reports failed writes and missing targets as structured errors', () => {
   expect(service.dispatch('toggleSeen', args)).toEqual({ ok: false, error: { code: 'STORAGE_UNAVAILABLE' } });
   repository.toggleSeen = () => { throw new MissingCommentError('not found'); };
   expect(service.dispatch('toggleSeen', args)).toEqual({ ok: false, error: { code: 'NOT_FOUND' } });
+});
+
+it.each(['activateTab', 'closeTab', 'moveTab'] as const)('validates exact tab payload for %s', operation => {
+  const service = new ReaderService(failedOpen, ['en'], vi.fn());
+  for (const payload of [null, [], {}, { itemId: 'a' }, { tabId: '' }, { tabId: 'a', sql: 'evil' }, { tabId: 'a', toIndex: -1 }, { tabId: 'a', toIndex: 1.5 }]) {
+    expect(service.dispatch(operation, [payload])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
+  }
+});
+it.each(['openLibrary', 'openSettings'] as const)('requires no arguments for %s', operation => {
+  expect(new ReaderService(failedOpen, ['en'], vi.fn()).dispatch(operation, [{}])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
 });

@@ -2,10 +2,10 @@ import { expect, it, vi } from 'vitest';
 import { createReaderBridge } from './reader-bridge';
 import { readerChannels } from '../shared/reader-api';
 
-it('exposes exactly eight intent methods without a generic privileged transport', async () => {
+it('exposes exactly twelve intent methods without a generic privileged transport', async () => {
   const invoke = vi.fn(async () => ({ ok: true, value: {} }));
   const api = createReaderBridge(invoke);
-  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'closeTab', 'openStoredItem', 'refresh', 'toggleSeen', 'updatePreferences']);
+  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'closeTab', 'moveTab', 'openLibrary', 'openSettings', 'openStoredItem', 'refresh', 'removeLibraryItem', 'toggleSeen', 'updatePreferences']);
   expect(Object.isFrozen(api)).toBe(true);
   await api.bootstrap();
   await api.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: true });
@@ -13,8 +13,12 @@ it('exposes exactly eight intent methods without a generic privileged transport'
   await api.acquire({ url: 'https://www.youtube.com/watch?v=abcdefghijk' });
   await api.refresh({ itemId: 'stored-item' });
   await api.openStoredItem({ itemId: 'stored-item' });
-  await api.activateTab({ itemId: 'stored-item' });
-  await api.closeTab({ itemId: 'stored-item' });
+  await api.activateTab({ tabId: 'stored-item' });
+  await api.closeTab({ tabId: 'stored-item' });
+  await api.openLibrary();
+  await api.openSettings();
+  await api.moveTab({ tabId: 'library', toIndex: 0 });
+  await api.removeLibraryItem({ itemId: 'stored-item' });
   expect(invoke.mock.calls).toEqual([
     [readerChannels.bootstrap],
     [readerChannels.toggleSeen, { itemId: 'video-demo', commentId: 'v2', subtree: true }],
@@ -22,7 +26,11 @@ it('exposes exactly eight intent methods without a generic privileged transport'
     [readerChannels.acquire, { url: 'https://www.youtube.com/watch?v=abcdefghijk' }],
     [readerChannels.refresh, { itemId: 'stored-item' }],
     [readerChannels.openStoredItem, { itemId: 'stored-item' }],
-    [readerChannels.activateTab, { itemId: 'stored-item' }],
-    [readerChannels.closeTab, { itemId: 'stored-item' }],
+    [readerChannels.activateTab, { tabId: 'stored-item' }],
+    [readerChannels.closeTab, { tabId: 'stored-item' }],
+    [readerChannels.openLibrary],
+    [readerChannels.openSettings],
+    [readerChannels.moveTab, { tabId: 'library', toIndex: 0 }],
+    [readerChannels.removeLibraryItem, { itemId: 'stored-item' }],
   ]);
 });

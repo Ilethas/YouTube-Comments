@@ -2,6 +2,16 @@
 
 English and Polish UI localization and System/Light/Dark appearance are implemented for the synthetic reader, with live switching and System as default. Preferences now persist in main-owned SQLite through acknowledged typed IPC writes. [ADR 0001](decisions/0001-synthetic-reader-foundation.md) selects typed dictionaries, named interpolation, Intl formatting, host-timezone display, semantic tokens, and native CSS color-scheme following. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) selects main-side first-run detection using the first supported `app.getPreferredSystemLanguages()` base with English fallback; an explicit stored selection overrides detection. Browser-language detection remains a provisional loading/error presentation choice. Fixture reference time stays fixed and labeled only on demo items; real items format relative time against current render time. Timezone controls, a separate follow-system-language option, and production relative-time cadence remain open. [UI and navigation](UI_AND_NAVIGATION.md) describes the reader and [architecture](ARCHITECTURE.md) describes the boundary.
 
+[ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) moves the
+durable Language/Appearance controls into the singleton closable Settings tab.
+Library/Settings launch controls, kind accessibility labels, reorder shortcut help,
+metadata filter/empty/open state, demo protection, modal confirmation, removal/busy
+errors and external-tools explanation have stable English/Polish keys. Paths stay
+main-only. Native dialog provides focus containment; Cancel receives initial focus.
+Neutral tree rails and separate unseen row tint use theme tokens; badge/checkbox
+retain non-color state. Metadata filtering uses locale-independent lowercase
+matching over original metadata and does not settle discussion search comparisons.
+
 ## Interface language
 
 ADR 0006 adds stable English/Polish labels for Library/reopen, close-tab accessible
