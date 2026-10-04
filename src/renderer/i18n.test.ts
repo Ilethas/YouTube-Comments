@@ -22,6 +22,10 @@ describe('localization', () => {
     expect(countLabel('pl', 'comments', 2)).toBe('2 komentarze');
     expect(countLabel('pl', 'comments', 5)).toBe('5 komentarzy');
     expect(countLabel('pl', 'comments', 22)).toBe('22 komentarze');
+    expect(countLabel('en', 'matchingComments', 1)).toBe('1 matching comment');
+    expect(countLabel('pl', 'matchingComments', 2)).toBe('2 pasujące komentarze');
+    expect(countLabel('pl', 'matchingComments', 5)).toBe('5 pasujących komentarzy');
+    expect(countLabel('pl', 'containingThreads', 1)).toBe('1 zawierający je wątek');
   });
   it('formats publication time against an explicit reference clock', () => {
     const now = Date.parse('2026-09-20T12:00:00Z');

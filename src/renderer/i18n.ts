@@ -3,6 +3,17 @@ export type { Locale } from '../shared/preferences';
 import type { Locale } from '../shared/preferences';
 
 const en = {
+  searchDiscussion: 'Search this discussion', searchFields: 'Search fields', searchContent: 'Comment contents', searchAuthor: 'Comment author', searchRepliedTo: 'Direct replied-to author',
+  seenFilter: 'Seen filter', filterAll: 'All', filterUnseen: 'Unseen', filterSeen: 'Seen', caseSensitive: 'Case sensitive', regexMode: 'Regular expression',
+  applyView: 'Apply', applyHelp: 'Apply draft criteria (Ctrl+Enter)', queryDraftPending: 'Draft criteria · Apply to update',
+  querySeenPending: 'Seen changes saved · Apply to update this view', queryEvaluating: 'Evaluating…',
+  queryInvalidRegex: 'Invalid regular expression. The previous applied view remains.', queryNoFields: 'Select at least one search field. The previous applied view remains.',
+  queryTooExpensive: 'This query exceeded the time limit. Simplify it and Apply again. The previous applied view remains.',
+  queryFailed: 'The query could not be evaluated. The previous applied view remains.', noDiscussionMatches: 'No comments match the applied criteria.',
+  appliedCounts: 'Applied: {comments} · {threads}', activeMatch: 'MATCH', contextComment: 'CONTEXT', rawSearchHit: 'SEARCH HIT',
+  matchingComments_one: '{count} matching comment', matchingComments_other: '{count} matching comments',
+  containingThreads_one: '{count} containing thread', containingThreads_other: '{count} containing threads',
+  discussionNavigation: 'Discussion navigation', previousMatch: 'Previous match', nextMatch: 'Next match', previousUnseen: 'Previous unseen', nextUnseen: 'Next unseen', matchPosition: 'Applied match position',
   settings: 'Settings', reorderHelp: 'Drag tabs to reorder, or use Alt+Left / Alt+Right on a focused tab.',
   libraryFilter: 'Filter Library', libraryHelp: 'Filter titles, post text, authors and handles. Closing a tab keeps its discussion here.',
   currentlyOpen: 'Open tab', activate: 'Activate', open: 'Open', noLibraryMatches: 'No discussions match this metadata filter.',
@@ -44,6 +55,17 @@ const en = {
 };
 type Key = keyof typeof en;
 const pl: Record<Key, string> & Record<string, string> = {
+  searchDiscussion: 'Szukaj w tej dyskusji', searchFields: 'Pola wyszukiwania', searchContent: 'Treść komentarza', searchAuthor: 'Autor komentarza', searchRepliedTo: 'Autor bezpośrednio poprzedzającego komentarza',
+  seenFilter: 'Stan przeczytania', filterAll: 'Wszystkie', filterUnseen: 'Nieprzeczytane', filterSeen: 'Przeczytane', caseSensitive: 'Rozróżniaj wielkość liter', regexMode: 'Wyrażenie regularne',
+  applyView: 'Zastosuj', applyHelp: 'Zastosuj robocze kryteria (Ctrl+Enter)', queryDraftPending: 'Robocze kryteria · Zastosuj, aby zaktualizować',
+  querySeenPending: 'Stan przeczytania zapisany · Zastosuj, aby zaktualizować widok', queryEvaluating: 'Obliczanie…',
+  queryInvalidRegex: 'Nieprawidłowe wyrażenie regularne. Zachowano poprzedni zastosowany widok.', queryNoFields: 'Wybierz przynajmniej jedno pole wyszukiwania. Zachowano poprzedni zastosowany widok.',
+  queryTooExpensive: 'Zapytanie przekroczyło limit czasu. Uprość je i zastosuj ponownie. Zachowano poprzedni zastosowany widok.',
+  queryFailed: 'Nie udało się obliczyć wyników. Zachowano poprzedni zastosowany widok.', noDiscussionMatches: 'Brak komentarzy pasujących do zastosowanych kryteriów.',
+  appliedCounts: 'Zastosowano: {comments} · {threads}', activeMatch: 'DOPASOWANIE', contextComment: 'KONTEKST', rawSearchHit: 'TRAFIENIE WYSZUKIWANIA',
+  matchingComments_one: '{count} pasujący komentarz', matchingComments_few: '{count} pasujące komentarze', matchingComments_many: '{count} pasujących komentarzy', matchingComments_other: '{count} pasującego komentarza',
+  containingThreads_one: '{count} zawierający je wątek', containingThreads_few: '{count} zawierające je wątki', containingThreads_many: '{count} zawierających je wątków', containingThreads_other: '{count} zawierającego je wątku',
+  discussionNavigation: 'Nawigacja w dyskusji', previousMatch: 'Poprzednie dopasowanie', nextMatch: 'Następne dopasowanie', previousUnseen: 'Poprzedni nieprzeczytany', nextUnseen: 'Następny nieprzeczytany', matchPosition: 'Pozycja zastosowanego dopasowania',
   settings: 'Ustawienia', reorderHelp: 'Przeciągnij kartę lub użyj Alt+strzałka w lewo / w prawo na karcie z fokusem.',
   libraryFilter: 'Filtruj Bibliotekę', libraryHelp: 'Filtruj tytuły, treść postów, autorów i nazwy użytkowników. Zamknięcie karty zachowuje tutaj dyskusję.',
   currentlyOpen: 'Otwarta karta', activate: 'Aktywuj', open: 'Otwórz', noLibraryMatches: 'Brak dyskusji pasujących do filtra metadanych.',
@@ -94,7 +116,7 @@ export function translator(locale: Locale) {
   };
 }
 
-export function countLabel(locale: Locale, key: 'comments' | 'unseenCount', count: number): string {
+export function countLabel(locale: Locale, key: 'comments' | 'unseenCount' | 'matchingComments' | 'containingThreads', count: number): string {
   const category = new Intl.PluralRules(locale).select(count);
   const template = messages[locale][`${key}_${category}`] ?? messages.en[`${key}_other`];
   return template.replace('{count}', new Intl.NumberFormat(locale).format(count));

@@ -1,6 +1,6 @@
 # Filtering and search
 
-This document defines the target behavior; it does not describe features already implemented in the Electron scaffold. The [product requirements](PRODUCT_REQUIREMENTS.md) establish the scope, [seen state](SEEN_STATE.md) defines local user state, and [UI and navigation](UI_AND_NAVIGATION.md) explains how results are read. Unresolved choices are also tracked in the [decision register](decisions/README.md).
+Active-discussion content/author/direct-parent-author search, All/Unseen/Seen, stable session applied results and navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). Date/discovery filters, sorting, bulk actions, virtualization and the ruler below remain targets. The [product requirements](PRODUCT_REQUIREMENTS.md) establish the scope, [seen state](SEEN_STATE.md) defines local user state, and [UI and navigation](UI_AND_NAVIGATION.md) explains how results are read. Unresolved choices are also tracked in the [decision register](decisions/README.md).
 
 ## A match belongs to a comment; context belongs to its conversation
 
@@ -42,9 +42,9 @@ Independent active filters normally combine with AND on the **same comment**. Fo
 
 For example, if both a seen root and its unseen reply contain "camera", they are both raw search matches. With **Unseen only AND contents contain "camera"**, only the reply is an active-filter match. The root remains visible as context. A matching-only bulk action or next-match action must not treat the root as an active-filter match merely because its text contains the search term.
 
-A top-level-thread-author filter is a deliberate relationship predicate: it examines a comment's containing thread author while still deciding whether that individual comment matches. A direct-replied-to-author filter examines the direct parent relationship, not every ancestor or an inferred `@mention` in the text. The [domain model](DOMAIN_MODEL.md) must preserve these relationships where the source provides them. Behavior when parent/author information is unavailable must be specified before implementation; do not manufacture a parent from text.
+A top-level-thread-author filter is a deliberate relationship predicate: it examines a comment's containing thread author while still deciding whether that individual comment matches. A direct-replied-to-author filter examines the direct parent relationship, not every ancestor or an inferred `@mention` in the text. The [domain model](DOMAIN_MODEL.md) must preserve these relationships where the source provides them. Unavailable parent/author evidence does not match. Only resolved direct-parent application IDs provide that author; containment, missing/cyclic links and text mentions do not.
 
-How a search box combines multiple selected fields, whether multiple values within one filter use OR, and the exact query controls are unresolved. The documented normal AND rule must remain predictable across filters.
+One search expression ORs its selected contents, own-author displayName/handle and direct-parent-author displayName/handle fields. The search clause ANDs with All/Unseen/Seen on the same comment. Empty text imposes no search restriction and disables raw-search presentation; nonempty text with no fields is invalid. Opaque author IDs and top-level-thread-author search are excluded.
 
 ## Search the stored data
 
@@ -63,15 +63,15 @@ The initial product must support:
 
 Top-level-thread-author search is an optional useful extension. It must use the relationship predicate described above if added; it is not required to deliver the initial core search modes.
 
-Changing the interface language must not change the content searched or search results. Search rules must be defined independently of the UI locale; see [localization](LOCALIZATION_AND_THEMING.md). The exact Unicode normalization, diacritic handling, case-folding behavior, text representation, and regex dialect remain decisions to make and test. Do not silently equate locale-aware display formatting with a search comparison rule.
+Changing the interface language must not change the content searched or search results. Search rules must be defined independently of the UI locale; see [localization](LOCALIZATION_AND_THEMING.md). Ordinary text uses substring comparison after NFC normalization of pattern and target. Case-sensitive compares directly; insensitive uses deterministic JavaScript toLowerCase() on both NFC strings. Diacritics remain significant; no locale lowercase, accent stripping, tokenization, stemming or fuzzy comparison. Regex is ECMAScript pattern-only with application-owned u/iu flags and NFC on both strings; no implicit g/m/s or slash-delimited flag parsing.
 
 The UI must make the active-discussion scope understandable. Other filters narrow the active-filter matching set without narrowing the underlying dataset searched. Keep raw search-match information separate where needed for text highlighting or a search-specific control, and do not use it as the combined-filter result.
 
 ### Invalid and expensive expressions
 
-Validate a regular expression before evaluating a query. Invalid syntax must produce a clear, localized validation error. It must not crash the application or silently masquerade as a successful zero-match result. Preserve the distinction between invalid input and a valid query with no matches. Whether the reader retains the previous valid result while showing the error is a UX decision still to be made.
+Validate a regular expression before evaluating a query. Invalid syntax must produce a clear, localized validation error. It must not crash the application or silently masquerade as a successful zero-match result. Preserve the distinction between invalid input and a valid query with no matches. The previous successful applied view remains displayed on invalid syntax, missing fields, execution failure or timeout.
 
-Valid expressions can also be expensive on large inputs. The execution strategy, supported regex syntax, cancellation, and any resource limits are unresolved engineering choices. Select an approach that keeps input and navigation responsive; do not assume that moving a synchronous regex to the renderer satisfies the performance requirement. Surface any eventual limit explicitly rather than silently returning incomplete matches.
+Valid expressions can also be expensive on large inputs. All production comparison queries execute in a dedicated renderer Web Worker over a narrow application-owned projection. A 1000 ms whole-query deadline terminates the worker and reports a localized QUERY_TOO_EXPENSIVE view error. New Apply supersedes pending work; the next evaluation recreates a terminated worker. Complete results only: comments are never truncated and partial/late replies are rejected. Pure rules remain independently testable. See ADR 0008.
 
 ## Publication dates and time
 
@@ -95,11 +95,11 @@ The same timestamp rules must be shared with [date-based bulk seen operations](S
 
 Persist a manual seen edit immediately, while retaining the displayed result membership and ordering. Otherwise, marking an unseen reply seen could remove its entire conversation during reading. The logical active-filter matching set, match/context classification, and matching-comment/containing-thread counts belong to the last applied evaluation until the view is recomputed.
 
-Keep that applied result alongside live seen state. A comment can therefore have a checked seen checkbox while remaining an active-filter match from the last applied **Unseen only** query. Exact styling, pending-view wording, and any supplementary live indicators remain design choices. Such indicators must not replace the applied matching set/count with a fresh query or imply that saving the checkbox is deferred.
+Keep that applied result alongside live seen state. A comment can therefore have a checked seen checkbox while remaining an active-filter match from the last applied **Unseen only** query. MATCH/CONTEXT and raw-only SEARCH HIT badges are distinct from live unseen tint/checkbox and neutral rails. A saved-seen Apply indication appears only when applied seen is not All; draft difference is a separate indication. Such indicators must not replace the applied matching set/count with a fresh query or imply that saving the checkbox is deferred.
 
-An **Apply changes / Update view** action recomputes the result using already-persisted state. It is not a save button and does not fetch remote data. Ctrl+Enter is the likely shortcut, pending the formal keyboard policy. An indicator that the view is awaiting recomputation is a proposed way to explain this state.
+An **Apply changes / Update view** action recomputes the result using already-persisted state. It is not a save button and does not fetch remote data. Ctrl+Enter applies while a discussion is active; Enter in the search form also applies. Controls edit draft only, and success promotes the captured criteria/result. Each discussion has independent session state retained across close/reopen and cleared on Library removal; restart resets it.
 
-This stability guarantee concerns incidental changes caused by seen edits. Explicit changes to filters, searches, or sorting are intentional view changes; whether those controls apply immediately, debounce, or wait for the same action remains unresolved. A successful explicit **Refresh** automatically recomputes the active view after its remote data has been merged; the user does not need to press Apply afterward. Remote refresh remains a separate operation described in [refresh and merge](REFRESH_AND_MERGE.md). Failed or partial refreshes must not be presented as successful completed refreshes.
+This stability guarantee concerns incidental changes caused by seen edits. Explicit changes to filters, searches, or sorting are intentional view changes; controls wait for explicit Apply. A successful explicit **Refresh** automatically recomputes the active view after its remote data has been merged, using last applied criteria and preserving draft; successful evaluation clears the saved-seen stale condition unless a newer seen save occurred during evaluation. Failed reevaluation retains the old result and surfaces an error. Remote refresh remains a separate operation described in [refresh and merge](REFRESH_AND_MERGE.md). Failed or partial refreshes must not be presented as successful completed refreshes.
 
 ### Bulk scope is never inferred from visible rows
 
@@ -109,11 +109,11 @@ When seen edits are awaiting view recomputation, matching-only bulk actions cont
 
 ## Data and performance design
 
-The architectural target is a query result expressed as data: matching IDs, containing-thread IDs, comment relationships, presentation order, and the information needed to distinguish context. These are conceptual responsibilities, not a committed TypeScript interface or SQL schema.
+The architectural target is a query result expressed as data: matching IDs, containing-thread IDs, comment relationships, presentation order, and the information needed to distinguish context. DiscussionQuery and DiscussionViewResult in src/domain/discussion-query.ts define criteria, raw/active/root IDs, complete visible preorder, frozen placement, ordered match IDs, counts and restrictive/search-active flags.
 
 Use this data for counts, bulk target selection, unseen/match navigation, and [overview-ruler markers](UI_AND_NAVIGATION.md). Next/previous match navigation uses the current applied active-filter matches. Any separately labeled search-specific navigation must respect the applicable view and distinguish raw search hits from active-filter matches. Virtualization determines which rows exist in the DOM; it does not determine query results. Sorting primarily rearranges whole top-level conversations and must keep replies attached to their parent tree. Exact sort modes, defaults, tie-breaking, and reply ordering remain unresolved.
 
-SQLite query planning, indexes, any full-text search facility, worker placement, and the division between database and in-memory evaluation are implementation decisions. Ordinary substring and regex requirements still apply if an index is introduced; token-based full-text search must not silently replace substring semantics. See [database planning](DATABASE.md) and [architecture](ARCHITECTURE.md).
+ADR 0008 selects the bounded renderer worker/in-memory evaluator for the existing full bootstrap architecture. SQLite query planning, indexes, FTS and larger-data batching remain future decisions. Ordinary substring and regex requirements still apply if an index is introduced; token-based full-text search must not silently replace substring semantics. See [database planning](DATABASE.md) and [architecture](ARCHITECTURE.md).
 
 ## Verification
 

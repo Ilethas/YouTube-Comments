@@ -1,6 +1,6 @@
 # UI and navigation
 
-The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Discussion search/filtering, virtualization and the ruler are absent. Counts cover all stored comments of the discussion; synthetic fixed NEW examples do not settle marker lifetime. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
+The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). Date/discovery filtering, bulk actions, virtualization and the ruler remain targets. Counts cover all stored comments of the discussion; synthetic fixed NEW examples do not settle marker lifetime. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
 
 Windows is the initial target platform. Other platform support is a later possibility; see [packaging](PACKAGING.md).
 
@@ -47,8 +47,7 @@ Unseen uses a subtle row tint plus UNSEEN text and the explicit checkbox. Rails
 never indicate seen state. Compact 32px avatars, bylines and multiline bodies stay.
 
 No persisted scroll, filters, sorting, expansion, selected comment or complete
-workspace restoration is claimed. Discussion search/filtering, virtualization,
-collapse and overview ruler remain targets.
+workspace restoration is claimed. Query criteria, applied results and selection are independent per-discussion session state, retained on close/reopen and cleared on Library removal. Dates, bulk actions, virtualization, collapse and overview ruler remain targets.
 
 Avatars use only usable HTTPS URLs, anonymous CORS, no-referrer, lazy loading,
 async decoding and fixed dimensions. Empty alt text avoids duplicating the byline;
@@ -59,8 +58,7 @@ The compact URL form accepts supported public video/individual-post URLs; Enter
 and Add / Open submit. Main validates/canonicalizes the target. Successful
 acquisition merges known sources instead of opening duplicate items and activates
 the acknowledged item. Real items have Refresh; demo items do not. Refresh uses
-stored source identity and retains the current tab selection. All stored comments
-are shown, including those missing from the newest extraction and new unseen ones.
+stored source identity and retains the current tab selection. Last applied criteria are reevaluated against committed comments, including those missing from the newest extraction and new unseen ones. Draft controls are preserved; reevaluation failure keeps prior valid membership and reports a view error.
 
 Acquiring/Refreshing status disables live submission only; reading, tabs and local
 seen/preference saves remain available. Failure shows localized stable error
@@ -123,7 +121,7 @@ Keep these concepts visually understandable:
 | Context-only | Included for its conversation without being an active-filter match; it may still contain a raw search hit. |
 | Newly discovered | Discovery associated with a refresh, independently of seen state. |
 
-While seen edits await view recomputation, the displayed membership and order remain stable. The logical active-filter matching set, match/context roles, and matching-comment/containing-thread counts stay tied to the last applied evaluation. Live checkboxes reflect saved state. Exact styling, pending wording, and supplementary live indicators remain design choices, but must not replace the applied set/count with a fresh query. Matching-only bulk actions and next/previous match navigation use that applied matching set; see [stable filtering](FILTERING_AND_SEARCH.md).
+While seen edits await view recomputation, the displayed membership and order remain stable. The logical active-filter matching set, match/context roles, and matching-comment/containing-thread counts stay tied to the last applied evaluation. Live checkboxes reflect saved state. MATCH/CONTEXT badges identify applied roles, with SEARCH HIT for raw-only context. They are independent of live unseen tint/checkbox, NEW and neutral rails. Saved seen changes show an Apply indication only for applied Seen/Unseen; draft difference is separate. Neither changes applied counts. Matching-only bulk actions and next/previous match navigation use that applied matching set; see [stable filtering](FILTERING_AND_SEARCH.md).
 
 An old comment can remain unseen for months; a just-discovered comment can immediately be marked seen. “New” must not become a synonym for “unseen.” The first successful acquisition establishes the baseline: its comments are unseen and retain `firstDiscoveredAt`, but receive no visual **New** highlighting. Comments discovered by later refreshes are eligible for new indicators. The lifetime and presentation window of those later indicators remain unresolved; [refresh and merge](REFRESH_AND_MERGE.md) defines the underlying distinction.
 
@@ -135,12 +133,12 @@ Manual seen changes save immediately. They must not cause the current result mem
 
 | Action | Meaning | Shortcut status |
 | --- | --- | --- |
-| Apply changes / Update view | Recompute local results after persisted changes. | Ctrl+Enter is likely, pending the formal keyboard policy. |
+| Apply | Validate/evaluate draft over acknowledged local data; only success promotes it. | Ctrl+Enter while a discussion is active; Enter in its search form. |
 | Refresh source | Run the relevant extractor, merge observations, and automatically recompute the active view on success. | F5 is likely, pending the formal keyboard policy. |
-| Next/previous unseen | Navigate between unseen targets within the applicable filtered view. | Bindings undecided. |
-| Next/previous match | Navigate between the current applied active-filter matches. | Bindings undecided. |
+| Next/previous unseen | Live unseen comments in displayed applied trees, including context. | Accessible buttons; no keyboard binding added. |
+| Next/previous match | Last applied active-filter matching IDs in displayed preorder. | F3 / Shift+F3 and accessible buttons. |
 
-The final labels and shortcuts require a later UI decision. A pending-view indicator is a proposed aid; it must make clear that seen changes are already saved. Filter-control apply timing, supplementary live indicators, and updates to unseen-navigation targets while a view is pending remain unresolved. The applied matching set/count and matching-only bulk scope are settled as described above. See [stable filtering](FILTERING_AND_SEARCH.md).
+The compact search form edits draft only: text, selected fields, All/Unseen/Seen, case and regex toggles, and Apply. It does not apply on typing. Invalid/expensive/failed evaluation retains previous results and shows localized feedback. Navigation wraps, never marks seen, and unseen targets update from live seen independently of applied matches. Refresh shortcuts and collapse/virtualized reveal policies remain open. The applied matching set/count and matching-only bulk scope are settled as described above. See [stable filtering](FILTERING_AND_SEARCH.md).
 
 Extraction can be long-running or fail. Provide understandable progress, error, and partial-result context without confusing a failure with an empty discussion or losing the last valid local snapshot. Exact progress and cancellation controls are not specified yet; [extractors](EXTRACTORS.md) and [refresh and merge](REFRESH_AND_MERGE.md) own their underlying contracts.
 
@@ -148,7 +146,7 @@ Extraction can be long-running or fail. Provide understandable progress, error, 
 
 Keyboard navigation must support next/previous unseen comments and matches. Next/previous navigation in the filtered reader uses the current applied active-filter matching set. Any separately labeled search-specific navigation must operate within the applicable view and must not confuse raw search hits with active-filter matches. Targets are comment identities in application data, not a query for rendered DOM elements. This lets navigation reach a comment many thousands of rows away or inside a collapsed subtree.
 
-The implementation must be able to identify a target, make its location visible, scroll it into the virtualized viewport, and indicate the active comment. This may require expanding its ancestor path. Whether such expansion is temporary or persisted, whether navigation wraps, and how live seen edits update specialized unseen targets within the applicable view remain unresolved. These choices must not broaden the filtered reader's match navigation beyond its applied matching set.
+The implementation must be able to identify a target, make its location visible, scroll it into the virtualized viewport, and indicate the active comment. This may require expanding its ancestor path. Current uncollapsed navigation wraps at both ends. Match candidates remain applied IDs; unseen candidates use live seen over displayed membership. From context, next/previous selects the eligible neighbor in preorder. Each row has an application-owned target ID, selection outline and final scrollIntoView call. Collapse/virtualization expansion and restoration policies remain open. These choices must not broaden the filtered reader's match navigation beyond its applied matching set.
 
 ```mermaid
 flowchart LR

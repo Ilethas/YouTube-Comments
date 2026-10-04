@@ -1,6 +1,6 @@
 # How it works
 
-This guide is for the technically capable project owner who wants to understand the whole application without having written each subsystem. It describes the **intended system**. Today the repository implements the synthetic reader with main-owned SQLite, durable manual seen state/preferences, migrations, isolated profiles, and a typed preload API. Real acquisition/refresh and the broader workflows below remain targets. Start with the [documentation map](README.md) for status or [product requirements](PRODUCT_REQUIREMENTS.md) for the full contract.
+This guide is for the technically capable project owner who wants to understand the whole application without having written each subsystem. It describes the **intended system**. Today the repository implements the synthetic reader with main-owned SQLite, durable manual seen state/preferences, migrations, isolated profiles, and a typed preload API. Live acquisition/refresh, compact unified workspace tabs and active-discussion search/seen filtering with stable session applied views/navigation are implemented. Dates, bulk recovery/actions, full persistent view restoration, virtualization and the ruler below remain targets. Start with the [documentation map](README.md) for status or [product requirements](PRODUCT_REQUIREMENTS.md) for the full contract.
 
 ## The local library is the center
 

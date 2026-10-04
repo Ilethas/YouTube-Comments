@@ -7,10 +7,18 @@ import { initialComments, items } from '../fixtures/discussions';
 import { toggleSeen } from '../domain/discussion';
 import type { AcquisitionResult, ReaderApi, ReaderState, Result } from '../shared/reader-api';
 import { closeWorkspaceTab, discussionTab, openWorkspaceTab, moveWorkspaceTab } from '../domain/workspace';
+import { evaluateDiscussionQuery } from '../domain/discussion-query';
+import { createQueryExecutor } from './query-executor';
+import type { QueryExecutor } from './query-worker-client';
+import { StrictMode } from 'react';
+
+// jsdom has no dedicated Web Worker; worker lifecycle/deadline has its own tests.
+vi.mock('./query-executor', () => ({ createQueryExecutor: vi.fn() }));
 
 let api: ReaderApi;
 let state: ReaderState;
 beforeEach(() => {
+  vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate: async (comments, query) => evaluateDiscussionQuery(comments, query), dispose: vi.fn() } as QueryExecutor as ReturnType<typeof createQueryExecutor>));
   state = { items, comments: initialComments, preferences: { locale: 'en', appearance: 'system' },
     workspace: { tabs: items.map(item => discussionTab(item.id)), activeTabId: discussionTab(items[0].id).id, revision: 0 } };
   const open: ReaderApi['openStoredItem'] = async ({ itemId }) => {
@@ -61,7 +69,7 @@ beforeEach(() => {
   Object.defineProperty(window.navigator, 'languages', { configurable: true, value: ['en'] });
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
-const checkboxes = () => screen.getAllByRole<HTMLInputElement>('checkbox');
+const checkboxes = () => within(screen.getByRole('tabpanel')).getAllByRole<HTMLInputElement>('checkbox').filter(input => input.closest('.seen-control'));
 const checked = () => checkboxes().map(input => input.checked);
 
 it('reading, scrolling, tab navigation and language changes do not mark comments seen', async () => {
@@ -442,4 +450,154 @@ it('older acquisition acknowledgment preserves newer app opens and mixed reorder
     items[0].kind === 'video' ? items[0].title : '', expect.stringContaining('Quiet Workshop'), 'Acquired video', 'Settings', 'Library',
   ]);
   expect(screen.getByRole('tabpanel').id).toBe('panel-settings');
+});
+
+const currentView = () => within(screen.getByRole('tabpanel'));
+const appliedRows = () => Array.from(screen.getByRole('tabpanel').querySelectorAll<HTMLElement>('[data-view-role=match]'), row => row.id);
+it('development StrictMode effect probes preserve query sessions and their first draft edit', async () => {
+  render(<StrictMode><App api={api} /></StrictMode>); await screen.findByRole('tabpanel');
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'desk' } });
+  expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe('desk');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(appliedRows().length).toBeGreaterThan(0));
+});
+it('compact draft controls wait for Apply/Ctrl+Enter, context includes siblings and raw-only hits', async () => {
+  await showReader();
+  expect(appliedRows()).toEqual([]);
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'desk' } });
+  expect(currentView().getByText('Draft criteria · Apply to update')).toBeTruthy();
+  expect(appliedRows()).toEqual([]);
+  fireEvent.keyDown(screen.getByRole('tabpanel'), { key: 'Enter', ctrlKey: true });
+  await waitFor(() => expect(appliedRows().length).toBeGreaterThan(0));
+  expect(screen.getByRole('tabpanel').querySelector('[data-view-role=context]')).toBeTruthy();
+  expect(currentView().queryByText('Draft criteria · Apply to update')).toBeNull();
+  expect(currentView().getByText(/Applied:.*matching comment/)).toBeTruthy();
+  expect(api.toggleSeen).not.toHaveBeenCalled();
+});
+it('invalid regex/no-fields and worker timeout retain the previous applied view with localized feedback', async () => {
+  await showReader();
+  fireEvent.change(currentView().getByLabelText('Seen filter'), { target: { value: 'unseen' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  const previous = appliedRows();
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: '[' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Regular expression' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('Invalid regular expression');
+  expect(appliedRows()).toEqual(previous);
+  fireEvent.click(currentView().getByText('Search fields', { selector: 'summary' }));
+  fireEvent.click(currentView().getByLabelText('Comment contents'));
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('at least one search field'));
+  expect(appliedRows()).toEqual(previous);
+});
+it('worker timeout feedback keeps previous successful results', async () => {
+  vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate: vi.fn().mockResolvedValue({ ok: false, error: 'QUERY_TOO_EXPENSIVE' }), dispose: vi.fn() } as unknown as ReturnType<typeof createQueryExecutor>));
+  await showReader();
+  const previous = screen.getByRole('tabpanel').querySelectorAll('.comment').length;
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: '(a+)+$' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('exceeded the time limit');
+  expect(screen.getByRole('tabpanel').querySelectorAll('.comment')).toHaveLength(previous);
+});
+it('seen saves retain applied matches/counts and pending view until second Apply', async () => {
+  await showReader();
+  fireEvent.change(currentView().getByLabelText('Seen filter'), { target: { value: 'unseen' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  const previous = appliedRows(), count = currentView().getByText(/Applied:/).textContent;
+  const target = document.getElementById(previous[0])?.querySelector<HTMLInputElement>('input');
+  if (!target) throw new Error('Missing match');
+  await userEvent.click(target);
+  await waitFor(() => expect(target.checked).toBe(true));
+  expect(appliedRows()).toEqual(previous); expect(currentView().getByText(/Applied:/).textContent).toBe(count);
+  expect(currentView().getByText('Seen changes saved · Apply to update this view')).toBeTruthy();
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(appliedRows()).not.toContain(previous[0]));
+  expect(currentView().queryByText('Seen changes saved · Apply to update this view')).toBeNull();
+});
+it('seen All edits do not report a stale view and independent drafts/applied results survive tab switch/reopen', async () => {
+  await showReader();
+  await userEvent.click(checkboxes()[0]);
+  expect(currentView().queryByText('Seen changes saved · Apply to update this view')).toBeNull();
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'desk' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' })); const video = appliedRows();
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'video draft' } });
+  await userEvent.click(screen.getByRole('tab', { name: /Community Post/ }));
+  expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe(''); expect(appliedRows()).toEqual([]);
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'post draft' } });
+  await userEvent.click(screen.getByRole('tab', { name: /A quieter desk/ }));
+  expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe('video draft'); expect(appliedRows()).toEqual(video);
+  await userEvent.click(screen.getByRole('button', { name: /Close tab: A quieter desk/ }));
+  await userEvent.click(screen.getByRole('button', { name: 'Library' }));
+  const entry = currentView().getByText(items[0].kind === 'video' ? items[0].title : '').closest('li');
+  if (!entry) throw new Error('Missing Library entry');
+  await userEvent.click(within(entry).getByRole('button', { name: 'Open' }));
+  expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe('video draft'); expect(appliedRows()).toEqual(video);
+});
+it('match/F3/Shift+F3 and live unseen navigation select/reveal application IDs without saving', async () => {
+  const reveal = vi.fn(); Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: reveal });
+  await showReader();
+  fireEvent.change(currentView().getByLabelText('Seen filter'), { target: { value: 'unseen' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' })); const matches = appliedRows();
+  const selected = () => screen.getByRole('tabpanel').querySelector('[data-selected=true]')?.id;
+  await userEvent.click(screen.getByRole('button', { name: 'Next match' })); expect(selected()).toBe(matches[0]);
+  fireEvent.keyDown(document, { key: 'F3' }); expect(selected()).toBe(matches[1]);
+  fireEvent.keyDown(document, { key: 'F3', shiftKey: true }); expect(selected()).toBe(matches[0]);
+  await userEvent.click(screen.getByRole('button', { name: 'Previous match' })); expect(selected()).toBe(matches.at(-1));
+  await userEvent.click(screen.getByRole('button', { name: 'Next unseen' })); expect(selected()).toBe(matches[0]);
+  await userEvent.click(screen.getByRole('button', { name: 'Previous unseen' })); expect(selected()).toBe(matches.at(-1));
+  expect(reveal).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' }); expect(api.toggleSeen).not.toHaveBeenCalled();
+});
+it('Refresh re-evaluates last applied criteria, retains draft and includes new committed matching comments', async () => {
+  state = acquired().state;
+  await showReader();
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'Acquired' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'draft does not match' } });
+  const value = acquired();
+  api.refresh = vi.fn(async () => ({ ok: true as const, value: { ...value, state: { ...value.state, comments: { ...value.state.comments,
+    'acquired-video': [...value.state.comments['acquired-video'], { ...value.state.comments['acquired-video'][0], id: 'new-query', text: 'Acquired new matching comment' }] } } } }));
+  await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await screen.findByText('Acquired new matching comment');
+  await waitFor(() => expect(appliedRows()).toHaveLength(2));
+  expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe('draft does not match');
+  expect(currentView().getByText('Draft criteria · Apply to update')).toBeTruthy();
+});
+
+it('raw-only search hits remain context; complete tree and live unseen navigation remain independent of matches', async () => {
+  const value = acquired(), root = { ...value.state.comments['acquired-video'][0], text: 'camera', seen: true };
+  state = { ...value.state, comments: { ...value.state.comments, 'acquired-video': [root,
+    { ...root, id: 'nested-target', parentId: root.id, text: 'camera reply', seen: false },
+    { ...root, id: 'sibling-context', parentId: root.id, text: 'unrelated sibling', seen: false }] } };
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
+  await showReader();
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'camera' } });
+  fireEvent.change(currentView().getByLabelText('Seen filter'), { target: { value: 'unseen' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(appliedRows()).toEqual(['comment-nested-target']);
+  expect(currentView().getByText('SEARCH HIT').closest('article')?.dataset.viewRole).toBe('context');
+  expect(screen.getByRole('tabpanel').querySelectorAll('.comment')).toHaveLength(3);
+  expect(currentView().getByText('Applied: 1 matching comment · 1 containing thread')).toBeTruthy();
+  await userEvent.click(screen.getByRole('button', { name: 'Next match' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Next unseen' }));
+  expect(screen.getByRole('tabpanel').querySelector('[data-selected=true]')?.id).toBe('comment-sibling-context');
+  expect(api.toggleSeen).not.toHaveBeenCalled();
+});
+it('query failure after successful Refresh preserves the previous tree even if committed placement changes', async () => {
+  const value = acquired(), root = value.state.comments['acquired-video'][0];
+  state = { ...value.state, comments: { ...value.state.comments, 'acquired-video': [root, { ...root, id: 'child-query', parentId: root.id, text: 'needle' }] } };
+  const evaluate = vi.fn(async (comments: Parameters<QueryExecutor['evaluate']>[0], query: Parameters<QueryExecutor['evaluate']>[1]) => evaluateDiscussionQuery(comments, query));
+  vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate, dispose: vi.fn() }));
+  await showReader();
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'needle' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  const previous = appliedRows();
+  evaluate.mockResolvedValueOnce({ ok: false, error: 'QUERY_FAILED' });
+  api.refresh = vi.fn(async () => ({ ok: true as const, value: { ...value, state: { ...state,
+    comments: { ...state.comments, 'acquired-video': [root, { ...root, id: 'child-query', parentId: null, text: 'needle changed' }] } } } }));
+  await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('could not be evaluated');
+  expect(appliedRows()).toEqual(previous);
+  expect(screen.getByRole('tabpanel').querySelectorAll('.comment')).toHaveLength(2);
+  expect(currentView().getByText('needle changed')).toBeTruthy();
+  expect(document.getElementById('comment-child-query')?.closest('.comment-branch')?.getAttribute('data-depth')).toBe('1');
 });

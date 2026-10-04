@@ -52,6 +52,18 @@ Store time values in a language-independent representation as defined by the [da
 
 The demo uses the host timezone, exact timestamps on hover/accessibility labels, and a labeled fixed reference clock. Production timestamp precision, relative-time update cadence, timezone controls, and date-predicate timezone remain unresolved. Publication-date filtering uses each comment's `publishedAt`; useful preset examples such as **Today**, **Last 24 hours**, and **Last 7 days** need explicit date rules if selected. They are examples, not a fixed mandatory list. **New since refresh** is a separate discovery-history concept, not a publication-date shortcut. See [filtering and search](FILTERING_AND_SEARCH.md). Formatting a boundary differently must not silently change the comments it selects, and exact timestamps must remain discoverable.
 
+## Implemented discussion-query presentation
+
+[ADR 0008](decisions/0008-active-discussion-applied-queries.md) adds English/Polish
+keys for compact search fields, seen filter, mode/case, Apply, draft/saved-seen
+indications, validation/timeout/execution errors, applied comment/thread counts,
+MATCH/CONTEXT/raw-only SEARCH HIT and navigation. Counts use Intl numbers. Existing
+neutral rails and unseen tint stay independent; badges and selected outline use
+semantic surface/accent/focus tokens in both themes. Source text remains React text.
+Text uses NFC and deterministic toLowerCase(), with significant diacritics, never
+UI locale. Regex uses NFC and application-owned ECMAScript u/iu. Switching UI
+language changes presentation only, preserving session criteria/results.
+
 ## Interface language must not change search
 
 Search operates on original stored text and identities. Switching between English and Polish must not alter the same query's results. Define case sensitivity, Unicode comparison rules, normalization, and any regex behavior independently of the interface locale.

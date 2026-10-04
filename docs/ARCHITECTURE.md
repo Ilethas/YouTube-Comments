@@ -6,7 +6,7 @@ Status: target architecture, with proposed organization explicitly identified. [
 
 The repository uses Electron Forge/Vite and strict TypeScript. [src/main.ts](../src/main.ts) creates a sandboxed, context-isolated window with Node integration disabled; navigation/new windows are blocked. [src/preload.ts](../src/preload.ts) exposes the narrow `window.reader` API. [src/renderer.tsx](../src/renderer.tsx) mounts the React reader, with components and localization in `src/renderer`, pure domain rules in `src/domain`, and explicitly synthetic fixtures used for main-side initialization.
 
-The persistence milestone adds `src/main/persistence` for SQLite profiles/migrations/repository mapping, `src/main/reader-service.ts` for validated use cases and structured outcomes, `src/main/reader-ipc.ts` for channel/sender routing, `src/shared` for driver-free contracts/preferences, and `src/preload/reader-bridge.ts` for the private transport wrapper. One main-owned built-in SQLite connection stores normalized discussions, separate per-comment local state, and preferences. The renderer loads asynchronously and updates only after save acknowledgment; it has no fixture-state fallback. Ctrl subtree changes are transactional and preserve displayed order. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) records these choices; [ADR 0001](decisions/0001-synthetic-reader-foundation.md) remains the foundation record. ADR 0004 adds pure normalized merge planning and transactional SQLite ingestion/history. [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) adds main-only live public acquisition/refresh and minimal UI. Queries/filtering and virtualization remain absent. The broader target below is not a completed security review. See [Testing](TESTING.md).
+The persistence milestone adds `src/main/persistence` for SQLite profiles/migrations/repository mapping, `src/main/reader-service.ts` for validated use cases and structured outcomes, `src/main/reader-ipc.ts` for channel/sender routing, `src/shared` for driver-free contracts/preferences, and `src/preload/reader-bridge.ts` for the private transport wrapper. One main-owned built-in SQLite connection stores normalized discussions, separate per-comment local state, and preferences. The renderer loads asynchronously and updates only after save acknowledgment; it has no fixture-state fallback. Ctrl subtree changes are transactional and preserve displayed order. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) records these choices; [ADR 0001](decisions/0001-synthetic-reader-foundation.md) remains the foundation record. ADR 0004 adds pure normalized merge planning and transactional SQLite ingestion/history. [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) adds main-only live public acquisition/refresh and minimal UI. ADR 0008 adds active-discussion search/seen filtering, stable applied views and match/unseen navigation; dates, bulk actions, virtualization and the ruler remain targets. The broader target below is not a completed security review. See [Testing](TESTING.md).
 
 Initial development and packaging target Windows. Platform integrations should avoid unnecessary barriers to later Linux/macOS support, but those platforms are not initial implementation or packaging requirements.
 
@@ -89,6 +89,34 @@ Implemented IPC maintains context isolation and disabled renderer Node integrati
 
 The bridge should express intent such as opening an item, querying comments, setting seen state for a validated scope, refreshing, or persisting tab preferences. These are conceptual operations, not finalized method signatures. Main resolves and validates identities, scope, executable selection, and arguments. Do not expose a generic `execute(command)`, `query(sql)`, or unrestricted IPC forwarding API. Permalink opening and copy actions also use appropriately constrained application capabilities. Detailed sandbox/CSP/navigation policy and API contracts must be finalized with the relevant implementation increment.
 
+## Current query execution boundary
+
+[ADR 0008](decisions/0008-active-discussion-applied-queries.md) adds pure
+DiscussionQuery/DiscussionViewResult semantics and a dedicated renderer Web Worker.
+The existing full-discussion bootstrap is unchanged. A narrow application-owned
+projection sends identity/placement, direct-relationship kind/status, text, author
+displayName/handle and live seen only; no remote evidence, SQL, preload or raw
+extractor data crosses this boundary. The worker imports only pure query/tree code.
+All comparison evaluation (text and regex) uses this worker, with request IDs,
+supersession/termination and a 1000 ms whole-query deadline. Late/partial outcomes
+are rejected; errors keep the prior complete applied snapshot. CSP worker-src is
+self only and Vite emits a separate worker asset. No privileged API is added.
+
+Per-discussion session state separates controls/draft, applied criteria/result,
+execution/error, saved-seen staleness and selection. Seen acknowledgment updates
+live state without reevaluation. Successful source Refresh reconciles committed
+comments/local writes then reevaluates last applied criteria, preserving draft.
+Frozen preorder and parent placement keep the previous result readable even if
+refresh updates relationship projection and reevaluation fails. Navigation resolves
+application IDs from data before DOM reveal. Close/reopen retains session state;
+removal disposes it; restart does not restore it.
+
+This in-memory worker implementation is bounded to the current full-reader model.
+Pure types/rules allow later main/SQLite-backed execution with the same observable
+substring/regex/context semantics. Full bootstrap, structured cloning, full-tree
+mounting, SQLite acceleration, query budgets for large data and virtualization
+remain Q-21 work. No FTS, pagination or persistence redesign is implied.
+
 ## Responsibilities and dependency direction
 
 | Layer | Owns | Must not depend on |
@@ -117,11 +145,11 @@ This separation prevents a common destructive shortcut: replacing a database row
 
 ## Reads, writes, and consistency
 
-The initial query path evaluates all locally stored comments of the active discussion, including collapsed and unrendered comments. Raw search matches satisfy search alone; active-filter matches satisfy the complete filter set at the applied evaluation. Context expansion includes complete trees containing active-filter matches. Query results preserve this distinction for counts, bulk targeting, and navigation independently of mounted rows. Library-wide search is future scope. SQL may accelerate predicates; semantics remain the contract. Search execution location, indexes, worker use, and query batching remain implementation choices.
+The initial query path evaluates all locally stored comments of the active discussion, including collapsed and unrendered comments. Raw search matches satisfy search alone; active-filter matches satisfy the complete filter set at the applied evaluation. Context expansion includes complete trees containing active-filter matches. Query results preserve this distinction for counts, bulk targeting, and navigation independently of mounted rows. Library-wide search is future scope. SQL may accelerate predicates; semantics remain the contract. ADR 0008 selects the bounded renderer worker execution location; indexes, query batching and large-data execution remain open.
 
 Seen mutations are explicit application commands with a validated target scope. Generic all/date bulk actions target the active discussion; matching bulk actions target the last applied active-filter matching IDs, including while seen edits await Apply. Successful writes persist immediately without silently rebuilding the applied matching set or displayed membership/order. Failures require visible feedback or rollback of optimistic presentation. The view must not misrepresent failed writes as saved. [Seen state](SEEN_STATE.md) defines subtree, bulk, and recoverability semantics without prescribing an undo mechanism.
 
-The applied active-filter set is the authority for matching counts, match/context roles, matching bulk actions, and filtered-reader next/previous match navigation. Seen changes update live checkbox state but do not replace that set. Apply recomputes it locally. Exact pending-view styling and any separate live indicators remain UI choices; they must not redefine the applied matching set.
+The applied active-filter set is the authority for matching counts, match/context roles, matching bulk actions, and filtered-reader next/previous match navigation. Seen changes update live checkbox state but do not replace that set. Apply recomputes it locally. ADR 0008 selects separate draft/saved-seen indications and applied role badges; they must not redefine the applied matching set.
 
 The implemented refresh pipeline stages and validates observations before a short merge transaction. Existing records retain local state; newly discovered identities get unseen defaults. Eligible remote fields may update with newer valid information, without requiring every run to mutate them. Missing records remain untouched. Refresh bookkeeping and content updates must describe the same committed outcome. After a successful explicit remote Refresh safely merges, automatically recompute the active view so newly discovered comments can appear under its filters. Apply remains local recomputation only. [ADR 0003](decisions/0003-extractor-observations-and-normalization.md) implements pure observation adapters and accepts valid partial/unknown input; [ADR 0004](decisions/0004-durable-observation-merge.md) implements durable normalized merges with baseline/history and safe relationship projection. ADR 0005 connects main-owned resolution/probes/process execution to those adapters, ingestion and acknowledged UI updates.
 
@@ -135,7 +163,7 @@ Thousands to tens of thousands of comments are an expected workload, not an exce
 
 Persisted IDs should support scroll anchors and selection so recomputing or rendering rows does not confuse a comment's identity with its row index. Keep replies attached to their parents when sorting top-level threads. The overview/navigation ruler is a required target feature, using data for at least unseen, search-match, and subsequent-discovery markers; geometry and category overlap remain open. Main orchestration and renderer interaction must remain responsive while extraction, normalization, search, or SQLite work occurs. Batching and internal database workers can be evaluated within the main-owned backend without giving the renderer privileged access.
 
-Regex execution needs a responsiveness strategy as well as syntax validation; pathological valid patterns must not freeze the application. Engine, execution budget, cancellation, limits, and user messaging are unresolved. Benchmark fixtures should exercise large deep/wide trees, long comments, broad and selective filters, and navigation to unmounted results. Specific latency budgets and libraries are not fixed. See [Filtering](FILTERING_AND_SEARCH.md) and [Testing](TESTING.md).
+Regex execution needs a responsiveness strategy as well as syntax validation; pathological valid patterns must not freeze the application. ADR 0008 selects ECMAScript u/iu in a cancellable dedicated worker, a 1000 ms whole-query deadline, and localized errors preserving prior results. Large-data budgets and measurements remain open. Benchmark fixtures should exercise large deep/wide trees, long comments, broad and selective filters, and navigation to unmounted results. Specific latency budgets and libraries are not fixed. See [Filtering](FILTERING_AND_SEARCH.md) and [Testing](TESTING.md).
 
 ## Cross-cutting contracts
 

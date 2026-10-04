@@ -1,6 +1,69 @@
 # Testing strategy
 
-Automated testing is a product requirement. Vitest covers domain/localization, components, temporary SQLite, IPC/bridge/sender validation, adapters and injected processes. [ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md) adds compact reading, avatars, helper overrides and bounded tab persistence. Search, backup, persisted scroll/filter/expansion and full view restoration remain unimplemented.
+Automated testing is a product requirement. Vitest covers domain/localization, components, temporary SQLite, IPC/bridge/sender validation, adapters and injected processes. [ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md) adds compact reading, avatars, helper overrides and bounded tab persistence. ADR 0008 adds active-discussion search/seen filtering, stable session applied views and match/unseen navigation. Dates, bulk recovery/actions, backup, persisted scroll/filter/expansion and full view restoration remain targets.
+
+## Active-discussion query verification (2026-10-04)
+
+[ADR 0008](decisions/0008-active-discussion-applied-queries.md) records exact
+comparison, worker/deadline, session draft/applied, context and navigation rules.
+Schema remains 4; no new IPC, FTS, raw fixture archive or dependency is added.
+
+- `npm test`: **297 tests pass in 25 suites**, offline. Strict typecheck and lint pass without warnings.
+- Renderer and Forge main/preload/renderer bundles pass, with a separate same-origin
+  worker asset. CSP worker-src self succeeds in the built Electron reader. Forge
+  retains the existing finalizing/no-completed-executable limitation; no release claim.
+- Built-entry Electron smoke passes query Apply, ordinary/regex, rejected syntax
+  retaining results, F3 identity selection without seen writes, Refresh reapplication
+  preserving draft, manual state, preferences, workspace/deletion and two real restarts.
+  A nonfatal Chromium shutdown GPU diagnostic remains.
+
+Domain tests cover content/displayName/handle/direct-parent fields, missing/cyclic
+and Community containment nonmatches, opaque-ID exclusion, multi-field OR plus seen
+AND on one comment, empty search, NFC/case/diacritics/Unicode/multiline/ECMAScript
+u/iu, full sibling/branch context, raw-only hits, counts and preorder wrap/navigation.
+Temporary SQLite tests query actual normalized projection and committed refresh
+rows, including stored comments absent from extraction and preserved local seen.
+Session tests cover frozen seen-result/counts, second Apply, failed draft/Refresh
+retention, independent draft reapplication, supersession/disposal and concurrent
+seen saves. Renderer tests cover controls, validation/timeout, per-discussion
+session switch/close/reopen, StrictMode, raw-only context, pending indicators,
+Apply/Ctrl+Enter, Refresh placement changes with evaluation failure, buttons/F3/
+Shift+F3 and the final scroll target. Localization tests cover keys and count plurals.
+
+Worker tests use injected 20/25 ms deadlines and fake timers, including creation/
+execution errors, old replies, supersession, termination/recreation, late deadline
+checks and no partial acceptance. A real isolated test thread executes the actual
+browser-worker handler/pure evaluator against `(a+)+$` and a long synthetic input;
+its deadline is advanced only after the worker signals evaluation started. The
+next recreated worker completes ordinary and regex queries. No production-sized
+sleep or native regex package is needed; Node adaptation stays test-only.
+
+### Separate development/live and visual check
+
+[scripts/verify-query-dev.cjs](../scripts/verify-query-dev.cjs) launches real Forge
+start against a consistent SQLite backup of the existing development library in
+a freshly owned OS-temp profile. It leaves the original database untouched. The
+loopback debugger drives UI controls, application IPC snapshots verify saved state,
+and only aggregate results are logged. Public source data stays in the disposable
+profile; screenshots replace titles/authors/content in DOM and stay ignored locally.
+
+The existing video began with **154 stored comments**. Content, author and known
+direct-video-parent author searches, Unseen, combined content/Unseen, stable saved
+seen membership/counts, second Apply, valid/invalid regex, F3/Shift+F3 and unseen
+buttons, independent discussion state and Refresh with unapplied draft all passed.
+An initial no-override run also verified failed Refresh preserved the applied view.
+Exact helper executables were found by reading PATH wrappers and supplied as
+main startup overrides; wrappers themselves were never executed. The second run
+completed live Refresh and public Community acquisition. Community direct-author
+regex returned zero matches for thread containment. The video gained two locally
+stored comments on that live run; seen and applied/draft semantics were preserved.
+Light/dark sanitized screenshots were inspected for compact controls, neutral
+connected rails, avatar alignment and separate unseen treatment.
+
+This is scripted development UI verification plus agent visual inspection, not a
+hand-operated owner acceptance signoff or a remote completeness guarantee. Dates,
+bulk recovery/actions, persistent criteria/selection/scroll, collapse, virtualization,
+ruler/NEW final presentation and large-data Q-21 budgets remain unimplemented.
 
 ## Unified workspace and Library removal verification (2026-10-03)
 
@@ -210,7 +273,7 @@ Hidden-window smoke runs emitted a Chromium GPU diagnostic during shutdown; the 
 
 `npm start` uses the separate development profile and idempotently seeds the two fixtures. `npm run build:renderer` provides an independent renderer build. To run just the new integration suite, use `npm test -- src/main/persistence/reader-repository.test.ts`. A manual acceptance pass can switch tabs/languages, click and Ctrl+click mixed subtrees, check that NEW survives marking seen, change all appearance modes, quit, and restart: seen state and explicit preferences should remain while the current milestone also restores open tab order/active selection (remaining Q-10 view state stays open).
 
-For an alternate disposable development root in PowerShell, set `$env:YOUTUBE_COMMENTS_DEMO_ROOT` to an absolute directory before `npm.cmd start`; it appends `youtube-comments-development/reader.sqlite` and never uses production fallback. Clear that environment variable afterward to return to the usual development profile. When this environment inherits `ELECTRON_RUN_AS_NODE=1`, clear it for desktop execution. Empty/relative demo-root configuration fails. Never point verification at real production data. Those historical foundation checks did not claim live acquisition/refresh. Current live verification is recorded above; search/filter behavior, virtualization/ruler performance, backup/restore and a packaged installer remain unverified.
+For an alternate disposable development root in PowerShell, set `$env:YOUTUBE_COMMENTS_DEMO_ROOT` to an absolute directory before `npm.cmd start`; it appends `youtube-comments-development/reader.sqlite` and never uses production fallback. Clear that environment variable afterward to return to the usual development profile. When this environment inherits `ELECTRON_RUN_AS_NODE=1`, clear it for desktop execution. Empty/relative demo-root configuration fails. Never point verification at real production data. Those historical foundation checks did not claim live acquisition/refresh. Current search/live verification is recorded above; virtualization/ruler performance, backup/restore and a packaged installer remain unverified.
 
 ## Durable normalized ingestion verification (2026-10-02)
 
@@ -240,7 +303,7 @@ behavior are not asserted as implemented.
 
 | Layer | Purpose | Environment |
 | --- | --- | --- |
-| Domain/unit | Prove tree, state, merge planning, filtering, search, and sorting behavior quickly. | Vitest is installed; tree/manual-state foundation tests exist. Pure merge/projection tests exist; search/filter/sort await those increments. |
+| Domain/unit | Prove tree, state, merge planning, filtering, search, and sorting behavior quickly. | Vitest is installed; tree/manual-state foundation tests exist. Pure merge/projection/search/seen-filter/navigation tests exist; dates/sort/bulk/ruler await later increments. |
 | Persistence/integration | Prove transactions, migrations, queries, restart persistence, backup/restore, and data isolation. | A fresh temporary SQLite database for each independent test case or deliberately isolated suite. |
 | Adapter/fixture | Prove backend output becomes valid domain data without exposing backend types. | Saved extractor output and controlled process-runner responses; no YouTube or helper installation required. |
 | Focused UI/end-to-end | Later, prove a small number of meaningful workflows across the Electron boundary and actual UI. | A test profile and fixture data; UI automation tooling remains undecided. |

@@ -11,18 +11,25 @@ interface Props {
   now?: number;
   depth?: number;
   onToggle: (id: string, subtree: boolean) => void;
+  view?: { restrictive: boolean; active: ReadonlySet<string>; raw: ReadonlySet<string>; selected?: string };
 }
 
-export function CommentTree({ nodes, locale, disabled, onToggle, now = demoNow, depth = 0 }: Props) {
+/** Stable application-owned reveal target; no source IDs or selector interpolation. */
+export const commentTargetId = (id: string) => `comment-${encodeURIComponent(id)}`;
+
+export function CommentTree({ nodes, locale, disabled, onToggle, view, now = demoNow, depth = 0 }: Props) {
   const t = translator(locale);
   return <ol className={`comment-tree ${depth ? 'reply-rail' : 'root-tree'}`} data-depth={depth} data-compact={depth >= 5}
     style={{ '--reply-indent': `${depth < 5 ? 22 : depth < 10 ? 10 : 3}px` } as CSSProperties}>
     {nodes.map(({ comment, children }) => {
       const author = comment.author?.displayName ?? comment.author?.handle ?? t('unknownAuthor');
       const time = comment.publishedAt ? publicationTime(comment.publishedAt, locale, now) : undefined;
+      const role = !view?.restrictive ? 'normal' : view.active.has(comment.id) ? 'match' : 'context';
       return <li key={comment.id} className="comment-branch" data-comment-id={comment.id} data-depth={depth}>
         {depth > 0 && <span className="reply-elbow" aria-hidden="true" />}
-        <article className={`comment ${comment.seen ? 'is-seen' : 'is-unseen'} ${children.length ? 'has-replies' : ''}`} aria-label={author}>
+        <div className="comment-row" data-has-replies={children.length > 0}>
+        <article id={commentTargetId(comment.id)} data-view-role={role} data-selected={view?.selected === comment.id}
+          className={`comment ${comment.seen ? 'is-seen' : 'is-unseen'} ${children.length ? 'has-replies' : ''}`} aria-label={author}>
           <Avatar url={comment.author?.avatarUrl} author={author} locale={locale} />
           <div className="comment-body">
             <div className="comment-byline">
@@ -35,6 +42,8 @@ export function CommentTree({ nodes, locale, disabled, onToggle, now = demoNow, 
             </div>
             <p className="comment-text">{comment.text}</p>
             <div className="comment-meta">
+              {role !== 'normal' && <span className={`badge ${role}-badge`}>{t(role === 'match' ? 'activeMatch' : 'contextComment')}</span>}
+              {role === 'context' && view?.raw.has(comment.id) && <span className="badge raw-match-badge">{t('rawSearchHit')}</span>}
               {comment.likeCount !== undefined && <span>{t('likes', { count: new Intl.NumberFormat(locale).format(comment.likeCount) })}</span>}
               {!comment.seen && <span className="badge unseen-badge">{t('unseen')}</span>}
               {demoNewCommentIds.has(comment.id) && <span className="badge new-badge" title={t('newHelp')}>{t('new')}</span>}
@@ -48,7 +57,8 @@ export function CommentTree({ nodes, locale, disabled, onToggle, now = demoNow, 
             <span>{t('seen')}</span>
           </label>
         </article>
-        {children.length > 0 && <CommentTree nodes={children} depth={depth + 1} locale={locale} now={now} disabled={disabled} onToggle={onToggle} />}
+        </div>
+        {children.length > 0 && <CommentTree nodes={children} depth={depth + 1} locale={locale} now={now} disabled={disabled} onToggle={onToggle} view={view} />}
       </li>;
     })}
   </ol>;

@@ -13,6 +13,7 @@ import type { CaptureContext } from '../extractors/normalization';
 import type { CommentObservation, ContentObservation, NormalizedExtraction, ObservationCoverage } from '../../domain/extraction-observation';
 import { buildCommentTree, walkComments } from '../../domain/discussion';
 import { initialComments, items } from '../../fixtures/discussions';
+import { defaultQuery, evaluateDiscussionQuery, queryComments } from '../../domain/discussion-query';
 
 type Usable = NormalizedExtraction & { item: ContentObservation; collection: { status: 'present'; comments: readonly CommentObservation[] }; coverage: Exclude<ObservationCoverage, {kind: 'failed'}> };
 function fixture(id = 'yt-nested-a'): Usable {
@@ -40,6 +41,37 @@ function raw() { const db = new DatabaseSync(databasePath); db.exec('PRAGMA fore
 function state() { return repository.bootstrap(['en']); }
 function comments() { return Object.values(state().comments)[0]; }
 function later() { at = '2026-10-02T09:00:00.000Z'; }
+
+it('evaluates committed refresh rows, preserving absent stored identities and live seen with new unseen matches', () => {
+  repository.ingest(fixture());
+  const before = comments(), root = required(before.find(comment => comment.parentId === null));
+  repository.toggleSeen({ itemId: root.itemId, commentId: root.id, subtree: false });
+  const criterion = { ...defaultQuery, seen: 'unseen' as const };
+  const old = evaluateDiscussionQuery(queryComments(comments()), criterion);
+  repository.ingest(fixture('yt-membership-b'));
+  const committed = comments(), next = evaluateDiscussionQuery(queryComments(committed), criterion);
+  expect(committed.find(comment => comment.id === root.id)?.seen).toBe(true);
+  expect(before.every(comment => committed.some(row => row.id === comment.id))).toBe(true);
+  expect(old.ok && next.ok).toBe(true);
+  if (!old.ok || !next.ok) throw new Error('Unexpected invalid query');
+  const inserted = committed.filter(row => !before.some(previous => previous.id === row.id));
+  expect(inserted.length).toBeGreaterThan(0);
+  expect(inserted.every(row => next.result.activeMatchIds.includes(row.id))).toBe(true);
+  expect(next.result.activeMatchIds).not.toContain(root.id);
+  expect(next.result.matchCount).toBe(committed.filter(row => !row.seen).length);
+});
+it('replied-to-author query uses actual repository video projection and never Community containment', () => {
+  repository.ingest(fixture());
+  const rows = comments(), child = required(rows.find(row => row.directParentId));
+  const parent = required(rows.find(row => row.id === child.directParentId));
+  const query = { ...defaultQuery, text: required(parent.author?.displayName), fields: ['replied-to-author' as const] };
+  const video = evaluateDiscussionQuery(queryComments(rows), query);
+  expect(video.ok && video.result.activeMatchIds.includes(child.id)).toBe(true);
+  repository.ingest(fixture('community-thread-a'));
+  const post = required(state().items.find(item => item.kind === 'post'));
+  const community = evaluateDiscussionQuery(queryComments(state().comments[post.id]), { ...query, text: '.', mode: 'regex' });
+  expect(community.ok && community.result.matchCount).toBe(0);
+});
 
 it('persists avatar evidence: lossy refresh preserves known URL, newer observed URL updates it across restart', () => {
   const input = fixture('community-thread-a'), first = input.collection.comments[0];

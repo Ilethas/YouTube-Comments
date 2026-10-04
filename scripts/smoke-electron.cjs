@@ -64,20 +64,20 @@ async function verifyWindow(window, nativeTheme) {
     assert.equal(original.items.length, 2);
     assert.equal(original.preferences.appearance, 'system');
     await preference(0, 'en');
-    await js("document.querySelectorAll('#panel-video-demo input')[2].click()");
-    await waitFor("document.querySelectorAll('#panel-video-demo input')[2].checked && !document.querySelector('input:disabled')", 'ordinary click');
+    await js("document.querySelectorAll('#panel-video-demo .seen-control input')[2].click()");
+    await waitFor("document.querySelectorAll('#panel-video-demo .seen-control input')[2].checked && !document.querySelector('input:disabled')", 'ordinary click');
     let state = await snapshot();
     assert.deepEqual(state.comments['video-demo'].map(comment => comment.seen),
       original.comments['video-demo'].map(comment => comment.id === 'v3' ? !comment.seen : comment.seen));
-    await js("document.querySelectorAll('#panel-video-demo input')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}))");
-    await waitFor("!document.querySelectorAll('#panel-video-demo input')[1].checked && !document.querySelector('input:disabled')", 'Ctrl click');
+    await js("document.querySelectorAll('#panel-video-demo .seen-control input')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}))");
+    await waitFor("!document.querySelectorAll('#panel-video-demo .seen-control input')[1].checked && !document.querySelector('input:disabled')", 'Ctrl click');
     state = await snapshot();
     assert.deepEqual(state.comments['video-demo'].map(comment => comment.seen),
       original.comments['video-demo'].map(comment => ['v2', 'v3', 'v4'].includes(comment.id) ? false : comment.seen));
     assert.deepEqual(state.comments['post-demo'], original.comments['post-demo']);
     // An ordinary edit outside the subtree must also survive the real restart.
-    await js("document.querySelectorAll('#panel-video-demo input')[5].click()");
-    await waitFor("document.querySelectorAll('#panel-video-demo input')[5].checked && !document.querySelector('input:disabled')", 'independent ordinary click');
+    await js("document.querySelectorAll('#panel-video-demo .seen-control input')[5].click()");
+    await waitFor("document.querySelectorAll('#panel-video-demo .seen-control input')[5].checked && !document.querySelector('input:disabled')", 'independent ordinary click');
     await js("document.querySelectorAll('[role=tab]')[1].click()");
     await waitFor("document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-post-demo'", 'tab selection');
     assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), 'panel-post-demo');
@@ -116,12 +116,41 @@ async function verifyWindow(window, nativeTheme) {
     assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), `panel-${video.id}`);
     assert.equal(state.comments[video.id].length, 3);
     assert.ok(state.comments[video.id].every(comment => !comment.seen));
-    await js("document.querySelector('[role=tabpanel]:not([hidden]) input').click()");
-    await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) input').checked && !document.querySelector('input[type=checkbox]:disabled')", 'acquired seen');
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input').click()");
+    await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input').checked && !document.querySelector('input[type=checkbox]:disabled')", 'acquired seen');
     state = await snapshot();
     const seenId = state.comments[video.id].find(comment => comment.seen).id;
+    async function draftQuery(text, seen = 'all', regex = false) {
+      await js(`(() => { const panel=document.querySelector('[role=tabpanel]:not([hidden])'); const input=panel.querySelector('.query-search input');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(text)}); input.dispatchEvent(new Event('input',{bubbles:true}));
+        const select=panel.querySelector('.query-controls select'); select.value=${JSON.stringify(seen)}; select.dispatchEvent(new Event('change',{bubbles:true}));
+        const toggle=panel.querySelectorAll('.query-controls button[type=button]')[1]; if ((toggle.getAttribute('aria-pressed')==='true')!==${regex}) toggle.click(); })()`);
+    }
+    async function applyQuery() {
+      await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-controls button[type=submit]').click()");
+      await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .query-status').textContent.includes('Obliczanie')", 'worker applied');
+    }
+    const visibleMatches = () => js("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) [data-view-role=match]'), row => row.id)");
+    // Real bundled same-origin worker under the shipped CSP, including rejected drafts.
+    await draftQuery(state.comments[video.id][0].text.slice(0, 8)); await applyQuery();
+    assert.ok((await visibleMatches()).length > 0);
+    const previousMatches = await visibleMatches();
+    await draftQuery('[', 'all', true); await applyQuery();
+    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-error').textContent.includes('Nieprawidłowe')"), true);
+    assert.deepEqual(await visibleMatches(), previousMatches);
+    await draftQuery('\\p{L}+', 'unseen', true); await applyQuery();
+    assert.ok((await visibleMatches()).length > 0);
+    const beforeNavigation = await snapshot();
+    await js("document.querySelector('[role=tabpanel]:not([hidden])').dispatchEvent(new KeyboardEvent('keydown',{key:'F3',bubbles:true,cancelable:true}))");
+    assert.ok(await js("!!document.querySelector('[role=tabpanel]:not([hidden]) [data-selected=true]')"));
+    assert.deepEqual((await snapshot()).comments, beforeNavigation.comments);
+    await draftQuery('smoke', 'unseen'); await applyQuery();
+    await draftQuery('unapplied draft');
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
-    await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .comment-text').textContent.includes('Updated smoke root')", 'refresh acknowledgment');
+    await waitFor("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) .comment-text')).some(row=>row.textContent.includes('New smoke comment'))", 'refresh applied query');
+    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-search input').value"), 'unapplied draft');
+    assert.ok((await visibleMatches()).length > 0);
+    await draftQuery(''); await applyQuery();
     state = await snapshot();
     assert.equal(state.items.length, 3);
     assert.equal(state.comments[video.id].length, 4);
@@ -196,7 +225,7 @@ async function verifyWindow(window, nativeTheme) {
     assert.equal(await js('document.documentElement.lang'), saved.preferences.locale);
     assert.equal(await js('document.documentElement.dataset.appearance'), saved.preferences.appearance);
     // Check that the persisted states are actually reflected in the UI.
-    assert.deepEqual(await js("Array.from(document.querySelectorAll('#panel-video-demo input'), input => input.checked)"),
+    assert.deepEqual(await js("Array.from(document.querySelectorAll('#panel-video-demo .seen-control input'), input => input.checked)"),
       saved.comments['video-demo'].map(comment => comment.seen));
     if (phase === 'read') {
       await preference(1, 'system');

@@ -57,7 +57,7 @@ The diagram shows conceptual relationships, not required physical tables. In par
 | Refresh attempt | An acquisition or refresh attempt, timing, outcome, coverage and diagnostic information | Local operational history |
 | Discovery record | Which stored comments were first discovered in an acquisition or refresh, including the baseline import | Local discovery history; first-discovery attempt references in schema 2 |
 | Filter specification | Search, dates, seen condition and other enabled predicates | Per-view user choice |
-| Applied view | Applied active-filter matching IDs, containing thread IDs, contextual IDs and ordering from the last applied evaluation | Derived view state; concrete representation open |
+| Applied view | Applied active-filter matching IDs, containing thread IDs, contextual IDs and ordering from the last applied evaluation | Session DiscussionViewResult snapshot (ADR 0008) |
 | Tab state | Open content item and the view's scroll, filters, search, sorting, expansion and selection state | Durable user preference/view state |
 | Application preferences | Language and System/Light/Dark appearance | Durable user preference |
 | Reversible state change | Information needed by the chosen bulk-action undo/recovery design | Recoverability is required; mechanism, storage and lifetime are open |
@@ -103,6 +103,24 @@ There is no persistent thread-level seen state. Any thread/tab unseen count is d
 
 The discovery event should remain meaningful independently of presentation. How long a NEW badge or overview-ruler marker remains visible, and what resets it after the baseline, remain unresolved; presentation must not be implemented by changing seen state or deleting refresh history.
 
+## Query criteria and result types
+
+`src/domain/discussion-query.ts` implements DiscussionQuery: one expression,
+content/author/direct-replied-to-author field selection, text/regex, case sensitivity
+and All/Unseen/Seen. Selected fields OR; seen ANDs on the same comment. NFC
+substring comparison with deterministic lowercase and ECMAScript u/iu regex are
+specified in [ADR 0008](decisions/0008-active-discussion-applied-queries.md).
+QueryComment is a narrow application projection without source/SQLite/raw schemas.
+Direct author requires resolved genuine direct-parent identity and metadata.
+
+DiscussionViewResult freezes raw/active IDs, containing-root IDs, complete visible
+preorder and display parents, ordered matches, counts, restrictive/search-active
+flags. Query errors are explicit outcomes, not zero-match results. Navigation
+resolves wrap candidates in data preorder; unseen candidates derive separately
+from current saved seen within visible IDs. Initial unrestricted identity traversal
+has no search comparison or noisy match presentation. Inputs are immutable.
+Criteria/result semantics remain independent of the renderer worker execution site.
+
 ## Evaluated views are not copies of durable state
 
 Initial search and filtering operate over every locally stored comment in the active discussion. Applying the complete filter combination produces an applied active-filter matching-comment set and its containing-thread set. Context expansion includes every stored comment in each containing conversation tree. Applied matching IDs and context-only IDs remain distinguishable even if presentation hides some replies behind a collapse control or virtualizes their rendering.
@@ -119,7 +137,7 @@ Counts distinguish matching comments from containing threads. Navigation targets
 - Publication precision/labels are durably stored; date-query semantics remain open.
 - Missing/cyclic relationship truth is retained with safe display fallback, and ambiguous identities are skipped (ADR 0004). Thread sorting and future user-facing diagnostics remain open.
 - Define NEW indicator lifetime/reset behavior after the baseline, separately from recorded discoveries. Accepted partial/unknown acquisition baseline treatment is settled in ADR 0004.
-- Define exact visual treatment and supplementary indicators for pending view updates, which parts of an applied view are reconstructed versus restored after restart, scroll reconciliation after refresh and behavior for inactive tabs.
+- ADR 0008 selects session draft/applied snapshots, explicit Apply/error preservation, badges and saved-seen indications. Persistent result/filter/selection restoration, scroll reconciliation after refresh and broader inactive-tab notifications remain open.
 - Choose the exact representation of undoable changes and their retention.
 
 Record consequential choices in [decision records](decisions/README.md). See [database design](DATABASE.md) for proposed storage and [testing](TESTING.md) for executable invariants.

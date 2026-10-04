@@ -62,22 +62,22 @@ export interface Comment {
   readonly seen: boolean;
 }
 
-export interface CommentNode {
-  readonly comment: Comment;
-  readonly children: readonly CommentNode[];
+export interface CommentNode<T = Comment> {
+  readonly comment: T;
+  readonly children: readonly CommentNode<T>[];
 }
 
 /** Constructs a forest for one complete, valid in-memory discussion, retaining
  * input sibling order. Parents may follow children. Invalid fixtures throw;
  * this is a precondition check, not a source repair/partial-acquisition policy. */
-export function buildCommentTree(comments: readonly Comment[]): readonly CommentNode[] {
-  const nodes = new Map<string, { comment: Comment; children: CommentNode[] }>();
+export function buildCommentTree<T extends Pick<Comment, 'id' | 'itemId' | 'parentId'>>(comments: readonly T[]): readonly CommentNode<T>[] {
+  const nodes = new Map<string, { comment: T; children: CommentNode<T>[] }>();
   for (const comment of comments) {
     if (nodes.has(comment.id)) throw new Error('Duplicate application comment ID');
     if (comment.itemId !== comments[0].itemId) throw new Error('Mixed discussions');
     nodes.set(comment.id, { comment, children: [] });
   }
-  const roots: CommentNode[] = [];
+  const roots: CommentNode<T>[] = [];
   for (const node of nodes.values()) {
     if (node.comment.parentId === null) roots.push(node);
     else {
@@ -91,8 +91,8 @@ export function buildCommentTree(comments: readonly Comment[]): readonly Comment
 }
 
 /** Preorder traversal over data, independent of displayed or mounted rows. */
-export function walkComments(roots: readonly CommentNode[]): readonly Comment[] {
-  const result: Comment[] = [];
+export function walkComments<T>(roots: readonly CommentNode<T>[]): readonly T[] {
+  const result: T[] = [];
   const pending = [...roots].reverse();
   while (pending.length) {
     const node = pending.pop();
