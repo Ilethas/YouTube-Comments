@@ -105,6 +105,13 @@ The discovery event should remain meaningful independently of presentation. How 
 
 ## Query criteria and result types
 
+[ADR 0010](decisions/0010-variable-height-discussion-virtualization.md) adds a pure
+renderer presentation projection, without altering domain Comment or query result
+types. Flat rows use applied frozen display placement, exact depth/root/sibling
+metadata and shared linked ancestry. Source direct-parent/Community containment
+truth stays on the original comment. Live seen and session selection never alter
+applied matching membership. Geometry, refs and measurements stay in the renderer.
+
 `src/domain/discussion-query.ts` implements DiscussionQuery: one expression,
 content/author/direct-replied-to-author field selection, text/regex, case sensitivity
 and All/Unseen/Seen. Selected fields OR; seen ANDs on the same comment. NFC

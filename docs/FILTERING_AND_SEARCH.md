@@ -1,6 +1,6 @@
 # Filtering and search
 
-Active-discussion content/author/direct-parent-author search, All/Unseen/Seen, stable session applied results and navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). Date/discovery filters, sorting, bulk actions, virtualization and the ruler below remain targets. The [product requirements](PRODUCT_REQUIREMENTS.md) establish the scope, [seen state](SEEN_STATE.md) defines local user state, and [UI and navigation](UI_AND_NAVIGATION.md) explains how results are read. Unresolved choices are also tracked in the [decision register](decisions/README.md).
+Active-discussion content/author/direct-parent-author search, All/Unseen/Seen, stable session applied results and navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements presentation virtualization without changing query semantics. Date/discovery filters, sorting, bulk actions and the ruler below remain targets. The [product requirements](PRODUCT_REQUIREMENTS.md) establish the scope, [seen state](SEEN_STATE.md) defines local user state, and [UI and navigation](UI_AND_NAVIGATION.md) explains how results are read. Unresolved choices are also tracked in the [decision register](decisions/README.md).
 
 ## A match belongs to a comment; context belongs to its conversation
 
@@ -108,6 +108,19 @@ Bulk **mark matching comments seen/unseen** must target the last applied active-
 When seen edits are awaiting view recomputation, matching-only bulk actions continue to use that last applied set until Apply or a successful explicit Refresh recomputes the active view. The UI must explain the applied scope and count. **All comments** and date-based bulk operations are also scoped to the active discussion; “all” does not mean every discussion in the database. Undo/recoverability is discussed in [seen state](SEEN_STATE.md).
 
 ## Data and performance design
+
+[ADR 0010](decisions/0010-variable-height-discussion-virtualization.md) implements
+presentation virtualization only. Pure rows join live comments to frozen applied
+preorder/parents, preserving every containing-tree sibling and role. The mounted
+slice never defines raw/active IDs, match/thread counts, live unseen candidates or
+Ctrl+click descendants. The worker still receives all stored active-discussion
+comments, including unmounted ones, under the same 1000 ms deadline.
+
+Successful explicit Apply reveals the first active restrictive match or start for
+unrestricted/empty results. Successful Refresh preserves the visible data anchor
+when retained and keeps draft. Seen acknowledgments only update live visuals;
+an applied Unseen match remains until another successful evaluation. No FTS,
+global search, database paging or changed comparison/context semantics is added.
 
 The architectural target is a query result expressed as data: matching IDs, containing-thread IDs, comment relationships, presentation order, and the information needed to distinguish context. DiscussionQuery and DiscussionViewResult in src/domain/discussion-query.ts define criteria, raw/active/root IDs, complete visible preorder, frozen placement, ordered match IDs, counts and restrictive/search-active flags.
 

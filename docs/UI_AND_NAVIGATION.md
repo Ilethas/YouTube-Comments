@@ -1,6 +1,6 @@
 # UI and navigation
 
-The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). Date/discovery filtering, bulk actions, virtualization and the ruler remain targets. Counts cover all stored comments of the discussion; synthetic fixed NEW examples do not settle marker lifetime. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
+The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements bounded variable-height rendering and unmounted-target reveal. Date/discovery filtering, bulk actions and the ruler remain targets. Counts cover all stored comments of the discussion; synthetic fixed NEW examples do not settle marker lifetime. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
 
 Windows is the initial target platform. Other platform support is a later possibility; see [packaging](PACKAGING.md).
 
@@ -90,13 +90,12 @@ Community bodies remain readable.
 
 The comment tree keeps the safe projected relationships. Neutral ancestry rails
 continue through parent gutters and sibling branches; short elbows and last-child
-termination expose the nested structure. Nested lists retain depth semantics at
-all levels; reply indent is 22px, then 10px from depth 5 and 3px from depth 10. From depth 5 a neutral return connector joins the parent gutter to its compact rail.
+termination expose the nested structure. Flat rows retain exact data depth and shared ancestry (ADR 0010); reply indent is 22px, then 10px from depth 5 and 3px from depth 10, with a 340px maximum gutter for extreme chains. From depth 5 a neutral return connector joins the parent gutter to its compact rail.
 Unseen uses a subtle row tint plus UNSEEN text and the explicit checkbox. Rails
 never indicate seen state. Compact 32px avatars, bylines and multiline bodies stay.
 
 No persisted scroll, filters, sorting, expansion, selected comment or complete
-workspace restoration is claimed. Query criteria, applied results and selection are independent per-discussion session state, retained on close/reopen and cleared on Library removal. Dates, bulk actions, virtualization, collapse and overview ruler remain targets.
+workspace restoration is claimed. Query criteria, applied results and selection are independent per-discussion session state, retained on close/reopen and cleared on Library removal. Dates, bulk actions, collapse and overview ruler remain targets; variable-height presentation is implemented in ADR 0010.
 
 Avatars use only usable HTTPS URLs, anonymous CORS, no-referrer, lazy loading,
 async decoding and fixed dimensions. Empty alt text avoids duplicating the byline;
@@ -189,7 +188,7 @@ Manual seen changes save immediately. They must not cause the current result mem
 | Next/previous unseen | Live unseen comments in displayed applied trees, including context. | Accessible buttons; no keyboard binding added. |
 | Next/previous match | Last applied active-filter matching IDs in displayed preorder. | F3 / Shift+F3 and accessible buttons. |
 
-The compact search form edits draft only: text, selected fields, All/Unseen/Seen, case and regex toggles, and Apply. It does not apply on typing. Invalid/expensive/failed evaluation retains previous results and shows localized feedback. Navigation wraps, never marks seen, and unseen targets update from live seen independently of applied matches. Refresh shortcuts and collapse/virtualized reveal policies remain open. The applied matching set/count and matching-only bulk scope are settled as described above. See [stable filtering](FILTERING_AND_SEARCH.md).
+The compact search form edits draft only: text, selected fields, All/Unseen/Seen, case and regex toggles, and Apply. It does not apply on typing. Invalid/expensive/failed evaluation retains previous results and shows localized feedback. Navigation wraps, never marks seen, and unseen targets update from live seen independently of applied matches. Collapse and future source-refresh shortcuts remain open; ADR 0010 selects virtualized reveal and Apply/Refresh scrolling. The applied matching set/count and matching-only bulk scope are settled as described above. See [stable filtering](FILTERING_AND_SEARCH.md).
 
 Extraction can be long-running or fail. Provide understandable progress, error, and partial-result context without confusing a failure with an empty discussion or losing the last valid local snapshot. Exact progress and cancellation controls are not specified yet; [extractors](EXTRACTORS.md) and [refresh and merge](REFRESH_AND_MERGE.md) own their underlying contracts.
 
@@ -206,7 +205,7 @@ overflow is not consumed. Wheel outside the strip retains normal panel scrolling
 
 Keyboard navigation must support next/previous unseen comments and matches. Next/previous navigation in the filtered reader uses the current applied active-filter matching set. Any separately labeled search-specific navigation must operate within the applicable view and must not confuse raw search hits with active-filter matches. Targets are comment identities in application data, not a query for rendered DOM elements. This lets navigation reach a comment many thousands of rows away or inside a collapsed subtree.
 
-The implementation must be able to identify a target, make its location visible, scroll it into the virtualized viewport, and indicate the active comment. This may require expanding its ancestor path. Current uncollapsed navigation wraps at both ends. Match candidates remain applied IDs; unseen candidates use live seen over displayed membership. From context, next/previous selects the eligible neighbor in preorder. Each row has an application-owned target ID, selection outline and final scrollIntoView call. Collapse/virtualization expansion and restoration policies remain open. These choices must not broaden the filtered reader's match navigation beyond its applied matching set.
+The implementation must be able to identify a target, make its location visible, scroll it into the virtualized viewport, and indicate the active comment. This may require expanding its ancestor path. Current uncollapsed navigation wraps at both ends. Match candidates remain applied IDs; unseen candidates use live seen over displayed membership. From context, next/previous selects the eligible neighbor in preorder. Each row has an application-owned target ID, selection outline and final scrollIntoView call. ADR 0010 fulfills measured virtualized reveal; collapse/expansion and persistent restoration remain open. These choices must not broaden the filtered reader's match navigation beyond its applied matching set.
 
 ```mermaid
 flowchart LR
@@ -228,8 +227,39 @@ Use semantic theme tokens for marker categories and distinguish important states
 
 ## Large discussions and durable state
 
+The bounded reader implementation in
+[ADR 0010](decisions/0010-variable-height-discussion-virtualization.md) uses a pure
+flat complete-tree preorder and pinned TanStack Virtual. Large discussions mount
+viewport rows plus six-row overscan and at most one focused row. Small results up
+to 200 comments retain their complete accessible surface. Header/query controls
+stay outside the measured list on the existing reader-panel scrollbar.
+
+Actual variable heights replace width/body-aware estimates; width/locale reflow
+invalidates measurements and keeps the current data anchor/offset. Hidden panels
+retain useful viewport/height caches and session scroll. Neutral continuations,
+elbows, last-child endings and compact return connectors use shared ancestry data,
+so no ancestor article needs mounting. Exact depth remains data; indentation has a
+340px maximum gutter for extreme chains. Articles retain stable application IDs,
+author/time/seen labeling and correct complete-presentation list positions/counts.
+
+Navigation resolves the application ID and presentation index, scrolls through
+measurement/mount, then reveals/focuses that exact article. Selection alone does
+not keep a row mounted. A focused checkbox/article can remain as one extra row
+until focus leaves it; Apply removing that row returns focus to the reader.
+Query comparison, counts, live unseen candidates and subtree seen targets still
+use complete data, independently of the mounted slice.
+
+Successful explicit Apply scrolls to the first active match for a restrictive
+view, or discussion start for unrestricted/zero matches. Query control focus and
+existing retained selection are preserved. Successful Refresh preserves draft
+and captures the current visible identity/offset at evaluation completion, using
+retained selection then start only if that anchor disappears. Header scroll is
+preserved. Failed queries retain the current view/scroll. None of this is durable
+scroll restoration across restart. SQLite query/index/clone/memory scaling,
+collapse, sorting, the ruler, dates and bulk recovery remain separate targets.
+
 Assume thousands or tens of thousands of comments. Virtualize the large comment view while keeping the complete result model available to filtering, counts, bulk actions, and navigation. Do not render the entire dataset merely to enable search or overview-ruler positioning.
 
-Virtualization library, measurement strategy, overscan, query scheduling, IPC pagination/batching, and performance budgets remain engineering choices. Stable comment identities must connect storage, rows, selection, and restoration; row indexes alone are not durable identities. Review the [architecture](ARCHITECTURE.md) before choosing library-specific view state.
+ADR 0010 chooses renderer virtualization, measurement and overscan. Query scheduling, IPC pagination/batching, memory and supported-hardware performance budgets remain engineering choices. Stable comment identities must connect storage, rows, selection, and restoration; row indexes alone are not durable identities. Review the [architecture](ARCHITECTURE.md) before choosing library-specific view state.
 
 A small meaningful UI/E2E suite is expected later. Choose a few workflows that cross important boundaries, such as baseline acquisition followed by refresh, saved seen edits followed by a matching bulk action and Apply, or navigation through a virtualized discussion and restored tabs. These are candidates, not an exhaustive UI-test checklist. Keep most state, search, scope, and discovery edge cases in the fast domain/integration suites described in [testing](TESTING.md), with focused UI checks for the ruler, languages, and themes where useful.

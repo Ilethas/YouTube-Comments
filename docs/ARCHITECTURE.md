@@ -6,7 +6,7 @@ Status: target architecture, with proposed organization explicitly identified. [
 
 The repository uses Electron Forge/Vite and strict TypeScript. [src/main.ts](../src/main.ts) creates a sandboxed, context-isolated window with Node integration disabled; navigation/new windows are blocked. [src/preload.ts](../src/preload.ts) exposes the narrow `window.reader` API. [src/renderer.tsx](../src/renderer.tsx) mounts the React reader, with components and localization in `src/renderer`, pure domain rules in `src/domain`, and explicitly synthetic fixtures used for main-side initialization.
 
-The persistence milestone adds `src/main/persistence` for SQLite profiles/migrations/repository mapping, `src/main/reader-service.ts` for validated use cases and structured outcomes, `src/main/reader-ipc.ts` for channel/sender routing, `src/shared` for driver-free contracts/preferences, and `src/preload/reader-bridge.ts` for the private transport wrapper. One main-owned built-in SQLite connection stores normalized discussions, separate per-comment local state, and preferences. The renderer loads asynchronously and updates only after save acknowledgment; it has no fixture-state fallback. Ctrl subtree changes are transactional and preserve displayed order. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) records these choices; [ADR 0001](decisions/0001-synthetic-reader-foundation.md) remains the foundation record. ADR 0004 adds pure normalized merge planning and transactional SQLite ingestion/history. [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) adds main-only live public acquisition/refresh and minimal UI. ADR 0008 adds active-discussion search/seen filtering, stable applied views and match/unseen navigation; dates, bulk actions, virtualization and the ruler remain targets. The broader target below is not a completed security review. See [Testing](TESTING.md).
+The persistence milestone adds `src/main/persistence` for SQLite profiles/migrations/repository mapping, `src/main/reader-service.ts` for validated use cases and structured outcomes, `src/main/reader-ipc.ts` for channel/sender routing, `src/shared` for driver-free contracts/preferences, and `src/preload/reader-bridge.ts` for the private transport wrapper. One main-owned built-in SQLite connection stores normalized discussions, separate per-comment local state, and preferences. The renderer loads asynchronously and updates only after save acknowledgment; it has no fixture-state fallback. Ctrl subtree changes are transactional and preserve displayed order. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) records these choices; [ADR 0001](decisions/0001-synthetic-reader-foundation.md) remains the foundation record. ADR 0004 adds pure normalized merge planning and transactional SQLite ingestion/history. [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) adds main-only live public acquisition/refresh and minimal UI. ADR 0008 adds active-discussion search/seen filtering, stable applied views and match/unseen navigation; ADR 0010 adds bounded variable-height rendering; dates, bulk actions and the ruler remain targets. The broader target below is not a completed security review. See [Testing](TESTING.md).
 
 Initial development and packaging target Windows. Platform integrations should avoid unnecessary barriers to later Linux/macOS support, but those platforms are not initial implementation or packaging requirements.
 
@@ -113,9 +113,9 @@ removal disposes it; restart does not restore it.
 
 This in-memory worker implementation is bounded to the current full-reader model.
 Pure types/rules allow later main/SQLite-backed execution with the same observable
-substring/regex/context semantics. Full bootstrap, structured cloning, full-tree
-mounting, SQLite acceleration, query budgets for large data and virtualization
-remain Q-21 work. No FTS, pagination or persistence redesign is implied.
+substring/regex/context semantics. ADR 0010 now bounds mounted comment DOM; full
+bootstrap, structured cloning, SQLite acceleration, memory/query budgets and future
+paging remain Q-21 work. No FTS or persistence redesign is implied.
 
 ## Responsibilities and dependency direction
 
@@ -159,12 +159,36 @@ Concurrency must preserve these invariants: a checkbox changed while a helper ru
 
 ## Performance without DOM-dependent logic
 
+[ADR 0010](decisions/0010-variable-height-discussion-virtualization.md) adds a pure
+flat presentation over frozen applied preorder/parents joined to live comments.
+Rows carry exact depth, display root/parent, first/last siblings, children, shared
+linked ancestry and match/context/raw-hit roles. Selection is joined for mounted
+articles. It does not mutate source relationships, Comment or query results.
+Shared paths keep deep projection linear without copied ancestry arrays.
+
+Renderer-only pinned TanStack React Virtual measures variable border-box heights,
+caches by application ID and estimates unmounted multiline rows. The existing
+reader-panel owns header, query controls and list scrolling; a measured scroll
+margin accounts for header reflow. Six-row overscan bounds large DOM work, plus
+at most one retained focused row. Results up to a constant 200-row ceiling keep
+the complete accessible reading surface. Width/locale reflow invalidates cached
+measurements and retains the visible identity/offset; hidden zero sizes cannot
+erase useful geometry. Fixed avatar/fallback dimensions prevent load shifts.
+Neutral row rails derive from data ancestry independently of mounted parents.
+
+Session scroll intents resolve identity→presentation index→measured mount/reveal.
+Only the exact resolved ID is used for final DOM reveal/focus. Explicit Apply goes
+to the first restrictive match or start; Refresh retains visible identity/offset
+when possible. Mounted tab scroll is still session-only. These changes add no
+IPC/schema, SQLite paging, FTS or query-worker semantics. O(N) data work, full
+bootstrap/clone/memory and large-library scaling remain unresolved under Q-21.
+
 [ADR 0009](decisions/0009-isolated-discussion-rendering-and-tab-input.md) isolates
 mounted discussion content from workspace visibility/saving updates. Each panel
 subscribes to its own session; forest projection depends on its comment snapshot
 and applied result. Draft edits reuse comment rows. This removes measured
-cross-discussion work while retaining mounted scroll/description state. Full
-initial mounting and changed-discussion rendering remain virtualization targets.
+cross-discussion work while retaining mounted scroll/description state. ADR 0010
+extends that isolation with bounded, measured flat comment rendering.
 
 Thousands to tens of thousands of comments are an expected workload, not an exceptional case. Virtualize the comment view, including variable-height content and expanded replies. Build traversal/navigation and overview marker information from the data model. Whole-tree inclusion in a query does not require mounting that whole tree as HTML simultaneously.
 

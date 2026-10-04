@@ -23,6 +23,15 @@ Derived tab/thread unseen counts are allowed. They are queries over comment stat
 
 ## Checkbox behavior
 
+ADR 0010's virtual reader changes mounted presentation only. Main still resolves
+Ctrl+click from the entire stored projected subtree, including unmounted
+descendants/context, and commits it transactionally. Acknowledgments preserve
+unchanged renderer Comment references so unrelated mounted articles can reuse
+their rendering. Virtual scroll, mount, selection/reveal and reflow never save
+seen or replace an applied Unseen matching set. The dedicated 10k tests cover
+these boundaries; existing temporary SQLite/restart tests remain authoritative
+for durable writes.
+
 | Action | Affected comments | Result |
 | --- | --- | --- |
 | Click checkbox | Clicked comment only | Toggle its current state |

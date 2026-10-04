@@ -3,6 +3,8 @@ import { DiscussionViewSession } from './discussion-view-session';
 import { evaluateDiscussionQuery } from '../domain/discussion-query';
 import type { QueryOutcome, QueryComment, DiscussionQuery } from '../domain/discussion-query';
 import { initialComments } from '../fixtures/discussions';
+import { generateDiscussion } from '../development/large-discussions';
+import { required } from './testing/required';
 const rows = initialComments['video-demo'];
 const executor = () => ({ evaluate: vi.fn(async (comments: readonly QueryComment[], query: DiscussionQuery): Promise<QueryOutcome> => evaluateDiscussionQuery(comments, query)), dispose: vi.fn() });
 
@@ -56,4 +58,31 @@ it('late/superseded results and disposed sessions cannot promote criteria or not
   const third = session.apply(rows); session.dispose(); const count = changed.mock.calls.length;
   finishes[2](evaluateDiscussionQuery(rows, session.state.draft)); await third;
   expect(changed).toHaveBeenCalledTimes(count); expect(engine.dispose).toHaveBeenCalledOnce();
+});
+it('successful explicit Apply requests first active match or start; failed evaluation never requests a new scroll', async () => {
+  const comments = generateDiscussion({ count: 10000, roots: 1, matchIndexes: [9999] }).comments;
+  const engine = executor(), session = new DiscussionViewSession(comments, engine);
+  session.edit({ ...session.state.draft, text: 'PROFILE_MATCH' }); await session.apply(comments);
+  expect(session.state.scrollRequest).toMatchObject({ kind: 'apply', id: 'generated-9999' });
+  const request = session.state.scrollRequest;
+  engine.evaluate.mockResolvedValueOnce({ ok: false, error: 'QUERY_TOO_EXPENSIVE' }); await session.apply(comments);
+  expect(session.state.scrollRequest).toBe(request);
+  session.edit({ ...session.state.draft, text: 'does not exist' }); await session.apply(comments);
+  expect(session.state.scrollRequest?.id).toBeUndefined();
+  session.edit({ ...session.state.draft, text: '' }); await session.apply(comments);
+  expect(session.state.scrollRequest?.id).toBeUndefined();
+});
+it('Refresh captures current visible identity at completion and preserves header scroll and draft', async () => {
+  const session = new DiscussionViewSession(rows, executor());
+  session.select(rows[0].id);
+  session.edit({ ...session.state.draft, text: 'unapplied' });
+  let anchor: { id?: string; offset: number } = { id: required(rows.at(-1)).id, offset: 27 };
+  const detach = session.attachReader(() => anchor);
+  await session.apply(rows, true);
+  expect(session.state.scrollRequest).toMatchObject({ kind: 'refresh', ...anchor });
+  expect(session.state.draft.text).toBe('unapplied');
+  anchor = { offset: 35 }; await session.apply(rows, true);
+  expect(session.state.scrollRequest?.id).toBeUndefined(); expect(session.state.scrollRequest?.offset).toBe(35);
+  detach(); await session.apply(rows, true);
+  expect(session.state.scrollRequest?.id).toBe(rows[0].id);
 });

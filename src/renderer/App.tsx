@@ -168,7 +168,10 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     void save(() => api.toggleSeen({ itemId, commentId, subtree }), value => {
       const seen = new Map(value.map(comment => [comment.id, comment.seen]));
       if (acquisitionBusy.current) for (const [id, state] of seen) acknowledgedSeen.current.set(id, state);
-      setComments(current => !current[itemId] ? current : ({ ...current, [itemId]: current[itemId].map(comment => ({ ...comment, seen: seen.get(comment.id) ?? comment.seen })) }));
+      setComments(current => !current[itemId] ? current : ({ ...current, [itemId]: current[itemId].map(comment => {
+        const next = seen.get(comment.id) ?? comment.seen;
+        return next === comment.seen ? comment : { ...comment, seen: next };
+      }) }));
       views.seenChanged(itemId);
     }, itemId);
   }, [api, save, views]);

@@ -13,6 +13,7 @@ import type { QueryExecutor } from './query-worker-client';
 import { StrictMode } from 'react';
 import { formatShortcut, reorderHelp, seenHelp, shortcutHint } from './shortcuts';
 import { keyboardShortcutsTarget } from './KeyboardShortcuts';
+import { generateDiscussion } from '../development/large-discussions';
 
 // jsdom has no dedicated Web Worker; worker lifecycle/deadline has its own tests.
 vi.mock('./query-executor', () => ({ createQueryExecutor: vi.fn() }));
@@ -20,6 +21,8 @@ vi.mock('./query-executor', () => ({ createQueryExecutor: vi.fn() }));
 let api: ReaderApi;
 let state: ReaderState;
 beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', class { observe() { /* jsdom has no layout. */ } unobserve() { /* Test only. */ } disconnect() { /* Test only. */ } });
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: function(this: HTMLElement, options: ScrollToOptions) { this.scrollTop = options.top ?? 0; } });
   vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate: async (comments, query) => evaluateDiscussionQuery(comments, query), dispose: vi.fn() } as QueryExecutor as ReturnType<typeof createQueryExecutor>));
   state = { items, comments: initialComments, preferences: { locale: 'en', appearance: 'system' },
     workspace: { tabs: items.map(item => discussionTab(item.id)), activeTabId: discussionTab(items[0].id).id, revision: 0 } };
@@ -117,6 +120,20 @@ it('Library/Settings/discussion activation and pending workspace saves never reb
   expect(work()).toEqual({});
   expect(panel.scrollTop).toBe(345);
   expect(Array.from(panel.querySelectorAll('.comment-branch'))).toEqual(originalRows);
+});
+it('activation retains ADR 0009 isolation with a 10k hidden discussion and bounded article construction', async () => {
+  threeDiscussions();
+  const generated = generateDiscussion({ count: 10000 }).comments.map(row => ({ ...row, itemId: 'third-discussion' }));
+  state = { ...state, comments: { ...state.comments, 'third-discussion': generated } };
+  await showReader();
+  const large = document.getElementById('panel-third-discussion');
+  expect(large?.querySelectorAll('article').length).toBeLessThan(30);
+  window.__readerWork = {};
+  for (const id of ['post-demo', 'third-discussion', 'video-demo']) {
+    fireEvent.click(document.getElementById(`tab-${discussionTab(id).id}`) as HTMLElement);
+    await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-${id}`));
+    expect(work()).toEqual({});
+  }
 });
 
 it('draft, query evaluation, navigation and seen saves in A keep B/C idle; drafts reuse A forest', async () => {

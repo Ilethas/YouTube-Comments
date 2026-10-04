@@ -1,5 +1,68 @@
 # Testing strategy
 
+## Large-discussion rendering and virtualization (2026-10-04)
+
+[ADR 0010](decisions/0010-variable-height-discussion-virtualization.md) records the
+before/after measurements, dependency/measurement decision, flat tree-rail model
+and remaining Q-21 limits. The generator in `src/development/large-discussions.ts`
+controls count, shape/roots, maximum depth, body length, seen ratio and match input
+indices. Stable IDs/content/evidence repeat without live YouTube or large fixtures.
+
+Projection tests verify exact existing preorder, depth/root/parent/first/last
+sibling metadata and shared ancestor continuation, complete filtered context,
+unchanged direct-parent/Community truth, frozen placement after Refresh failure,
+and iterative 10k-deep projection. Component tests run the actual pinned TanStack
+virtualizer with deterministic viewport/ResizeObserver geometry: bounded 10k
+mounted rows, distant unmount/mount, variable height correction, width reflow,
+configurable overscan, one focused retained row, selected remount, exact far/deep
+match/live-unseen reveal/wrap, explicit Apply/start and Refresh anchor retention,
+ordinary/Ctrl seen over unmounted descendants, stable applied Unseen results and
+only visually changed article rendering. These use work/row/identity assertions,
+not hardware latency thresholds or pixel snapshots. Small 154-row results retain
+semantic byline/time/checkbox labels and complete list positions/counts.
+
+App tests retain all prior query, shortcuts, manual seen and ADR 0009 isolation
+checks, including zero unrelated work during activation with a 10k hidden panel.
+Existing temporary SQLite tests protect transactional subtree scope and durable
+state; the renderer still has no SQLite access. Final verification:
+**356 offline tests across 29 files pass**, strict typecheck and lint pass without
+warnings. Standalone renderer and Forge production main/preload/renderer bundles
+pass. The existing Forge exit-0 stop at finalizing remains, with no completed
+executable/release claim. esbuild config resolution and Chromium GPU checks need
+the ordinary outside-sandbox retries. Built-entry Electron smoke passes manual
+state/query/workspace checks, two actual process restarts and closed-file SQLite
+persistence. The existing nonfatal shutdown GPU diagnostic remains.
+
+Optional `node scripts/profile-discussions.cjs --50k --real` builds a separate
+ignored Vite harness using the actual DiscussionPanel/worker/styles, blocks network
+avatars, and starts Electron in an owned disposable OS-temp profile. Without
+`--real` it needs no existing database. With `--real`, the source database opens
+read-only for a consistent backup; only its disposable copy is read/migrated.
+No originals are changed, no raw public archives/text are logged or committed.
+Generated-only seen timing excludes SQLite/IPC; persistence is verified separately.
+The harness checks actual last-target viewport intersection, not just selection
+identity or row presence, and saves ignored generated/sanitized screenshots.
+
+At 1280×900, the recursive 10k baseline mounted 10k comments / 155k–173k DOM nodes,
+took 2.17–3.03 s through two frame observations, and 1.07–1.24 s for a normal seen
+toggle or far selection. Tree/identity preparation was 9–16 ms. After virtualization,
+10k initially mounted 10 rows / 212–246 nodes (19 rows around a scrolled viewport),
+flat projection took 2.2–4 ms, initial rendering 16–21 ms, seen/far navigation
+29–33 ms, selective Apply 48–51 ms. At 50k, projection took 11–19 ms, initial render
+63–69 ms, seen 28–48 ms and Apply 150–167 ms; mounted work stayed the same. An
+additional 10k discussion with chains up to depth 60 revealed its last target.
+Frame observation floors/cold startup explain some variation; these are local
+evidence, not CI budgets or owner physical-input signoff. CDP heap observations
+can be collected by the harness without forced GC; full memory budgets stay open.
+
+The existing real **154-comment** video passed offline worker search/count/context,
+single manual seen change and exact target reveal on the copied dataset. All 154
+articles remained mounted. Sanitized captures were inspected for compact reading,
+bylines/avatars/fallbacks, neutral connected rails and separate unseen treatment.
+Locale reflow also passed measured row-adjacency assertions with no gaps/overlaps.
+Production entry IPC/restarts remain covered by `npm run test:electron`; this
+generated harness adds no product preload capability or durable view state.
+
 ## Keyboard discoverability and workspace shortcuts (2026-10-04)
 
 The Windows keyboard milestone reuses the existing workspace/query actions and
@@ -479,7 +542,7 @@ A small meaningful UI/end-to-end suite is expected later. Choose a few workflows
 2. In Unseen only, save a seen edit without moving the result, apply a matching-set bulk action to the last applied IDs while excluding context, then Apply changes locally.
 3. Search a large discussion with another active filter, navigate to an unrendered active-filter match through the keyboard/ruler, and reopen the saved workspace after restart.
 
-Use focused checks as needed for English/Polish, System as the first-run appearance, persisted Light/Dark choices, safe rendering, and the typed security boundary. Current Windows keyboard bindings are verified above; later platform bindings and collapse/virtualized reveal remain open. Retain most edge-case coverage in the deterministic domain/integration suites.
+Use focused checks as needed for English/Polish, System as the first-run appearance, persisted Light/Dark choices, safe rendering, and the typed security boundary. Current Windows keyboard bindings and virtualized reveal are verified above; later platform bindings and collapse remain open. Retain most edge-case coverage in the deterministic domain/integration suites.
 
 ## Performance and test execution
 

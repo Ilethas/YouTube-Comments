@@ -12,7 +12,16 @@ export interface DiscussionViewState {
   readonly error?: QueryErrorCode;
   readonly seenStale: boolean;
   readonly selected?: string;
+  readonly scrollRequest?: ReaderScrollRequest;
 }
+/** Session-only presentation intent. An anchor offset is relative to the row top. */
+export interface ReaderScrollRequest {
+  readonly revision: number;
+  readonly kind: 'navigate' | 'apply' | 'refresh';
+  readonly id?: string;
+  readonly offset?: number;
+}
+export interface ReaderScrollAnchor { readonly id?: string; readonly offset: number }
 /** Promotions happen only after a complete successful evaluation. Refresh reads
  * applied criteria at invocation, preserving controls and errors without emptying results. */
 export class DiscussionViewSession {
@@ -31,11 +40,20 @@ export class DiscussionViewSession {
   private generation = 0;
   private seenRevision = 0;
   private disposed = false;
+  private scrollRevision = 0;
+  private captureAnchor?: () => ReaderScrollAnchor | undefined;
+  /** The mounted reader reports its data-resolved visible anchor, never DOM targets. */
+  attachReader(capture: () => ReaderScrollAnchor | undefined): () => void {
+    this.captureAnchor = capture;
+    return () => { if (this.captureAnchor === capture) this.captureAnchor = undefined; };
+  }
   constructor(comments: readonly Comment[], private readonly executor: QueryExecutor, private readonly onChanged: () => void = () => undefined) {
     this.state = { draft: defaultQuery, applied: defaultQuery, result: unrestrictedView(queryComments(comments)), pending: false, seenStale: false };
   }
   edit(draft: DiscussionQuery): void { this.state = { ...this.state, draft }; this.changed(); }
-  select(selected: string): void { this.state = { ...this.state, selected }; this.changed(); }
+  select(selected: string): void {
+    this.state = { ...this.state, selected, scrollRequest: { revision: ++this.scrollRevision, kind: 'navigate', id: selected } }; this.changed();
+  }
   seenChanged(): void {
     this.seenRevision++;
     if (this.state.applied.seen !== 'all') { this.state = { ...this.state, seenStale: true }; this.changed(); }
@@ -49,9 +67,17 @@ export class DiscussionViewSession {
     catch { outcome = { ok: false as const, error: 'QUERY_FAILED' as const }; }
     if (this.disposed || generation !== this.generation) return;
     if (outcome.ok) {
+      // Capture at completion: scrolling while the worker runs remains respected.
+      const anchor = refresh ? this.captureAnchor?.() : undefined;
+      const visible = new Set(outcome.result.visibleCommentIds);
+      const selected = this.state.selected && visible.has(this.state.selected) ? this.state.selected : undefined;
+      const keptAnchor = anchor && (anchor.id === undefined || visible.has(anchor.id)) ? anchor : undefined;
       this.state = { ...this.state, applied: criteria, result: outcome.result, pending: false, error: undefined,
         seenStale: criteria.seen !== 'all' && seenRevision !== this.seenRevision,
-        selected: this.state.selected && outcome.result.visibleCommentIds.includes(this.state.selected) ? this.state.selected : undefined };
+        selected,
+        scrollRequest: { revision: ++this.scrollRevision, kind: refresh ? 'refresh' : 'apply',
+          id: refresh ? keptAnchor ? keptAnchor.id : selected : outcome.result.restrictive ? outcome.result.orderedMatchIds[0] : undefined,
+          offset: keptAnchor?.offset } };
     } else this.state = { ...this.state, pending: false, error: outcome.error };
     this.changed();
   }
