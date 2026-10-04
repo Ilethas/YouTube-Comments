@@ -4,6 +4,55 @@ The reader implements nested comments, explicit manual seen checkboxes, English/
 
 Windows is the initial target platform. Other platform support is a later possibility; see [packaging](PACKAGING.md).
 
+## Keyboard shortcuts and discoverability
+
+Current bindings target Windows; future platform mappings may differ. The renderer
+owns one metadata registry (`src/renderer/shortcuts.ts`) with stable IDs, key tokens,
+localized descriptions, categories and contextual scopes. Its formatter supplies
+Settings key labels and control hints. Handler callbacks remain with the relevant
+view; no configurable bindings or shortcut preferences are stored.
+
+Settings contains the complete localized Keyboard shortcuts reference, including
+existing focused-tab navigation, seen gestures, form submission and cancellation.
+Apply, match navigation, discussion search, Library filter, Add/Open, active tab
+close, seen help and tab reorder help expose compact registry-derived hints.
+Background close controls omit Ctrl+W because that command closes the active tab.
+
+| Binding | Implemented action and scope |
+| --- | --- |
+| Ctrl+Tab / Ctrl+Shift+Tab | Activate next/previous workspace tab, wrapping across discussion, Library and Settings tabs. |
+| Ctrl+W | Close active tab using the existing right-then-left neighbor rule; empty workspace does nothing. Stored discussions are retained. |
+| Ctrl+F | Focus/select the active discussion search or Library metadata filter. Settings and empty workspace leave browser/default behavior alone. |
+| Ctrl+L | Reveal the existing URL form and focus/select its input; repeat selects existing text. Subsequent typing/navigation remains ordinary input editing. |
+| F1 | Open/activate singleton Settings and scroll/focus the stable `keyboard-shortcuts` heading after acknowledged activation and committed rendering, including when Settings is already active. |
+| Ctrl+Enter | Apply active discussion draft, including from its query controls. |
+| F3 / Shift+F3 | Next/previous applied match, including from query controls; never save seen state. |
+| Alt+Left / Alt+Right | Reorder only the focused workspace tab. |
+| Left / Right / Home / End | Existing activation/focus navigation on workspace tabs. |
+| Ctrl+Click | Seen checkbox applies its resulting state to the comment and all descendants. |
+| Enter | Existing natural URL submission or discussion query form Apply. |
+| Escape | Existing drag cancellation, URL form hiding and removal dialog cancellation unless removal is pending. |
+
+One Reader document routing boundary handles workspace/focus/help and discussion
+commands. Focused-tab keys, native form submission and contextual cancellation
+stay with their existing owners. Exact modifiers, composition and already-handled
+events are respected. Inputs, textareas, selects and contenteditable keep ordinary
+typing/navigation. Explicit exceptions are workspace cycling/close, search focus,
+URL focus and F1; discussion Apply/match keys also work in query controls but do
+not interrupt unrelated editable controls such as the URL form.
+
+Removal confirmation suspends every top-level shortcut while open, including
+while its write is pending. The native modal retains keyboard/focus ownership;
+Escape still follows its existing safe cancellation rule. Pending workspace writes
+do not launch another workspace command. Defaults are prevented only after a
+contextual command is accepted; missing focus targets and inapplicable commands
+remain unconsumed. No global Alt+arrow reorder is introduced.
+
+Source Refresh remains button-only: no Ctrl+R/F5 source-refresh binding. Reopen
+(Ctrl+Shift+T), numbered tabs (Ctrl+1..9), global comment search and unseen
+navigation shortcuts are deliberately unbound. No new query semantics, persistent
+view state, OS hotkeys or platform policy is introduced by this UX increment.
+
 ## Implemented acquisition controls
 
 [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) implements one
@@ -105,7 +154,9 @@ Relative times and numbers use the chosen display locale; exact timestamps must 
 
 Clicking a comment's checkbox toggles only that comment. Ctrl+click applies the resulting state to that comment and every descendant in its stored subtree. It does not toggle descendants independently, touch ancestors, or limit the operation to rows currently rendered by the virtualizer. No scroll, display, navigation, expansion, or selection action marks a comment seen.
 
-The user-specified Ctrl+click gesture must be supported. Platform-specific alternative gestures, keyboard equivalents, and control discoverability are not yet specified. They should preserve the same [seen-state semantics](SEEN_STATE.md).
+The user-specified Ctrl+click gesture is exposed through seen-control help and the
+Settings shortcut reference. Platform-specific alternative gestures and keyboard
+equivalents remain unspecified; they must preserve the same [seen-state semantics](SEEN_STATE.md).
 
 Bulk controls must support all comments, before/after/between publication timestamps, and actual matching filter results, scoped to the active discussion. “All comments” means every stored comment for the active video or Community Post. Date operations affect each qualifying comment independently, while matching-only operations use the last applied active-filter matching IDs and exclude visible context. Undo/recoverability is a design requirement; its mechanism is unresolved.
 
@@ -134,7 +185,7 @@ Manual seen changes save immediately. They must not cause the current result mem
 | Action | Meaning | Shortcut status |
 | --- | --- | --- |
 | Apply | Validate/evaluate draft over acknowledged local data; only success promotes it. | Ctrl+Enter while a discussion is active; Enter in its search form. |
-| Refresh source | Run the relevant extractor, merge observations, and automatically recompute the active view on success. | F5 is likely, pending the formal keyboard policy. |
+| Refresh source | Run the relevant extractor, merge observations, and automatically recompute the active view on success. | Button only; Ctrl+R/F5 source Refresh deliberately unbound. |
 | Next/previous unseen | Live unseen comments in displayed applied trees, including context. | Accessible buttons; no keyboard binding added. |
 | Next/previous match | Last applied active-filter matching IDs in displayed preorder. | F3 / Shift+F3 and accessible buttons. |
 

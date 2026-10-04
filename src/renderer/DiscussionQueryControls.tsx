@@ -3,6 +3,7 @@ import type { DiscussionQuery, SearchField } from '../domain/discussion-query';
 import type { DiscussionViewState } from './discussion-view-session';
 import { countLabel, translator } from './i18n';
 import type { Locale } from './i18n';
+import { shortcutHint } from './shortcuts';
 
 export function DiscussionQueryControls({ state, locale, edit, apply, navigate, unseenCount }: {
   state: DiscussionViewState; locale: Locale; edit: (query: DiscussionQuery) => void; apply: () => void;
@@ -14,7 +15,7 @@ export function DiscussionQueryControls({ state, locale, edit, apply, navigate, 
     : state.error === 'QUERY_TOO_EXPENSIVE' ? 'queryTooExpensive' : 'queryFailed';
   return <div className="discussion-query">
     <form className="query-controls" onSubmit={event => { event.preventDefault(); apply(); }}>
-      <label className="query-search">{t('searchDiscussion')}<input type="search" value={draft.text} spellCheck={false}
+      <label className="query-search">{t('searchDiscussion')}<input type="search" value={draft.text} spellCheck={false} title={shortcutHint(locale, 'focus-search', t('searchDiscussion'))}
         onChange={event => edit({ ...draft, text: event.target.value })} /></label>
       <details className="query-fields"><summary>{t('searchFields')}</summary>
         <fieldset><legend>{t('searchFields')}</legend>{(['content', 'author', 'replied-to-author'] as const).map((field: SearchField) =>
@@ -29,7 +30,7 @@ export function DiscussionQueryControls({ state, locale, edit, apply, navigate, 
         onClick={() => edit({ ...draft, caseSensitive: !draft.caseSensitive })}>Aa</button>
       <button type="button" aria-label={t('regexMode')} title={t('regexMode')} aria-pressed={draft.mode === 'regex'}
         onClick={() => edit({ ...draft, mode: draft.mode === 'regex' ? 'text' : 'regex' })}>.*</button>
-      <button type="submit" title={t('applyHelp')}>{t('applyView')}</button>
+      <button type="submit" title={shortcutHint(locale, 'apply-view')}>{t('applyView')}</button>
     </form>
     <div className="query-status" aria-live="polite">
       {state.result.restrictive && <span className="applied-counts">{t('appliedCounts', { comments: countLabel(locale, 'matchingComments', state.result.matchCount), threads: countLabel(locale, 'containingThreads', state.result.threadCount) })}</span>}
@@ -39,8 +40,8 @@ export function DiscussionQueryControls({ state, locale, edit, apply, navigate, 
     </div>
     {state.error && state.error !== 'QUERY_CANCELLED' && <p className="query-error" role="alert">{t(errorKey)}</p>}
     <div className="query-navigation" role="group" aria-label={t('discussionNavigation')}>
-      <button disabled={!state.result.orderedMatchIds.length} onClick={() => navigate('match', -1)}>{t('previousMatch')}</button>
-      <button disabled={!state.result.orderedMatchIds.length} onClick={() => navigate('match', 1)}>{t('nextMatch')}</button>
+      <button title={shortcutHint(locale, 'previous-match')} disabled={!state.result.orderedMatchIds.length} onClick={() => navigate('match', -1)}>{t('previousMatch')}</button>
+      <button title={shortcutHint(locale, 'next-match')} disabled={!state.result.orderedMatchIds.length} onClick={() => navigate('match', 1)}>{t('nextMatch')}</button>
       <span aria-label={t('matchPosition')}>{new Intl.NumberFormat(locale).format(position)} / {new Intl.NumberFormat(locale).format(state.result.orderedMatchIds.length)}</span>
       <button disabled={!unseenCount} onClick={() => navigate('unseen', -1)}>{t('previousUnseen')}</button>
       <button disabled={!unseenCount} onClick={() => navigate('unseen', 1)}>{t('nextUnseen')}</button>

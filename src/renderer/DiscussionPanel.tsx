@@ -10,6 +10,7 @@ import { DiscussionQueryControls } from './DiscussionQueryControls';
 import type { DiscussionViewSession } from './discussion-view-session';
 import { navigateDiscussion } from './discussion-navigation';
 import { recordRenderWork } from './render-work';
+import { seenHelp } from './shortcuts';
 
 const demo = (id: string) => id === 'video-demo' || id === 'post-demo';
 interface Props {
@@ -61,7 +62,7 @@ export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, s
           <section aria-label={t('discussion')}>
             <div className="discussion-heading"><h2>{countLabel(locale, 'comments', comments.length)}</h2>
               <span>{countLabel(locale, 'unseenCount', comments.filter(comment => !comment.seen).length)}</span></div>
-            <p className="reader-help">{t('seenHelp')}</p>
+            <p className="reader-help">{seenHelp(locale)}</p>
             <DiscussionQueryControls state={view} locale={locale} edit={draft => session.edit(draft)}
               apply={() => { void session.apply(comments); }} navigate={(kind, direction) => navigateDiscussion(session, comments, kind, direction)}
               unseenCount={visibleUnseenIds(view.result, comments).length} />

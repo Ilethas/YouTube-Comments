@@ -61,6 +61,15 @@ button, select, input { font: inherit; }
 button, select { color: var(--text); }
 button, select, input, time { outline-offset: 4px; }
 :focus-visible { outline: 2px solid var(--focus); }
+.keyboard-shortcuts { margin-top: 24px; max-width: 760px; }
+.keyboard-shortcuts h2 { scroll-margin-top: 12px; }
+.keyboard-shortcuts h3 { margin: 18px 0 6px; font-size: 14px; }
+.keyboard-shortcuts table { width: 100%; border-collapse: collapse; }
+.keyboard-shortcuts th, .keyboard-shortcuts td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+.keyboard-shortcuts th { font-weight: 400; }
+.keyboard-shortcuts th small { display: block; margin-top: 2px; color: var(--muted); }
+.keyboard-shortcuts td { white-space: nowrap; }
+kbd { display: inline-block; padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--surface-raised); color: var(--text); font: inherit; font-size: 12px; }
 button, input, select { cursor: pointer; }
 .app-shell { height: 100vh; display: flex; flex-direction: column; }
 .app-toolbar { padding: 7px 16px; display: flex; align-items: center; gap: 16px; background: var(--surface); flex-shrink: 0; }

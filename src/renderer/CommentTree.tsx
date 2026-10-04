@@ -4,6 +4,7 @@ import { demoNewCommentIds, demoNow } from '../shared/demo-presentation';
 import { Locale, publicationTime, translator } from './i18n';
 import { Avatar } from './Avatar';
 import { recordRenderWork } from './render-work';
+import { seenHelp } from './shortcuts';
 
 interface Props {
   nodes: readonly CommentNode[];
@@ -51,7 +52,7 @@ export function CommentTree({ nodes, locale, disabled, onToggle, view, now = dem
               {demoNewCommentIds.has(comment.id) && <span className="badge new-badge" title={t('newHelp')}>{t('new')}</span>}
             </div>
           </div>
-          <label className="seen-control" title={t('seenHelp')}>
+          <label className="seen-control" title={seenHelp(locale)}>
             <input type="checkbox" checked={comment.seen} disabled={disabled}
               aria-label={t(comment.seen ? 'markUnseen' : 'markSeen', { author })}
               onChange={() => { /* Click owns the action so its Ctrl modifier is retained. */ }}

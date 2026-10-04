@@ -64,7 +64,10 @@ Useful comment information includes avatar, author/handle, text, relative time, 
 
 Exact publication timestamps must be discoverable when available, for example through hover or details. Unknown timestamps remain unknown. A raw search match satisfies the search predicate alone; an active-filter match satisfies the complete filter set at the applied evaluation. Context is included for a containing tree without itself satisfying that evaluation's complete predicate.
 
-ADR 0008 implements Ctrl+Enter for Apply and F3/Shift+F3 for matches; the remote Refresh shortcut remains undecided. Apply only recomputes locally; successful explicit Refresh performs acquisition, safe merge, and active-view recomputation.
+ADR 0008 implements Ctrl+Enter for Apply and F3/Shift+F3 for matches. The bounded
+keyboard milestone documents Windows workspace/focus/help bindings in Settings;
+Ctrl+R/F5 source Refresh remains deliberately unbound. See [implemented shortcuts](UI_AND_NAVIGATION.md#keyboard-shortcuts-and-discoverability).
+Apply only recomputes locally; successful explicit Refresh performs acquisition, safe merge, and active-view recomputation.
 
 ## Acceptance examples
 

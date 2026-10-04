@@ -11,6 +11,8 @@ import { evaluateDiscussionQuery } from '../domain/discussion-query';
 import { createQueryExecutor } from './query-executor';
 import type { QueryExecutor } from './query-worker-client';
 import { StrictMode } from 'react';
+import { formatShortcut, reorderHelp, seenHelp, shortcutHint } from './shortcuts';
+import { keyboardShortcutsTarget } from './KeyboardShortcuts';
 
 // jsdom has no dedicated Web Worker; worker lifecycle/deadline has its own tests.
 vi.mock('./query-executor', () => ({ createQueryExecutor: vi.fn() }));
@@ -67,6 +69,7 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, 'releasePointerCapture', { configurable: true, value: vi.fn() });
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function(this: HTMLDialogElement) { this.setAttribute('open', ''); } });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function(this: HTMLDialogElement) { this.removeAttribute('open'); } });
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
   // A value avoids spying on jsdom's branded Navigator prototype getter.
   Object.defineProperty(window.navigator, 'languages', { configurable: true, value: ['en'] });
 });
@@ -525,6 +528,174 @@ it('older acquisition acknowledgment preserves newer app opens and mixed reorder
 
 const currentView = () => within(screen.getByRole('tabpanel'));
 const appliedRows = () => Array.from(screen.getByRole('tabpanel').querySelectorAll<HTMLElement>('[data-view-role=match]'), row => row.id);
+const press = (key: string, modifiers: KeyboardEventInit = {}, target: Element | Document = document) => {
+  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...modifiers });
+  fireEvent(target, event); return event;
+};
+const activeTab = () => screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')?.id;
+async function workspaceReady() { await waitFor(() => expect(screen.getByRole('button', { name: 'Library' }).hasAttribute('disabled')).toBe(false)); }
+it('cycles forward and backward with wrap across discussions, Library and Settings even from editable controls', async () => {
+  state = { ...state, workspace: { ...state.workspace, tabs: [...state.workspace.tabs, { id: 'library', kind: 'library' }, { id: 'settings', kind: 'settings' }] } };
+  await showReader();
+  const search = currentView().getByLabelText('Search this discussion');
+  const ids = state.workspace.tabs.map(tab => `tab-${tab.id}`);
+  expect(press('Tab', { ctrlKey: true }, search).defaultPrevented).toBe(true);
+  await waitFor(() => expect(activeTab()).toBe(ids[1])); await workspaceReady();
+  for (const id of [ids[2], ids[3], ids[0]]) {
+    press('Tab', { ctrlKey: true }); await waitFor(() => expect(activeTab()).toBe(id)); await workspaceReady();
+  }
+  for (const id of [ids[3], ids[2], ids[1], ids[0]]) {
+    press('Tab', { ctrlKey: true, shiftKey: true }); await waitFor(() => expect(activeTab()).toBe(id)); await workspaceReady();
+  }
+  expect(api.toggleSeen).not.toHaveBeenCalled();
+});
+it('closes active tabs using right then left then empty, without deleting stored discussions', async () => {
+  state = { ...state, workspace: { ...state.workspace, tabs: [state.workspace.tabs[0], { id: 'library', kind: 'library' }, { id: 'settings', kind: 'settings' }, state.workspace.tabs[1]], activeTabId: 'library' } };
+  await showReader();
+  for (const id of ['tab-settings', 'tab-discussion:post-demo', 'tab-discussion:video-demo']) {
+    expect(press('w', { ctrlKey: true }).defaultPrevented).toBe(true);
+    await waitFor(() => expect(activeTab()).toBe(id)); await workspaceReady();
+  }
+  const search = currentView().getByLabelText('Search this discussion');
+  press('w', { ctrlKey: true }, search);
+  await screen.findByText('No open tabs'); await workspaceReady();
+  expect(press('w', { ctrlKey: true }).defaultPrevented).toBe(false);
+  expect(press('Tab', { ctrlKey: true }).defaultPrevented).toBe(false);
+  expect(api.removeLibraryItem).not.toHaveBeenCalled();
+  expect(state.items).toEqual(items); expect(state.comments).toEqual(initialComments);
+});
+it('focuses and selects discussion search and Library filter, leaving Settings and empty browser-find alone', async () => {
+  await showReader();
+  const search = currentView().getByLabelText<HTMLInputElement>('Search this discussion');
+  fireEvent.change(search, { target: { value: 'desk' } });
+  expect(press('f', { ctrlKey: true }).defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(search); expect(search.selectionStart).toBe(0); expect(search.selectionEnd).toBe(4);
+  await userEvent.click(screen.getByRole('button', { name: 'Library' }));
+  const filter = currentView().getByLabelText<HTMLInputElement>('Filter Library');
+  fireEvent.change(filter, { target: { value: 'quiet' } });
+  expect(press('f', { ctrlKey: true }).defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(filter); expect(filter.selectionEnd).toBe(5);
+  await userEvent.click(screen.getByRole('button', { name: 'Settings' }));
+  expect(press('f', { ctrlKey: true }).defaultPrevented).toBe(false);
+});
+it('does not handle browser-find in an empty workspace', async () => {
+  state = { ...state, workspace: { tabs: [], activeTabId: null, revision: 0 } };
+  render(<App api={api} />); await screen.findByText('No open tabs');
+  expect(press('f', { ctrlKey: true }).defaultPrevented).toBe(false);
+});
+it('reveals, focuses and selects the URL control repeatedly without stealing subsequent typing or navigation', async () => {
+  await showReader();
+  expect(press('l', { ctrlKey: true }).defaultPrevented).toBe(true);
+  const url = screen.getByLabelText<HTMLInputElement>('YouTube URL'); expect(document.activeElement).toBe(url);
+  await userEvent.type(url, 'https://youtu.be/abcdefghijk');
+  expect(press('l', { ctrlKey: true }, url).defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(url); expect(url.selectionEnd).toBe(url.value.length);
+  await userEvent.keyboard('x{ArrowLeft}y'); expect(url.value).toBe('yx');
+  expect(press('Enter', { ctrlKey: true }, url).defaultPrevented).toBe(false);
+  expect(press('F3', {}, url).defaultPrevented).toBe(false);
+  expect(press('ArrowLeft', { altKey: true }, url).defaultPrevented).toBe(false);
+  expect(api.moveTab).not.toHaveBeenCalled();
+});
+it('F1 waits for acknowledged singleton Settings activation and focuses help when closed, background or active', async () => {
+  await showReader();
+  let finish!: (result: Result<ReaderState['workspace']>) => void;
+  const open = api.openSettings;
+  api.openSettings = vi.fn<ReaderApi['openSettings']>(() => new Promise(resolve => { finish = resolve; }));
+  expect(press('F1').defaultPrevented).toBe(true);
+  expect(document.getElementById(keyboardShortcutsTarget)).toBeNull();
+  expect(press('F1').defaultPrevented).toBe(false); // pending workspace acknowledgment owns this operation
+  finish(await open());
+  await waitFor(() => expect(document.activeElement?.id).toBe(keyboardShortcutsTarget));
+  expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+  api.openSettings = vi.fn(open);
+  await userEvent.click(screen.getByRole('tab', { name: /Video:/ })); await workspaceReady();
+  press('F1'); await waitFor(() => expect(document.activeElement?.id).toBe(keyboardShortcutsTarget)); await workspaceReady();
+  screen.getByLabelText('Language').focus();
+  press('F1', {}, screen.getByLabelText('Language'));
+  await waitFor(() => expect(document.activeElement?.id).toBe(keyboardShortcutsTarget));
+  expect(screen.getAllByRole('tab', { name: 'Settings: Settings' })).toHaveLength(1);
+});
+it('F1 from an empty workspace opens help; failed Settings activation leaves focus in place', async () => {
+  state = { ...state, workspace: { tabs: [], activeTabId: null, revision: 0 } };
+  render(<App api={api} />); await screen.findByText('No open tabs');
+  const button = screen.getByRole('button', { name: 'Add / Open' }); button.focus();
+  const open = api.openSettings;
+  api.openSettings = vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } }));
+  press('F1'); await screen.findByRole('alert'); expect(document.activeElement).toBe(button);
+  api.openSettings = open; press('F1'); await waitFor(() => expect(document.activeElement?.id).toBe(keyboardShortcutsTarget));
+});
+it('ordinary editable keys remain local, query Ctrl+Enter/F3 still work and Alt+arrows require a focused tab', async () => {
+  await showReader();
+  const search = currentView().getByLabelText('Search this discussion');
+  await userEvent.type(search, 'desk');
+  for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'a']) expect(press(key, {}, search).defaultPrevented).toBe(false);
+  expect(press('ArrowLeft', { altKey: true }, search).defaultPrevented).toBe(false);
+  expect(api.activateTab).not.toHaveBeenCalled(); expect(api.moveTab).not.toHaveBeenCalled();
+  expect(press('Enter', { ctrlKey: true }, search).defaultPrevented).toBe(true);
+  await waitFor(() => expect(appliedRows().length).toBeGreaterThan(0));
+  expect(press('F3', {}, search).defaultPrevented).toBe(true);
+  expect(screen.getByRole('tabpanel').querySelector('[data-selected=true]')).toBeTruthy();
+  const tab = screen.getByRole('tab', { name: /Video:/ }); tab.focus();
+  press('ArrowRight', { altKey: true }, tab);
+  await waitFor(() => expect(api.moveTab).toHaveBeenCalledWith({ tabId: 'discussion:video-demo', toIndex: 1 }));
+  expect(api.toggleSeen).not.toHaveBeenCalled();
+});
+it.each(['textarea', 'select', 'contenteditable'])('leaves ordinary navigation and discussion commands in unrelated %s controls', async kind => {
+  await showReader();
+  const element = document.createElement(kind === 'contenteditable' ? 'div' : kind);
+  if (kind === 'contenteditable') element.setAttribute('contenteditable', 'true');
+  document.body.append(element);
+  try {
+    for (const key of ['ArrowLeft', 'Home', 'a', 'F3']) expect(press(key, {}, element).defaultPrevented).toBe(false);
+    expect(press('Enter', { ctrlKey: true }, element).defaultPrevented).toBe(false);
+    expect(api.activateTab).not.toHaveBeenCalled(); expect(api.toggleSeen).not.toHaveBeenCalled();
+  } finally { element.remove(); }
+});
+it('removal confirmation and pending removal suspend shortcuts without losing dialog focus or mutating workspace', async () => {
+  state = acquired().state; await showReader();
+  await userEvent.click(screen.getByRole('button', { name: 'Library' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Remove from Library' }));
+  const dialog = screen.getByRole('dialog');
+  const checkBlocked = () => {
+    const focused = document.activeElement;
+    for (const [key, modifiers] of [['Tab', { ctrlKey: true }], ['Tab', { ctrlKey: true, shiftKey: true }], ['w', { ctrlKey: true }], ['f', { ctrlKey: true }], ['l', { ctrlKey: true }], ['F1', {}], ['F3', {}], ['Enter', { ctrlKey: true }]] as const) {
+      expect(press(key, modifiers, dialog).defaultPrevented).toBe(false);
+    }
+    expect(document.activeElement).toBe(focused);
+    expect(api.closeTab).not.toHaveBeenCalled(); expect(api.activateTab).not.toHaveBeenCalled(); expect(api.openSettings).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('YouTube URL')).toBeNull();
+  };
+  checkBlocked();
+  let finish!: (result: Result<ReaderState>) => void;
+  api.removeLibraryItem = vi.fn<ReaderApi['removeLibraryItem']>(() => new Promise(resolve => { finish = resolve; }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Remove' })); checkBlocked();
+  fireEvent(dialog, new Event('cancel', { cancelable: true })); expect(screen.getByRole('dialog')).toBe(dialog);
+  finish({ ok: false, error: { code: 'STORAGE_UNAVAILABLE' } });
+  await within(dialog).findByRole('alert');
+  fireEvent(dialog, new Event('cancel', { cancelable: true })); await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+});
+it('control titles and interaction help use registry formatting in English and Polish', async () => {
+  await showReader();
+  for (const locale of ['en', 'pl'] as const) {
+    if (locale === 'pl') {
+      await userEvent.click(screen.getByRole('button', { name: 'Settings' }));
+      await userEvent.selectOptions(screen.getByLabelText('Language'), 'pl');
+      await userEvent.click(screen.getByRole('tab', { name: /Film:/ }));
+    }
+    const panel = screen.getByRole('tabpanel');
+    expect(panel.querySelector('.query-controls button[type=submit]')?.getAttribute('title')).toBe(shortcutHint(locale, 'apply-view'));
+    expect(panel.querySelector('.query-navigation button')?.getAttribute('title')).toBe(shortcutHint(locale, 'previous-match'));
+    expect(panel.querySelector('.query-navigation button:nth-child(2)')?.getAttribute('title')).toBe(shortcutHint(locale, 'next-match'));
+    expect(panel.querySelector('.query-search input')?.getAttribute('title')).toContain(formatShortcut('focus-search'));
+    expect(panel.querySelector('.seen-control')?.getAttribute('title')).toBe(seenHelp(locale));
+    expect(document.querySelector('[aria-controls=acquisition-form]')?.getAttribute('title')).toBe(shortcutHint(locale, 'open-url'));
+    expect(document.querySelector('[role=tab][aria-selected=true]')?.getAttribute('title')).toContain(reorderHelp(locale));
+    expect(document.querySelector('.tab[data-active=true] .tab-close')?.getAttribute('title')).toContain(formatShortcut('close-tab'));
+    await userEvent.click(screen.getByRole('button', { name: locale === 'en' ? 'Library' : 'Biblioteka' }));
+    expect(document.querySelector('.library-filter input')?.getAttribute('title')).toContain(formatShortcut('focus-search'));
+    await userEvent.click(screen.getByRole('tab', { name: locale === 'en' ? /Video:/ : /Film:/ }));
+  }
+});
 it('development StrictMode effect probes preserve query sessions and their first draft edit', async () => {
   render(<StrictMode><App api={api} /></StrictMode>); await screen.findByRole('tabpanel');
   fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'desk' } });

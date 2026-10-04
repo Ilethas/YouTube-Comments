@@ -14,6 +14,21 @@ matching over original metadata and does not settle discussion search comparison
 
 ## Interface language
 
+Keyboard shortcut descriptions, categories, contextual scopes and Settings help
+have stable English/Polish keys. User-facing chord labels come exclusively from
+the renderer metadata registry/formatter, including interpolated seen/reorder
+help; components and dictionaries do not duplicate literal chords. Windows display
+names are Ctrl, Shift, Alt, Enter, F1/F3, Left/Right, Home/End and Click. Display-name
+mapping is separate from bindings so future platform naming can change centrally;
+no macOS/Linux binding policy is implemented.
+
+The Settings reference uses labeled tables, row headers and semantic `<kbd>`
+elements with readable text rather than images. Key borders/background/text use
+existing theme tokens in System/Light/Dark. Its programmatically focusable heading
+is a stable F1 target; focusing it follows acknowledged workspace activation.
+Control titles share the same localized registry descriptions/formatter while
+retaining their concise accessible action names.
+
 ADR 0006 adds stable English/Polish labels for Library/reopen, close-tab accessible
 names, empty workspace, URL reveal/cancel and description expansion. Helper errors
 refer to executable override or PATH without exposing paths. Compact comments

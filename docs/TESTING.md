@@ -1,5 +1,45 @@
 # Testing strategy
 
+## Keyboard discoverability and workspace shortcuts (2026-10-04)
+
+The Windows keyboard milestone reuses the existing workspace/query actions and
+introduces no dependency, schema, IPC or persistent preferences. Registry tests
+check unique IDs, exact/formatted chords and independent display-name mapping.
+Settings tests in both locales compare every rendered entry to the complete
+registry, verify localized descriptions/scopes and semantic key markup/row headers.
+App tests cover cycling/wrap across mixed tabs, right/left/empty close without
+deletion, discussion/Library search focus and selection, unconsumed Settings/empty
+Ctrl+F, URL reveal/select/repeat and subsequent native editing, F1 closed/background/
+active/empty Settings and failed/pending acknowledgments, contextual input ownership,
+focused-tab-only reorder and safe removal confirmation/pending writes. Existing
+Ctrl+Enter/F3/Shift+F3, Enter/Escape, Ctrl+Click, manual-seen and performance tests
+continue to pass. Tooltip/help checks compare registry output in English and Polish.
+
+Verification: **332 offline tests across 26 files pass**, strict typecheck and lint
+pass without warnings. Renderer-only and Forge main/preload/renderer production
+bundles pass. esbuild config loading required broader filesystem access after the
+sandbox denied parent-directory reads; the Electron GPU subprocess also required
+the ordinary outside-sandbox retry. Forge retains the documented exit-0 finalizing
+limitation without a completed executable; an installer/distributable is not verified.
+
+`npm run test:electron` now also sends native Chromium key input through the real
+built reader in a disposable profile: tab cycling/wrap, close neighbors, discussion/
+Library focus-selection, ordinary search/URL typing/arrows, repeated Ctrl+L, F1
+singleton activation/heading focus, unconsumed Settings Ctrl+F and removal modal
+ownership. It checks control titles, the Settings reference and absence of comment/
+Library deletion from workspace actions, then passes its existing acquisition/query/
+seen/workspace checks, two real restarts and closed-file SQLite persistence.
+The existing nonfatal shutdown GPU diagnostic remains.
+
+English/light and Polish/dark Settings captures are saved under ignored `.vite/`
+and were visually inspected for readable key labels, table layout and theme tokens.
+This is scripted native UI verification plus agent visual inspection, not a
+hand-operated owner acceptance signoff. A manual acceptance pass should cycle and
+close several mixed tabs, inspect hover hints, invoke F1 from closed/background/
+active Settings, use Ctrl+F/Ctrl+L and then type/navigate in those inputs, and confirm
+removal owns the keyboard. Ctrl+R/F5 source Refresh, reopen and numbered tabs are
+deliberately unbound; no new query/filter/persistence feature is claimed.
+
 ## Tab-switch performance and input verification (2026-10-04)
 
 See [ADR 0009](decisions/0009-isolated-discussion-rendering-and-tab-input.md) for
@@ -439,7 +479,7 @@ A small meaningful UI/end-to-end suite is expected later. Choose a few workflows
 2. In Unseen only, save a seen edit without moving the result, apply a matching-set bulk action to the last applied IDs while excluding context, then Apply changes locally.
 3. Search a large discussion with another active filter, navigate to an unrendered active-filter match through the keyboard/ruler, and reopen the saved workspace after restart.
 
-Use focused checks as needed for English/Polish, System as the first-run appearance, persisted Light/Dark choices, safe rendering, and the typed security boundary. Exact UI tooling and keyboard bindings remain open; retain most edge-case coverage in the deterministic domain/integration suites.
+Use focused checks as needed for English/Polish, System as the first-run appearance, persisted Light/Dark choices, safe rendering, and the typed security boundary. Current Windows keyboard bindings are verified above; later platform bindings and collapse/virtualized reveal remain open. Retain most edge-case coverage in the deterministic domain/integration suites.
 
 ## Performance and test execution
 

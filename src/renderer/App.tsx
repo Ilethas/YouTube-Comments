@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AcquisitionResult, ErrorCode, ReaderApi, ReaderState, Result } from '../shared/reader-api';
 import type { Appearance } from '../shared/preferences';
 import { countLabel, initialLocale, Locale, translator } from './i18n';
@@ -11,6 +11,9 @@ import type { WorkspaceState } from '../domain/workspace';
 import { useDiscussionViews } from './use-discussion-views';
 import { DiscussionPanel } from './DiscussionPanel';
 import { navigateDiscussion } from './discussion-navigation';
+import { KeyboardShortcuts, keyboardShortcutsTarget } from './KeyboardShortcuts';
+import { shortcutHint } from './shortcuts';
+import { readerShortcut } from './keyboard-routing';
 
 export function App({ api = window.reader }: { api?: ReaderApi }) {
   const [state, setState] = useState<ReaderState>();
@@ -48,6 +51,8 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const workspaceBusy = useRef(false);
   const [showAcquisition, setShowAcquisition] = useState(false);
+  const [focusUrl, setFocusUrl] = useState(false);
+  const [helpRequest, setHelpRequest] = useState<{ revision: number }>();
   const [libraryFilter, setLibraryFilter] = useState('');
   const [removing, setRemoving] = useState<ReaderState['items'][number]>();
   const [removalPending, setRemovalPending] = useState(false);
@@ -99,7 +104,8 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       const result = await action();
       if (result.ok) {
         acceptWorkspace(result.value);
-        if (focusId) requestAnimationFrame(() => {
+        if (focusId === '@shortcuts' && result.value.activeTabId === 'settings') setHelpRequest({ revision: result.value.revision });
+        else if (focusId) requestAnimationFrame(() => {
           (focusId === '@active' ? document.querySelector<HTMLElement>('[role=tab][aria-selected=true]') ?? document.getElementById('library-toggle') : document.getElementById(`tab-${focusId}`))?.focus();
         });
       } else setSaveError(true);
@@ -166,15 +172,49 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       views.seenChanged(itemId);
     }, itemId);
   }, [api, save, views]);
+  useLayoutEffect(() => {
+    if (!showAcquisition || !focusUrl) return;
+    const input = document.getElementById('source-url') as HTMLInputElement | null;
+    input?.focus(); input?.select(); setFocusUrl(false);
+  }, [showAcquisition, focusUrl]);
+  useLayoutEffect(() => {
+    if (!helpRequest || workspace.revision < helpRequest.revision) return;
+    if (activeId === 'settings' && !removing) {
+      const target = document.getElementById(keyboardShortcutsTarget);
+      target?.scrollIntoView({ block: 'start' }); target?.focus({ preventScroll: true });
+    }
+    setHelpRequest(undefined);
+  }, [workspace, activeId, helpRequest, removing]);
   useEffect(() => {
     function keyboard(event: KeyboardEvent) {
       const tab = workspace.tabs.find(tab => tab.id === activeId);
-      if (tab?.kind !== 'discussion' || removing) return;
-      if (event.ctrlKey && event.key === 'Enter') {
-        event.preventDefault(); void views.get(tab.itemId, comments[tab.itemId]).apply(comments[tab.itemId]);
-      } else if (event.key === 'F3') {
-        event.preventDefault(); navigateDiscussion(views.get(tab.itemId, comments[tab.itemId]), comments[tab.itemId], 'match', event.shiftKey ? -1 : 1);
+      const command = readerShortcut(event, { activeKind: tab?.kind, modalOpen: !!removing, workspaceBusy: workspaceBusy.current });
+      if (!command) return;
+      if (command === 'next-tab' || command === 'previous-tab') {
+        const index = workspace.tabs.findIndex(value => value.id === activeId);
+        const next = workspace.tabs[(index + (command === 'next-tab' ? 1 : -1) + workspace.tabs.length) % workspace.tabs.length];
+        if (!next) return;
+        activate(next.id, true);
+      } else if (command === 'close-tab') {
+        if (!tab) return;
+        void workspaceAction(() => api.closeTab({ tabId: tab.id }), '@active');
+      } else if (command === 'focus-search') {
+        const panel = document.getElementById(tab?.kind === 'discussion' ? `panel-${tab.itemId}` : 'panel-library');
+        const input = panel?.querySelector<HTMLInputElement>('input[type=search]');
+        if (!input) return;
+        input.focus(); input.select();
+      } else if (command === 'open-url') {
+        setShowAcquisition(true); setFocusUrl(true);
+      } else if (command === 'keyboard-help') {
+        void workspaceAction(() => api.openSettings(), '@shortcuts');
+      } else if (tab?.kind === 'discussion') {
+        const session = views.get(tab.itemId, comments[tab.itemId]);
+        if (command === 'apply-view') void session.apply(comments[tab.itemId]);
+        else navigateDiscussion(session, comments[tab.itemId], 'match', command === 'previous-match' ? -1 : 1);
+      } else {
+        return;
       }
+      event.preventDefault();
     }
     document.addEventListener('keydown', keyboard);
     return () => document.removeEventListener('keydown', keyboard);
@@ -184,9 +224,9 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     <header className="app-toolbar">
       <div className="brand"><span className="brand-icon" aria-hidden="true">≡</span><strong>{t('appName')}</strong></div>
       <div className="workspace-actions">
-        <button aria-expanded={showAcquisition} aria-controls="acquisition-form" onClick={() => { setShowAcquisition(value => !value); }}>{t('acquire')}</button>
+        <button title={shortcutHint(locale, 'open-url')} aria-expanded={showAcquisition} aria-controls="acquisition-form" onClick={() => { setShowAcquisition(value => !value); }}>{t('acquire')}</button>
         <button id="library-toggle" disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openLibrary()); }}>{t('library')}</button>
-        <button id="settings-toggle" disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openSettings()); }}>{t('settings')}</button>
+        <button id="settings-toggle" title={shortcutHint(locale, 'keyboard-help')} disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openSettings()); }}>{t('settings')}</button>
       </div>
     </header>
     {showAcquisition && <form id="acquisition-form" className="acquisition-bar" onKeyDown={event => {
@@ -195,8 +235,8 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       <label htmlFor="source-url">{t('sourceUrl')}</label>
       <input id="source-url" type="text" inputMode="url" value={url} placeholder={t('urlPlaceholder')} autoFocus
         onChange={event => setUrl(event.target.value)} autoComplete="off" spellCheck={false} />
-      <button type="submit" disabled={!!acquiring || !url.trim()}>{t('openUrl')}</button>
-      <button type="button" onClick={() => setShowAcquisition(false)}>{t('cancel')}</button>
+      <button type="submit" title={shortcutHint(locale, 'submit', t('openUrl'))} disabled={!!acquiring || !url.trim()}>{t('openUrl')}</button>
+      <button type="button" title={shortcutHint(locale, 'cancel')} onClick={() => setShowAcquisition(false)}>{t('cancel')}</button>
     </form>}
     {acquiring && <div className="acquisition-status" role="status">{t(acquiring)}</div>}
     {acquisitionError && <div className="save-error" role="alert">{t(errorKey)}</div>}
@@ -215,7 +255,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     {workspace.tabs.some(tab => tab.kind === 'library') && <main id="panel-library" role="tabpanel" aria-labelledby="tab-library"
       className="reader-panel" hidden={activeId !== 'library'} tabIndex={0}>
       <div className="app-view library-view"><h1>{t('library')}</h1>
-        <label className="library-filter">{t('libraryFilter')}<input type="search" value={libraryFilter} onChange={event => setLibraryFilter(event.target.value)} /></label>
+        <label className="library-filter">{t('libraryFilter')}<input type="search" title={shortcutHint(locale, 'focus-search', t('libraryFilter'))} value={libraryFilter} onChange={event => setLibraryFilter(event.target.value)} /></label>
         <p className="reader-help">{t('libraryHelp')}</p>
         <ul className="library-list">{filterLibrary(items, libraryFilter).map(item => <li key={item.id} className="library-entry">
           <TabIcon kind={item.kind} /><div className="library-details">
@@ -254,6 +294,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
         </select></label>
       </div>
         <h2>{t('externalTools')}</h2><p>{t('externalToolsHelp')}</p>
+        <KeyboardShortcuts locale={locale} />
       </div>
     </main>}
     {removing && <RemovalDialog title={itemLabel(removing)} locale={locale} pending={removalPending}

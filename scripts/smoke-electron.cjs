@@ -66,7 +66,10 @@ async function verifyWindow(window, nativeTheme) {
   const root = process.env.YOUTUBE_COMMENTS_DEMO_ROOT;
   const phase = process.env.YOUTUBE_COMMENTS_SMOKE_PHASE;
   const checkpoint = path.join(root, 'checkpoint.json');
-  const js = code => contents.executeJavaScript(code);
+  const js = async code => {
+    try { return await contents.executeJavaScript(code); }
+    catch (error) { console.error('Smoke expression failed:', code); throw error; }
+  };
   async function waitFor(code, label) {
     for (let attempt = 0; attempt < 150; attempt++) {
       if (await js(code)) return;
@@ -95,6 +98,91 @@ async function verifyWindow(window, nativeTheme) {
     }
   }
 
+  // Native Chromium key input complements synthetic DOM/unit routing checks.
+  async function verifyKeyboardShortcuts() {
+    const before = await snapshot();
+    const key = (keyCode, modifiers = []) => {
+      contents.sendInputEvent({ type: 'keyDown', keyCode, modifiers });
+      contents.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
+    };
+    const active = async id => {
+      await waitFor(`document.querySelector('[role=tab][aria-selected=true]')?.id === ${JSON.stringify('tab-' + id)} && !document.querySelector('.tabs button:disabled')`, 'keyboard tab activation');
+    };
+    key('F1');
+    await waitFor("document.activeElement.id === 'keyboard-shortcuts' && !document.querySelector('.tabs button:disabled')", 'F1 opens Settings and targets help');
+    assert.equal((await snapshot()).workspace.tabs.filter(tab => tab.kind === 'settings').length, 1);
+    await js("document.querySelector('.preferences select').focus()");
+    key('F1'); await waitFor("document.activeElement.id === 'keyboard-shortcuts' && !document.querySelector('.tabs button:disabled')", 'F1 from active Settings');
+    // Record preventDefault after the application's own document listener.
+    await js("document.addEventListener('keydown',event=>{window.__smokeDefaultPrevented=event.defaultPrevented},{once:true})");
+    key('F', ['control']);
+    await waitFor('window.__smokeDefaultPrevented !== undefined', 'Settings browser-find dispatch');
+    assert.equal(await js('window.__smokeDefaultPrevented'), false);
+    await js('delete window.__smokeDefaultPrevented');
+    key('Tab', ['control']); await active(before.workspace.tabs[0].id); // forward wrap
+    key('Tab', ['control', 'shift']); await active('settings'); // backward wrap
+    key('Tab', ['control']); await active(before.workspace.tabs[0].id);
+    key('F', ['control']); await waitFor("document.activeElement.matches('.query-search input')", 'discussion focus search');
+    contents.insertText('desk');
+    await waitFor("document.activeElement.value === 'desk'", 'native search typing');
+    key('Left'); contents.insertText('x');
+    await waitFor("document.activeElement.value === 'desxk'", 'search arrows and typing');
+    key('F', ['control']);
+    await waitFor('document.activeElement.selectionStart === 0 && document.activeElement.selectionEnd === 5', 'discussion search selection');
+    assert.deepEqual(await js('({start:document.activeElement.selectionStart,end:document.activeElement.selectionEnd})'), { start: 0, end: 5 });
+    contents.insertText(''); // Do not change the applied view.
+    key('L', ['control']); await waitFor("document.activeElement.id === 'source-url'", 'URL reveal/focus');
+    contents.insertText('https://youtu.be/abcdefghijk');
+    await waitFor("document.activeElement.value === 'https://youtu.be/abcdefghijk'", 'URL typing');
+    key('L', ['control']);
+    await waitFor('document.activeElement.selectionStart === 0 && document.activeElement.selectionEnd === document.activeElement.value.length', 'URL select existing text');
+    contents.insertText('xy'); key('Left'); contents.insertText('z');
+    await waitFor("document.activeElement.value === 'xzy'", 'URL retains ordinary editing');
+    key('Escape'); await waitFor("document.getElementById('source-url') === null", 'URL Escape');
+    await js("document.getElementById('library-toggle').click()"); await active('library');
+    key('F', ['control']); await waitFor("document.activeElement.matches('.library-filter input')", 'Library filter focus');
+    contents.insertText('quiet'); key('F', ['control']);
+    await waitFor('document.activeElement.selectionStart === 0 && document.activeElement.selectionEnd === 5', 'Library filter selection');
+    const tabs = (await snapshot()).workspace.tabs;
+    for (const tab of tabs) { key('Tab', ['control']); await active(tab.id); }
+    key('W', ['control']); await active('settings'); // closing final Library chooses left
+    assert.equal(window.isDestroyed(), false, 'Ctrl+W closes a workspace tab, never the native window');
+    await js("document.getElementById('library-toggle').click()"); await active('library');
+    await js("document.getElementById('tab-settings').click()"); await active('settings');
+    key('W', ['control']); await active('library'); // closing Settings chooses right
+    key('F1'); await waitFor("document.activeElement.id === 'keyboard-shortcuts' && !document.querySelector('.tabs button:disabled')", 'F1 reopens singleton');
+    const rows = await js("Array.from(document.querySelectorAll('#panel-settings tr[data-shortcut-id]'),row=>({id:row.dataset.shortcutId,keys:row.querySelector('td').textContent}))");
+    assert.equal(rows.length, 18); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
+    assert.equal(rows.find(row => row.id === 'previous-tab').keys, 'Ctrl+Shift+Tab');
+    const hints = await js("({apply:document.querySelector('#panel-video-demo .query-controls button[type=submit]').title,next:document.querySelector('#panel-video-demo .query-navigation button:nth-child(2)').title,add:document.querySelector('[aria-controls=acquisition-form]').title,seen:document.querySelector('.seen-control').title,tab:document.querySelector('[role=tab]').title})");
+    assert.match(hints.apply, /Ctrl\+Enter/); assert.match(hints.next, /F3/); assert.match(hints.add, /Ctrl\+L/);
+    assert.match(hints.seen, /Ctrl\+Click/); assert.match(hints.tab, /Alt\+Left/);
+    // Ignored local captures allow agent visual inspection in both locales/themes.
+    const size = window.getSize(); window.setSize(1240, 1400); window.showInactive();
+    for (const [locale, theme] of [['en', 'light'], ['pl', 'dark']]) {
+      await preference(0, locale); await preference(1, theme);
+      await js("document.getElementById('panel-settings').scrollTop=0");
+      await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      fs.writeFileSync(path.join(__dirname, `../.vite/keyboard-shortcuts-${locale}-${theme}.png`), (await contents.capturePage()).toPNG());
+      await js("document.getElementById('panel-settings').scrollTop=document.getElementById('panel-settings').scrollHeight");
+      await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      fs.writeFileSync(path.join(__dirname, `../.vite/keyboard-shortcuts-${locale}-${theme}-end.png`), (await contents.capturePage()).toPNG());
+    }
+    window.hide(); window.setSize(...size);
+    await preference(0, before.preferences.locale); await preference(1, before.preferences.appearance);
+    await js("(() => { for (const selector of ['.library-filter input','#panel-video-demo .query-search input']) { const input=document.querySelector(selector); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,''); input.dispatchEvent(new Event('input',{bubbles:true})); } })()");
+    await waitFor("document.querySelector('.library-filter input').value === ''", 'restore Library draft');
+    // Restore the original workspace through the UI; all stored data stays intact.
+    for (const id of ['settings', 'library']) {
+      await js(`document.getElementById('tab-${id}').nextElementSibling.click()`);
+      await waitFor(`document.getElementById('tab-${id}') === null && !document.querySelector('.tabs button:disabled')`, 'close temporary app tab');
+    }
+    await js(`document.getElementById(${JSON.stringify('tab-' + before.workspace.activeTabId)}).click()`);
+    await active(before.workspace.activeTabId);
+    assert.deepEqual((await snapshot()).comments, before.comments);
+    assert.deepEqual((await snapshot()).items, before.items);
+  }
+
   await waitFor("document.querySelectorAll('input[type=checkbox]').length >= 24", 'bootstrap');
   assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'closeTab', 'moveTab', 'openLibrary', 'openSettings', 'openStoredItem', 'refresh', 'removeLibraryItem', 'toggleSeen', 'updatePreferences']);
   assert.deepEqual(await js("window.reader.acquire({url:'https://www.youtube.com/watch?v=abcdefghijk',executable:'evil'})"),
@@ -117,6 +205,7 @@ async function verifyWindow(window, nativeTheme) {
     assert.equal(original.items.length, 2);
     assert.equal(original.preferences.appearance, 'system');
     await preference(0, 'en');
+    await verifyKeyboardShortcuts();
     await js("document.querySelectorAll('#panel-video-demo .seen-control input')[2].click()");
     await waitFor("document.querySelectorAll('#panel-video-demo .seen-control input')[2].checked && !document.querySelector('input:disabled')", 'ordinary click');
     let state = await snapshot();
@@ -258,6 +347,18 @@ async function verifyWindow(window, nativeTheme) {
     assert.equal(await js("document.getElementById('remove-description').textContent.includes('trwałe usunięcie')"), true);
     assert.equal(await js("document.activeElement === document.querySelector('dialog .dialog-actions button')"), true);
     assert.equal((await snapshot()).items.length, 4);
+    const modalWorkspace = (await snapshot()).workspace;
+    await js("window.__smokeModalKeys=[]; window.__smokeModalListener=event=>window.__smokeModalKeys.push(event.defaultPrevented); document.addEventListener('keydown',window.__smokeModalListener)");
+    for (const [keyCode, modifiers] of [['W', ['control']], ['L', ['control']], ['F1', []]]) {
+      contents.sendInputEvent({ type: 'keyDown', keyCode, modifiers });
+      contents.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
+    }
+    await waitFor('window.__smokeModalKeys.length === 3', 'modal keyboard ownership');
+    assert.deepEqual(await js('window.__smokeModalKeys'), [false, false, false]);
+    assert.equal(await js("document.activeElement === document.querySelector('dialog .dialog-actions button')"), true);
+    assert.deepEqual((await snapshot()).workspace, modalWorkspace);
+    assert.equal(await js("document.getElementById('source-url') === null"), true);
+    await js('document.removeEventListener(\'keydown\',window.__smokeModalListener); delete window.__smokeModalListener; delete window.__smokeModalKeys');
     await js("document.querySelector('dialog .dialog-actions button').click()");
     await waitFor("document.querySelector('dialog') === null", 'cancel removal');
     await js("Array.from(document.querySelectorAll('.library-entry')).find(row => row.textContent.includes('Invented Community')).querySelector('.destructive').click()");
