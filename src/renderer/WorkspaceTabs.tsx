@@ -1,6 +1,5 @@
-import { useRef, useState } from 'react';
 import type { WorkspaceState, WorkspaceTab } from '../domain/workspace';
-import { moveWorkspaceTab } from '../domain/workspace';
+import { useTabStrip } from './use-tab-strip';
 import { translator, Locale } from './i18n';
 import { TabIcon } from './TabIcon';
 
@@ -19,50 +18,19 @@ interface Props {
  * Preview is local; only pointer-up commits one final index. Alt+arrows reorder. */
 export function WorkspaceTabs({ workspace, locale, disabled, label, icon, activate, close, move }: Props) {
   const t = translator(locale);
-  const [preview, setPreview] = useState<WorkspaceState>();
-  const [dragging, setDragging] = useState<string>();
-  const drag = useRef<{ id: string; x: number; pointer: number; moved: boolean; index: number; base: WorkspaceState }>();
-  const suppressClick = useRef(false);
-  const strip = useRef<HTMLDivElement>(null);
-  const shown = preview && drag.current?.base.revision === workspace.revision ? preview : workspace;
-  function finish(commit: boolean) {
-    const value = drag.current;
-    drag.current = undefined;
-    setDragging(undefined); setPreview(undefined);
-    if (value?.moved) {
-      suppressClick.current = true;
-      if (commit && value.base.revision === workspace.revision) move(value.id, value.index);
-      setTimeout(() => { suppressClick.current = false; }, 0);
-    }
-  }
-  return <div ref={strip} className="tabs" role="tablist" aria-label={t('discussions')} aria-describedby="tab-reorder-help">
+  const { strip, dragging, shown, suppressClick, begin, newPress, pointerMove, pointerUp, pointerCancel, lostCapture } = useTabStrip(workspace, disabled, move, activate);
+  return <div ref={strip} className="tabs" role="tablist" aria-label={t('discussions')} aria-describedby="tab-reorder-help"
+    onPointerDownCapture={newPress} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerCancel} onLostPointerCapture={lostCapture}
+    onClickCapture={event => { if (suppressClick.current && event.detail > 0) { event.preventDefault(); event.stopPropagation(); } }}>
     <span id="tab-reorder-help" className="visually-hidden">{t('reorderHelp')}</span>
     {shown.tabs.map((tab, index) => <div key={tab.id} className="tab" role="presentation" data-tab-id={tab.id}
       data-active={workspace.activeTabId === tab.id} data-dragging={dragging === tab.id}>
       <button role="tab" id={`tab-${tab.id}`} aria-controls={`panel-${tab.kind === 'discussion' ? tab.itemId : tab.id}`}
         disabled={disabled} aria-selected={workspace.activeTabId === tab.id} tabIndex={workspace.activeTabId === tab.id ? 0 : -1}
         aria-label={`${t(icon(tab))}: ${label(tab)}`} title={`${t(icon(tab))}: ${label(tab)} · ${t('reorderHelp')}`}
-        onClick={() => { if (!suppressClick.current) activate(tab.id); }}
-        onPointerDown={event => {
-          if (event.button !== 0 || disabled) return;
-          drag.current = { id: tab.id, x: event.clientX, pointer: event.pointerId, moved: false, index, base: workspace };
-          event.currentTarget.setPointerCapture(event.pointerId);
-        }} onPointerMove={event => {
-          const value = drag.current;
-          if (!value || value.pointer !== event.pointerId) return;
-          if (!value.moved && Math.abs(event.clientX - value.x) < 6) return;
-          value.moved = true; setDragging(value.id);
-          const container = strip.current;
-          if (!container) return;
-          const bounds = container.getBoundingClientRect();
-          if (event.clientX < bounds.left + 30) container.scrollLeft -= 18;
-          else if (event.clientX > bounds.right - 30) container.scrollLeft += 18;
-          const others = Array.from(container.querySelectorAll<HTMLElement>('.tab')).filter(row => row.dataset.tabId !== value.id);
-          value.index = others.filter(row => { const rect = row.getBoundingClientRect(); return event.clientX > rect.left + rect.width / 2; }).length;
-          setPreview(moveWorkspaceTab(value.base, value.id, value.index));
-        }} onPointerUp={() => finish(true)} onPointerCancel={() => finish(false)} onLostPointerCapture={() => finish(false)}
+        onClick={event => { if (!suppressClick.current || event.detail === 0) activate(tab.id); }}
+        onPointerDown={event => begin(tab.id, index, event)}
         onKeyDown={event => {
-          if (event.key === 'Escape' && drag.current) { finish(false); return; }
           if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
             event.preventDefault();
             const next = index + (event.key === 'ArrowLeft' ? -1 : 1);

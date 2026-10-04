@@ -79,11 +79,13 @@ select { background: var(--surface-raised); border: 1px solid var(--border); bor
 .workspace-actions { display: flex; gap: 6px; }
 .acquisition-status { padding: 5px 16px; color: var(--muted); background: var(--surface); }
 .item-actions { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
-.tab { display: flex; flex: 0 0 auto; max-width: 300px; border: 1px solid var(--border); border-bottom: 0; border-radius: 5px 5px 0 0; background: var(--background); }
-.tab[data-active='true'] { background: var(--surface); box-shadow: inset 0 2px var(--accent); }
+.tab { position: relative; isolation: isolate; display: flex; flex: 0 0 auto; max-width: 300px; border: 1px solid var(--border); border-bottom: 0; border-radius: 5px 5px 0 0; background: var(--background); }
+.tab[data-active='true'] { background: var(--surface); }
+/* Paint above both hover backgrounds without clipping focus outlines or intercepting input. */
+.tab[data-active='true']::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; border-radius: 4px 4px 0 0; background: var(--accent); z-index: 1; pointer-events: none; }
 .tabs button { text-align: left; min-width: 0; padding: 7px 9px; border: 0; background: transparent; }
-.tabs button[role='tab'] { display: flex; align-items: center; cursor: grab; touch-action: pan-y; user-select: none; gap: 7px; overflow: hidden; }
-.tabs .tab-close { flex-shrink: 0; font-size: 18px; line-height: 1; padding: 5px 8px; }
+.tabs button[role='tab'] { display: flex; align-items: center; cursor: grab; touch-action: pan-y; user-select: none; gap: 7px; overflow: hidden; border-radius: 4px 0 0 0; }
+.tabs .tab-close { flex-shrink: 0; font-size: 18px; line-height: 1; margin: 3px; padding: 2px 5px; border-radius: 3px; }
 .tabs button:hover { background: var(--surface-raised); }
 .tab-kind { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .tab-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

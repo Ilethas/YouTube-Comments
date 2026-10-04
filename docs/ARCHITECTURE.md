@@ -159,6 +159,13 @@ Concurrency must preserve these invariants: a checkbox changed while a helper ru
 
 ## Performance without DOM-dependent logic
 
+[ADR 0009](decisions/0009-isolated-discussion-rendering-and-tab-input.md) isolates
+mounted discussion content from workspace visibility/saving updates. Each panel
+subscribes to its own session; forest projection depends on its comment snapshot
+and applied result. Draft edits reuse comment rows. This removes measured
+cross-discussion work while retaining mounted scroll/description state. Full
+initial mounting and changed-discussion rendering remain virtualization targets.
+
 Thousands to tens of thousands of comments are an expected workload, not an exceptional case. Virtualize the comment view, including variable-height content and expanded replies. Build traversal/navigation and overview marker information from the data model. Whole-tree inclusion in a query does not require mounting that whole tree as HTML simultaneously.
 
 Persisted IDs should support scroll anchors and selection so recomputing or rendering rows does not confuse a comment's identity with its row index. Keep replies attached to their parents when sorting top-level threads. The overview/navigation ruler is a required target feature, using data for at least unseen, search-match, and subsequent-discovery markers; geometry and category overlap remain open. Main orchestration and renderer interaction must remain responsive while extraction, normalization, search, or SQLite work occurs. Batching and internal database workers can be evaluated within the main-owned backend without giving the renderer privileged access.

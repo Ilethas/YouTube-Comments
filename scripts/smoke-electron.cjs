@@ -8,6 +8,58 @@ const { spawn } = require('node:child_process');
 const entry = path.join(__dirname, '../.vite/build/main.js');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// A real Chromium paint check: jsdom cannot verify hover/pseudo-element layering.
+async function verifyTabHover(window) {
+  const contents = window.webContents;
+  const js = code => contents.executeJavaScript(code);
+  const debuggerApi = contents.debugger;
+  const backgroundThrottling = contents.getBackgroundThrottling();
+  contents.setBackgroundThrottling(false);
+  // A visible surface is required for Chromium pixel capture; do not steal focus.
+  window.showInactive();
+  debuggerApi.attach('1.3');
+  try {
+    await debuggerApi.sendCommand('DOM.enable');
+    await debuggerApi.sendCommand('CSS.enable');
+    await debuggerApi.sendCommand('Page.enable');
+    const { root } = await debuggerApi.sendCommand('DOM.getDocument');
+    const selectors = ['.tab[data-active=true] [role=tab]', '.tab[data-active=true] .tab-close'];
+    for (const theme of ['light', 'dark']) {
+      await js(`document.documentElement.dataset.appearance=${JSON.stringify(theme)}`);
+      const rect = await js(`(() => {const r=document.querySelector('.tab[data-active=true]').getBoundingClientRect();
+        return {x:Math.round(r.left)+5,y:Math.round(r.top)+2,width:Math.floor(r.width)-10,height:1};})()`);
+      const line = async () => {
+        const { data } = await debuggerApi.sendCommand('Page.captureScreenshot');
+        return require('electron').nativeImage.createFromBuffer(Buffer.from(data, 'base64')).crop(rect).toBitmap();
+      };
+      const baseline = await line();
+      assert.ok(baseline.length > 0, 'Active accent has painted pixels');
+      for (let i = 4; i < baseline.length; i += 4) assert.deepEqual(baseline.subarray(i, i + 4), baseline.subarray(0, 4), 'Accent is continuous across both buttons');
+      for (const selector of selectors) {
+        const { nodeId } = await debuggerApi.sendCommand('DOM.querySelector', { nodeId: root.nodeId, selector });
+        await debuggerApi.sendCommand('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['hover'] });
+        await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+        assert.deepEqual(await line(), baseline, `${theme}: ${selector} hover preserves the complete accent`);
+        const geometry = await js(`(() => {const tab=document.querySelector('.tab[data-active=true]'),button=document.querySelector(${JSON.stringify(selector)}),r=button.getBoundingClientRect(),p=tab.getBoundingClientRect();
+          return {hit:document.elementFromPoint(r.left+r.width/2,r.top+1)===button,
+            inset:r.top>p.top+1&&r.right<p.right-1&&r.bottom<p.bottom,
+            rounded:parseFloat(getComputedStyle(button).borderTopRightRadius)>0};})()`);
+        assert.equal(geometry.hit, true, 'Accent overlay does not intercept button input');
+        if (selector.endsWith('.tab-close')) { assert.equal(geometry.inset, true, 'Close hover stays inside tab'); assert.equal(geometry.rounded, true); }
+        await debuggerApi.sendCommand('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['focus-visible'] });
+        const focus = await js(`(() => {const button=document.querySelector(${JSON.stringify(selector)});button.focus();const s=getComputedStyle(button);return {focused:document.activeElement===button,width:s.outlineWidth,style:s.outlineStyle,overflow:getComputedStyle(button.parentElement).overflow};})()`);
+        assert.equal(focus.focused, true); assert.equal(focus.width, '2px'); assert.equal(focus.style, 'solid'); assert.equal(focus.overflow, 'visible', 'Tab does not clip focus outlines');
+        await debuggerApi.sendCommand('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: [] });
+      }
+    }
+  } finally {
+    await js("document.documentElement.dataset.appearance='system'");
+    debuggerApi.detach();
+    contents.setBackgroundThrottling(backgroundThrottling);
+    window.hide();
+  }
+}
+
 async function verifyWindow(window, nativeTheme) {
   window.hide();
   const contents = window.webContents;
@@ -61,6 +113,7 @@ async function verifyWindow(window, nativeTheme) {
     { ok: false, error: { code: 'INVALID_REQUEST' } });
   const original = await snapshot();
   if (phase === 'write') {
+    await verifyTabHover(window);
     assert.equal(original.items.length, 2);
     assert.equal(original.preferences.appearance, 'system');
     await preference(0, 'en');

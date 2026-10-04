@@ -17,10 +17,21 @@ export interface DiscussionViewState {
  * applied criteria at invocation, preserving controls and errors without emptying results. */
 export class DiscussionViewSession {
   state: DiscussionViewState;
+  private readonly listeners = new Set<() => void>();
+  /** Stable subscription functions let a panel observe only its own session. */
+  readonly subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  };
+  readonly getSnapshot = (): DiscussionViewState => this.state;
+  private changed(): void {
+    this.onChanged();
+    for (const listener of this.listeners) listener();
+  }
   private generation = 0;
   private seenRevision = 0;
   private disposed = false;
-  constructor(comments: readonly Comment[], private readonly executor: QueryExecutor, private readonly changed: () => void) {
+  constructor(comments: readonly Comment[], private readonly executor: QueryExecutor, private readonly onChanged: () => void = () => undefined) {
     this.state = { draft: defaultQuery, applied: defaultQuery, result: unrestrictedView(queryComments(comments)), pending: false, seenStale: false };
   }
   edit(draft: DiscussionQuery): void { this.state = { ...this.state, draft }; this.changed(); }

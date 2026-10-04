@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import type { Comment } from '../domain/discussion';
 import { DiscussionViewSession } from './discussion-view-session';
 import { createQueryExecutor } from './query-executor';
@@ -7,7 +7,6 @@ import { createQueryExecutor } from './query-executor';
 export function useDiscussionViews() {
   const sessions = useRef(new Map<string, DiscussionViewSession>());
   const lifecycle = useRef(0);
-  const [, render] = useState(0);
   useEffect(() => {
     const mounted = ++lifecycle.current;
     // StrictMode probes effect cleanup/setup without unmounting the reader.
@@ -18,11 +17,11 @@ export function useDiscussionViews() {
       sessions.current.clear();
     });
   }, []);
-  return {
+  return useMemo(() => ({
     get(id: string, comments: readonly Comment[]) {
       let session = sessions.current.get(id);
       if (!session) {
-        session = new DiscussionViewSession(comments, createQueryExecutor(), () => render(value => value + 1));
+        session = new DiscussionViewSession(comments, createQueryExecutor());
         sessions.current.set(id, session);
       }
       return session;
@@ -30,5 +29,5 @@ export function useDiscussionViews() {
     remove(id: string) { sessions.current.get(id)?.dispose(); sessions.current.delete(id); },
     refresh(id: string, comments: readonly Comment[]) { const session = sessions.current.get(id); if (session) void session.apply(comments, true); },
     seenChanged(id: string) { sessions.current.get(id)?.seenChanged(); },
-  };
+  }), []);
 }

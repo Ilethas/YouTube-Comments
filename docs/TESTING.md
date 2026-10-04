@@ -1,5 +1,42 @@
 # Testing strategy
 
+## Tab-switch performance and input verification (2026-10-04)
+
+See [ADR 0009](decisions/0009-isolated-discussion-rendering-and-tab-input.md) for
+before/after evidence and limitations. Deterministic App counters cover Library,
+Settings, A→B with C open, A draft/Apply and seen changes, and held workspace saves.
+They verify unrelated panels/forests/trees stay idle and mounted DOM/scroll survives.
+Pointer tests cover stable capture, outside-tab motion, child capture loss, primary
+and other pointer release, one write, Escape/delayed release, pointercancel and
+lifecycle loss. Wheel tests cover overflow, edges, horizontal deltas, units and
+drag coexistence.
+
+Optional `node scripts/profile-tabs-dev.cjs --interactions` requires the existing
+development database (or `YOUTUBE_COMMENTS_QUERY_DATABASE`). It backs up the
+read-only source into a disposable profile and opens all stored discussions. It
+does not log public text or commit captures. Nine switches on five discussions
+including the existing 154-comment video measured 515–597 ms before and 23–73 ms
+after. Work fell from four executions per discussion to zero. Timings include
+acknowledgment and two frame observations, depend on hardware/run, and are evidence
+rather than CI assertions.
+
+Enable `window.__readerWork = {}` in development DevTools to record panel/forest/
+root-tree work; reset that object for a new sample. Production records no counters.
+The script uses native CDP input to check dragging into the reader/back/across a
+scrolled strip, stationary edge auto-scroll, one reorder revision, Escape then
+delayed release, rapid mixed clicks, tab wheel and discussion wheel. It does not
+claim cross-OS physical-input testing outside the native window. Full initial
+mounting/large-discussion rendering and virtualization remain targets.
+
+Final verification: **315 tests across 25 files pass**, typecheck and lint pass,
+the standalone renderer build passes, and Forge production main/preload/renderer
+bundles pass. The built-entry Electron smoke passes writes, two real restarts and
+closed-file SQLite persistence. Its existing shutdown GPU diagnostic remains
+non-failing. Forge again exits 0 at finalizing without a completed executable;
+this milestone makes no installer/distributable claim. Run development profiling
+before the final Forge build: `npm start` replaces `.vite/build` with development
+entries, so the built-entry smoke must follow a production rebuild.
+
 Automated testing is a product requirement. Vitest covers domain/localization, components, temporary SQLite, IPC/bridge/sender validation, adapters and injected processes. [ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md) adds compact reading, avatars, helper overrides and bounded tab persistence. ADR 0008 adds active-discussion search/seen filtering, stable session applied views and match/unseen navigation. Dates, bulk recovery/actions, backup, persisted scroll/filter/expansion and full view restoration remain targets.
 
 ## Active-discussion query verification (2026-10-04)

@@ -6,6 +6,10 @@ Pure extractor observation contracts, backend-specific parsers, command descript
 
 ## Reading paths
 
+[ADR 0009](decisions/0009-isolated-discussion-rendering-and-tab-input.md) records
+measured tab-switch renderer isolation, stable strip drag capture and wheel
+scrolling. Query semantics, SQLite/IPC and virtualization scope remain unchanged.
+
 For the project owner, begin with [How it works](HOW_IT_WORKS.md), then [Product requirements](PRODUCT_REQUIREMENTS.md). For implementation, read [agent guidance](../AGENTS.md), [Architecture](ARCHITECTURE.md), and the documents covering the requested increment. Review [open decisions](decisions/README.md) before filling in missing behavior.
 
 | Document | Purpose |

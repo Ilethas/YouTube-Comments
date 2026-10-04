@@ -1,19 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
-import { buildCommentTree } from '../domain/discussion';
-import { demoNow } from '../shared/demo-presentation';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AcquisitionResult, ErrorCode, ReaderApi, ReaderState, Result } from '../shared/reader-api';
 import type { Appearance } from '../shared/preferences';
-import { CommentTree, commentTargetId } from './CommentTree';
-import { countLabel, initialLocale, Locale, publicationTime, translator } from './i18n';
+import { countLabel, initialLocale, Locale, translator } from './i18n';
 import { discussionTab } from '../domain/workspace';
 import { WorkspaceTabs } from './WorkspaceTabs';
 import { TabIcon } from './TabIcon';
 import { filterLibrary } from './library';
 import { RemovalDialog } from './RemovalDialog';
 import type { WorkspaceState } from '../domain/workspace';
-import { navigationTarget, visibleUnseenIds } from '../domain/discussion-query';
 import { useDiscussionViews } from './use-discussion-views';
-import { DiscussionQueryControls } from './DiscussionQueryControls';
+import { DiscussionPanel } from './DiscussionPanel';
+import { navigateDiscussion } from './discussion-navigation';
 
 export function App({ api = window.reader }: { api?: ReaderApi }) {
   const [state, setState] = useState<ReaderState>();
@@ -41,15 +38,6 @@ export function App({ api = window.reader }: { api?: ReaderApi }) {
   </div>;
 }
 
-function VideoDescription({ id, text, locale }: { id: string; text: string; locale: Locale }) {
-  const [expanded, setExpanded] = useState(false);
-  const t = translator(locale);
-  return <div className="description-block">
-    <p id={`description-${id}`} className={`item-description ${expanded ? 'expanded' : 'preview'}`}>{text}</p>
-    <button className="text-button" aria-expanded={expanded} aria-controls={`description-${id}`} onClick={() => setExpanded(value => !value)}>{t(expanded ? 'showLess' : 'showMore')}</button>
-  </div>;
-}
-
 function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderApi }) {
   const views = useDiscussionViews();
   const [items, setItems] = useState(initialState.items);
@@ -69,6 +57,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   // Acknowledged presentation snapshot. SQLite owns all durable state.
   const [comments, setComments] = useState(initialState.comments);
   const [saving, setSaving] = useState(false);
+  const [savingItemId, setSavingItemId] = useState<string>();
   const [saveError, setSaveError] = useState(false);
   const busy = useRef(false);
   const [url, setUrl] = useState('');
@@ -77,7 +66,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   const [acquisitionStatus, setAcquisitionStatus] = useState<string>();
   const acquisitionBusy = useRef(false);
   const acknowledgedSeen = useRef(new Map<string, boolean>());
-  async function acquire(action: () => Promise<Result<AcquisitionResult>>, refresh = false) {
+  const acquire = useCallback(async function acquire(action: () => Promise<Result<AcquisitionResult>>, refresh = false) {
     if (acquisitionBusy.current) return;
     acquisitionBusy.current = true;
     acknowledgedSeen.current.clear();
@@ -99,7 +88,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       } else setAcquisitionError(result.error.code);
     } catch { setAcquisitionError('ACQUISITION_FAILED'); }
     finally { acquisitionBusy.current = false; setAcquiring(undefined); }
-  }
+  }, [api, views]);
   function acceptWorkspace(value: WorkspaceState) {
     setWorkspace(current => value.revision >= current.revision ? value : current);
   }
@@ -137,20 +126,20 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     } catch { setRemovalError('STORAGE_UNAVAILABLE'); }
     finally { removalBusy.current = false; setRemovalPending(false); }
   }
-  async function save<T>(action: () => Promise<Result<T>>, accept: (value: T) => void) {
+  const save = useCallback(async function save<T>(action: () => Promise<Result<T>>, accept: (value: T) => void, itemId?: string) {
     if (busy.current) return;
     busy.current = true;
     setSaving(true);
+    setSavingItemId(itemId);
     setSaveError(false);
     try {
       const result = await action();
       if (result.ok) accept(result.value);
       else setSaveError(true);
     } catch { setSaveError(true); }
-    finally { busy.current = false; setSaving(false); }
-  }
+    finally { busy.current = false; setSaving(false); setSavingItemId(undefined); }
+  }, []);
   const t = translator(locale);
-  const demo = (id: string) => id === 'video-demo' || id === 'post-demo';
   const openItems = workspace.tabs.flatMap(tab => tab.kind === 'discussion' ? items.find(item => item.id === tab.itemId) ?? [] : []);
   const isOpen = (id: string) => workspace.tabs.some(tab => tab.kind === 'discussion' && tab.itemId === id);
   const itemLabel = (item: ReaderState['items'][number]) => item.kind === 'video' ? item.title
@@ -168,16 +157,15 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     document.documentElement.dataset.appearance = appearance;
   }, [appearance]);
 
-  function navigate(itemId: string, kind: 'match' | 'unseen', direction: 1 | -1) {
-    const session = views.get(itemId, comments[itemId]);
-    const result = session.state.result;
-    const candidates = kind === 'match' ? result.orderedMatchIds : visibleUnseenIds(result, comments[itemId]);
-    const id = navigationTarget(result.visibleCommentIds, candidates, session.state.selected, direction);
-    if (!id) return;
-    session.select(id);
-    // DOM is used solely to reveal the already resolved application-data identity.
-    document.getElementById(commentTargetId(id))?.scrollIntoView({ block: 'center', behavior: 'auto' });
-  }
+  const refreshItem = useCallback((itemId: string) => { void acquire(() => api.refresh({ itemId }), true); }, [acquire, api]);
+  const toggleComment = useCallback((itemId: string, commentId: string, subtree: boolean) => {
+    void save(() => api.toggleSeen({ itemId, commentId, subtree }), value => {
+      const seen = new Map(value.map(comment => [comment.id, comment.seen]));
+      if (acquisitionBusy.current) for (const [id, state] of seen) acknowledgedSeen.current.set(id, state);
+      setComments(current => !current[itemId] ? current : ({ ...current, [itemId]: current[itemId].map(comment => ({ ...comment, seen: seen.get(comment.id) ?? comment.seen })) }));
+      views.seenChanged(itemId);
+    }, itemId);
+  }, [api, save, views]);
   useEffect(() => {
     function keyboard(event: KeyboardEvent) {
       const tab = workspace.tabs.find(tab => tab.id === activeId);
@@ -185,7 +173,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       if (event.ctrlKey && event.key === 'Enter') {
         event.preventDefault(); void views.get(tab.itemId, comments[tab.itemId]).apply(comments[tab.itemId]);
       } else if (event.key === 'F3') {
-        event.preventDefault(); navigate(tab.itemId, 'match', event.shiftKey ? -1 : 1);
+        event.preventDefault(); navigateDiscussion(views.get(tab.itemId, comments[tab.itemId]), comments[tab.itemId], 'match', event.shiftKey ? -1 : 1);
       }
     }
     document.addEventListener('keydown', keyboard);
@@ -271,53 +259,11 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     {removing && <RemovalDialog title={itemLabel(removing)} locale={locale} pending={removalPending}
       error={removalError ? t(removalError === 'ACQUISITION_BUSY' ? 'removalBusy' : 'removalFailed') : undefined}
       cancel={() => setRemoving(undefined)} remove={() => { void removeItem(); }} />}
-    {openItems.map(item => {
-      const time = item.publishedAt ? publicationTime(item.publishedAt, locale, demo(item.id) ? demoNow : Date.now()) : undefined;
-      const session = views.get(item.id, comments[item.id]), view = session.state;
-      const byId = new Map(comments[item.id].map(comment => [comment.id, comment]));
-      const visibleRows = view.result.visibleCommentIds.flatMap(id => {
-        const comment = byId.get(id);
-        return comment ? [{ ...comment, parentId: view.result.visibleParentIds[id] }] : [];
-      });
-      return <main key={item.id} id={`panel-${item.id}`} role="tabpanel" aria-labelledby={`tab-${discussionTab(item.id).id}`}
-        className="reader-panel" hidden={activeId !== discussionTab(item.id).id} tabIndex={0}>
-        <div className="reading-column">
-          <header className={`item-header ${item.kind}`}>
-            <div className="item-actions"><div className="eyebrow">{t(item.kind)} {demo(item.id) && <span className="demo-label">{t('demo')}</span>}</div>
-              <span className="item-status" title={t(acquisitionStatus === item.id ? 'coverageNotice' : demo(item.id) ? 'demoNotice' : 'localNotice')}
-                role={acquisitionStatus === item.id ? 'status' : undefined}>{t(acquisitionStatus === item.id ? 'coverageShort' : 'savedShort')}</span>
-              {!demo(item.id) && <button disabled={!!acquiring} onClick={() => { void acquire(() => api.refresh({ itemId: item.id }), true); }}>{t('refresh')}</button>}
-            </div>
-            {item.kind === 'video' ? <><h1>{item.title}</h1>{item.description && <VideoDescription id={item.id} text={item.description} locale={locale} />}</>
-              : <><h1>{item.author?.displayName ?? t('unknownAuthor')}</h1><p className="post-text">{item.text}</p></>}
-            <div className="item-meta"><strong>{item.author?.displayName ?? t('unknownAuthor')}</strong>
-              {item.author?.handle && <span>{item.author.handle}</span>}
-              {time && <time dateTime={item.publishedAt} title={time.exact} tabIndex={0} aria-label={time.exact}>{time.relative}</time>}
-              {!time && item.remote?.publication.label.status === 'observed' && <span>{item.remote.publication.label.value}</span>}
-            </div>
-          </header>
-          <section aria-label={t('discussion')}>
-            <div className="discussion-heading"><h2>{countLabel(locale, 'comments', comments[item.id].length)}</h2>
-              <span>{countLabel(locale, 'unseenCount', comments[item.id].filter(comment => !comment.seen).length)}</span></div>
-            <p className="reader-help">{t('seenHelp')}</p>
-            <DiscussionQueryControls state={view} locale={locale} edit={draft => session.edit(draft)}
-              apply={() => { void session.apply(comments[item.id]); }} navigate={(kind, direction) => navigate(item.id, kind, direction)}
-              unseenCount={visibleUnseenIds(view.result, comments[item.id]).length} />
-            {view.result.restrictive && !view.result.matchCount && <p className="reader-help">{t('noDiscussionMatches')}</p>}
-            <CommentTree nodes={buildCommentTree(visibleRows)} locale={locale}
-              view={{ restrictive: view.result.restrictive, active: new Set(view.result.activeMatchIds), raw: new Set(view.result.rawSearchMatchIds), selected: view.selected }}
-              now={demo(item.id) ? demoNow : Date.now()} disabled={saving} onToggle={(id, subtree) => {
-              void save(() => api.toggleSeen({ itemId: item.id, commentId: id, subtree }), value => {
-                const seen = new Map(value.map(comment => [comment.id, comment.seen]));
-                if (acquisitionBusy.current) for (const [id, state] of seen) acknowledgedSeen.current.set(id, state);
-                setComments(current => !current[item.id] ? current : ({ ...current, [item.id]: current[item.id].map(comment => ({ ...comment, seen: seen.get(comment.id) ?? comment.seen })) }));
-                views.seenChanged(item.id);
-              });
-            }} />
-          </section>
-          {demo(item.id) && <footer className="reader-footer"><p>{t('newHelp')}</p><p>{t('clockNote')}: {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(demoNow)}</p></footer>}
-        </div>
-      </main>;
-    })}
+    {openItems.map(item => <main key={item.id} id={`panel-${item.id}`} role="tabpanel" aria-labelledby={`tab-${discussionTab(item.id).id}`}
+      className="reader-panel" hidden={activeId !== discussionTab(item.id).id} tabIndex={0}>
+      <DiscussionPanel item={item} comments={comments[item.id]} session={views.get(item.id, comments[item.id])}
+        locale={locale} saving={saving && savingItemId === item.id} refreshDisabled={!!acquiring}
+        coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onToggle={toggleComment} />
+    </main>)}
   </div>;
 }

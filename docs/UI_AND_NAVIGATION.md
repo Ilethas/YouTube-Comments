@@ -144,6 +144,15 @@ Extraction can be long-running or fail. Provide understandable progress, error, 
 
 ## Navigate data, then reveal the row
 
+[ADR 0009](decisions/0009-isolated-discussion-rendering-and-tab-input.md) keeps
+discussion content mounted while isolating rendering from activation. The stable
+strip owns pointer capture: movement into the reader and back continues dragging.
+Release commits once; Escape, pointer/lifecycle cancellation or actual strip
+capture loss cancels. Capture outside the native window depends on OS/browser
+behavior. Vertical wheel over an overflowing strip scrolls horizontally
+immediately; horizontal deltas also work. Motion at an immovable edge or without
+overflow is not consumed. Wheel outside the strip retains normal panel scrolling.
+
 Keyboard navigation must support next/previous unseen comments and matches. Next/previous navigation in the filtered reader uses the current applied active-filter matching set. Any separately labeled search-specific navigation must operate within the applicable view and must not confuse raw search hits with active-filter matches. Targets are comment identities in application data, not a query for rendered DOM elements. This lets navigation reach a comment many thousands of rows away or inside a collapsed subtree.
 
 The implementation must be able to identify a target, make its location visible, scroll it into the virtualized viewport, and indicate the active comment. This may require expanding its ancestor path. Current uncollapsed navigation wraps at both ends. Match candidates remain applied IDs; unseen candidates use live seen over displayed membership. From context, next/previous selects the eligible neighbor in preorder. Each row has an application-owned target ID, selection outline and final scrollIntoView call. Collapse/virtualization expansion and restoration policies remain open. These choices must not broaden the filtered reader's match navigation beyond its applied matching set.

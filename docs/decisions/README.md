@@ -129,6 +129,8 @@ Prefer small records about significant decisions, such as SQLite integration, pa
 
 ## ADR index
 
+- [0009 — Isolated discussion rendering and stable tab input](0009-isolated-discussion-rendering-and-tab-input.md): accepted; measured renderer isolation, mounted scroll retention, stable strip pointer capture and overflow-aware wheel scrolling. No query, IPC, schema or virtualization changes.
+
 
 - [0001 — Synthetic React reader foundation](0001-synthetic-reader-foundation.md): accepted; scopes the React, localization, theme, domain preconditions, and deterministic testing choices to the in-memory milestone.
 - [0002 — SQLite persistence and typed reader boundary](0002-sqlite-and-typed-reader-boundary.md): accepted; main-owned built-in SQLite, initial schema/migrations/profiles, narrow validated IPC, durable seen state/preferences, and packaging implications for the synthetic milestone.

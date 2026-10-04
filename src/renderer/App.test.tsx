@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
 import { initialComments, items } from '../fixtures/discussions';
@@ -63,14 +63,85 @@ async function showReader() { render(<App api={api} />); await screen.findByRole
 beforeEach(() => {
   vi.stubGlobal('PointerEvent', MouseEvent);
   Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', { configurable: true, value: vi.fn() });
+  Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', { configurable: true, value: vi.fn(() => true) });
+  Object.defineProperty(HTMLElement.prototype, 'releasePointerCapture', { configurable: true, value: vi.fn() });
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function(this: HTMLDialogElement) { this.setAttribute('open', ''); } });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function(this: HTMLDialogElement) { this.removeAttribute('open'); } });
   // A value avoids spying on jsdom's branded Navigator prototype getter.
   Object.defineProperty(window.navigator, 'languages', { configurable: true, value: ['en'] });
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); delete window.__readerWork; vi.restoreAllMocks(); });
 const checkboxes = () => within(screen.getByRole('tabpanel')).getAllByRole<HTMLInputElement>('checkbox').filter(input => input.closest('.seen-control'));
 const checked = () => checkboxes().map(input => input.checked);
+
+function threeDiscussions() {
+  const third = { ...items[0], id: 'third-discussion', sourceId: 'third' };
+  const rows = initialComments[items[0].id].map(row => ({ ...row, id: `third-${row.id}`, itemId: third.id,
+    parentId: row.parentId ? `third-${row.parentId}` : null }));
+  state = { ...state, items: [...items, third], comments: { ...initialComments, [third.id]: rows },
+    workspace: { ...state.workspace, tabs: [...state.workspace.tabs, discussionTab(third.id)] } };
+}
+const work = () => window.__readerWork ?? {};
+function expectUnrelatedIdle() {
+  for (const id of ['post-demo', 'third-discussion']) for (const kind of ['panel', 'forest', 'tree']) expect(work()[`${kind}:${id}`] ?? 0).toBe(0);
+}
+
+it('Library/Settings/discussion activation and pending workspace saves never rebuild or render mounted discussions', async () => {
+  threeDiscussions(); window.__readerWork = {};
+  await showReader();
+  expect(work()['forest:third-discussion']).toBeGreaterThan(0);
+  const panel = document.getElementById('panel-video-demo');
+  if (!panel) throw new Error('Missing panel');
+  panel.scrollTop = 345;
+  const originalRows = Array.from(panel.querySelectorAll('.comment-branch'));
+  window.__readerWork = {};
+  for (const name of ['Library', 'Settings']) {
+    fireEvent.click(screen.getByRole('button', { name }));
+    await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-${name.toLowerCase()}`));
+    expect(work()).toEqual({});
+  }
+  for (const id of ['video-demo', 'post-demo', 'third-discussion', 'video-demo']) {
+    fireEvent.click(document.getElementById(`tab-${discussionTab(id).id}`) as HTMLElement);
+    await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-${id}`));
+    expect(work()).toEqual({});
+  }
+  let resolve!: (result: Result<ReaderState['workspace']>) => void;
+  vi.mocked(api.activateTab).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  fireEvent.click(document.getElementById('tab-discussion:post-demo') as HTMLElement);
+  expect(document.getElementById('tab-discussion:video-demo')?.hasAttribute('disabled')).toBe(true);
+  expect(work()).toEqual({});
+  await act(async () => resolve({ ok: true, value: openWorkspaceTab(state.workspace, discussionTab('post-demo')) }));
+  expect(work()).toEqual({});
+  expect(panel.scrollTop).toBe(345);
+  expect(Array.from(panel.querySelectorAll('.comment-branch'))).toEqual(originalRows);
+});
+
+it('draft, query evaluation, navigation and seen saves in A keep B/C idle; drafts reuse A forest', async () => {
+  threeDiscussions(); window.__readerWork = {};
+  await showReader(); window.__readerWork = {};
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search this discussion' }), { target: { value: 'camera' } });
+  expect(work()['panel:video-demo']).toBeGreaterThan(0);
+  expect(work()['forest:video-demo'] ?? 0).toBe(0);
+  expect(work()['tree:video-demo'] ?? 0).toBe(0);
+  expectUnrelatedIdle();
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(createQueryExecutor).toHaveBeenCalled());
+  await waitFor(() => expect(screen.queryByText('Evaluating…')).toBeNull());
+  expectUnrelatedIdle();
+  // Return to unrestricted membership for a deterministic seen target.
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search this discussion' }), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(checkboxes().length).toBe(initialComments['video-demo'].length));
+  window.__readerWork = {};
+  let resolve!: (result: Result<ReaderState['comments'][string]>) => void;
+  vi.mocked(api.toggleSeen).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  fireEvent.click(checkboxes()[0]);
+  expectUnrelatedIdle();
+  expect(work()['forest:video-demo'] ?? 0).toBe(0);
+  await act(async () => resolve({ ok: true, value: toggleSeen(initialComments['video-demo'], initialComments['video-demo'][0].id, false) }));
+  expect(work()['forest:video-demo']).toBeGreaterThan(0);
+  expectUnrelatedIdle();
+});
 
 it('reading, scrolling, tab navigation and language changes do not mark comments seen', async () => {
   const user = userEvent.setup();

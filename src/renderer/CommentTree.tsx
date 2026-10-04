@@ -3,6 +3,7 @@ import type { CommentNode } from '../domain/discussion';
 import { demoNewCommentIds, demoNow } from '../shared/demo-presentation';
 import { Locale, publicationTime, translator } from './i18n';
 import { Avatar } from './Avatar';
+import { recordRenderWork } from './render-work';
 
 interface Props {
   nodes: readonly CommentNode[];
@@ -18,6 +19,7 @@ interface Props {
 export const commentTargetId = (id: string) => `comment-${encodeURIComponent(id)}`;
 
 export function CommentTree({ nodes, locale, disabled, onToggle, view, now = demoNow, depth = 0 }: Props) {
+  if (depth === 0 && nodes[0]) recordRenderWork('tree', nodes[0].comment.itemId);
   const t = translator(locale);
   return <ol className={`comment-tree ${depth ? 'reply-rail' : 'root-tree'}`} data-depth={depth} data-compact={depth >= 5}
     style={{ '--reply-indent': `${depth < 5 ? 22 : depth < 10 ? 10 : 3}px` } as CSSProperties}>
