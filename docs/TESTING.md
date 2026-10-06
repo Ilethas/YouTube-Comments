@@ -1,5 +1,93 @@
 # Testing strategy
 
+## Virtualized overview ruler and durable NEW (2026-10-06)
+
+[ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) settles the
+latest accepted post-baseline NEW cohort and current applied-view ruler. **370
+offline tests across 31 files pass**. Strict typecheck and lint pass without
+warnings. The standalone renderer build and Forge production main/preload/renderer
+bundle checks pass. Forge still exits 0 at finalizing without a completed packaged
+executable; this milestone makes no installer/distribution claim. Vite's existing
+CJS Node API deprecation remains a tooling diagnostic.
+
+New temporary SQLite tests cover baseline exclusion, old publication, seen NEW,
+existing observations, cohort replacement/zero discoveries, accepted partial and
+unknown/unavailable collections, failure preservation, tied/regressing clocks,
+schema-4 to 5 preserving migration rollback/retry, VACUUM and close/reopen/restart.
+Main derives latest accepted attempt from explicit durable ordinals; no mutable
+NEW flag is tested or stored. Existing merge rollback and local-state protections
+remain. `npm run test:electron` passes write plus **two actual process restarts**
+with real acquired-fixture NEW badge/ruler survival, marking NEW seen, failed
+Refresh preservation, keyboard ruler reveal with no seen save, and closed-file
+SQLite/schema-5 checks. A shutdown GPU diagnostic remains non-failing. Hidden
+smoke frames are unthrottled; native text input waits for controlled-value commit
+before select/search commands.
+
+Pure ruler tests cover unrestricted unseen/NEW without match-everything,
+restrictive active matches, raw-only context exclusion, unseen context, hidden
+trees, multiple categories, exact virtual preorder, header-aware first/middle/last
+mapping, large estimated/measured heights and resize. Pixel-band tests retain
+category counts and deterministic nearest-center/preorder targets. The shared
+category spans use binary geometry boundary searches; a 50k structural test
+verifies refinement reads fewer than all virtual measurements, without a timing
+threshold. Component tests verify tooltip counts in English/Polish, pointer lane
+and keyboard activation, 10k/50k constant ruler DOM, unmounted far targets, unchanged
+seen, immediate acknowledged unseen versus frozen matches/NEW, Apply scope and
+accepted Refresh. F3/live unseen, Ctrl+click subtree and tab-render isolation
+regressions still pass.
+
+Run `node scripts/profile-discussions.cjs --50k --real` for reproducible offline
+Chromium observations using actual DiscussionPanel/worker/CSS and an owned
+disposable profile. The generator now accepts `newIndexes`, using explicit
+fixture first-discovery/latest-attempt identities. Real source SQLite is opened
+read-only for a consistent backup; all migration/reading uses its disposable
+copy. No valuable profile data or public comment text is written/logged/committed.
+Generated seen timings exclude SQLite/IPC. The ignored
+`.vite/performance-results.json` and generated/sanitized screenshots retain local
+evidence; they are not shipped assets.
+
+Representative final flat/shallow/mixed observations at 1280×900, development
+React and two frame observations (local ranges, **not CI latency budgets**):
+
+| Observation | 10k | 50k |
+| --- | --- | --- |
+| Initially mounted / scrolled comment rows | 10 / 19 | 10 / 19 |
+| Initial DOM elements | 217–253 | 217–253 |
+| Ruler SVG child nodes / occupied bands | 4 / 277 | 4 / 277 |
+| Initial render through two frames | 22–26 ms | 77–96 ms |
+| Scroll sample through two frames | 36–37 ms | 55–59 ms |
+| Acknowledged seen update | 24–25 ms | 35–45 ms |
+| Far NEW ruler click to visible selected row | 29–30 ms | 15–16 ms |
+| Selective Apply / Refresh reevaluation | 50–51 / 50 ms | 133–150 / 116–133 ms |
+
+An initial implementation recreated one geometry target per marked comment at
+every remeasurement: its 50k scroll sample was 75–91 ms. Shared category ranges and
+pixel-boundary search reduced that work while retaining all category/identity
+information. Projection/indexing still uses O(N) application data; the virtualizer
+still refines estimates and full bootstrap/clone/query/memory remain Q-21. These
+discrete scroll samples prove bounded mount/reveal and improved work, not a
+continuous physical-input frame-rate guarantee. The 10k depth-60 probe also
+reveals its final unmounted target with 11 initial / 13 target rows.
+
+The existing real **154-comment** discussion passed copied-data search/context,
+manual seen, actual unseen ruler click/exact viewport reveal, immediate category
+counts, language change and 831→646→831px ruler resize. All 154 articles remain
+mounted under ADR 0010's small-result ceiling. Reflow has no measured gaps/overlap.
+The generated raw-hit scenario shows one MATCH/NEW unseen reply, a seen raw-only
+SEARCH HIT context root without a match marker, and unseen context separately.
+Light/English and dark/Polish captures were inspected for scrollbar-adjacent lanes,
+neutral rails, distinct badges and unchanged unseen-only tint. Automated Chromium
+interaction and visual inspection are agent checks, not owner physical-input
+acceptance. No live YouTube refresh discovering an actually new public comment
+was attempted; disposable synthetic ingestion and real built-entry helper fixtures
+exercise the rule without forcing changes in valuable data.
+
+Date/discovery filter UI, bulk recoverability/undo, sorting/collapse, persisted
+scroll/criteria and broader Q-21 scaling remain future work. Release still needs
+backup/restore/export, helper distribution, packaging completion, signing/update
+and final Windows acceptance decisions. Historical sections below report earlier
+milestones and do not override this current verification.
+
 ## Large-discussion rendering and virtualization (2026-10-04)
 
 [ADR 0010](decisions/0010-variable-height-discussion-virtualization.md) records the

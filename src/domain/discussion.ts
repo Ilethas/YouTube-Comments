@@ -20,6 +20,9 @@ interface ItemBase {
   readonly author?: Author;
   readonly publishedAt?: string;
   readonly baselineDiscoveryId: string;
+  /** Main-derived latest accepted attempt in durable insertion order, including
+   * baseline. Failed attempts never advance it; no renderer state is persisted. */
+  readonly latestAcceptedDiscoveryId?: string;
   readonly sourceKind?: ContentSourceKind;
   /** Stored normalized evidence, including labels/precision and remote attachments. */
   readonly remote?: StoredContentObservation;
@@ -65,6 +68,14 @@ export interface Comment {
 export interface CommentNode<T = Comment> {
   readonly comment: T;
   readonly children: readonly CommentNode<T>[];
+}
+
+/** NEW is exactly the latest accepted post-baseline first-discovery cohort.
+ * Publication and manual seen state have no bearing on this projection. */
+export function isNewDiscovery(item: ContentItem, comment: Comment): boolean {
+  return comment.itemId === item.id && item.latestAcceptedDiscoveryId !== undefined
+    && item.latestAcceptedDiscoveryId !== item.baselineDiscoveryId
+    && comment.discovery.firstDiscoveryId === item.latestAcceptedDiscoveryId;
 }
 
 /** Constructs a forest for one complete, valid in-memory discussion, retaining

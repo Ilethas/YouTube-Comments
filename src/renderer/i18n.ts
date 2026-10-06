@@ -1,8 +1,13 @@
 export { initialLocale } from '../shared/preferences';
 export type { Locale } from '../shared/preferences';
 import type { Locale } from '../shared/preferences';
+import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  overviewRuler: 'Discussion overview: unseen, applied matches, new discoveries',
+  rulerKeyboardHelp: 'Up/Down: marker band. Left/Right: category. Home/End: first/last band. Enter/Space: navigate.',
+  rulerUnseen: '{count} unseen', rulerMatch: '{count} matches', rulerNew: '{count} new',
+  newDiscoveryHelp: 'First discovered in the latest accepted refresh after the baseline. Remains NEW until the next accepted refresh, independently of seen state.',
   keyboardShortcuts: 'Keyboard shortcuts', shortcutWorkspace: 'Workspace', shortcutSearch: 'Search and filtering',
   shortcutComments: 'Comments', shortcutAcquisition: 'Acquisition and forms', shortcutHelp: 'Help and cancellation',
   shortcutNextTab: 'Next tab', shortcutPreviousTab: 'Previous tab', shortcutCloseTab: 'Close active tab',
@@ -65,6 +70,10 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  overviewRuler: 'Przegląd dyskusji: nieprzeczytane, zastosowane dopasowania, nowe odkrycia',
+  rulerKeyboardHelp: 'Góra/Dół: pas znaczników. Lewo/Prawo: kategoria. Home/End: pierwszy/ostatni pas. Enter/Spacja: przejdź.',
+  rulerUnseen: 'Nieprzeczytane: {count}', rulerMatch: 'Dopasowania: {count}', rulerNew: 'Nowe: {count}',
+  newDiscoveryHelp: 'Pierwsze odkrycie w ostatnim zaakceptowanym odświeżeniu po bazowym pobraniu. NOWY pozostaje do kolejnego zaakceptowanego odświeżenia, niezależnie od stanu przeczytania.',
   keyboardShortcuts: 'Skróty klawiaturowe', shortcutWorkspace: 'Obszar roboczy', shortcutSearch: 'Wyszukiwanie i filtrowanie',
   shortcutComments: 'Komentarze', shortcutAcquisition: 'Pobieranie i formularze', shortcutHelp: 'Pomoc i anulowanie',
   shortcutNextTab: 'Następna karta', shortcutPreviousTab: 'Poprzednia karta', shortcutCloseTab: 'Zamknij aktywną kartę',
@@ -126,6 +135,13 @@ const pl: Record<Key, string> & Record<string, string> = {
   unseenCount_one: '{count} nieprzeczytany komentarz', unseenCount_few: '{count} nieprzeczytane komentarze',
   unseenCount_many: '{count} nieprzeczytanych komentarzy', unseenCount_other: '{count} nieprzeczytanego komentarza',
 };
+/** Compact localized counts; one contribution may occur in several lanes. */
+export function rulerBucketLabel(locale: Locale, bucket: RulerBucket): string {
+  const t = translator(locale), number = new Intl.NumberFormat(locale);
+  return [t('rulerUnseen', { count: number.format(bucket.targets.unseen.length) }),
+    t('rulerMatch', { count: number.format(bucket.targets.match.length) }),
+    t('rulerNew', { count: number.format(bucket.targets.new.length) })].join('\n');
+}
 export const messages: Record<Locale, Record<string, string>> = { en, pl };
 
 export function translator(locale: Locale) {

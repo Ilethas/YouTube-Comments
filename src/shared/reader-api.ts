@@ -9,6 +9,8 @@ export type Result<T> = { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: { readonly code: ErrorCode } };
 
 export interface ReaderState {
+  /** Items include a main-derived latest accepted discovery attempt; NEW can be
+   * reconstructed after restart without a renderer flag or extra IPC command. */
   readonly items: readonly ContentItem[];
   readonly comments: Readonly<Record<string, readonly Comment[]>>;
   readonly preferences: Preferences;

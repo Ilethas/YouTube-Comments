@@ -63,6 +63,9 @@ async function verifyTabHover(window) {
 async function verifyWindow(window, nativeTheme) {
   window.hide();
   const contents = window.webContents;
+  // Virtualized reveal and control commits need animation frames even while the
+  // disposable smoke window is hidden. Never wait on throttled hidden-tab RAF.
+  contents.setBackgroundThrottling(false);
   const root = process.env.YOUTUBE_COMMENTS_DEMO_ROOT;
   const phase = process.env.YOUTUBE_COMMENTS_SMOKE_PHASE;
   const checkpoint = path.join(root, 'checkpoint.json');
@@ -141,7 +144,9 @@ async function verifyWindow(window, nativeTheme) {
     key('Escape'); await waitFor("document.getElementById('source-url') === null", 'URL Escape');
     await js("document.getElementById('library-toggle').click()"); await active('library');
     key('F', ['control']); await waitFor("document.activeElement.matches('.library-filter input')", 'Library filter focus');
-    contents.insertText('quiet'); key('F', ['control']);
+    contents.insertText('quiet');
+    await waitFor("document.activeElement.value === 'quiet'", 'Library filter typing committed');
+    key('F', ['control']);
     await waitFor('document.activeElement.selectionStart === 0 && document.activeElement.selectionEnd === 5', 'Library filter selection');
     const tabs = (await snapshot()).workspace.tabs;
     for (const tab of tabs) { key('Tab', ['control']); await active(tab.id); }
@@ -258,6 +263,9 @@ async function verifyWindow(window, nativeTheme) {
     assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), `panel-${video.id}`);
     assert.equal(state.comments[video.id].length, 3);
     assert.ok(state.comments[video.id].every(comment => !comment.seen));
+    assert.equal(state.items.find(item => item.id === video.id).latestAcceptedDiscoveryId, video.baselineDiscoveryId);
+    assert.equal(await js("document.querySelectorAll('[role=tabpanel]:not([hidden]) .new-badge').length"), 0, 'Real baseline is never NEW');
+    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .ruler-match').getAttribute('d')"), '', 'Unrestricted identity set has no match lane');
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input').click()");
     await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input').checked && !document.querySelector('input[type=checkbox]:disabled')", 'acquired seen');
     state = await snapshot();
@@ -298,6 +306,21 @@ async function verifyWindow(window, nativeTheme) {
     assert.equal(state.comments[video.id].length, 4);
     assert.equal(state.comments[video.id].find(comment => comment.id === seenId).seen, true);
     assert.equal(state.comments[video.id].find(comment => comment.source.commentId === 'smoke-new').seen, false);
+    const discovered = state.comments[video.id].find(comment => comment.source.commentId === 'smoke-new');
+    assert.equal(state.items.find(item => item.id === video.id).latestAcceptedDiscoveryId, discovered.discovery.firstDiscoveryId);
+    await waitFor("document.querySelectorAll('[role=tabpanel]:not([hidden]) .new-badge').length === 1", 'Durable NEW badge');
+    const beforeRuler = await snapshot();
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .discussion-ruler').focus()");
+    for (const key of ['End', 'ArrowRight', 'ArrowRight', 'Enter']) {
+      await js(`document.querySelector('[role=tabpanel]:not([hidden]) .discussion-ruler').dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true,cancelable:true}))`);
+      await pause(30);
+    }
+    await waitFor(`document.activeElement.id === ${JSON.stringify('comment-' + encodeURIComponent(discovered.id))}`, 'Ruler reveals NEW target');
+    assert.deepEqual(await snapshot(), beforeRuler, 'Ruler navigation never saves seen');
+    await js(`document.getElementById(${JSON.stringify('comment-' + encodeURIComponent(discovered.id))}).querySelector('input').click()`);
+    await waitFor(`document.getElementById(${JSON.stringify('comment-' + encodeURIComponent(discovered.id))}).querySelector('input').checked && !document.querySelector('input[type=checkbox]:disabled')`, 'NEW marked seen');
+    assert.equal(await js("document.querySelectorAll('[role=tabpanel]:not([hidden]) .new-badge').length"), 1, 'Seen NEW remains NEW');
+    state = await snapshot();
     const validState = state;
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
     await waitFor("document.querySelector('[role=alert]') !== null", 'failed refresh');
@@ -376,6 +399,8 @@ async function verifyWindow(window, nativeTheme) {
     assert.deepEqual(original, saved);
     assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), `panel-${saved.workspace.tabs.find(tab => tab.id === saved.workspace.activeTabId).itemId}`);
     assert.equal(await js("document.querySelectorAll('[role=tab]').length"), saved.workspace.tabs.length);
+    await waitFor("document.querySelectorAll('[role=tabpanel]:not([hidden]) .new-badge').length === 1", 'Real seen NEW survives process restart');
+    assert.notEqual(await js("document.querySelector('[role=tabpanel]:not([hidden]) .ruler-new').getAttribute('d')"), '', 'Durable NEW ruler survives restart');
     assert.equal(await js('document.documentElement.lang'), saved.preferences.locale);
     assert.equal(await js('document.documentElement.dataset.appearance'), saved.preferences.appearance);
     // Check that the persisted states are actually reflected in the UI.
@@ -484,7 +509,7 @@ if (process.versions.electron && process.type === 'browser') {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 4);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 5);
         assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 7);
         assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 3);
         assert.equal(db.prepare('SELECT count(*) AS count FROM comments').get().count, 28);

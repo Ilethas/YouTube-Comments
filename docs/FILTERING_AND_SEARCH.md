@@ -1,6 +1,6 @@
 # Filtering and search
 
-Active-discussion content/author/direct-parent-author search, All/Unseen/Seen, stable session applied results and navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements presentation virtualization without changing query semantics. Date/discovery filters, sorting, bulk actions and the ruler below remain targets. The [product requirements](PRODUCT_REQUIREMENTS.md) establish the scope, [seen state](SEEN_STATE.md) defines local user state, and [UI and navigation](UI_AND_NAVIGATION.md) explains how results are read. Unresolved choices are also tracked in the [decision register](decisions/README.md).
+Active-discussion content/author/direct-parent-author search, All/Unseen/Seen, stable session applied results and navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements presentation virtualization without changing query semantics. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable NEW. Date/discovery filters, sorting and bulk actions remain targets. The [product requirements](PRODUCT_REQUIREMENTS.md) establish the scope, [seen state](SEEN_STATE.md) defines local user state, and [UI and navigation](UI_AND_NAVIGATION.md) explains how results are read. Unresolved choices are also tracked in the [decision register](decisions/README.md).
 
 ## A match belongs to a comment; context belongs to its conversation
 
@@ -85,7 +85,7 @@ Support from/to ranges and useful presets. The following are examples to conside
 | Last 24 hours | A recent-time filter; exact evaluation instant and endpoint inclusion must be defined. |
 | Last 7 days | Requires a choice between a rolling duration and calendar-day interpretation. |
 
-Do not offer an ambiguous **Since last refresh** publication-date preset as a substitute for discovery filtering. **New since refresh** concerns `firstDiscoveredAt` and refresh history, not `publishedAt`: a newly discovered comment may have been published long ago. Discovery controls must identify the relevant refresh boundary explicitly. The exact discovery-window selection and new-marker lifetime remain unresolved; see [refresh and merge](REFRESH_AND_MERGE.md).
+Do not offer an ambiguous **Since last refresh** publication-date preset as a substitute for discovery filtering. **New since refresh** concerns `firstDiscoveredAt` and refresh history, not `publishedAt`: a newly discovered comment may have been published long ago. Discovery controls must identify the relevant refresh boundary explicitly. The future discovery-filter window selection remains unresolved; NEW presentation is exactly the latest accepted post-baseline discovery cohort under ADR 0011; see [refresh and merge](REFRESH_AND_MERGE.md).
 
 Resolve inclusive/exclusive endpoints, time-zone behavior, missing/imprecise timestamps, and relative-preset evaluation time before implementing date predicates. The wording of a preset must match its actual predicate. Tests must cover boundaries and daylight-saving transitions where relevant. Locale controls date presentation, not the identity of stored instants; see [localization](LOCALIZATION_AND_THEMING.md).
 
@@ -99,7 +99,7 @@ Keep that applied result alongside live seen state. A comment can therefore have
 
 An **Apply changes / Update view** action recomputes the result using already-persisted state. It is not a save button and does not fetch remote data. Ctrl+Enter applies while a discussion is active; Enter in the search form also applies. Controls edit draft only, and success promotes the captured criteria/result. Each discussion has independent session state retained across close/reopen and cleared on Library removal; restart resets it.
 
-This stability guarantee concerns incidental changes caused by seen edits. Explicit changes to filters, searches, or sorting are intentional view changes; controls wait for explicit Apply. A successful explicit **Refresh** automatically recomputes the active view after its remote data has been merged, using last applied criteria and preserving draft; successful evaluation clears the saved-seen stale condition unless a newer seen save occurred during evaluation. Failed reevaluation retains the old result and surfaces an error. Remote refresh remains a separate operation described in [refresh and merge](REFRESH_AND_MERGE.md). Failed or partial refreshes must not be presented as successful completed refreshes.
+This stability guarantee concerns incidental changes caused by seen edits. Explicit changes to filters, searches, or sorting are intentional view changes; controls wait for explicit Apply. A successful explicit **Refresh** automatically recomputes the active view after its remote data has been merged, using last applied criteria and preserving draft; successful evaluation clears the saved-seen stale condition unless a newer seen save occurred during evaluation. Failed reevaluation retains the old result and surfaces an error. Remote refresh remains a separate operation described in [refresh and merge](REFRESH_AND_MERGE.md). Failed refreshes retain the prior result. Accepted partial/unknown refreshes reevaluate applied criteria while honestly reporting limited coverage; they replace the NEW cohort.
 
 ### Bulk scope is never inferred from visible rows
 
@@ -131,3 +131,9 @@ ADR 0008 selects the bounded renderer worker/in-memory evaluator for the existin
 ## Verification
 
 The deterministic suite must exercise whole-tree context, sibling inclusion, raw-search/active-filter/context distinctions, counts independent of collapsed/rendered rows, AND on one comment, initial search fields and modes, regex validation, combined filters, publication-date boundaries, and stable displayed membership/order after seen edits. It must verify active-discussion scope, last-applied matching targets/counts until recomputation, automatic active-view recomputation after a successful explicit Refresh, matching-only bulk actions excluding context comments, and sorting that preserves conversations. Concrete test strategy belongs in [testing](TESTING.md).
+
+## Ruler matches are applied active-filter matches
+
+ADR 0011 scopes all categories to the currently displayed applied virtual preorder. Match markers appear only for restrictive applied active-match IDs; identity candidates in an unrestricted view create no match lane. A raw text hit that fails Unseen may remain SEARCH HIT context, but has no match marker. Live unseen context still receives an unseen marker, and displayed NEW context receives NEW independently.
+
+Seen saves update unseen immediately while preserving the applied match lane until successful Apply or Refresh reevaluation. Apply changes displayed NEW marker scope, never discovery identity. NEW, match and unseen overlap in separate lanes and counts; excluded trees have no markers.

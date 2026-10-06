@@ -1,10 +1,27 @@
 # Database and durable data
 
-SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 4 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace.
+SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 5 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW.
 
 The implementation below is deliberately small. Later sections describe the broader conceptual target and must not be read as implemented tables/features. Read the [domain model](DOMAIN_MODEL.md) for meanings and [architecture](ARCHITECTURE.md) for ownership.
 
-## Current schema 4 unified workspace and local removal
+## Current schema 5 attempt chronology
+
+`extraction_attempts.attempt_order` freezes existing insertion order during the
+additive schema-4 to 5 migration. An AFTER INSERT trigger assigns the next ordinal
+within the same short transaction as history/merge. A positive-order unique index
+and item/outcome/order index protect and serve the derived latest accepted attempt.
+UTC clock ties/regressions, UUID sorting and later VACUUM cannot reorder this fact.
+Migration failure rolls back column/index/trigger/version changes; all discussion,
+manual state, discovery/history identities and workspace data are preserved.
+
+Main exposes latest accepted attempt identity in its existing item projection.
+The domain compares it with baseline and comment first discovery to derive NEW;
+no per-comment mutable flag, new renderer command or persisted renderer state is
+introduced. Failure does not advance accepted order; accepted partial/unknown,
+empty/unavailable and zero-discovery attempts replace the cohort. Future history
+retention/export/import must preserve order or an equivalent explicit chronology.
+
+## Schema 4 unified workspace and local removal
 
 [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) migrates the old
 discussion-only workspace preserving exact open order, active identity and revision.

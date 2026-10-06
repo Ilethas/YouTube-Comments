@@ -101,7 +101,7 @@ For example, after a baseline exists, a reply published months ago can be first 
 
 There is no persistent thread-level seen state. Any thread/tab unseen count is derived from its comments. There is also no rule that a reply inherits its parent's seen state: a newly discovered reply starts unseen even if its whole thread was previously processed. See [seen state](SEEN_STATE.md).
 
-The discovery event should remain meaningful independently of presentation. How long a NEW badge or overview-ruler marker remains visible, and what resets it after the baseline, remain unresolved; presentation must not be implemented by changing seen state or deleting refresh history.
+The discovery event should remain meaningful independently of presentation. NEW badges/markers are exactly the latest accepted post-baseline first-discovery cohort (ADR 0011), persisting through restart and replaced even by a zero-insert accepted refresh; presentation must not be implemented by changing seen state or deleting refresh history.
 
 ## Query criteria and result types
 
@@ -143,8 +143,14 @@ Counts distinguish matching comments from containing threads. Navigation targets
 - Observation source scope and adapter canonical URL rules are selected in ADR 0003; database uniqueness/internal IDs are selected in ADR 0004; ADR 0005 selects the narrow live URL parser; broader source forms remain open.
 - Publication precision/labels are durably stored; date-query semantics remain open.
 - Missing/cyclic relationship truth is retained with safe display fallback, and ambiguous identities are skipped (ADR 0004). Thread sorting and future user-facing diagnostics remain open.
-- Define NEW indicator lifetime/reset behavior after the baseline, separately from recorded discoveries. Accepted partial/unknown acquisition baseline treatment is settled in ADR 0004.
+- ADR 0011 settles NEW lifetime from the latest accepted post-baseline attempt in explicit durable insertion order, independent of seen/publication. Any future discovery-filter window UI remains open.
 - ADR 0008 selects session draft/applied snapshots, explicit Apply/error preservation, badges and saved-seen indications. Persistent result/filter/selection restoration, scroll reconciliation after refresh and broader inactive-tab notifications remain open.
 - Choose the exact representation of undoable changes and their retention.
 
 Record consequential choices in [decision records](decisions/README.md). See [database design](DATABASE.md) for proposed storage and [testing](TESTING.md) for executable invariants.
+
+## Durable NEW and overview projection (ADR 0011)
+
+`ContentItem.latestAcceptedDiscoveryId` is a main-derived read projection from accepted history ordered by schema-5 `attempt_order`. `isNewDiscovery(item, comment)` requires that attempt to differ from baseline and equal the comment's existing first-discovery identity. There is no per-comment NEW state. Partial/unknown acceptance replaces the cohort; failure does not.
+
+Renderer `RulerMarker` joins displayed virtual preorder/index, live seen, restrictive applied matches and durable NEW IDs. Pixel buckets retain ordered targets and independent category counts. Geometry comes from the full virtualizer cache rather than mounted-row discovery. It is presentation data, not domain state, and does not broaden query membership or mutation scope.

@@ -99,6 +99,14 @@ select { background: var(--surface-raised); border: 1px solid var(--border); bor
 .tab-kind { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .tab-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reader-panel { overflow-y: auto; flex: 1; min-height: 0; scrollbar-gutter: stable; }
+.reader-panel:has(.discussion-ruler) { padding-right: 20px; }
+.discussion-ruler { position: fixed; width: 18px; z-index: 3; background: var(--surface-raised); border-left: 1px solid var(--border); cursor: pointer; outline-offset: 1px; }
+.discussion-ruler svg { display: block; width: 18px; height: 100%; pointer-events: none; }
+.ruler-unseen { fill: var(--unseen); }
+.ruler-match { fill: var(--focus); }
+.ruler-new { fill: var(--new-text); }
+.ruler-cursor { position: absolute; width: 6px; height: 3px; outline: 1px solid var(--text); pointer-events: none; }
+.ruler-tooltip { position: absolute; right: 22px; padding: 5px 8px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; white-space: pre; font-size: 11px; pointer-events: none; }
 [hidden] { display: none !important; }
 .reading-column { max-width: 1100px; margin: 0 auto; padding: 12px 24px 32px; }
 .item-header { padding-bottom: 10px; border-bottom: 1px solid var(--border); }

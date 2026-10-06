@@ -6,7 +6,7 @@ import { DiscussionViewSession } from './discussion-view-session';
 import { generateDiscussion } from '../development/large-discussions';
 import { defaultQuery, evaluateDiscussionQuery, queryComments } from '../domain/discussion-query';
 import { toggleSeen } from '../domain/discussion';
-import type { Comment } from '../domain/discussion';
+import type { Comment, ContentItem } from '../domain/discussion';
 import { navigateDiscussion } from './discussion-navigation';
 import { completeReaderLimit, readerOverscan, VirtualCommentList } from './VirtualCommentList';
 import { installReaderLayout } from './testing/reader-layout';
@@ -16,7 +16,7 @@ let layout: ReturnType<typeof installReaderLayout>;
 beforeEach(() => { layout = installReaderLayout(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); delete window.__readerWork; });
 const executor = () => ({ evaluate: vi.fn(async (rows: Parameters<typeof evaluateDiscussionQuery>[0], query: typeof defaultQuery) => evaluateDiscussionQuery(rows, query)), dispose: vi.fn() });
-function mount(comments: readonly Comment[], restrictive = false) {
+function mount(comments: readonly Comment[], restrictive = false, suppliedItem?: ContentItem) {
   const data = generateDiscussion({ count: 0 }), engine = executor(), session = new DiscussionViewSession(comments, engine);
   if (restrictive) {
     const applied = { ...defaultQuery, text: 'PROFILE_MATCH', seen: 'unseen' as const };
@@ -25,11 +25,12 @@ function mount(comments: readonly Comment[], restrictive = false) {
     session.state = { ...session.state, applied, draft: applied, result: outcome.result };
   }
   let current = comments;
+  let item = suppliedItem ?? data.item;
   let locale: 'en' | 'pl' = 'en';
   const onToggle = vi.fn((_itemId: string, id: string, subtree: boolean) => {
     current = toggleSeen(current, id, subtree); session.seenChanged(); update();
   });
-  const content = () => <main className="reader-panel" tabIndex={0}><DiscussionPanel item={data.item} comments={current} session={session}
+  const content = () => <main className="reader-panel" tabIndex={0}><DiscussionPanel item={item} comments={current} session={session}
     locale={locale} saving={false} refreshDisabled={false} coverageLimited={false} onRefresh={vi.fn()} onToggle={onToggle} /></main>;
   const rendered = render(content());
   function update() { rendered.rerender(content()); }
@@ -37,8 +38,52 @@ function mount(comments: readonly Comment[], restrictive = false) {
   const rows = () => [...panel.querySelectorAll<HTMLElement>('.virtual-comment')];
   const scroll = (top: number) => act(() => { panel.scrollTop = top; fireEvent.scroll(panel); });
   return { ...rendered, session, panel, rows, scroll, current: () => current, onToggle, engine,
-    setLocale(value: 'en' | 'pl') { locale = value; update(); } };
+    setLocale(value: 'en' | 'pl') { locale = value; update(); },
+    async refresh(nextComments: readonly Comment[], nextItem: ContentItem) { current = nextComments; item = nextItem; update(); await session.apply(current, true); } };
 }
+
+it.each([10000, 50000])('%i ruler has constant DOM, reaches distant unmounted NEW by pointer/keyboard, and never saves seen', async count => {
+  const data = generateDiscussion({ count, shape: 'flat', seenRatio: 0, newIndexes: [count - 1] });
+  const reader = mount(data.comments, false, data.item);
+  const ruler = required(reader.panel.querySelector<HTMLElement>('.discussion-ruler'));
+  expect(ruler.querySelectorAll('path')).toHaveLength(3);
+  expect(ruler.querySelectorAll('*').length).toBeLessThan(10);
+  expect(Number(ruler.dataset.bucketCount)).toBeLessThanOrEqual(Math.ceil(596 / 3));
+  expect(document.getElementById(`comment-generated-${count - 1}`)).toBeNull();
+  const newPath = required(ruler.querySelector('.ruler-new')).getAttribute('d') ?? '';
+  const y = Number(/M13,([\d.]+)/.exec(newPath)?.[1]) + 1.5;
+  // Controlled test layout supplies the fixed ruler's rectangle explicitly.
+  vi.spyOn(ruler, 'getBoundingClientRect').mockReturnValue({ top: 2, left: 980, width: 18, height: 596 } as DOMRect);
+  fireEvent.click(ruler, { clientX: 994, clientY: y + 2 });
+  await waitFor(() => expect(document.activeElement?.id).toBe(`comment-generated-${count - 1}`));
+  expect(reader.rows().length).toBeLessThan(30);
+  expect(required(document.getElementById(`comment-generated-${count - 1}`)).querySelector('.new-badge')).not.toBeNull();
+  act(() => reader.panel.focus()); reader.scroll(0);
+  act(() => ruler.focus());
+  fireEvent.keyDown(ruler, { key: 'End' }); fireEvent.keyDown(ruler, { key: 'ArrowRight' }); fireEvent.keyDown(ruler, { key: 'ArrowRight' });
+  fireEvent.keyDown(ruler, { key: 'Enter' });
+  await waitFor(() => expect(document.activeElement?.id).toBe(`comment-generated-${count - 1}`));
+  expect(reader.onToggle).not.toHaveBeenCalled();
+});
+
+it('seen acknowledgment changes unseen lane immediately while NEW/applied match persist, and accepted Refresh/Apply recompute scope', async () => {
+  const data = generateDiscussion({ count: 1, shape: 'flat', seenRatio: 0, matchIndexes: [0], newIndexes: [0] });
+  const reader = mount(data.comments, true, data.item);
+  const path = (category: string) => reader.panel.querySelector(`.ruler-${category}`)?.getAttribute('d');
+  const frozen = reader.session.state.result;
+  expect(path('unseen')).not.toBe(''); expect(path('match')).not.toBe(''); expect(path('new')).not.toBe('');
+  const article = required(document.getElementById('comment-generated-0'));
+  fireEvent.click(required(article.querySelector('input')));
+  expect(path('unseen')).toBe(''); expect(path('match')).not.toBe(''); expect(path('new')).not.toBe('');
+  expect(article.querySelector('.new-badge')).not.toBeNull(); expect(reader.session.state.result).toBe(frozen);
+  await act(() => reader.session.apply(reader.current()));
+  expect(path('new')).toBe(''); // Same NEW identity, excluded by newly applied Unseen view.
+  await act(() => reader.refresh([...reader.current(), { ...data.comments[0], id: 'added', text: 'PROFILE_MATCH',
+    discovery: { ...data.comments[0].discovery, firstDiscoveryId: 'next-refresh' } }], { ...data.item, latestAcceptedDiscoveryId: 'next-refresh' }));
+  expect(path('unseen')).not.toBe(''); expect(path('match')).not.toBe(''); expect(path('new')).not.toBe('');
+  expect(reader.session.state.result.activeMatchIds).toEqual(['added']);
+  expect(document.getElementById('comment-added')?.querySelector('.new-badge')).not.toBeNull();
+});
 
 it('10k rows mount viewport plus overscan, scroll replaces distant rows, and selection survives unmount/remount', async () => {
   const comments = generateDiscussion({ count: 10000, shape: 'mixed' }).comments;

@@ -1,6 +1,6 @@
 # UI and navigation
 
-The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements bounded variable-height rendering and unmounted-target reveal. Date/discovery filtering, bulk actions and the ruler remain targets. Counts cover all stored comments of the discussion; synthetic fixed NEW examples do not settle marker lifetime. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
+The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements bounded variable-height rendering and unmounted-target reveal. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable latest-accepted post-baseline NEW. Date/discovery filtering and bulk actions remain targets. Counts cover all stored comments; synthetic examples remain isolated. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
 
 Windows is the initial target platform. Other platform support is a later possibility; see [packaging](PACKAGING.md).
 
@@ -95,7 +95,7 @@ Unseen uses a subtle row tint plus UNSEEN text and the explicit checkbox. Rails
 never indicate seen state. Compact 32px avatars, bylines and multiline bodies stay.
 
 No persisted scroll, filters, sorting, expansion, selected comment or complete
-workspace restoration is claimed. Query criteria, applied results and selection are independent per-discussion session state, retained on close/reopen and cleared on Library removal. Dates, bulk actions, collapse and overview ruler remain targets; variable-height presentation is implemented in ADR 0010.
+workspace restoration is claimed. Query criteria, applied results and selection are independent per-discussion session state, retained on close/reopen and cleared on Library removal. Dates, bulk actions and collapse remain targets; variable-height presentation is implemented in ADR 0010.
 
 Avatars use only usable HTTPS URLs, anonymous CORS, no-referrer, lazy loading,
 async decoding and fixed dimensions. Empty alt text avoids duplicating the byline;
@@ -113,7 +113,7 @@ seen/preference saves remain available. Failure shows localized stable error
 context and preserves the current discussion. Accepted partial/unknown output
 shows a modest coverage notice. English and Polish cover every new label/error.
 Real items use local-library wording and current render time; fixed demo-clock
-and NEW examples are confined to synthetic items. NEW lifetime stays unresolved.
+and NEW examples are confined to synthetic items. Real NEW is the latest accepted post-baseline first-discovery cohort, retained through restart until another accepted attempt replaces it.
 Renderer acknowledgment reconciliation preserves local seen edits across overlapping
 save/acquisition responses without overwriting newly merged membership/remote text.
 
@@ -173,7 +173,7 @@ Keep these concepts visually understandable:
 
 While seen edits await view recomputation, the displayed membership and order remain stable. The logical active-filter matching set, match/context roles, and matching-comment/containing-thread counts stay tied to the last applied evaluation. Live checkboxes reflect saved state. MATCH/CONTEXT badges identify applied roles, with SEARCH HIT for raw-only context. They are independent of live unseen tint/checkbox, NEW and neutral rails. Saved seen changes show an Apply indication only for applied Seen/Unseen; draft difference is separate. Neither changes applied counts. Matching-only bulk actions and next/previous match navigation use that applied matching set; see [stable filtering](FILTERING_AND_SEARCH.md).
 
-An old comment can remain unseen for months; a just-discovered comment can immediately be marked seen. “New” must not become a synonym for “unseen.” The first successful acquisition establishes the baseline: its comments are unseen and retain `firstDiscoveredAt`, but receive no visual **New** highlighting. Comments discovered by later refreshes are eligible for new indicators. The lifetime and presentation window of those later indicators remain unresolved; [refresh and merge](REFRESH_AND_MERGE.md) defines the underlying distinction.
+An old comment can remain unseen for months; a just-discovered comment can immediately be marked seen. “New” must not become a synonym for “unseen.” The first successful acquisition establishes the baseline: its comments are unseen and retain `firstDiscoveredAt`, but receive no visual **New** highlighting. Comments discovered by later refreshes are eligible for new indicators. Only discoveries in the latest accepted post-baseline refresh are NEW; accepted partial/unknown and zero-insert refreshes replace the cohort, failures preserve it, and seen/publication/restart do not change it; [refresh and merge](REFRESH_AND_MERGE.md) defines the underlying distinction.
 
 All locally stored comments in a matching top-level conversation are part of the contextual result. Collapsing replies may hide rows from immediate display, but must not erase their membership, counts, or navigation targets. How the UI indicates matches within a collapsed subtree is an open presentation decision.
 
@@ -219,9 +219,13 @@ Navigating to a comment must never change its seen state. Selecting a match must
 
 ## Overview ruler
 
-Provide a VS-Code-like overview ruler alongside the comment scrollbar as a required feature, with markers for unseen comments, search matches, and newly discovered comments. Clicking a marker navigates to the corresponding comment. Initial-baseline comments receive no **New** markers. This provides navigation across the data without relying on browser Ctrl+F behavior.
+[ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements an 18px ruler just inside the active discussion scrollbar. It represents only the applied displayed virtual sequence: live unseen (including context), restrictive applied active-filter matches, and durable NEW. Unrestricted identity candidates create no match markers. Raw-only SEARCH HIT context has no match marker. Initial-baseline comments have no NEW marker.
 
-Markers must be computed from application data even when their comments are off-screen. Their position mapping must remain meaningful with variable-height rows, collapsed replies, and sorted conversations. The final mapping, overlapping-marker handling, marker aggregation/density, and category priority are unresolved. A visual mockup must not silently settle these data semantics.
+Pure markers contain application ID, virtual presentation index and all applicable categories. Row centers use full measured/estimated scroll geometry, including header/query offset and column bottom/footer. Resize/remeasurement refines positions without mounting target comments. Short 3px bands retain category counts and ordered targets; unseen/match/NEW each occupy a 6px lane. One SVG with three paths keeps marker DOM constant even at 50k. Future collapse/sort mapping remains separate work.
+
+Pointer lane selects category; the closest row center within the clicked band wins, with preorder breaking ties. Selection uses the existing session application-ID/index reveal path. The single labeled keyboard stop supports Up/Down bands, Home/End endpoints, Left/Right categories and Enter/Space activation at band center. Empty lanes do nothing. Hover/focus shows localized compact category counts, never comment contents. Existing match/unseen navigation remains available; all ruler actions leave seen untouched.
+
+Seen acknowledgment updates only the unseen category immediately; frozen applied match IDs and durable NEW remain. Apply changes displayed membership and matches without changing NEW identity. Accepted Refresh replaces NEW and reevaluates applied criteria; source failure preserves both.
 
 Use semantic theme tokens for marker categories and distinguish important states with more than color alone. Ensure keyboard navigation offers access to the same comment targets. See [localization and theming](LOCALIZATION_AND_THEMING.md).
 
@@ -256,7 +260,7 @@ and captures the current visible identity/offset at evaluation completion, using
 retained selection then start only if that anchor disappears. Header scroll is
 preserved. Failed queries retain the current view/scroll. None of this is durable
 scroll restoration across restart. SQLite query/index/clone/memory scaling,
-collapse, sorting, the ruler, dates and bulk recovery remain separate targets.
+collapse, sorting, dates and bulk recovery remain separate targets. ADR 0011 adds the ruler and durable NEW.
 
 Assume thousands or tens of thousands of comments. Virtualize the large comment view while keeping the complete result model available to filtering, counts, bulk actions, and navigation. Do not render the entire dataset merely to enable search or overview-ruler positioning.
 

@@ -125,6 +125,15 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
   DROP TABLE workspace_tabs;
   ALTER TABLE unified_tabs RENAME TO workspace_tabs;
   ALTER TABLE unified_workspace RENAME TO workspace;
+`) }, { version: 5, apply: db => db.exec(`
+  ALTER TABLE extraction_attempts ADD COLUMN attempt_order INTEGER NOT NULL DEFAULT 0 CHECK(attempt_order >= 0);
+  UPDATE extraction_attempts SET attempt_order = rowid;
+  CREATE UNIQUE INDEX extraction_attempt_order ON extraction_attempts(attempt_order) WHERE attempt_order > 0;
+  CREATE INDEX latest_accepted_attempt ON extraction_attempts(item_id, outcome, attempt_order DESC);
+  CREATE TRIGGER assign_attempt_order AFTER INSERT ON extraction_attempts BEGIN
+    UPDATE extraction_attempts SET attempt_order = (SELECT COALESCE(MAX(attempt_order), 0) + 1 FROM extraction_attempts)
+      WHERE id = NEW.id;
+  END;
 `) }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 

@@ -1,5 +1,6 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
 import type { Comment } from '../domain/discussion';
 import type { DiscussionViewResult } from '../domain/discussion-query';
@@ -9,11 +10,14 @@ import type { ReaderRow } from './discussion-presentation';
 import type { DiscussionViewSession, ReaderScrollAnchor, ReaderScrollRequest } from './discussion-view-session';
 import type { Locale } from './i18n';
 import { recordRenderWork } from './render-work';
+import { DiscussionRuler } from './DiscussionRuler';
+import { aggregateRulerMarkers, indexRulerMarkers, projectRulerMarkers } from './discussion-ruler';
 
 export const readerOverscan = 6;
 // Small discussions retain their complete accessible reading surface. This ceiling
 // is constant, never proportional to a large discussion's stored row count.
 export const completeReaderLimit = 200;
+const noNewIds: ReadonlySet<string> = new Set();
 
 interface Props {
   itemId: string;
@@ -27,6 +31,7 @@ interface Props {
   now: number;
   onToggle: (id: string, subtree: boolean) => void;
   overscan?: number;
+  newIds?: ReadonlySet<string>;
 }
 
 /** Draw ancestry from data; parent articles need not be mounted. Coalescing
@@ -49,7 +54,7 @@ export function ReaderRails({ row }: { row: ReaderRow }) {
 /** Renderer-only geometry over complete application-data membership. Header and
  * query controls share the existing panel scrollbar, outside this measured list. */
 export const VirtualCommentList = memo(function VirtualCommentList({ itemId, comments, result, selected, scrollRequest, session,
-  locale, disabled, now, onToggle, overscan = readerOverscan }: Props) {
+  locale, disabled, now, onToggle, overscan = readerOverscan, newIds = noNewIds }: Props) {
   const list = useRef<HTMLOListElement>(null);
   const presentation = useMemo(() => {
     recordRenderWork('forest', itemId);
@@ -57,7 +62,7 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
     return projectReaderRows(comments, result);
   }, [comments, result, itemId]);
   const { rows, indexById } = presentation;
-  const [geometry, setGeometry] = useState({ width: 1000, margin: 0 });
+  const [geometry, setGeometry] = useState({ width: 1000, margin: 0, after: 0, top: 0, left: 0, height: 600 });
   const [focusedId, setFocusedId] = useState<string>();
   const getScrollElement = useCallback(() => list.current?.closest<HTMLElement>('.reader-panel') ?? null, []);
   const getItemKey = useCallback((index: number) => rows[index].id, [rows]);
@@ -113,7 +118,10 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
       const margin = element.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop;
       if (previousWidth.current && previousWidth.current !== width) pendingAnchor.current = capture.current();
       if (previousWidth.current !== width) { previousWidth.current = width; virtualizer.measure(); }
-      setGeometry(current => current.width === width && current.margin === margin ? current : { width, margin });
+      const column = element.closest('.reading-column'), rect = panel.getBoundingClientRect();
+      const next = { width, margin, after: Math.max(0, (column?.getBoundingClientRect().bottom ?? element.getBoundingClientRect().bottom) - element.getBoundingClientRect().bottom),
+        top: rect.top + 2, left: rect.left + panel.clientWidth - 20, height: Math.max(0, panel.clientHeight - 4) };
+      setGeometry(current => Object.keys(next).every(key => current[key as keyof typeof next] === next[key as keyof typeof next]) ? current : next);
     };
     update();
     const observer = new ResizeObserver(update);
@@ -201,8 +209,15 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
     return () => cancelAnimationFrame(frame);
   }, [scrollRequest, indexById, virtualizer, getScrollElement]);
   const items = virtualizer.getVirtualItems();
-  return <ol ref={list} className="comment-tree root-tree virtual-reader" data-row-count={rows.length} data-mounted-count={items.length}
-    style={{ height: virtualizer.getTotalSize() }}
+  const totalSize = virtualizer.getTotalSize();
+  const measurements = virtualizer.measurementsCache;
+  const markers = useMemo(() => projectRulerMarkers(rows, result, newIds), [rows, result, newIds]);
+  const markerIndex = useMemo(() => indexRulerMarkers(markers), [markers]);
+  const contentHeight = Math.max(geometry.height + 4, geometry.margin + totalSize + geometry.after);
+  const buckets = useMemo(() => aggregateRulerMarkers(markerIndex, measurements, contentHeight, geometry.height), [markerIndex, measurements, contentHeight, geometry.height]);
+  const panel = getScrollElement();
+  return <><ol ref={list} className="comment-tree root-tree virtual-reader" data-row-count={rows.length} data-mounted-count={items.length}
+    style={{ height: totalSize }}
     onFocusCapture={event => setFocusedId(event.target.closest<HTMLElement>('[data-comment-id]')?.dataset.commentId)}
     onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusedId(undefined); }}>
     {items.map(item => {
@@ -212,8 +227,9 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
         className="comment-branch virtual-comment" style={{ transform: `translateY(${item.start - geometry.margin}px)`, '--reader-indent': `${readerIndent(row.depth)}px` } as CSSProperties}>
         <ReaderRails row={row} />
         <CommentArticle comment={row.comment} role={row.role} rawHit={row.rawHit} hasChildren={row.hasChildren} selected={selected === row.id}
-          locale={locale} now={now} disabled={disabled} onToggle={onToggle} />
+          locale={locale} now={now} disabled={disabled} onToggle={onToggle} isNew={newIds.has(row.id)} />
       </li>;
     })}
-  </ol>;
+  </ol>{panel && createPortal(<DiscussionRuler buckets={buckets} height={geometry.height} top={geometry.top} left={geometry.left}
+    locale={locale} navigate={id => session.select(id)} />, panel)}</>;
 });

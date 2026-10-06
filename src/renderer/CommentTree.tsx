@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import type { Comment } from '../domain/discussion';
-import { demoNewCommentIds, demoNow } from '../shared/demo-presentation';
+import { demoNow } from '../shared/demo-presentation';
 import { Locale, publicationTime, translator } from './i18n';
 import { Avatar } from './Avatar';
 import { recordRenderWork } from './render-work';
@@ -15,6 +15,7 @@ interface Props {
   role: 'normal' | 'match' | 'context';
   rawHit: boolean;
   selected: boolean;
+  isNew?: boolean;
   onToggle: (id: string, subtree: boolean) => void;
 }
 
@@ -22,7 +23,7 @@ interface Props {
 export const commentTargetId = (id: string) => `comment-${encodeURIComponent(id)}`;
 
 /** A single measured reader article; React never recursively constructs replies. */
-export const CommentArticle = memo(function CommentArticle({ comment, locale, disabled, onToggle, role, rawHit, selected, hasChildren, now = demoNow }: Props) {
+export const CommentArticle = memo(function CommentArticle({ comment, locale, disabled, onToggle, role, rawHit, selected, hasChildren, isNew = false, now = demoNow }: Props) {
   recordRenderWork('comment', comment.itemId);
   const t = translator(locale);
   const author = comment.author?.displayName ?? comment.author?.handle ?? t('unknownAuthor');
@@ -45,7 +46,7 @@ export const CommentArticle = memo(function CommentArticle({ comment, locale, di
         {role === 'context' && rawHit && <span className="badge raw-match-badge">{t('rawSearchHit')}</span>}
         {comment.likeCount !== undefined && <span>{t('likes', { count: new Intl.NumberFormat(locale).format(comment.likeCount) })}</span>}
         {!comment.seen && <span className="badge unseen-badge">{t('unseen')}</span>}
-        {demoNewCommentIds.has(comment.id) && <span className="badge new-badge" title={t('newHelp')}>{t('new')}</span>}
+        {isNew && <span className="badge new-badge" title={t(comment.itemId === 'video-demo' || comment.itemId === 'post-demo' ? 'newHelp' : 'newDiscoveryHelp')}>{t('new')}</span>}
       </div>
     </div>
     <label className="seen-control" title={seenHelp(locale)}>

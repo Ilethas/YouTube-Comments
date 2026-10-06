@@ -30,6 +30,8 @@ const stats = () => {
   const panel = required(document.getElementById('profile-panel')), article = document.querySelector<HTMLElement>('[data-selected=true]');
   const rect = article?.getBoundingClientRect(), viewport = panel.getBoundingClientRect();
   return { rows: document.querySelectorAll('.comment').length, nodes: document.querySelectorAll('*').length, scroll: panel.scrollTop,
+    rulerNodes: document.querySelector('.discussion-ruler')?.querySelectorAll('*').length ?? 0,
+    rulerBuckets: Number((document.querySelector<HTMLElement>('.discussion-ruler'))?.dataset.bucketCount ?? 0),
     exactSelectedMounted: !!article, exactSelectedVisible: !!rect && rect.bottom > viewport.top && rect.top < viewport.bottom };
 };
 const profile = {
@@ -58,6 +60,48 @@ const profile = {
     const ms = performance.now() - start;
     for (let i = 0; i < 10 && !stats().exactSelectedVisible; i++) await paint();
     return { ms, settledMs: performance.now() - start, selected: session.state.selected, ...stats() };
+  },
+  async rulerNavigate(category: 'unseen' | 'match' | 'new' = 'new') {
+    const ruler = required(document.querySelector<HTMLElement>('.discussion-ruler'));
+    const path = ruler.querySelector(`.ruler-${category}`)?.getAttribute('d') ?? '';
+    const starts = [...path.matchAll(/M\d+,([\d.]+)/g)];
+    const y = Number(starts.at(-1)?.[1]) + 1;
+    if (!Number.isFinite(y)) throw new Error('Ruler category marker missing');
+    const before = comments, rect = ruler.getBoundingClientRect(), start = performance.now();
+    ruler.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + ['unseen', 'match', 'new'].indexOf(category) * 6 + 3, clientY: rect.top + y }));
+    await paint();
+    for (let i = 0; i < 15 && !stats().exactSelectedVisible; i++) await paint();
+    if (before !== comments) throw new Error('Ruler changed seen');
+    return { ms: performance.now() - start, selected: session.state.selected, ...stats() };
+  },
+  async rulerReflowCheck() {
+    const ruler = required(document.querySelector<HTMLElement>('.discussion-ruler'));
+    const before = ruler.getBoundingClientRect();
+    const unseen = Number(ruler.dataset.unseenCount), matches = ruler.dataset.matchCount, newCount = ruler.dataset.newCount;
+    await profile.toggle();
+    if (Math.abs(unseen - Number(ruler.dataset.unseenCount)) !== 1) throw new Error('Unseen marker count did not update');
+    if (matches !== ruler.dataset.matchCount || newCount !== ruler.dataset.newCount) throw new Error('Seen altered frozen match/NEW');
+    await profile.toggle();
+    await profile.locale('pl');
+    ruler.focus(); await paint();
+    if (!ruler.getAttribute('aria-label')?.includes('Przegląd dyskusji')) throw new Error('Ruler localization failed');
+    await profile.locale('en');
+    const shell = required(document.querySelector<HTMLElement>('.app-shell'));
+    shell.style.width = '800px'; shell.style.height = '650px'; await paint(); await paint();
+    const resized = ruler.getBoundingClientRect();
+    if (resized.height === before.height || resized.left === before.left) throw new Error('Ruler did not follow viewport resize');
+    shell.style.width = ''; shell.style.height = ''; await paint(); await paint();
+    return { originalHeight: before.height, resizedHeight: resized.height, returnedHeight: ruler.getBoundingClientRect().height, ...stats() };
+  },
+  async rulerSemanticCheck() {
+    await profile.load({ count: 3, shape: 'shallow', roots: 1, seenRatio: 0, matchIndexes: [0, 1], newIndexes: [1] });
+    await profile.toggle(); // raw root fails Unseen; reply matches, sibling is context
+    session.edit({ ...session.state.draft, text: 'PROFILE_MATCH', seen: 'unseen' });
+    await session.apply(comments); await paint();
+    const ruler = required(document.querySelector<HTMLElement>('.discussion-ruler'));
+    if (ruler.dataset.matchCount !== '1' || ruler.dataset.unseenCount !== '2' || ruler.dataset.newCount !== '1') throw new Error('Raw/context/overlap ruler regression');
+    return { matches: 1, unseen: 2, new: 1, rawHitContext: !!document.querySelector('.raw-match-badge'),
+      paths: ['unseen', 'match', 'new'].map(category => ruler.querySelector(`.ruler-${category}`)?.getAttribute('d')) };
   },
   async scroll(fraction: number) { const panel = required(document.getElementById('profile-panel'));
     const start = performance.now(); panel.scrollTop = (panel.scrollHeight - panel.clientHeight) * fraction; await paint();

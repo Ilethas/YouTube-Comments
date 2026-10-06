@@ -96,18 +96,23 @@ it('acquiring a closed existing URL reopens one tab using existing state; Refres
   expect(state().workspace).toEqual(closed);
 });
 
+function removeAttemptOrder(db: DatabaseSync) {
+  db.exec('DROP TRIGGER assign_attempt_order; DROP INDEX latest_accepted_attempt; DROP INDEX extraction_attempt_order; ALTER TABLE extraction_attempts DROP COLUMN attempt_order;');
+}
+
 it('schema 2 migration opens stored items and preserves every existing row including old avatar-less JSON', () => {
   repository.toggleSeen({ itemId: 'post-demo', commentId: state().comments['post-demo'][0].id, subtree: false });
   repository.updatePreferences({ locale: 'pl' }, ['en']);
   repository.close();
   const db = new DatabaseSync(file);
   try {
+    removeAttemptOrder(db);
     db.exec("DROP TABLE workspace; DROP TABLE workspace_tabs; PRAGMA user_version = 2; UPDATE comments SET remote_json = json_remove(remote_json, '$.author.avatarUrl'); UPDATE content_items SET remote_json = json_remove(remote_json, '$.author.avatarUrl');");
     const tables = ['content_items', 'comments', 'comment_state', 'preferences', 'extraction_attempts'];
     const before = tables.map(table => db.prepare(`SELECT * FROM ${table}`).all());
     migrateDatabase(db);
-    expect(tables.map(table => db.prepare(`SELECT * FROM ${table}`).all())).toEqual(before);
-    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(4);
+    expect(tables.map(table => db.prepare(`SELECT * FROM ${table}`).all())).toMatchObject(before);
+    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(5);
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   } finally { db.close(); repository = ReaderRepository.open(file); }
   expect(state().workspace).toEqual({ tabs: ['video-demo', 'post-demo'].map(discussionTab), activeTabId: discussionTab('video-demo').id, revision: 0 });
@@ -118,6 +123,7 @@ it('schema 2 migration opens stored items and preserves every existing row inclu
 it('workspace migration failure rolls back tables/version and preserves all library data', () => {
   const db = new DatabaseSync(file);
   try {
+    removeAttemptOrder(db);
     db.exec('DROP TABLE workspace; DROP TABLE workspace_tabs; PRAGMA user_version = 2;');
     const before = db.prepare('SELECT * FROM comments').all();
     expect(() => migrateDatabase(db, [...migrations.slice(0, 2), { version: 3, apply: database => {
@@ -164,6 +170,7 @@ it.each([false, true])('schema 3 → 4 preserves exact workspace (empty=%s) and 
   repository.close();
   const db = new DatabaseSync(file);
   try {
+    removeAttemptOrder(db);
     db.exec(`DROP TABLE workspace; DROP TABLE workspace_tabs; PRAGMA user_version=2;`);
     migrations[2].apply(db);
     if (empty) db.exec('UPDATE workspace SET active_item_id=NULL; DELETE FROM workspace_tabs;');
@@ -172,7 +179,7 @@ it.each([false, true])('schema 3 → 4 preserves exact workspace (empty=%s) and 
     const tables = ['content_items', 'comments', 'comment_state', 'extraction_attempts', 'preferences'];
     const before = tables.map(table => db.prepare(`SELECT * FROM ${table}`).all());
     migrateDatabase(db);
-    expect(tables.map(table => db.prepare(`SELECT * FROM ${table}`).all())).toEqual(before);
+    expect(tables.map(table => db.prepare(`SELECT * FROM ${table}`).all())).toMatchObject(before);
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   } finally { db.close(); repository = ReaderRepository.open(file); }
   expect(state().workspace).toEqual(empty ? { tabs: [], activeTabId: null, revision: 0 }
@@ -183,6 +190,7 @@ it('schema 4 migration rollback preserves old workspace and retry succeeds with 
   repository.close();
   const db = new DatabaseSync(file);
   try {
+    removeAttemptOrder(db);
     db.exec('PRAGMA foreign_keys=ON; DROP TABLE workspace; DROP TABLE workspace_tabs; PRAGMA user_version=2;');
     migrations[2].apply(db); db.exec('PRAGMA user_version=3;');
     expect(() => migrateDatabase(db, [...migrations.slice(0, 3), { version: 4, apply: database => {

@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import type { Comment, ContentItem } from '../domain/discussion';
 import { visibleUnseenIds } from '../domain/discussion-query';
-import { demoNow } from '../shared/demo-presentation';
+import { demoNow, readerNewCommentIds } from '../shared/demo-presentation';
 import { VirtualCommentList } from './VirtualCommentList';
 import { countLabel, Locale, publicationTime, translator } from './i18n';
 import { DiscussionQueryControls } from './DiscussionQueryControls';
@@ -39,6 +39,7 @@ export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, s
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const t = translator(locale);
   const now = useMemo(() => demo(item.id) ? demoNow : Date.now(), [item]);
+  const newIds = useMemo(() => readerNewCommentIds(item, comments), [item, comments]);
   const time = item.publishedAt ? publicationTime(item.publishedAt, locale, now) : undefined;
   const toggle = useCallback((id: string, subtree: boolean) => onToggle(item.id, id, subtree), [onToggle, item.id]);
   return (
@@ -66,7 +67,7 @@ export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, s
               unseenCount={visibleUnseenIds(view.result, comments).length} />
             {view.result.restrictive && !view.result.matchCount && <p className="reader-help">{t('noDiscussionMatches')}</p>}
             <VirtualCommentList itemId={item.id} comments={comments} result={view.result} selected={view.selected} session={session} scrollRequest={view.scrollRequest}
-              locale={locale} disabled={saving} onToggle={toggle} now={now} />
+              locale={locale} disabled={saving} onToggle={toggle} now={now} newIds={newIds} />
           </section>
           {demo(item.id) && <footer className="reader-footer"><p>{t('newHelp')}</p><p>{t('clockNote')}: {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(demoNow)}</p></footer>}
         </div>

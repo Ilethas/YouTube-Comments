@@ -76,7 +76,7 @@ The first successfully accepted acquisition of a new item establishes its baseli
 including accepted unknown/partial batches and empty/unavailable collections. All
 imported comments receive discovery information and start unseen. Baseline imports
 are not visually NEW. Later first discoveries have later attempt identities and
-can support future NEW presentation; badge/marker lifetime remains unresolved.
+define durable NEW presentation under ADR 0011: exactly the first-discovery cohort of the latest accepted post-baseline attempt.
 
 History stores attempt ID, optional item/target association, UTC acceptance time,
 backend/version and fixture provenance, actual coverage/evidence, accepted/failed
@@ -90,17 +90,16 @@ Schema-1 demo discovery labels become explicitly synthetic history in migration;
 IDs/metadata/seen/preferences/order remain intact. Demo initialization seeds only
 an empty library and never resets an existing library. See [Database](DATABASE.md).
 
-## Future active-view integration
+## Active-view and NEW integration
 
 Remote Refresh remains separate from Apply changes / Update view. Apply recomputes
 using local data and performs no extraction. A successful explicit Refresh must
 commit its merge then automatically recompute the active applied-filter matching
-set. ADR 0005 now updates the acknowledged unfiltered reader snapshot after successful explicit Refresh; no filtering layer exists yet. Partial/unknown accepted outcomes show a compact localized coverage notice. Richer reporting remains open.
+set. ADR 0008 reevaluates last applied criteria against committed comments while preserving draft. ADR 0011 also advances the durable NEW cohort. Partial/unknown accepted outcomes show a compact localized coverage notice. Richer reporting remains open.
 
 Seen edits alone preserve displayed membership/order and the last applied matching
 set. Matching bulk actions use that set rather than raw matches or contextual rows.
-Scroll reconciliation, inactive-tab handling, styling, supplementary live indicators
-and final NEW lifetime remain separate choices. Discovery, publication and manual
+ADR 0010 supplies session scroll reconciliation; ADR 0011 supplies ruler categories and NEW lifetime. Broader inactive-tab notification and styling remain separate choices. Discovery, publication and manual
 unseen state retain distinct meanings. Explicit trustworthy remote deletion would
 need a future policy; absence never supplies one.
 
@@ -111,5 +110,10 @@ authority, baseline/later discoveries, missing comments, missing/cyclic relation
 later resolution, conflicts, true coverage, schema-1 preservation, migration and
 merge rollback, local-state protection and reopen. ADR 0005's injected execution/UI
 tests cover lifecycle and acknowledged unfiltered view updates without making
-ordinary tests depend on YouTube or installed helpers. Future filtering will need
-its own active matching-set recomputation tests.
+ordinary tests depend on YouTube or installed helpers. ADR 0008 tests applied-result recomputation; ADR 0011 adds cohort/ruler refresh and restart tests.
+
+## Latest accepted discovery cohort (ADR 0011)
+
+Main projects the accepted attempt with greatest durable `attempt_order` for each item. Schema 5 freezes existing row insertion order and assigns a new ordinal transactionally at attempt insertion; UTC timestamps and UUID lexicographic order do not select latest. The domain compares this attempt to the baseline and each comment's first-discovery attempt. No mutable NEW flag is stored.
+
+Baseline imports are never NEW. Accepted partial/unknown acquisitions, reacquisition, empty/unavailable collections and zero-insert refreshes all replace the cohort. Failed history does not advance it; a database failure rolls back the ordinal/history and merge together. An existing comment updated in the latest attempt is not NEW. Publication age, seen edits, closing/reopening and process restart cannot change eligibility. The current cohort survives until the next accepted post-baseline attempt. No manual dismissal is added.

@@ -125,8 +125,12 @@ export class ReaderRepository {
       if (row.remote_json === null) throw new Error('Missing durable item evidence');
       const remote = remoteEvidence<StoredContentObservation>(String(row.remote_json));
       const removable = this.db.prepare('SELECT backend FROM extraction_attempts WHERE id=?').get(row.baseline_attempt_id)?.backend !== 'synthetic-demo';
+      // Attempts are append-only and inserted inside the accepted merge transaction.
+      // Use durable insertion order, not clock time or lexicographic UUID ordering.
+      const latestAccepted = this.db.prepare("SELECT id FROM extraction_attempts WHERE item_id=? AND outcome='accepted' ORDER BY attempt_order DESC LIMIT 1").get(row.id);
       const base = { id: String(row.id), removable, sourceId: String(row.source_id), author: author(row, remote.author), remote, sourceKind: remote.sourceKind,
-        publishedAt: optionalText(row, 'published_at'), baselineDiscoveryId: String(row.baseline_discovery_id) };
+        publishedAt: optionalText(row, 'published_at'), baselineDiscoveryId: String(row.baseline_discovery_id),
+        latestAcceptedDiscoveryId: latestAccepted ? String(latestAccepted.id) : undefined };
       return row.kind === 'video'
         ? { ...base, kind: 'video', title: String(row.title), description: optionalText(row, 'description') }
         : { ...base, kind: 'post', text: String(row.text) };
@@ -231,7 +235,7 @@ export class ReaderRepository {
 
   /** Main-only durable attempt history; no acquisition/preload command is exposed. */
   history(itemId?: string): readonly MergeAttempt[] {
-    return this.db.prepare(`SELECT * FROM extraction_attempts ${itemId === undefined ? '' : 'WHERE item_id = ?'} ORDER BY at, rowid`)
+    return this.db.prepare(`SELECT * FROM extraction_attempts ${itemId === undefined ? '' : 'WHERE item_id = ?'} ORDER BY at, attempt_order`)
       .all(...itemId === undefined ? [] : [itemId]).map(row => ({ ...JSON.parse(String(row.details)), id: String(row.id),
         itemId: optionalText(row, 'item_id'), target: row.source_kind === null ? undefined : { sourceKind: String(row.source_kind), sourceId: String(row.source_id) },
         at: String(row.at), outcome: row.outcome, collection: row.collection }));

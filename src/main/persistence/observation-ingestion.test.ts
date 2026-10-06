@@ -11,7 +11,7 @@ import { normalizeCommunityArchive } from '../extractors/community';
 import { observed, unknown } from '../extractors/normalization';
 import type { CaptureContext } from '../extractors/normalization';
 import type { CommentObservation, ContentObservation, NormalizedExtraction, ObservationCoverage } from '../../domain/extraction-observation';
-import { buildCommentTree, walkComments } from '../../domain/discussion';
+import { buildCommentTree, walkComments, isNewDiscovery } from '../../domain/discussion';
 import { initialComments, items } from '../../fixtures/discussions';
 import { defaultQuery, evaluateDiscussionQuery, queryComments } from '../../domain/discussion-query';
 
@@ -41,6 +41,70 @@ function raw() { const db = new DatabaseSync(databasePath); db.exec('PRAGMA fore
 function state() { return repository.bootstrap(['en']); }
 function comments() { return Object.values(state().comments)[0]; }
 function later() { at = '2026-10-02T09:00:00.000Z'; }
+
+const newCohort = () => {
+  const snapshot = state(), item = snapshot.items[0];
+  return snapshot.comments[item.id].filter(comment => isNewDiscovery(item, comment));
+};
+it('derives latest accepted NEW independently of seen/publication, tied/regressing clocks and restart', () => {
+  const input = fixture(), root = { ...input.collection.comments[0], relationship: { kind: 'top-level' as const } };
+  const baseline = repository.ingest(batch(input, [root]), undefined, true);
+  expect(state().items[0].latestAcceptedDiscoveryId).toBe(baseline.id);
+  expect(newCohort()).toEqual([]);
+  const oldPublication = { ...root.publication, instant: observed('2001-01-01T00:00:00Z') };
+  // Clock deliberately stays identical; lexicographic generated IDs also cross 9.
+  const refresh = repository.ingest(batch(input, [root, { ...root, sourceId: 'old-but-new', publication: oldPublication }]));
+  expect(newCohort().map(comment => comment.source.commentId)).toEqual(['old-but-new']);
+  const added = newCohort()[0];
+  repository.toggleSeen({ itemId: added.itemId, commentId: added.id, subtree: false });
+  expect(newCohort()[0].seen).toBe(true);
+  const failed: NormalizedExtraction = { provenance: input.provenance, issues: [], coverage: { kind: 'failed', reason: 'parse-failed' } };
+  repository.ingest(failed, { sourceKind: input.item.sourceKind, sourceId: input.item.sourceId });
+  expect(state().items[0].latestAcceptedDiscoveryId).toBe(refresh.id);
+  expect(newCohort()).toHaveLength(1);
+  repository.changeWorkspace('closeTab', `discussion:${added.itemId}`);
+  repository.changeWorkspace('openStoredItem', added.itemId);
+  const before = state();
+  const db = raw(), orders = db.prepare('SELECT id, attempt_order FROM extraction_attempts ORDER BY attempt_order').all();
+  db.exec('VACUUM');
+  expect(db.prepare('SELECT id, attempt_order FROM extraction_attempts ORDER BY attempt_order').all()).toEqual(orders);
+  expect(state()).toEqual(before);
+  handles.splice(handles.indexOf(repository), 1); repository.close(); repository = open();
+  expect(state()).toEqual(before); expect(newCohort()[0]).toMatchObject({ id: added.id, seen: true });
+  at = '2026-10-01T00:00:00.000Z'; // Even a regressing clock cannot reverse acceptance order.
+  const next = repository.ingest(batch(input, [root, { ...root, sourceId: 'replacement' }]));
+  expect(state().items[0].latestAcceptedDiscoveryId).toBe(next.id);
+  expect(newCohort().map(comment => comment.source.commentId)).toEqual(['replacement']);
+  repository.toggleSeen({ itemId: added.itemId, commentId: added.id, subtree: false });
+  expect(newCohort().map(comment => comment.source.commentId)).toEqual(['replacement']);
+  repository.ingest(batch(input, [root]));
+  expect(newCohort()).toEqual([]); // Existing observations, zero inserts, replace cohort.
+});
+it.each(['partial', 'unknown'] as const)('accepted %s refresh supersedes the cohort, including unavailable collection', kind => {
+  const input = fixture(), root = { ...input.collection.comments[0], relationship: { kind: 'top-level' as const } };
+  repository.ingest(batch(input, [root]));
+  const coverage = kind === 'partial' ? { kind, evidence: ['fixture limit'] } : { kind };
+  const attempt = repository.ingest({ ...batch(input, [{ ...root, sourceId: 'new' }]), coverage });
+  expect(newCohort()[0].discovery.firstDiscoveryId).toBe(attempt.id);
+  repository.ingest({ ...input, coverage, collection: { status: 'unavailable' as const, reason: 'disabled' as const } });
+  expect(newCohort()).toEqual([]);
+});
+
+it('schema 4 → 5 freezes existing attempt insertion order transactionally without rewriting discussion facts', () => {
+  repository.ingest(fixture()); repository.ingest(fixture('yt-membership-b'));
+  const before = state(), db = raw();
+  db.exec('DROP TRIGGER assign_attempt_order; DROP INDEX latest_accepted_attempt; DROP INDEX extraction_attempt_order; ALTER TABLE extraction_attempts DROP COLUMN attempt_order; PRAGMA user_version=4;');
+  const historyRows = db.prepare('SELECT * FROM extraction_attempts ORDER BY rowid').all();
+  expect(() => migrateDatabase(db, [...migrations.slice(0, 4), { version: 5, apply: database => {
+    migrations[4].apply(database); throw new Error('injected order migration failure');
+  } }])).toThrow('injected order migration failure');
+  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(4);
+  expect(db.prepare('SELECT * FROM extraction_attempts ORDER BY rowid').all()).toEqual(historyRows);
+  migrateDatabase(db);
+  expect(state()).toEqual(before);
+  expect(db.prepare('SELECT id FROM extraction_attempts ORDER BY attempt_order').all().map(row => row.id)).toEqual(historyRows.map(row => row.id));
+  expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+});
 
 it('evaluates committed refresh rows, preserving absent stored identities and live seen with new unseen matches', () => {
   repository.ingest(fixture());
@@ -327,7 +391,7 @@ it('schema 1 to 2 preserves legacy IDs, all remote fields, seen/preferences and 
   const db = raw(); schemaOne(db);
   const items = db.prepare('SELECT * FROM content_items').all(), old = db.prepare('SELECT * FROM comments ORDER BY position').all();
   migrateDatabase(db);
-  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(4);
+  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(5);
   expect(db.prepare('SELECT * FROM content_items').all()).toMatchObject(items);
   expect(db.prepare('SELECT * FROM comments ORDER BY position').all()).toMatchObject(old);
   expect(db.prepare('SELECT * FROM comment_state ORDER BY comment_id').all()).toEqual([{ comment_id: 'old-child', seen: 0 }, { comment_id: 'old-root', seen: 1 }]);
