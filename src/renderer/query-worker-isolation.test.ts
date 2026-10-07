@@ -1,3 +1,4 @@
+import { defaultResolvedQuery as defaultQuery } from '../fixtures/query-testing';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
@@ -5,11 +6,10 @@ import ts from 'typescript';
 import { afterEach, expect, it, vi } from 'vitest';
 import { QueryWorkerClient } from './query-worker-client';
 import type { QueryWorkerPort } from './query-worker-client';
-import { defaultQuery } from '../domain/discussion-query';
 
 // Execute the actual browser handler and pure evaluator in an isolated test thread.
 // The Node adapter exists only in tests; the shipped worker has no Node imports.
-const sources = ['src/domain/discussion.ts', 'src/domain/discussion-query.ts', 'src/renderer/discussion-query.worker.ts'];
+const sources = ['src/domain/discussion.ts', 'src/domain/publication-predicate.ts', 'src/domain/discussion-query.ts', 'src/renderer/discussion-query.worker.ts'];
 const modules = sources.map(file => {
   const code = ts.transpileModule(readFileSync(path.resolve(file), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   return `${JSON.stringify(path.basename(file, '.ts'))}: function(exports, require) { ${code} }`;

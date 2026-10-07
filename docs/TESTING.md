@@ -1,5 +1,66 @@
 # Testing strategy
 
+## Publication-date and latest-discovery filtering (2026-10-07)
+
+[ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md)
+closes Q-03 and implements All discoveries / NEW from latest refresh. **400
+offline tests across 33 files pass**. Typecheck, lint without warnings, standalone
+renderer build and Forge main/preload/renderer/worker bundle checks pass. Forge
+still exits 0 at finalizing without a completed executable; no release claim.
+The renderer is 396.01 kB / 123.00 kB gzip with pinned Temporal 0.5.1 (ISC,
+transitive JSBI Apache-2.0); the resolver is excluded from the 2.60 kB worker.
+Vite's CJS deprecation and Electron's occasional shutdown GPU diagnostic remain
+non-failing tooling observations.
+
+Pure tests cover inclusive From, exclusive day-after-To, independent open bounds,
+same-day/leap/year-end ranges, reversed/malformed dates, Today and rolling 24/168
+hours with inclusive now, lower/exclusive-upper endpoints, future instants and
+missing publication. Injected clocks/zones verify Warsaw and New York spring/autumn
+23/25-hour days, non-DST Kolkata and São Paulo's skipped midnight. Locale formatting
+never enters resolution or comparison. Query tests exercise exact and estimated/
+coarse own instants, missing/invalid/label-only evidence, no discovery/parent/item
+substitution, same-comment AND, full-tree context and separate raw-search counts.
+
+Session tests capture one clock for all rows, freeze membership as time/zone
+changes, re-resolve applied rolling/custom criteria at successful Refresh without
+promoting date/discovery drafts, and preserve prior results on invalid dates or
+evaluation failure. Existing worker deadline/supersession/pathological-regex tests
+remain; numeric bounds/NEW payload tests cover deterministic comparison. Temporary
+SQLite cohort tests also run NEW-only queries over baseline, old-published/seen
+discoveries, partial/unknown/zero-insert acceptance, failure and restart histories.
+Renderer tests cover compact closed-by-default details, disabled custom inputs,
+Apply/Ctrl+Enter, English/Polish range alerts, independent per-discussion drafts,
+and unchanged seen writes. A 10k complete containing tree with one distant date
+match retains bounded DOM and exact-ID navigation; one match plus two NEW rows
+proves the context NEW lane remains independent of the combined match lane.
+
+`npm run test:electron` passes the actual bundled worker under CSP and **two real
+process restarts** in a freshly created disposable profile. Its test-only helper
+timestamps cover old baseline publication, missing publication, estimated/coarse
+publication, and a later discovery. Its renderer-only clock is fixed then advanced
+before explicit Refresh; no production clock or database is modified. The checks
+exercise Today, Last 24 hours, Last 7 days, custom From/To, reversed-range retention,
+baseline NEW exclusion, NEW-only, search + unseen + date + NEW, seen NEW, applied
+Refresh with draft preservation, and ruler navigation without writes. Existing
+failed source Refresh and durable NEW/restart assertions still pass.
+
+Agent UI inspection uses the deterministic/disposable smoke discussion, with local
+captures `.vite/date-controls-pl-dark.png` and `.vite/date-controls-en-light.png`.
+These are agent-driven Chromium checks/visual inspection, not owner physical-input
+acceptance. Captures are ignored artifacts, not brittle pixel snapshots. No valuable
+profile was changed to manufacture publication/discovery evidence or fetch live
+YouTube data. Pure boundary/DST cases remain deterministic rather than relying on
+the workstation zone. For an owner pass, run the disposable smoke or use a separate
+development root, open Date / discoveries, check each mode and combined search,
+then Apply, navigate and Refresh; normal seen state must remain manual.
+
+Bulk seen commands and undo/recovery are still unimplemented. Q-09 must define
+recoverability before shipping them; future date bulk MUST reuse ADR 0012's exact
+`resolvePublication` / `publicationMatches` semantics. Arbitrary historical
+discovery windows, sorting, collapse, persisted filters/scroll, global search and
+broader Q-21 storage/query scaling remain future work. Historical sections below
+describe earlier milestones and do not override this status.
+
 ## Virtualized overview ruler and durable NEW (2026-10-06)
 
 [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) settles the

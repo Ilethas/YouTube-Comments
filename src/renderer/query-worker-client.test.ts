@@ -1,7 +1,8 @@
+import { defaultResolvedQuery as defaultQuery } from '../fixtures/query-testing';
 import { afterEach, expect, it, vi } from 'vitest';
 import { QueryWorkerClient } from './query-worker-client';
 import type { QueryReply, QueryRequest, QueryWorkerPort } from './query-worker-client';
-import { defaultQuery, evaluateDiscussionQuery, queryComments } from '../domain/discussion-query';
+import { evaluateDiscussionQuery, queryComments } from '../domain/discussion-query';
 import { initialComments } from '../fixtures/discussions';
 
 class FakeWorker implements QueryWorkerPort {
@@ -66,4 +67,19 @@ it('worker creation/post/error failures retain explicit failure and recover with
   setupResult.workers[0].onerror?.({} as ErrorEvent);
   expect(await pending).toEqual({ ok: false, error: 'QUERY_FAILED' });
   expect(setupResult.workers[0].terminate).toHaveBeenCalledOnce(); setupResult.client.dispose();
+});
+it('worker compares serialized numeric publication bounds and NEW without reading clock or timezone', async () => {
+  const workers: FakeWorker[] = [];
+  const client = new QueryWorkerClient(() => { const worker = new FakeWorker(); workers.push(worker); return worker; }, 1000, () => 0);
+  const rows = [{ id: 'match', itemId: 'item', parentId: null, text: '', seen: true, publicationInstant: 100, newDiscovery: true },
+    { id: 'upper', itemId: 'item', parentId: null, text: '', seen: true, publicationInstant: 200, newDiscovery: true }];
+  const query = { ...defaultQuery, publicationBounds: { from: 100, to: 200, toInclusive: false }, discovery: 'new' as const };
+  const pending = client.evaluate(rows, query);
+  const sent = workers[0].request;
+  expect(sent?.query).not.toHaveProperty('publication');
+  expect(sent?.query.publicationBounds).toEqual(query.publicationBounds);
+  const clock = vi.spyOn(Date, 'now').mockImplementation(() => { throw new Error('Ambient worker clock'); });
+  try { workers[0].reply(); } finally { clock.mockRestore(); }
+  const outcome = await pending;
+  expect(outcome.ok && outcome.result.activeMatchIds).toEqual(['match']); client.dispose();
 });

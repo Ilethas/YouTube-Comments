@@ -1,5 +1,6 @@
+import { evaluateTestQuery } from '../fixtures/query-testing';
 import { expect, it } from 'vitest';
-import { defaultQuery, evaluateDiscussionQuery, navigationTarget, queryComments, visibleUnseenIds } from './discussion-query';
+import { defaultQuery, navigationTarget, queryComments, visibleUnseenIds } from './discussion-query';
 import type { DiscussionQuery, QueryComment } from './discussion-query';
 import { initialComments } from '../fixtures/discussions';
 
@@ -11,7 +12,7 @@ const rows: readonly QueryComment[] = [
   { id: 'other', itemId: 'item', parentId: null, text: 'other camera', author: { displayName: 'Dave' }, seen: false },
 ];
 function result(query: Partial<DiscussionQuery> = {}, comments = rows) {
-  const outcome = evaluateDiscussionQuery(comments, { ...defaultQuery, ...query });
+  const outcome = evaluateTestQuery(comments, { ...defaultQuery, ...query });
   if (!outcome.ok) throw new Error(outcome.error);
   return outcome.result;
 }
@@ -51,7 +52,7 @@ it('empty search imposes no restriction, has no raw hits, and still allows seen 
   expect(result({ fields: [] }).rawSearchMatchIds).toEqual([]);
   expect(result({ fields: [] }).restrictive).toBe(false);
   expect(result({ fields: [], seen: 'unseen' }).matchCount).toBe(2);
-  expect(evaluateDiscussionQuery(rows, { ...defaultQuery, text: 'x', fields: [] })).toEqual({ ok: false, error: 'NO_SEARCH_FIELDS' });
+  expect(evaluateTestQuery(rows, { ...defaultQuery, text: 'x', fields: [] })).toEqual({ ok: false, error: 'NO_SEARCH_FIELDS' });
 });
 it('case comparison uses deterministic lowercase independently of UI locale', () => {
   expect(result({ text: 'CAMERA', caseSensitive: true }).matchCount).toBe(0);
@@ -73,7 +74,7 @@ it('uses ECMAScript u/iu, pattern-only, NFC regex without implicit multiline/dot
   expect(result({ text: 'CAMERA', mode: 'regex' }).matchCount).toBe(3);
   expect(result({ text: '/camera/i', mode: 'regex' }).matchCount).toBe(0);
   expect(result({ text: 'Zaz\u0307o\u0301łc\u0301', mode: 'regex' }).matchCount).toBe(1);
-  expect(evaluateDiscussionQuery(rows, { ...defaultQuery, text: '[', mode: 'regex' })).toEqual({ ok: false, error: 'INVALID_REGEX' });
+  expect(evaluateTestQuery(rows, { ...defaultQuery, text: '[', mode: 'regex' })).toEqual({ ok: false, error: 'INVALID_REGEX' });
 });
 it.each(['camera root', 'GĘŚLĄ'])('root or nested match (%s) includes complete tree and unrelated siblings', text => {
   const view = result({ text });

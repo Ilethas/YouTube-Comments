@@ -1,3 +1,4 @@
+import { evaluateTestQuery } from '../../fixtures/query-testing';
 // eslint-disable-next-line import/no-unresolved
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
@@ -13,7 +14,7 @@ import type { CaptureContext } from '../extractors/normalization';
 import type { CommentObservation, ContentObservation, NormalizedExtraction, ObservationCoverage } from '../../domain/extraction-observation';
 import { buildCommentTree, walkComments, isNewDiscovery } from '../../domain/discussion';
 import { initialComments, items } from '../../fixtures/discussions';
-import { defaultQuery, evaluateDiscussionQuery, queryComments } from '../../domain/discussion-query';
+import { defaultQuery, queryComments } from '../../domain/discussion-query';
 
 type Usable = NormalizedExtraction & { item: ContentObservation; collection: { status: 'present'; comments: readonly CommentObservation[] }; coverage: Exclude<ObservationCoverage, {kind: 'failed'}> };
 function fixture(id = 'yt-nested-a'): Usable {
@@ -44,7 +45,11 @@ function later() { at = '2026-10-02T09:00:00.000Z'; }
 
 const newCohort = () => {
   const snapshot = state(), item = snapshot.items[0];
-  return snapshot.comments[item.id].filter(comment => isNewDiscovery(item, comment));
+  const comments = snapshot.comments[item.id];
+  const cohort = comments.filter(comment => isNewDiscovery(item, comment));
+  const result = evaluateTestQuery(queryComments(comments, item), { ...defaultQuery, discovery: 'new' });
+  expect(result.ok && [...result.result.activeMatchIds].sort()).toEqual(cohort.map(comment => comment.id).sort());
+  return cohort;
 };
 it('derives latest accepted NEW independently of seen/publication, tied/regressing clocks and restart', () => {
   const input = fixture(), root = { ...input.collection.comments[0], relationship: { kind: 'top-level' as const } };
@@ -111,9 +116,9 @@ it('evaluates committed refresh rows, preserving absent stored identities and li
   const before = comments(), root = required(before.find(comment => comment.parentId === null));
   repository.toggleSeen({ itemId: root.itemId, commentId: root.id, subtree: false });
   const criterion = { ...defaultQuery, seen: 'unseen' as const };
-  const old = evaluateDiscussionQuery(queryComments(comments()), criterion);
+  const old = evaluateTestQuery(queryComments(comments()), criterion);
   repository.ingest(fixture('yt-membership-b'));
-  const committed = comments(), next = evaluateDiscussionQuery(queryComments(committed), criterion);
+  const committed = comments(), next = evaluateTestQuery(queryComments(committed), criterion);
   expect(committed.find(comment => comment.id === root.id)?.seen).toBe(true);
   expect(before.every(comment => committed.some(row => row.id === comment.id))).toBe(true);
   expect(old.ok && next.ok).toBe(true);
@@ -129,11 +134,11 @@ it('replied-to-author query uses actual repository video projection and never Co
   const rows = comments(), child = required(rows.find(row => row.directParentId));
   const parent = required(rows.find(row => row.id === child.directParentId));
   const query = { ...defaultQuery, text: required(parent.author?.displayName), fields: ['replied-to-author' as const] };
-  const video = evaluateDiscussionQuery(queryComments(rows), query);
+  const video = evaluateTestQuery(queryComments(rows), query);
   expect(video.ok && video.result.activeMatchIds.includes(child.id)).toBe(true);
   repository.ingest(fixture('community-thread-a'));
   const post = required(state().items.find(item => item.kind === 'post'));
-  const community = evaluateDiscussionQuery(queryComments(state().comments[post.id]), { ...query, text: '.', mode: 'regex' });
+  const community = evaluateTestQuery(queryComments(state().comments[post.id]), { ...query, text: '.', mode: 'regex' });
   expect(community.ok && community.result.matchCount).toBe(0);
 });
 

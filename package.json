@@ -50,6 +50,7 @@
     "vitest": "^3.2.6"
   },
   "dependencies": {
+    "@js-temporal/polyfill": "0.5.1",
     "@tanstack/react-virtual": "3.14.13",
     "electron-squirrel-startup": "^1.0.1",
     "react": "^18.3.1",

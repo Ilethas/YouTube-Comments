@@ -14,6 +14,7 @@ import { StrictMode } from 'react';
 import { formatShortcut, reorderHelp, seenHelp, shortcutHint } from './shortcuts';
 import { keyboardShortcutsTarget } from './KeyboardShortcuts';
 import { generateDiscussion } from '../development/large-discussions';
+import { dateTestComment, dateTestItem } from '../fixtures/date-discussion';
 
 // jsdom has no dedicated Web Worker; worker lifecycle/deadline has its own tests.
 vi.mock('./query-executor', () => ({ createQueryExecutor: vi.fn() }));
@@ -859,4 +860,61 @@ it('query failure after successful Refresh preserves the previous tree even if c
   expect(screen.getByRole('tabpanel').querySelectorAll('.comment')).toHaveLength(2);
   expect(currentView().getByText('needle changed')).toBeTruthy();
   expect(document.getElementById('comment-child-query')?.closest('.comment-branch')?.getAttribute('data-depth')).toBe('1');
+});
+
+it('date/discovery controls are compact independent drafts, validate ranges, Apply/Ctrl+Enter and localize without changing membership', async () => {
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-07T12:00:00Z'));
+  const first = dateTestComment('baseline', '2001-01-01T00:00:00Z');
+  const fresh = dateTestComment('fresh', '2026-10-07T10:00:00Z', { parentId: first.id,
+    discovery: { ...first.discovery, firstDiscoveryId: 'latest' } });
+  state = { ...state, items: [dateTestItem, items[1]], comments: { [dateTestItem.id]: [first, fresh], 'post-demo': initialComments['post-demo'] },
+    workspace: { tabs: [discussionTab(dateTestItem.id), discussionTab('post-demo')], activeTabId: discussionTab(dateTestItem.id).id, revision: 0 } };
+  await showReader();
+  const panel = () => screen.getByRole('tabpanel');
+  const control = (name: string) => within(panel()).getByLabelText(name);
+  const matches = () => [...panel().querySelectorAll('[data-view-role=match]')].map(row => row.id.replace('comment-', ''));
+  const details = panel().querySelector<HTMLDetailsElement>('.query-dates');
+  expect(details?.open).toBe(false);
+  fireEvent.click(within(panel()).getByText('Date / discoveries', { selector: 'summary' }));
+  fireEvent.change(control('Publication date'), { target: { value: 'last-24-hours' } });
+  expect((control('From') as HTMLInputElement).disabled).toBe(true);
+  expect(matches()).toEqual([]); // Identity view stays unchanged until Apply.
+  fireEvent.change(control('Discovery'), { target: { value: 'new' } });
+  fireEvent.click(within(panel()).getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(matches()).toEqual(['fresh']));
+  expect(panel().querySelectorAll('article')).toHaveLength(2); // complete containing tree
+  fireEvent.keyDown(panel(), { key: 'F3', bubbles: true });
+  expect(panel().querySelector('[data-selected=true]')?.id).toBe('comment-fresh');
+  expect(api.toggleSeen).not.toHaveBeenCalled();
+  fireEvent.change(control('Publication date'), { target: { value: 'all' } });
+  fireEvent.change(control('From'), { target: { value: '2026-10-08' } });
+  fireEvent.change(control('To (whole day)'), { target: { value: '2026-10-07' } });
+  expect(screen.getByRole('alert').textContent).toContain('From must be');
+  expect(control('From').getAttribute('aria-invalid')).toBe('true');
+  fireEvent.keyDown(control('From'), { key: 'Enter', ctrlKey: true, bubbles: true });
+  await waitFor(() => expect(matches()).toEqual(['fresh']));
+  fireEvent.change(control('From'), { target: { value: '2001-01-01' } });
+  fireEvent.change(control('To (whole day)'), { target: { value: '2001-01-01' } });
+  fireEvent.change(control('Discovery'), { target: { value: 'all' } });
+  fireEvent.keyDown(control('To (whole day)'), { key: 'Enter', ctrlKey: true, bubbles: true });
+  await waitFor(() => expect(matches()).toEqual(['baseline']));
+  fireEvent.change(control('Discovery'), { target: { value: 'new' } });
+  fireEvent.click(screen.getAllByRole('tab')[1]);
+  await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe('panel-post-demo'));
+  expect((within(screen.getByRole('tabpanel')).getByLabelText('Discovery') as HTMLSelectElement).value).toBe('all');
+  fireEvent.click(screen.getAllByRole('tab')[0]);
+  await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe('panel-date-test'));
+  expect((control('Discovery') as HTMLSelectElement).value).toBe('new');
+  expect((control('From') as HTMLInputElement).value).toBe('2001-01-01');
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+  await screen.findByLabelText('Language');
+  fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'pl' } });
+  await waitFor(() => expect(document.documentElement.lang).toBe('pl'));
+  fireEvent.click(screen.getAllByRole('tab')[0]);
+  await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe('panel-date-test'));
+  expect((control('Odkrycie') as HTMLSelectElement).value).toBe('new');
+  expect(matches()).toEqual(['baseline']);
+  expect(control('Data publikacji')).toBeDefined(); expect(control('Do (cały dzień)')).toBeDefined();
+  fireEvent.change(control('Od'), { target: { value: '2001-01-02' } });
+  expect(screen.getByRole('alert').textContent).toContain('Data Od musi');
 });

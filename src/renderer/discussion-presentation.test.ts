@@ -1,6 +1,7 @@
+import { evaluateTestQuery } from '../fixtures/query-testing';
 import { expect, it } from 'vitest';
 import { buildCommentTree, toggleSeen, walkComments } from '../domain/discussion';
-import { defaultQuery, evaluateDiscussionQuery, queryComments, unrestrictedView } from '../domain/discussion-query';
+import { defaultQuery, queryComments, unrestrictedView } from '../domain/discussion-query';
 import { generateDiscussion } from '../development/large-discussions';
 import { projectReaderRows } from './discussion-presentation';
 
@@ -27,7 +28,7 @@ it.each(['flat', 'shallow', 'mixed', 'chain'] as const)('preserves %s reader pre
 it('projects complete filtered threads with applied roles and live seen without altering source/direct truth', () => {
   const { comments } = generateDiscussion({ count: 1000, roots: 1, shape: 'shallow', seenRatio: 0, matchIndexes: [999] });
   const containment = comments.map(row => row.parentId ? { ...row, relationship: { kind: 'thread-containment' as const, rootSourceId: comments[0].id }, directParentId: null } : row);
-  const outcome = evaluateDiscussionQuery(queryComments(containment), { ...defaultQuery, text: 'PROFILE_MATCH', seen: 'unseen' });
+  const outcome = evaluateTestQuery(queryComments(containment), { ...defaultQuery, text: 'PROFILE_MATCH', seen: 'unseen' });
   if (!outcome.ok) throw new Error('Query failed');
   const changed = toggleSeen(containment, comments[999].id);
   const projection = projectReaderRows(changed, outcome.result);
@@ -37,7 +38,7 @@ it('projects complete filtered threads with applied roles and live seen without 
   expect(outcome.result.matchCount).toBe(1); expect(outcome.result.threadCount).toBe(1);
   expect(projection.rows[999].comment.directParentId).toBeNull();
   expect(projection.rows[999].comment.relationship).toEqual(containment[999].relationship);
-  const direct = evaluateDiscussionQuery(queryComments(containment), { ...defaultQuery, text: 'Reader', fields: ['replied-to-author'] });
+  const direct = evaluateTestQuery(queryComments(containment), { ...defaultQuery, text: 'Reader', fields: ['replied-to-author'] });
   expect(direct.ok && direct.result.matchCount).toBe(0);
 });
 it('uses frozen applied placement after remote placement changes and never mutates inputs', () => {

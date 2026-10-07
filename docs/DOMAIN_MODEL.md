@@ -89,7 +89,7 @@ Local fields include seen state, first discovery information, refresh history an
 | Seen state | Durable state explicitly controlled by the user |
 | Remote edit time, if supplied | A separate optional observation; never a replacement for publication time |
 
-Schema 2 stores UTC discovery/observation instants and normalized publication labels/precision, with separate instant/label evidence when needed. Missing or imprecise remote timestamps need an explicit policy; substituting discovery time would change the meaning of [publication-date filters and bulk actions](FILTERING_AND_SEARCH.md).
+Schema 2 stores UTC discovery/observation instants and normalized publication labels/precision, with separate instant/label evidence when needed. ADR 0012 uses best-available stored publication instants, including estimated/coarse ones, and excludes missing/label-only evidence from active publication filters; substituting discovery time would change the meaning of [publication-date filters and bulk actions](FILTERING_AND_SEARCH.md).
 
 ## New, unseen and matching are independent
 
@@ -114,7 +114,14 @@ applied matching membership. Geometry, refs and measurements stay in the rendere
 
 `src/domain/discussion-query.ts` implements DiscussionQuery: one expression,
 content/author/direct-replied-to-author field selection, text/regex, case sensitivity
-and All/Unseen/Seen. Selected fields OR; seen ANDs on the same comment. NFC
+and All/Unseen/Seen. ADR 0012 adds semantic `publication` (all/custom optional
+ISO LocalDate From/To/today/last-24-hours/last-7-days) and `discovery` (all/new).
+`ResolvedDiscussionQuery` replaces semantic dates with numeric bounds and endpoint
+inclusion. One injected evaluation clock/current system zone resolves these before
+dispatch. QueryComment includes only own normalized publication milliseconds and
+`isNewDiscovery` eligibility, never source labels or raw evidence. Selected fields
+OR; search, seen, publication and discovery AND on the same comment. Future date
+bulk MUST reuse the exact resolver and publication predicate. NFC
 substring comparison with deterministic lowercase and ECMAScript u/iu regex are
 specified in [ADR 0008](decisions/0008-active-discussion-applied-queries.md).
 QueryComment is a narrow application projection without source/SQLite/raw schemas.

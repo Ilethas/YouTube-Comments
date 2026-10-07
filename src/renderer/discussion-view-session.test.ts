@@ -1,12 +1,14 @@
+import { evaluateTestQuery } from '../fixtures/query-testing';
 import { expect, it, vi } from 'vitest';
 import { DiscussionViewSession } from './discussion-view-session';
 import { evaluateDiscussionQuery } from '../domain/discussion-query';
-import type { QueryOutcome, QueryComment, DiscussionQuery } from '../domain/discussion-query';
+import type { QueryOutcome, QueryComment, ResolvedDiscussionQuery } from '../domain/discussion-query';
 import { initialComments } from '../fixtures/discussions';
 import { generateDiscussion } from '../development/large-discussions';
 import { required } from './testing/required';
+import { dateTestComment, dateTestItem } from '../fixtures/date-discussion';
 const rows = initialComments['video-demo'];
-const executor = () => ({ evaluate: vi.fn(async (comments: readonly QueryComment[], query: DiscussionQuery): Promise<QueryOutcome> => evaluateDiscussionQuery(comments, query)), dispose: vi.fn() });
+const executor = () => ({ evaluate: vi.fn(async (comments: readonly QueryComment[], query: ResolvedDiscussionQuery): Promise<QueryOutcome> => evaluateDiscussionQuery(comments, query)), dispose: vi.fn() });
 
 it('applied unseen IDs/counts remain frozen after save, second Apply recomputes, failed drafts retain result', async () => {
   const engine = executor(), session = new DiscussionViewSession(rows, engine, vi.fn());
@@ -42,7 +44,7 @@ it('seen edits during evaluation make its snapshot stale; seen All never produce
   session.seenChanged(); expect(session.state.seenStale).toBe(false);
   session.edit({ ...session.state.draft, seen: 'unseen' });
   const pending = session.apply(rows); session.seenChanged();
-  finish(evaluateDiscussionQuery(rows, session.state.draft)); await pending;
+  finish(evaluateTestQuery(rows, session.state.draft)); await pending;
   expect(session.state.seenStale).toBe(true);
 });
 it('late/superseded results and disposed sessions cannot promote criteria or notify', async () => {
@@ -52,11 +54,11 @@ it('late/superseded results and disposed sessions cannot promote criteria or not
   const session = new DiscussionViewSession(rows, engine, changed);
   const first = session.apply(rows);
   session.edit({ ...session.state.draft, text: 'missing' }); const second = session.apply(rows);
-  finishes[1](evaluateDiscussionQuery(rows, session.state.draft)); await second;
-  finishes[0](evaluateDiscussionQuery(rows, session.state.applied)); await first;
+  finishes[1](evaluateTestQuery(rows, session.state.draft)); await second;
+  finishes[0](evaluateTestQuery(rows, session.state.applied)); await first;
   expect(session.state.applied.text).toBe('missing');
   const third = session.apply(rows); session.dispose(); const count = changed.mock.calls.length;
-  finishes[2](evaluateDiscussionQuery(rows, session.state.draft)); await third;
+  finishes[2](evaluateTestQuery(rows, session.state.draft)); await third;
   expect(changed).toHaveBeenCalledTimes(count); expect(engine.dispose).toHaveBeenCalledOnce();
 });
 it('successful explicit Apply requests first active match or start; failed evaluation never requests a new scroll', async () => {
@@ -85,4 +87,64 @@ it('Refresh captures current visible identity at completion and preserves header
   expect(session.state.scrollRequest?.id).toBeUndefined(); expect(session.state.scrollRequest?.offset).toBe(35);
   detach(); await session.apply(rows, true);
   expect(session.state.scrollRequest?.id).toBe(rows[0].id);
+});
+
+it('captures one clock for all rows, freezes rolling membership, and Refresh moves applied bounds without promoting drafts', async () => {
+  let now = Date.parse('2026-10-07T12:00:00Z');
+  const clock = vi.fn(() => ({ now, timeZone: 'Europe/Warsaw' }));
+  const engine = executor();
+  const comments = [dateTestComment('lower', '2026-10-06T12:00:00Z'), dateTestComment('now', '2026-10-07T12:00:00Z'), dateTestComment('future', '2026-10-07T13:00:00Z')];
+  const session = new DiscussionViewSession(comments, engine, undefined, clock);
+  session.edit({ ...session.state.draft, publication: { kind: 'last-24-hours' } }); await session.apply(comments);
+  expect(clock).toHaveBeenCalledTimes(1);
+  expect(session.state.result.activeMatchIds).toEqual(['lower', 'now']);
+  expect(engine.evaluate.mock.calls[0][1].publicationBounds).toEqual({ from: Date.parse('2026-10-06T12:00:00Z'), to: now, toInclusive: true });
+  expect(engine.evaluate.mock.calls[0][1]).not.toHaveProperty('publication');
+  const frozen = session.state.result;
+  now += 3600000;
+  session.edit({ ...session.state.draft, publication: { kind: 'today' }, discovery: 'new' });
+  expect(session.state.result).toBe(frozen); expect(session.state.seenStale).toBe(false);
+  await session.apply(comments, true, dateTestItem);
+  expect(clock).toHaveBeenCalledTimes(2);
+  expect(session.state.result.activeMatchIds).toEqual(['now', 'future']);
+  expect(session.state.applied.publication.kind).toBe('last-24-hours');
+  expect(session.state.draft.publication.kind).toBe('today'); expect(session.state.draft.discovery).toBe('new');
+  engine.evaluate.mockResolvedValueOnce({ ok: false, error: 'QUERY_FAILED' });
+  const previous = session.state.result; await session.apply(comments, true, dateTestItem);
+  expect(session.state.result).toBe(previous); expect(session.state.applied.publication.kind).toBe('last-24-hours');
+});
+it('custom calendar criteria resolve with the current injected zone only on recomputation', async () => {
+  let timeZone = 'Europe/Warsaw';
+  const clock = () => ({ now: Date.parse('2026-03-29T12:00:00Z'), timeZone });
+  const comments = [dateTestComment('warsaw', '2026-03-28T23:30:00Z'), dateTestComment('both', '2026-03-29T12:00:00Z')];
+  const session = new DiscussionViewSession(comments, executor(), undefined, clock);
+  const publication = { kind: 'custom' as const, from: '2026-03-29', to: '2026-03-29' };
+  session.edit({ ...session.state.draft, publication }); await session.apply(comments);
+  expect(session.state.result.activeMatchIds).toEqual(['warsaw', 'both']);
+  const previous = session.state.result; timeZone = 'America/New_York';
+  expect(session.state.result).toBe(previous);
+  session.edit({ ...session.state.draft, publication: { kind: 'last-7-days' } });
+  await session.apply(comments, true);
+  expect(session.state.applied.publication).toEqual(publication);
+  expect(session.state.result.activeMatchIds).toEqual(['both']);
+  expect(session.state.draft.publication.kind).toBe('last-7-days');
+});
+it('invalid/reversed custom dates never dispatch or replace the applied result', async () => {
+  const engine = executor(), session = new DiscussionViewSession(rows, engine);
+  const previous = session.state.result;
+  session.edit({ ...session.state.draft, publication: { kind: 'custom', from: '2026-10-08', to: '2026-10-07' } });
+  await session.apply(rows);
+  expect(session.state.error).toBe('INVALID_PUBLICATION_RANGE'); expect(session.state.result).toBe(previous);
+  session.edit({ ...session.state.draft, publication: { kind: 'custom', from: '2026-02-30' } }); await session.apply(rows);
+  expect(session.state.error).toBe('INVALID_PUBLICATION_DATE'); expect(engine.evaluate).not.toHaveBeenCalled();
+  expect(session.state.applied.publication.kind).toBe('all');
+});
+it('Refresh projects the newly committed durable cohort rather than a cached NEW flag', async () => {
+  const comments = [dateTestComment('old', '2001-01-01T00:00:00Z', { seen: true,
+    discovery: { firstDiscoveredAt: '2026-10-07T12:00:00Z', lastObservedAt: '2026-10-07T12:00:00Z', firstDiscoveryId: 'latest' } })];
+  const session = new DiscussionViewSession(comments, executor());
+  session.edit({ ...session.state.draft, discovery: 'new' }); await session.apply(comments, false, dateTestItem);
+  expect(session.state.result.activeMatchIds).toEqual(['old']);
+  await session.apply(comments, true, { ...dateTestItem, latestAcceptedDiscoveryId: 'zero-insert' });
+  expect(session.state.result.matchCount).toBe(0);
 });

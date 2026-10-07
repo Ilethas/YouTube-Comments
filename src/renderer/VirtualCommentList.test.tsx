@@ -1,3 +1,4 @@
+import { evaluateTestQuery } from '../fixtures/query-testing';
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
@@ -15,12 +16,12 @@ import { required } from './testing/required';
 let layout: ReturnType<typeof installReaderLayout>;
 beforeEach(() => { layout = installReaderLayout(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); delete window.__readerWork; });
-const executor = () => ({ evaluate: vi.fn(async (rows: Parameters<typeof evaluateDiscussionQuery>[0], query: typeof defaultQuery) => evaluateDiscussionQuery(rows, query)), dispose: vi.fn() });
+const executor = () => ({ evaluate: vi.fn(async (rows: Parameters<typeof evaluateDiscussionQuery>[0], query: Parameters<typeof evaluateDiscussionQuery>[1]) => evaluateDiscussionQuery(rows, query)), dispose: vi.fn() });
 function mount(comments: readonly Comment[], restrictive = false, suppliedItem?: ContentItem) {
   const data = generateDiscussion({ count: 0 }), engine = executor(), session = new DiscussionViewSession(comments, engine);
   if (restrictive) {
     const applied = { ...defaultQuery, text: 'PROFILE_MATCH', seen: 'unseen' as const };
-    const outcome = evaluateDiscussionQuery(queryComments(comments), applied);
+    const outcome = evaluateTestQuery(queryComments(comments), applied);
     if (!outcome.ok) throw new Error('Invalid query');
     session.state = { ...session.state, applied, draft: applied, result: outcome.result };
   }
@@ -39,8 +40,37 @@ function mount(comments: readonly Comment[], restrictive = false, suppliedItem?:
   const scroll = (top: number) => act(() => { panel.scrollTop = top; fireEvent.scroll(panel); });
   return { ...rendered, session, panel, rows, scroll, current: () => current, onToggle, engine,
     setLocale(value: 'en' | 'pl') { locale = value; update(); },
-    async refresh(nextComments: readonly Comment[], nextItem: ContentItem) { current = nextComments; item = nextItem; update(); await session.apply(current, true); } };
+    async refresh(nextComments: readonly Comment[], nextItem: ContentItem) { current = nextComments; item = nextItem; update(); await session.apply(current, true, item); } };
 }
+
+it('distant date/NEW matches retain bounded complete-tree DOM, navigation and independent context NEW ruler lane', async () => {
+  const data = generateDiscussion({ count: 10000, roots: 1, newIndexes: [5000, 9999] });
+  const comments = data.comments.map((comment, index) => ({ ...comment,
+    publishedAt: index === 9999 ? '2026-10-07T12:00:00Z' : '2001-01-01T00:00:00Z' }));
+  const reader = mount(comments, false, data.item);
+  reader.session.edit({ ...defaultQuery, publication: { kind: 'custom', from: '2026-10-07', to: '2026-10-07' } });
+  await act(() => reader.session.apply(comments, false, data.item));
+  expect(reader.session.state.result.activeMatchIds).toEqual(['generated-9999']);
+  expect(reader.session.state.result.visibleCommentIds).toHaveLength(10000);
+  await waitFor(() => expect(document.getElementById('comment-generated-9999')).not.toBeNull());
+  expect(reader.rows().length).toBeLessThan(30);
+  const frozen = reader.session.state.result;
+  act(() => navigateDiscussion(reader.session, comments, 'match', -1));
+  await waitFor(() => expect(document.activeElement?.id).toBe('comment-generated-9999'));
+  expect(reader.onToggle).not.toHaveBeenCalled();
+  const ruler = required(reader.panel.querySelector<HTMLElement>('.discussion-ruler'));
+  expect(ruler.dataset.matchCount).toBe('1');
+  expect(ruler.dataset.newCount).toBe('2'); // includes the unrelated NEW context row
+  expect(ruler.querySelectorAll('path')).toHaveLength(3);
+  expect(ruler.querySelector('.ruler-match')?.getAttribute('d')).not.toBe('');
+  expect(ruler.querySelector('.ruler-new')?.getAttribute('d')).not.toBe('');
+  reader.session.edit({ ...reader.session.state.draft, discovery: 'new' });
+  expect(reader.session.state.result).toBe(frozen);
+  await act(() => reader.session.apply(comments, false, data.item));
+  expect(reader.session.state.result.activeMatchIds).toEqual(['generated-9999']);
+  expect(reader.rows().length).toBeLessThan(30);
+  expect(ruler.dataset.newCount).toBe('2');
+});
 
 it.each([10000, 50000])('%i ruler has constant DOM, reaches distant unmounted NEW by pointer/keyboard, and never saves seen', async count => {
   const data = generateDiscussion({ count, shape: 'flat', seenRatio: 0, newIndexes: [count - 1] });

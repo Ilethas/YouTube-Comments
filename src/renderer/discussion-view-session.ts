@@ -1,6 +1,9 @@
 import { defaultQuery, queryComments, unrestrictedView } from '../domain/discussion-query';
+import { resolveDiscussionQuery } from '../domain/discussion-query-resolution';
 import type { DiscussionQuery, DiscussionViewResult, QueryErrorCode } from '../domain/discussion-query';
-import type { Comment } from '../domain/discussion';
+import type { Comment, ContentItem } from '../domain/discussion';
+import type { QueryEvaluationTime } from '../domain/publication-filter';
+import { systemQueryEvaluationTime } from './query-evaluation-time';
 import type { QueryExecutor } from './query-worker-client';
 
 /** Transient singleton-discussion state; durable comments are owned by main. */
@@ -47,7 +50,8 @@ export class DiscussionViewSession {
     this.captureAnchor = capture;
     return () => { if (this.captureAnchor === capture) this.captureAnchor = undefined; };
   }
-  constructor(comments: readonly Comment[], private readonly executor: QueryExecutor, private readonly onChanged: () => void = () => undefined) {
+  constructor(comments: readonly Comment[], private readonly executor: QueryExecutor, private readonly onChanged: () => void = () => undefined,
+    private readonly evaluationTime: () => QueryEvaluationTime = systemQueryEvaluationTime) {
     this.state = { draft: defaultQuery, applied: defaultQuery, result: unrestrictedView(queryComments(comments)), pending: false, seenStale: false };
   }
   edit(draft: DiscussionQuery): void { this.state = { ...this.state, draft }; this.changed(); }
@@ -58,12 +62,15 @@ export class DiscussionViewSession {
     this.seenRevision++;
     if (this.state.applied.seen !== 'all') { this.state = { ...this.state, seenStale: true }; this.changed(); }
   }
-  async apply(comments: readonly Comment[], refresh = false): Promise<void> {
+  async apply(comments: readonly Comment[], refresh = false, item?: ContentItem): Promise<void> {
     const criteria = refresh ? this.state.applied : this.state.draft;
     const generation = ++this.generation, seenRevision = this.seenRevision;
     this.state = { ...this.state, pending: true, error: undefined }; this.changed();
     let outcome;
-    try { outcome = await this.executor.evaluate(queryComments(comments), criteria); }
+    try {
+      const resolved = resolveDiscussionQuery(criteria, this.evaluationTime());
+      outcome = resolved.ok ? await this.executor.evaluate(queryComments(comments, item), resolved.query) : resolved;
+    }
     catch { outcome = { ok: false as const, error: 'QUERY_FAILED' as const }; }
     if (this.disposed || generation !== this.generation) return;
     if (outcome.ok) {

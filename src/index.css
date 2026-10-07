@@ -186,6 +186,9 @@ time, .muted { color: var(--muted); }
 .query-fields summary { cursor: pointer; padding: 5px 0; }
 .query-fields fieldset { position: absolute; top: 100%; right: 0; z-index: 2; min-width: 230px; margin: 0; padding: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; }
 .query-fields fieldset label { margin: 5px 0; }
+.query-dates fieldset { min-width: 280px; max-width: min(340px, 80vw); }
+.query-dates fieldset label { justify-content: space-between; }
+.query-dates small { display: block; color: var(--muted); font-size: 11px; }
 .query-status { color: var(--muted); margin-top: 5px; min-height: 0; }
 .query-status:empty { margin: 0; }
 .query-error { color: var(--danger); margin: 5px 0; }

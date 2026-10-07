@@ -4,6 +4,14 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  dateAndDiscovery: 'Date / discoveries', publicationPreset: 'Publication date', dateCustom: 'Custom / no preset',
+  dateToday: 'Today', dateLast24Hours: 'Last 24 hours', dateLast7Days: 'Last 7 days', dateFrom: 'From', dateTo: 'To (whole day)',
+  datePresetDisablesCustom: 'The preset replaces From / To.', discoveryFilter: 'Discovery', discoveryAll: 'All discoveries', discoveryNew: 'NEW from latest refresh',
+  publicationEstimateShort: 'Source times may be approximate ⓘ',
+  publicationEstimateHelp: 'Publication filters use each comment’s stored best available instant, including approximate or coarse source times. Missing times do not match. Calendar dates use the current system time zone at Apply or Refresh.',
+  queryInvalidDateRange: 'From must be on or before To. The previous applied view remains.',
+  queryInvalidDate: 'Enter a valid calendar date. The previous applied view remains.',
+  appliedPublication: 'Publication: {range}', dateCustomRange: '{from} – {to}', dateOpenBoundary: 'any date',
   overviewRuler: 'Discussion overview: unseen, applied matches, new discoveries',
   rulerKeyboardHelp: 'Up/Down: marker band. Left/Right: category. Home/End: first/last band. Enter/Space: navigate.',
   rulerUnseen: '{count} unseen', rulerMatch: '{count} matches', rulerNew: '{count} new',
@@ -70,6 +78,14 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  dateAndDiscovery: 'Data / odkrycia', publicationPreset: 'Data publikacji', dateCustom: 'Własny zakres / bez presetu',
+  dateToday: 'Dzisiaj', dateLast24Hours: 'Ostatnie 24 godziny', dateLast7Days: 'Ostatnie 7 dni', dateFrom: 'Od', dateTo: 'Do (cały dzień)',
+  datePresetDisablesCustom: 'Preset zastępuje pola Od / Do.', discoveryFilter: 'Odkrycie', discoveryAll: 'Wszystkie odkrycia', discoveryNew: 'NOWE z ostatniego odświeżenia',
+  publicationEstimateShort: 'Czas ze źródła może być przybliżony ⓘ',
+  publicationEstimateHelp: 'Filtry publikacji używają najlepszej zapisanej daty każdego komentarza, także przybliżonej lub o małej precyzji. Brak daty oznacza brak dopasowania. Daty kalendarzowe używają bieżącej systemowej strefy czasowej przy Zastosuj lub Odśwież.',
+  queryInvalidDateRange: 'Data Od musi być wcześniejsza lub równa dacie Do. Zachowano poprzedni zastosowany widok.',
+  queryInvalidDate: 'Wprowadź prawidłową datę kalendarzową. Zachowano poprzedni zastosowany widok.',
+  appliedPublication: 'Publikacja: {range}', dateCustomRange: '{from} – {to}', dateOpenBoundary: 'dowolna data',
   overviewRuler: 'Przegląd dyskusji: nieprzeczytane, zastosowane dopasowania, nowe odkrycia',
   rulerKeyboardHelp: 'Góra/Dół: pas znaczników. Lewo/Prawo: kategoria. Home/End: pierwszy/ostatni pas. Enter/Spacja: przejdź.',
   rulerUnseen: 'Nieprzeczytane: {count}', rulerMatch: 'Dopasowania: {count}', rulerNew: 'Nowe: {count}',

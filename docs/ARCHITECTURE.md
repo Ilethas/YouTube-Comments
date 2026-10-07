@@ -6,7 +6,7 @@ Status: target architecture, with proposed organization explicitly identified. [
 
 The repository uses Electron Forge/Vite and strict TypeScript. [src/main.ts](../src/main.ts) creates a sandboxed, context-isolated window with Node integration disabled; navigation/new windows are blocked. [src/preload.ts](../src/preload.ts) exposes the narrow `window.reader` API. [src/renderer.tsx](../src/renderer.tsx) mounts the React reader, with components and localization in `src/renderer`, pure domain rules in `src/domain`, and explicitly synthetic fixtures used for main-side initialization.
 
-The persistence milestone adds `src/main/persistence` for SQLite profiles/migrations/repository mapping, `src/main/reader-service.ts` for validated use cases and structured outcomes, `src/main/reader-ipc.ts` for channel/sender routing, `src/shared` for driver-free contracts/preferences, and `src/preload/reader-bridge.ts` for the private transport wrapper. One main-owned built-in SQLite connection stores normalized discussions, separate per-comment local state, and preferences. The renderer loads asynchronously and updates only after save acknowledgment; it has no fixture-state fallback. Ctrl subtree changes are transactional and preserve displayed order. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) records these choices; [ADR 0001](decisions/0001-synthetic-reader-foundation.md) remains the foundation record. ADR 0004 adds pure normalized merge planning and transactional SQLite ingestion/history. [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) adds main-only live public acquisition/refresh and minimal UI. ADR 0008 adds active-discussion search/seen filtering, stable applied views and match/unseen navigation; ADR 0010 adds bounded variable-height rendering; ADR 0011 adds durable NEW and the applied-view ruler; dates and bulk actions remain targets. The broader target below is not a completed security review. See [Testing](TESTING.md).
+The persistence milestone adds `src/main/persistence` for SQLite profiles/migrations/repository mapping, `src/main/reader-service.ts` for validated use cases and structured outcomes, `src/main/reader-ipc.ts` for channel/sender routing, `src/shared` for driver-free contracts/preferences, and `src/preload/reader-bridge.ts` for the private transport wrapper. One main-owned built-in SQLite connection stores normalized discussions, separate per-comment local state, and preferences. The renderer loads asynchronously and updates only after save acknowledgment; it has no fixture-state fallback. Ctrl subtree changes are transactional and preserve displayed order. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) records these choices; [ADR 0001](decisions/0001-synthetic-reader-foundation.md) remains the foundation record. ADR 0004 adds pure normalized merge planning and transactional SQLite ingestion/history. [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) adds main-only live public acquisition/refresh and minimal UI. ADR 0008 adds active-discussion search/seen filtering, stable applied views and match/unseen navigation; ADR 0010 adds bounded variable-height rendering; ADR 0011 adds durable NEW and the applied-view ruler; ADR 0012 adds system-zone publication-date and latest-discovery filtering; bulk actions remain targets. The broader target below is not a completed security review. See [Testing](TESTING.md).
 
 Initial development and packaging target Windows. Platform integrations should avoid unnecessary barriers to later Linux/macOS support, but those platforms are not initial implementation or packaging requirements.
 
@@ -54,6 +54,18 @@ history; full stderr/public payloads do not. See ADR 0005 for the Windows proces
 tree termination and unresolved release work; ADR 0006 extends helper resolution
 with exact startup overrides.
 
+## Date-query boundary (ADR 0012)
+
+The renderer application boundary captures one now and current runtime system
+IANA zone per Apply/successful Refresh. Source-independent `resolvePublication`
+uses pinned Temporal polyfill calendar arithmetic to resolve semantic criteria to
+numeric bounds. The worker import graph excludes that resolver/Temporal: it sees
+only normalized own publication milliseconds, durable NEW eligibility and resolved
+bounds, alongside existing narrow query fields. It never obtains clock/locale/zone
+or extractor JSON. Cancellable evaluation/deadline and frozen applied results remain.
+Future date bulk MUST reuse the same resolver/predicate semantics on the privileged
+backend. No IPC capability, schema, mutable NEW state or durable query state changes.
+
 ## Required process boundary
 
 ```mermaid
@@ -95,7 +107,8 @@ The bridge should express intent such as opening an item, querying comments, set
 DiscussionQuery/DiscussionViewResult semantics and a dedicated renderer Web Worker.
 The existing full-discussion bootstrap is unchanged. A narrow application-owned
 projection sends identity/placement, direct-relationship kind/status, text, author
-displayName/handle and live seen only; no remote evidence, SQL, preload or raw
+displayName/handle, live seen, own publication milliseconds and durable NEW eligibility;
+resolved bounds replace semantic dates (ADR 0012). No remote evidence, SQL, preload or raw
 extractor data crosses this boundary. The worker imports only pure query/tree code.
 All comparison evaluation (text and regex) uses this worker, with request IDs,
 supersession/termination and a 1000 ms whole-query deadline. Late/partial outcomes

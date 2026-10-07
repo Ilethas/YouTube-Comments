@@ -1,6 +1,6 @@
 # Filtering and search
 
-Active-discussion content/author/direct-parent-author search, All/Unseen/Seen, stable session applied results and navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements presentation virtualization without changing query semantics. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable NEW. Date/discovery filters, sorting and bulk actions remain targets. The [product requirements](PRODUCT_REQUIREMENTS.md) establish the scope, [seen state](SEEN_STATE.md) defines local user state, and [UI and navigation](UI_AND_NAVIGATION.md) explains how results are read. Unresolved choices are also tracked in the [decision register](decisions/README.md).
+Active-discussion content/author/direct-parent-author search, All/Unseen/Seen, stable session applied results and navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements presentation virtualization without changing query semantics. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable NEW. [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date and latest-refresh discovery filters. Sorting and bulk actions remain targets. The [product requirements](PRODUCT_REQUIREMENTS.md) establish the scope, [seen state](SEEN_STATE.md) defines local user state, and [UI and navigation](UI_AND_NAVIGATION.md) explains how results are read. Unresolved choices are also tracked in the [decision register](decisions/README.md).
 
 ## A match belongs to a comment; context belongs to its conversation
 
@@ -44,7 +44,7 @@ For example, if both a seen root and its unseen reply contain "camera", they are
 
 A top-level-thread-author filter is a deliberate relationship predicate: it examines a comment's containing thread author while still deciding whether that individual comment matches. A direct-replied-to-author filter examines the direct parent relationship, not every ancestor or an inferred `@mention` in the text. The [domain model](DOMAIN_MODEL.md) must preserve these relationships where the source provides them. Unavailable parent/author evidence does not match. Only resolved direct-parent application IDs provide that author; containment, missing/cyclic links and text mentions do not.
 
-One search expression ORs its selected contents, own-author displayName/handle and direct-parent-author displayName/handle fields. The search clause ANDs with All/Unseen/Seen on the same comment. Empty text imposes no search restriction and disables raw-search presentation; nonempty text with no fields is invalid. Opaque author IDs and top-level-thread-author search are excluded.
+One search expression ORs its selected contents, own-author displayName/handle and direct-parent-author displayName/handle fields. The search clause ANDs with All/Unseen/Seen, publication and discovery on the same comment. Empty text imposes no search restriction and disables raw-search presentation; nonempty text with no fields is invalid. Opaque author IDs and top-level-thread-author search are excluded.
 
 ## Search the stored data
 
@@ -73,23 +73,63 @@ Validate a regular expression before evaluating a query. Invalid syntax must pro
 
 Valid expressions can also be expensive on large inputs. All production comparison queries execute in a dedicated renderer Web Worker over a narrow application-owned projection. A 1000 ms whole-query deadline terminates the worker and reports a localized QUERY_TOO_EXPENSIVE view error. New Apply supersedes pending work; the next evaluation recreates a terminated worker. Complete results only: comments are never truncated and partial/late replies are rejected. Pure rules remain independently testable. See ADR 0008.
 
-## Publication dates and time
+## Publication dates and time (ADR 0012)
 
-Publication-date filters evaluate each comment's own `publishedAt`. A reply does not inherit the date of its root. Discovery time is a separate field and must not silently substitute for an unavailable publication time.
+Publication filtering uses each comment's OWN best-available stored `publishedAt`
+instant. No parent/root/item/discovery/last-observed inheritance or relative-label
+parsing is permitted. Missing, invalid or label-only publication evidence does not
+match an active date predicate. Without a date restriction it participates normally.
+Estimated/coarse source instants participate by ordinary comparisons; metadata is
+preserved, and compact localized help explains that membership uses an estimate.
+No source timestamp is repaired by filtering.
 
-Support from/to ranges and useful presets. The following are examples to consider, not a fixed mandatory list:
+Calendar dates are validated Gregorian ISO `YYYY-MM-DD`, separate from instants.
+Use the computer's CURRENT system IANA zone at evaluation, never the UI locale,
+a fixed offset, assumed UTC or a hardcoded country. Custom From includes local
+start of day; To includes its entire local day through the EXCLUSIVE start of the
+next local calendar day: `[From start, day-after-To start)`. Either can be omitted.
+Same-day ranges work across 23/25-hour DST days. From after To or malformed dates
+produce localized errors while retaining the old applied result.
 
-| Preset | Meaning and decision still needed |
+| Publication mode | Resolved predicate |
 | --- | --- |
-| Today | A calendar-day filter; the governing time zone and day boundary must be defined. |
-| Last 24 hours | A recent-time filter; exact evaluation instant and endpoint inclusion must be defined. |
-| Last 7 days | Requires a choice between a rolling duration and calendar-day interpretation. |
+| Custom / no preset | Optional From/To; both absent means no publication restriction |
+| Today | `[local start today, local start tomorrow)` |
+| Last 24 hours | `[captured now - 24h, captured now]` |
+| Last 7 days | `[captured now - 168h, captured now]`; rolling duration, not calendar week |
 
-Do not offer an ambiguous **Since last refresh** publication-date preset as a substitute for discovery filtering. **New since refresh** concerns `firstDiscoveredAt` and refresh history, not `publishedAt`: a newly discovered comment may have been published long ago. Discovery controls must identify the relevant refresh boundary explicitly. The future discovery-filter window selection remains unresolved; NEW presentation is exactly the latest accepted post-baseline discovery cohort under ADR 0011; see [refresh and merge](REFRESH_AND_MERGE.md).
+Presets replace custom bounds and disable their inputs. Changing modes clears
+custom dates. Today may include a malformed future instant later today; rolling
+ranges naturally exclude times after now. No special future-source rule is added.
 
-Resolve inclusive/exclusive endpoints, time-zone behavior, missing/imprecise timestamps, and relative-preset evaluation time before implementing date predicates. The wording of a preset must match its actual predicate. Tests must cover boundaries and daylight-saving transitions where relevant. Locale controls date presentation, not the identity of stored instants; see [localization](LOCALIZATION_AND_THEMING.md).
+Resolve semantic criteria ONCE using one injected/captured evaluation clock and
+system zone, before worker dispatch. The worker only compares deterministic numeric
+bounds/instants. Apply promotes captured draft criteria only on successful evaluation.
+Wall time or OS-zone changes alone never alter the applied view or add a stale
+indicator. Successful explicit Refresh reevaluates the LAST APPLIED semantic
+criteria against fresh now/zone; draft dates/discovery/search remain draft. Failed
+Refresh/evaluation preserves the prior applied result.
 
-The same timestamp rules must be shared with [date-based bulk seen operations](SEEN_STATE.md), which affect only comments whose own timestamps match and never implicitly include their ancestors or descendants.
+### Latest discoveries
+
+The independent discovery selector is All discoveries or NEW from latest refresh.
+NEW matches exactly `isNewDiscovery`: the current durable latest accepted
+post-baseline first-discovery cohort under ADR 0011. Baseline and prior cohorts
+fail; seen NEW and old-published newly discovered comments match. Failed attempts
+preserve it; accepted partial/unknown or zero-insert attempts replace it, possibly
+with zero matches. No arbitrary historical window, app-start/open/seen boundary,
+manual dismissal or second SQLite NEW state is added.
+
+Search AND seen AND publication AND discovery must all hold on the SAME comment.
+Predicates satisfied by different comments in a tree never jointly match. Complete
+containing-tree context and separate raw-search hits remain unchanged. The ruler's
+MATCH lane uses this combined applied set; its NEW lane remains independent over
+all displayed matches/context. Navigation uses those same application IDs.
+
+Future date-based bulk operations MUST reuse `resolvePublication` and
+`publicationMatches` with these exact timezone, boundary, clock and evidence rules,
+rather than creating a second date model. Bulk actions and undo remain future work.
+Q-03 is closed; Q-05 now covers only future arbitrary historical discovery windows.
 
 ## Keep the reader stable while seen state changes
 

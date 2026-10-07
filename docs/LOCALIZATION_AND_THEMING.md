@@ -65,7 +65,16 @@ Use locale-aware `Intl` APIs for dates, numbers, and relative times. The reader 
 
 Store time values in a language-independent representation as defined by the [database design](DATABASE.md). Locale and time zone are related presentation concerns but are not interchangeable: choosing Polish must not by itself redefine the time zone of a stored instant.
 
-The demo uses the host timezone, exact timestamps on hover/accessibility labels, and a labeled fixed reference clock. Production timestamp precision, relative-time update cadence, timezone controls, and date-predicate timezone remain unresolved. Publication-date filtering uses each comment's `publishedAt`; useful preset examples such as **Today**, **Last 24 hours**, and **Last 7 days** need explicit date rules if selected. They are examples, not a fixed mandatory list. **New since refresh** is a separate discovery-history concept, not a publication-date shortcut. See [filtering and search](FILTERING_AND_SEARCH.md). Formatting a boundary differently must not silently change the comments it selects, and exact timestamps must remain discoverable.
+The demo uses the host timezone, exact timestamps on hover/accessibility labels, and a labeled fixed reference clock. ADR 0012 settles publication filtering: current system IANA zone captured at
+Apply/Refresh, inclusive From/exclusive day-after-To, Today as a local day and
+Last 24 hours/7 days as rolling elapsed durations including captured now. Locale
+switching changes neither bounds nor membership. Missing own instants fail active
+date predicates; estimated/coarse instants participate without invented precision.
+Native date values are calendar ISO dates, never locale-formatted instants. English
+and Polish keys cover compact controls, disabled-field explanation, applied status,
+approximate-source tooltip and announced validation errors. Future date bulk MUST
+reuse these resolver/predicate rules. Relative-time cadence and optional timezone
+controls remain future choices; no custom-zone preference is added. **New since refresh** is a separate discovery-history concept, not a publication-date shortcut. See [filtering and search](FILTERING_AND_SEARCH.md). Formatting a boundary differently must not silently change the comments it selects, and exact timestamps must remain discoverable.
 
 ## Implemented discussion-query presentation
 

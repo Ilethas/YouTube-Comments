@@ -1,5 +1,6 @@
+import { evaluateTestQuery } from '../fixtures/query-testing';
 import { expect, it } from 'vitest';
-import { defaultQuery, evaluateDiscussionQuery, unrestrictedView } from '../domain/discussion-query';
+import { defaultQuery, unrestrictedView } from '../domain/discussion-query';
 import { generateDiscussion } from '../development/large-discussions';
 import { estimateReaderHeight, projectReaderRows } from './discussion-presentation';
 import { aggregateRulerMarkers, indexRulerMarkers, projectRulerMarkers, rulerLanePath, rulerMarkerCoordinate, rulerTarget } from './discussion-ruler';
@@ -8,7 +9,7 @@ import { rulerBucketLabel } from './i18n';
 it('projects applied matches, live unseen context, NEW overlap and exact virtual preorder; excludes hidden and raw-only matches', () => {
   const { comments } = generateDiscussion({ count: 5, shape: 'shallow', roots: 2, seenRatio: 0, matchIndexes: [0, 1] });
   const live = comments.map((comment, index) => index === 0 ? { ...comment, seen: true } : comment);
-  const outcome = evaluateDiscussionQuery(live, { ...defaultQuery, text: 'PROFILE_MATCH', seen: 'unseen' });
+  const outcome = evaluateTestQuery(live, { ...defaultQuery, text: 'PROFILE_MATCH', seen: 'unseen' });
   if (!outcome.ok) throw new Error('Query failed');
   const rows = projectReaderRows(live, outcome.result).rows;
   expect(rows.map(row => row.id)).toEqual(['generated-0', 'generated-1', 'generated-2']);

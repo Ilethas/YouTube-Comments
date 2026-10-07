@@ -77,7 +77,7 @@ async function run() {
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(text)});input.dispatchEvent(new Event('input',{bubbles:true}));
         p.querySelector('.query-fields').open=true;
         const fields=${JSON.stringify(fields)}; ['content','author','replied-to-author'].forEach((name,i)=>{const checkbox=p.querySelectorAll('.query-fields input')[i];if(checkbox.checked!==fields.includes(name))checkbox.click();});
-        const select=p.querySelector('.query-controls select');select.value=${JSON.stringify(seen)};select.dispatchEvent(new Event('change',{bubbles:true}));
+        const select=p.querySelector('.query-controls select[name=seen]');select.value=${JSON.stringify(seen)};select.dispatchEvent(new Event('change',{bubbles:true}));
         const toggle=p.querySelectorAll('.query-controls button[type=button]')[1];if((toggle.getAttribute('aria-pressed')==='true')!==${regex})toggle.click();})()`);
     }
     async function apply() {

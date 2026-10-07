@@ -7,6 +7,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const entry = path.join(__dirname, '../.vite/build/main.js');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const dateEvaluationNow = Date.parse('2026-10-07T12:00:00Z');
 
 // A real Chromium paint check: jsdom cannot verify hover/pseudo-element layering.
 async function verifyTabHover(window) {
@@ -86,6 +87,9 @@ async function verifyWindow(window, nativeTheme) {
     // Normalize absent optional values for the serialized restart checkpoint.
     return JSON.parse(JSON.stringify(result.value));
   }
+  // Query clocks are overridden only in this disposable verification renderer.
+  // Source timestamps are manufactured only in test-only helper fixtures below.
+  await js(`Date.now = () => ${dateEvaluationNow}; void 0`);
   async function preference(index, value) {
     const previous = (await snapshot()).workspace.activeTabId;
     await js("document.getElementById('settings-toggle').click()");
@@ -273,7 +277,7 @@ async function verifyWindow(window, nativeTheme) {
     async function draftQuery(text, seen = 'all', regex = false) {
       await js(`(() => { const panel=document.querySelector('[role=tabpanel]:not([hidden])'); const input=panel.querySelector('.query-search input');
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(text)}); input.dispatchEvent(new Event('input',{bubbles:true}));
-        const select=panel.querySelector('.query-controls select'); select.value=${JSON.stringify(seen)}; select.dispatchEvent(new Event('change',{bubbles:true}));
+        const select=panel.querySelector('.query-controls select[name=seen]'); select.value=${JSON.stringify(seen)}; select.dispatchEvent(new Event('change',{bubbles:true}));
         const toggle=panel.querySelectorAll('.query-controls button[type=button]')[1]; if ((toggle.getAttribute('aria-pressed')==='true')!==${regex}) toggle.click(); })()`);
     }
     async function applyQuery() {
@@ -281,6 +285,34 @@ async function verifyWindow(window, nativeTheme) {
       await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .query-status').textContent.includes('Obliczanie')", 'worker applied');
     }
     const visibleMatches = () => js("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) [data-view-role=match]'), row => row.id)");
+    async function dateControl(name, value) {
+      const selector = `[role=tabpanel]:not([hidden]) [name=${name}]`;
+      await js(`(() => {const input=document.querySelector(${JSON.stringify(selector)});
+        Object.getOwnPropertyDescriptor(input.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});
+        input.dispatchEvent(new Event(input.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`);
+      await waitFor(`document.querySelector(${JSON.stringify(selector)}).value===${JSON.stringify(value)}`, `date control ${name}`);
+    }
+    const localDate = instant => js(`(() => {const date=new Date(${instant}); return [date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');})()`);
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-dates').open=true");
+    const todayDate = await localDate(dateEvaluationNow);
+    const baselineReply = state.comments[video.id].find(row => row.source.commentId === 'Ug.demo+reply:02');
+    for (const [preset, expected] of [['today', (await localDate(Date.parse(baselineReply.publishedAt))) === todayDate ? 1 : 0], ['last-24-hours', 1], ['last-7-days', 1]]) {
+      await dateControl('publication-preset', preset); await applyQuery();
+      assert.equal((await visibleMatches()).length, expected, `Publication preset ${preset}`);
+      assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) [name=publication-from]').disabled"), true);
+    }
+    await dateControl('publication-preset', 'all');
+    const replyDate = await localDate(Date.parse(baselineReply.publishedAt));
+    await dateControl('publication-from', replyDate); await dateControl('publication-to', replyDate); await applyQuery();
+    assert.deepEqual(await visibleMatches(), ['comment-' + encodeURIComponent(baselineReply.id)], 'Whole local-day custom range');
+    const customMatches = await visibleMatches();
+    await dateControl('publication-from', '2030-01-01'); await applyQuery();
+    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-error').getAttribute('role')"), 'alert');
+    assert.deepEqual(await visibleMatches(), customMatches, 'Invalid dates preserve applied view');
+    await dateControl('publication-preset', 'all'); await dateControl('discovery', 'new'); await applyQuery();
+    assert.equal((await visibleMatches()).length, 0, 'Baseline fails NEW-only');
+    await dateControl('discovery', 'all'); await applyQuery();
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-dates').open=false");
     // Real bundled same-origin worker under the shipped CSP, including rejected drafts.
     await draftQuery(state.comments[video.id][0].text.slice(0, 8)); await applyQuery();
     assert.ok((await visibleMatches()).length > 0);
@@ -294,13 +326,15 @@ async function verifyWindow(window, nativeTheme) {
     await js("document.querySelector('[role=tabpanel]:not([hidden])').dispatchEvent(new KeyboardEvent('keydown',{key:'F3',bubbles:true,cancelable:true}))");
     assert.ok(await js("!!document.querySelector('[role=tabpanel]:not([hidden]) [data-selected=true]')"));
     assert.deepEqual((await snapshot()).comments, beforeNavigation.comments);
-    await draftQuery('smoke', 'unseen'); await applyQuery();
+    await draftQuery('smoke', 'unseen'); await dateControl('publication-preset', 'last-24-hours'); await applyQuery();
     await draftQuery('unapplied draft');
+    // The applied rolling criteria resolve against this fresh clock on Refresh.
+    await js(`Date.now = () => ${dateEvaluationNow + 3600000}; void 0`);
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
     await waitFor("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) .comment-text')).some(row=>row.textContent.includes('New smoke comment'))", 'refresh applied query');
     assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-search input').value"), 'unapplied draft');
     assert.ok((await visibleMatches()).length > 0);
-    await draftQuery(''); await applyQuery();
+    await draftQuery(''); await dateControl('publication-preset', 'all'); await applyQuery();
     state = await snapshot();
     assert.equal(state.items.length, 3);
     assert.equal(state.comments[video.id].length, 4);
@@ -309,6 +343,22 @@ async function verifyWindow(window, nativeTheme) {
     const discovered = state.comments[video.id].find(comment => comment.source.commentId === 'smoke-new');
     assert.equal(state.items.find(item => item.id === video.id).latestAcceptedDiscoveryId, discovered.discovery.firstDiscoveryId);
     await waitFor("document.querySelectorAll('[role=tabpanel]:not([hidden]) .new-badge').length === 1", 'Durable NEW badge');
+    await draftQuery('smoke', 'unseen'); await dateControl('publication-preset', 'last-24-hours'); await dateControl('discovery', 'new'); await applyQuery();
+    assert.deepEqual(await visibleMatches(), ['comment-' + encodeURIComponent(discovered.id)], 'Search AND unseen AND date AND NEW');
+    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .discussion-ruler').dataset.matchCount"), '1');
+    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .discussion-ruler').dataset.newCount"), '1');
+    await draftQuery(''); await dateControl('publication-preset', 'today'); await applyQuery();
+    const todayMatches = (await localDate(Date.parse(discovered.publishedAt))) === (await localDate(dateEvaluationNow + 3600000))
+      ? ['comment-' + encodeURIComponent(discovered.id)] : [];
+    assert.deepEqual(await visibleMatches(), todayMatches, 'Today uses stored estimate in the runtime system zone');
+    await dateControl('publication-preset', 'all'); await applyQuery();
+    assert.deepEqual(await visibleMatches(), ['comment-' + encodeURIComponent(discovered.id)], 'NEW-only before manual seen');
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-dates').open=true");
+    window.showInactive();
+    await pause(50);
+    fs.writeFileSync(path.join(__dirname, '../.vite/date-controls-pl-dark.png'), (await contents.capturePage()).toPNG());
+    window.hide();
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-dates').open=false");
     const beforeRuler = await snapshot();
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .discussion-ruler').focus()");
     for (const key of ['End', 'ArrowRight', 'ArrowRight', 'Enter']) {
@@ -320,6 +370,9 @@ async function verifyWindow(window, nativeTheme) {
     await js(`document.getElementById(${JSON.stringify('comment-' + encodeURIComponent(discovered.id))}).querySelector('input').click()`);
     await waitFor(`document.getElementById(${JSON.stringify('comment-' + encodeURIComponent(discovered.id))}).querySelector('input').checked && !document.querySelector('input[type=checkbox]:disabled')`, 'NEW marked seen');
     assert.equal(await js("document.querySelectorAll('[role=tabpanel]:not([hidden]) .new-badge').length"), 1, 'Seen NEW remains NEW');
+    await applyQuery();
+    assert.deepEqual(await visibleMatches(), ['comment-' + encodeURIComponent(discovered.id)], 'Seen NEW still matches discovery-only');
+    await dateControl('discovery', 'all'); await applyQuery();
     state = await snapshot();
     const validState = state;
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
@@ -417,6 +470,11 @@ async function verifyWindow(window, nativeTheme) {
       await preference(1, 'system');
       await preference(0, 'en');
       assert.equal(await js("document.querySelector('.brand strong').textContent"), 'Discussion reader');
+      await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-dates').open=true; document.documentElement.dataset.appearance='light'; void 0");
+      window.showInactive(); await pause(50);
+      fs.writeFileSync(path.join(__dirname, '../.vite/date-controls-en-light.png'), (await contents.capturePage()).toPNG());
+      window.hide();
+      await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-dates').open=false; document.documentElement.dataset.appearance='system'; void 0");
       const state = await snapshot();
       assert.deepEqual(state.comments, saved.comments);
       fs.writeFileSync(checkpoint, JSON.stringify(state));
@@ -446,9 +504,11 @@ if (process.versions.electron && process.type === 'browser') {
       if (args.includes('--version')) child.stdout.emit('data', Buffer.from(path.basename(file) === 'yt-dlp.exe' ? '2026.08.19\n' : 'post-archiver 0.4.0\n'));
       else if (path.basename(file) === 'yt-dlp.exe') {
         const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/main/extractors/__fixtures__/yt-nested-a.json'), 'utf8')).raw;
+        raw.comments[1].timestamp = dateEvaluationNow / 1000 - 23 * 3600;
+        raw.comments[2].timestamp = dateEvaluationNow / 1000 - 8 * 24 * 3600;
         for (const comment of raw.comments) delete comment.author_thumbnail; // Offline smoke makes no image network requests.
         videoRuns++;
-        if (videoRuns > 1) raw.comments = [{ ...raw.comments[2], text: 'Updated smoke root' }, { id: 'smoke-new', parent: 'root', text: 'New smoke comment' }];
+        if (videoRuns > 1) raw.comments = [{ ...raw.comments[2], text: 'Updated smoke root' }, { id: 'smoke-new', parent: 'root', text: 'New smoke comment', timestamp: dateEvaluationNow / 1000 - 3600 }];
         if (videoRuns === 3) code = 1;
         child.stdout.emit('data', Buffer.from(JSON.stringify(raw)));
       } else {

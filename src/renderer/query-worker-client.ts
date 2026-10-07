@@ -1,4 +1,4 @@
-import type { DiscussionQuery, QueryComment, QueryOutcome } from '../domain/discussion-query';
+import type { ResolvedDiscussionQuery, QueryComment, QueryOutcome } from '../domain/discussion-query';
 
 export interface QueryWorkerPort {
   postMessage(message: QueryRequest): void;
@@ -6,10 +6,10 @@ export interface QueryWorkerPort {
   onmessage: ((event: MessageEvent<QueryReply>) => void) | null;
   onerror: ((event: ErrorEvent) => void) | null;
 }
-export interface QueryRequest { readonly id: number; readonly comments: readonly QueryComment[]; readonly query: DiscussionQuery }
+export interface QueryRequest { readonly id: number; readonly comments: readonly QueryComment[]; readonly query: ResolvedDiscussionQuery }
 export interface QueryReply { readonly id: number; readonly outcome: QueryOutcome }
 export interface QueryExecutor {
-  evaluate(comments: readonly QueryComment[], query: DiscussionQuery): Promise<QueryOutcome>;
+  evaluate(comments: readonly QueryComment[], query: ResolvedDiscussionQuery): Promise<QueryOutcome>;
   dispose(): void;
 }
 /** A whole-query deadline, including dispatch, prevents regex from blocking the reader.
@@ -21,7 +21,7 @@ export class QueryWorkerClient implements QueryExecutor {
   constructor(private readonly create: () => QueryWorkerPort, private readonly deadlineMs = 1000,
     private readonly now: () => number = () => performance.now()) {}
 
-  evaluate(comments: readonly QueryComment[], query: DiscussionQuery): Promise<QueryOutcome> {
+  evaluate(comments: readonly QueryComment[], query: ResolvedDiscussionQuery): Promise<QueryOutcome> {
     this.cancel('QUERY_CANCELLED');
     return new Promise(resolve => {
       const id = ++this.sequence;

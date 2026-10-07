@@ -86,7 +86,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
           rows.map(comment => ({ ...comment, seen: acknowledgedSeen.current.get(comment.id) ?? comment.seen }))]));
         setComments(mergedComments);
         const refreshedId = result.value.summary.itemId;
-        if (mergedComments[refreshedId]) views.refresh(refreshedId, mergedComments[refreshedId]);
+        if (mergedComments[refreshedId]) views.refresh(refreshedId, mergedComments[refreshedId], result.value.state.items.find(item => item.id === refreshedId));
         acceptWorkspace(result.value.state.workspace);
         if (!refresh) { setUrl(''); setShowAcquisition(false); }
         setAcquisitionStatus(result.value.summary.coverage !== 'complete' ? result.value.summary.itemId : undefined);
@@ -212,7 +212,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
         void workspaceAction(() => api.openSettings(), '@shortcuts');
       } else if (tab?.kind === 'discussion') {
         const session = views.get(tab.itemId, comments[tab.itemId]);
-        if (command === 'apply-view') void session.apply(comments[tab.itemId]);
+        if (command === 'apply-view') void session.apply(comments[tab.itemId], false, items.find(item => item.id === tab.itemId));
         else navigateDiscussion(session, comments[tab.itemId], 'match', command === 'previous-match' ? -1 : 1);
       } else {
         return;

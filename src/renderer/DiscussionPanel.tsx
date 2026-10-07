@@ -63,7 +63,7 @@ export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, s
               <span>{countLabel(locale, 'unseenCount', comments.filter(comment => !comment.seen).length)}</span></div>
             <p className="reader-help">{seenHelp(locale)}</p>
             <DiscussionQueryControls state={view} locale={locale} edit={draft => session.edit(draft)}
-              apply={() => { void session.apply(comments); }} navigate={(kind, direction) => navigateDiscussion(session, comments, kind, direction)}
+              apply={() => { void session.apply(comments, false, item); }} navigate={(kind, direction) => navigateDiscussion(session, comments, kind, direction)}
               unseenCount={visibleUnseenIds(view.result, comments).length} />
             {view.result.restrictive && !view.result.matchCount && <p className="reader-help">{t('noDiscussionMatches')}</p>}
             <VirtualCommentList itemId={item.id} comments={comments} result={view.result} selected={view.selected} session={session} scrollRequest={view.scrollRequest}

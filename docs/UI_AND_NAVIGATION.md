@@ -1,6 +1,6 @@
 # UI and navigation
 
-The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements bounded variable-height rendering and unmounted-target reveal. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable latest-accepted post-baseline NEW. Date/discovery filtering and bulk actions remain targets. Counts cover all stored comments; synthetic examples remain isolated. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
+The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements bounded variable-height rendering and unmounted-target reveal. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable latest-accepted post-baseline NEW. [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date/latest-discovery filtering; bulk actions remain targets. Counts cover all stored comments; synthetic examples remain isolated. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
 
 Windows is the initial target platform. Other platform support is a later possibility; see [packaging](PACKAGING.md).
 
@@ -95,7 +95,7 @@ Unseen uses a subtle row tint plus UNSEEN text and the explicit checkbox. Rails
 never indicate seen state. Compact 32px avatars, bylines and multiline bodies stay.
 
 No persisted scroll, filters, sorting, expansion, selected comment or complete
-workspace restoration is claimed. Query criteria, applied results and selection are independent per-discussion session state, retained on close/reopen and cleared on Library removal. Dates, bulk actions and collapse remain targets; variable-height presentation is implemented in ADR 0010.
+workspace restoration is claimed. Query criteria, applied results and selection are independent per-discussion session state, retained on close/reopen and cleared on Library removal. Bulk actions and collapse remain targets; variable-height presentation is implemented in ADR 0010.
 
 Avatars use only usable HTTPS URLs, anonymous CORS, no-referrer, lazy loading,
 async decoding and fixed dimensions. Empty alt text avoids duplicating the byline;
@@ -188,9 +188,28 @@ Manual seen changes save immediately. They must not cause the current result mem
 | Next/previous unseen | Live unseen comments in displayed applied trees, including context. | Accessible buttons; no keyboard binding added. |
 | Next/previous match | Last applied active-filter matching IDs in displayed preorder. | F3 / Shift+F3 and accessible buttons. |
 
-The compact search form edits draft only: text, selected fields, All/Unseen/Seen, case and regex toggles, and Apply. It does not apply on typing. Invalid/expensive/failed evaluation retains previous results and shows localized feedback. Navigation wraps, never marks seen, and unseen targets update from live seen independently of applied matches. Collapse and future source-refresh shortcuts remain open; ADR 0010 selects virtualized reveal and Apply/Refresh scrolling. The applied matching set/count and matching-only bulk scope are settled as described above. See [stable filtering](FILTERING_AND_SEARCH.md).
+The compact search form edits draft only: text, selected fields, All/Unseen/Seen, case and regex toggles, compact Date / discoveries details, and Apply. It does not apply on typing. Invalid/expensive/failed evaluation retains previous results and shows localized feedback. Navigation wraps, never marks seen, and unseen targets update from live seen independently of applied matches. Collapse and future source-refresh shortcuts remain open; ADR 0010 selects virtualized reveal and Apply/Refresh scrolling. The applied matching set/count and matching-only bulk scope are settled as described above. See [stable filtering](FILTERING_AND_SEARCH.md).
 
 Extraction can be long-running or fail. Provide understandable progress, error, and partial-result context without confusing a failure with an empty discussion or losing the last valid local snapshot. Exact progress and cancellation controls are not specified yet; [extractors](EXTRACTORS.md) and [refresh and merge](REFRESH_AND_MERGE.md) own their underlying contracts.
+
+## Date and discovery controls (ADR 0012)
+
+Compact Date / discoveries details sit beside search fields. Labeled native From
+and To inputs represent calendar dates; To says whole day. A preset selector offers
+Custom / no preset, Today, Last 24 hours and Last 7 days. Presets disable From/To
+with an explanation and clear them on mode change. A separate selector offers All
+discoveries and NEW from latest refresh. Approximate-source help is compact with
+a tooltip, not permanent explanatory chrome.
+
+Controls are draft-only, independently retained per discussion across close/reopen.
+Apply or Ctrl+Enter validates/evaluates all criteria and promotes only on success.
+Reversed ranges have `aria-invalid` inputs and a localized alert. Compact applied
+status names date restrictions and NEW independently of draft controls. Successful
+Refresh re-resolves applied criteria with a fresh clock/current system zone,
+preserving drafts; failures retain the old view. No timer changes membership.
+F3/Shift+F3, match/unseen buttons and virtual ruler reveal use existing data paths;
+MATCH includes date/discovery, NEW remains an independent displayed category.
+See [exact semantics](FILTERING_AND_SEARCH.md#publication-dates-and-time-adr-0012).
 
 ## Navigate data, then reveal the row
 
@@ -260,7 +279,7 @@ and captures the current visible identity/offset at evaluation completion, using
 retained selection then start only if that anchor disappears. Header scroll is
 preserved. Failed queries retain the current view/scroll. None of this is durable
 scroll restoration across restart. SQLite query/index/clone/memory scaling,
-collapse, sorting, dates and bulk recovery remain separate targets. ADR 0011 adds the ruler and durable NEW.
+collapse, sorting and bulk recovery remain separate targets. ADR 0011 adds the ruler and durable NEW.
 
 Assume thousands or tens of thousands of comments. Virtualize the large comment view while keeping the complete result model available to filtering, counts, bulk actions, and navigation. Do not render the entire dataset merely to enable search or overview-ruler positioning.
 

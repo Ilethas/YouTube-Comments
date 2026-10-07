@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo } from 'react';
-import type { Comment } from '../domain/discussion';
+import type { Comment, ContentItem } from '../domain/discussion';
 import { DiscussionViewSession } from './discussion-view-session';
 import { createQueryExecutor } from './query-executor';
 
@@ -27,7 +27,7 @@ export function useDiscussionViews() {
       return session;
     },
     remove(id: string) { sessions.current.get(id)?.dispose(); sessions.current.delete(id); },
-    refresh(id: string, comments: readonly Comment[]) { const session = sessions.current.get(id); if (session) void session.apply(comments, true); },
+    refresh(id: string, comments: readonly Comment[], item?: ContentItem) { const session = sessions.current.get(id); if (session) void session.apply(comments, true, item); },
     seenChanged(id: string) { sessions.current.get(id)?.seenChanged(); },
   }), []);
 }

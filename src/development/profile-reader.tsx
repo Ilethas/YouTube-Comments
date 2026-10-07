@@ -52,7 +52,7 @@ const profile = {
     const start = performance.now(); toggle(item.id, id, false); await paint(); return { ms: performance.now() - start, ...stats() }; },
   async apply(text = 'PROFILE_MATCH', refresh = false) {
     if (!refresh) session.edit({ ...session.state.draft, text });
-    const start = performance.now(); await session.apply(comments, refresh); await paint();
+    const start = performance.now(); await session.apply(comments, refresh, item); await paint();
     return { ms: performance.now() - start, matches: session.state.result.matchCount, visible: session.state.result.visibleCommentIds.length, error: session.state.error, ...stats() };
   },
   async navigate(direction: 1 | -1 = -1, kind: 'match' | 'unseen' = 'match') {

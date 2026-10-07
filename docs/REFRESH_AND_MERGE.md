@@ -95,7 +95,7 @@ an empty library and never resets an existing library. See [Database](DATABASE.m
 Remote Refresh remains separate from Apply changes / Update view. Apply recomputes
 using local data and performs no extraction. A successful explicit Refresh must
 commit its merge then automatically recompute the active applied-filter matching
-set. ADR 0008 reevaluates last applied criteria against committed comments while preserving draft. ADR 0011 also advances the durable NEW cohort. Partial/unknown accepted outcomes show a compact localized coverage notice. Richer reporting remains open.
+set. ADR 0008 reevaluates last applied criteria against committed comments while preserving draft. ADR 0012 resolves applied publication criteria against a fresh captured now/current system zone and projects the committed latest NEW cohort for discovery filtering; failed source Refresh preserves the applied result. ADR 0011 also advances the durable NEW cohort. Partial/unknown accepted outcomes show a compact localized coverage notice. Richer reporting remains open.
 
 Seen edits alone preserve displayed membership/order and the last applied matching
 set. Matching bulk actions use that set rather than raw matches or contextual rows.

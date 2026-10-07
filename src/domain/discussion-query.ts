@@ -1,5 +1,8 @@
-import { buildCommentTree, walkComments } from './discussion';
-import type { Comment } from './discussion';
+import { buildCommentTree, isNewDiscovery, walkComments } from './discussion';
+import type { Comment, ContentItem } from './discussion';
+import { publicationMatches } from './publication-predicate';
+import type { PublicationBounds } from './publication-predicate';
+import type { PublicationCriteria } from './publication-filter';
 
 export type SearchField = 'content' | 'author' | 'replied-to-author';
 export type SearchMode = 'text' | 'regex';
@@ -11,8 +14,12 @@ export interface DiscussionQuery {
   readonly mode: SearchMode;
   readonly caseSensitive: boolean;
   readonly seen: SeenFilter;
+  readonly publication: PublicationCriteria;
+  readonly discovery: 'all' | 'new';
 }
-export const defaultQuery: DiscussionQuery = { text: '', fields: ['content'], mode: 'text', caseSensitive: false, seen: 'all' };
+export const defaultQuery: DiscussionQuery = { text: '', fields: ['content'], mode: 'text', caseSensitive: false, seen: 'all', publication: { kind: 'all' }, discovery: 'all' };
+/** Semantic dates remain in the session. Only resolved numeric bounds cross the worker boundary. */
+export interface ResolvedDiscussionQuery extends Omit<DiscussionQuery, 'publication'> { readonly publicationBounds: PublicationBounds | undefined }
 /** Immutable evaluation snapshot. Live seen state must never redefine these IDs. */
 export interface DiscussionViewResult {
   readonly restrictive: boolean;
@@ -27,7 +34,7 @@ export interface DiscussionViewResult {
   readonly matchCount: number;
   readonly threadCount: number;
 }
-export type QueryErrorCode = 'NO_SEARCH_FIELDS' | 'INVALID_REGEX' | 'QUERY_TOO_EXPENSIVE' | 'QUERY_FAILED' | 'QUERY_CANCELLED';
+export type QueryErrorCode = 'NO_SEARCH_FIELDS' | 'INVALID_REGEX' | 'QUERY_TOO_EXPENSIVE' | 'QUERY_FAILED' | 'QUERY_CANCELLED' | 'INVALID_PUBLICATION_DATE' | 'INVALID_PUBLICATION_RANGE';
 export type QueryOutcome = { readonly ok: true; readonly result: DiscussionViewResult }
   | { readonly ok: false; readonly error: QueryErrorCode };
 
@@ -35,12 +42,20 @@ export type QueryOutcome = { readonly ok: true; readonly result: DiscussionViewR
 export type QueryComment = Pick<Comment, 'id' | 'itemId' | 'parentId' | 'text' | 'seen' | 'directParentId' | 'relationshipStatus'> & {
   readonly author?: Pick<NonNullable<Comment['author']>, 'displayName' | 'handle'>;
   readonly relationshipKind?: 'top-level' | 'direct-parent' | 'thread-containment';
+  readonly publicationInstant?: number;
+  readonly newDiscovery?: boolean;
 };
-export function queryComments(comments: readonly Comment[]): readonly QueryComment[] {
-  return comments.map(({ id, itemId, parentId, text, seen, directParentId, relationshipStatus, author, relationship }) => ({
-    id, itemId, parentId, text, seen, directParentId, relationshipStatus, relationshipKind: relationship?.kind,
-    author: author ? { displayName: author.displayName, handle: author.handle } : undefined,
-  }));
+export function queryComments(comments: readonly Comment[], item?: ContentItem): readonly QueryComment[] {
+  return comments.map(comment => {
+    const { id, itemId, parentId, text, seen, directParentId, relationshipStatus, author, relationship, publishedAt } = comment;
+    const instant = publishedAt && /T.*(?:Z|[+-]\d{2}:\d{2})$/.test(publishedAt) ? Date.parse(publishedAt) : NaN;
+    return {
+      id, itemId, parentId, text, seen, directParentId, relationshipStatus, relationshipKind: relationship?.kind,
+      author: author ? { displayName: author.displayName, handle: author.handle } : undefined,
+      publicationInstant: Number.isFinite(instant) ? instant : undefined,
+      newDiscovery: item ? isNewDiscovery(item, comment) : false,
+    };
+  });
 }
 
 function orderedTrees(comments: readonly QueryComment[]) {
@@ -55,7 +70,7 @@ export function unrestrictedView(comments: readonly QueryComment[]): DiscussionV
     matchCount: ids.length, threadCount: trees.length };
 }
 /** Pure complete evaluation; production callers must execute through the cancellable worker. */
-export function evaluateDiscussionQuery(comments: readonly QueryComment[], query: DiscussionQuery): QueryOutcome {
+export function evaluateDiscussionQuery(comments: readonly QueryComment[], query: ResolvedDiscussionQuery): QueryOutcome {
   const searchActive = query.text.length > 0;
   if (searchActive && !query.fields.length) return { ok: false, error: 'NO_SEARCH_FIELDS' };
   let regex: RegExp | undefined;
@@ -79,13 +94,15 @@ export function evaluateDiscussionQuery(comments: readonly QueryComment[], query
     const searchMatch = searchActive && query.fields.some(field => field === 'content' ? matches(comment.text)
       : field === 'author' ? authorMatches(comment) : authorMatches(parent));
     if (searchMatch) raw.add(comment.id);
-    if ((!searchActive || searchMatch) && (query.seen === 'all' || comment.seen === (query.seen === 'seen'))) active.add(comment.id);
+    if ((!searchActive || searchMatch) && (query.seen === 'all' || comment.seen === (query.seen === 'seen'))
+      && publicationMatches(comment.publicationInstant, query.publicationBounds)
+      && (query.discovery === 'all' || comment.newDiscovery === true)) active.add(comment.id);
   }
   const allTrees = orderedTrees(comments);
   const trees = allTrees.filter(tree => tree.rows.some(row => active.has(row.id)));
   const visible = trees.flatMap(tree => tree.rows.map(row => row.id));
   const orderedMatchIds = visible.filter(id => active.has(id));
-  return { ok: true, result: { restrictive: searchActive || query.seen !== 'all', searchActive,
+  return { ok: true, result: { restrictive: searchActive || query.seen !== 'all' || !!query.publicationBounds || query.discovery !== 'all', searchActive,
     rawSearchMatchIds: allTrees.flatMap(tree => tree.rows.filter(row => raw.has(row.id)).map(row => row.id)),
     activeMatchIds: orderedMatchIds, containingThreadIds: trees.map(tree => tree.id), visibleCommentIds: visible,
     visibleParentIds: Object.fromEntries(trees.flatMap(tree => tree.rows.map(row => [row.id, row.parentId]))),
@@ -94,6 +111,9 @@ export function evaluateDiscussionQuery(comments: readonly QueryComment[], query
 
 export function sameQuery(left: DiscussionQuery, right: DiscussionQuery): boolean {
   return left.text === right.text && left.mode === right.mode && left.caseSensitive === right.caseSensitive && left.seen === right.seen
+    && left.discovery === right.discovery && left.publication.kind === right.publication.kind
+    && (left.publication.kind !== 'custom' || (right.publication.kind === 'custom'
+      && left.publication.from === right.publication.from && left.publication.to === right.publication.to))
     && left.fields.length === right.fields.length && left.fields.every(field => right.fields.includes(field));
 }
 /** Resolve browser-find style wrap using displayed preorder, even when selection is context. */
