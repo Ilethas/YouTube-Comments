@@ -20,6 +20,7 @@ import type { BulkSeenRequest, SeenMutationResult, SeenUndoDescriptor, SeenUndoR
 import { resolvePublication } from '../../domain/publication-filter';
 import { publicationMatches, ownPublicationInstant } from '../../domain/publication-predicate';
 import { isBulkSeenRequest } from '../../shared/reader-api';
+import type { HelperKind } from '../../shared/helper-settings';
 
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 function optionalText(row: Row, key: string): string | undefined {
@@ -91,6 +92,18 @@ export class ReaderRepository {
   }
 
   close(): void { this.db.close(); }
+
+  /** Machine-specific profile configuration, separate from discussion/preferences DTOs. */
+  getHelperSelection(kind: HelperKind): string | undefined {
+    const row = this.db.prepare('SELECT executable_path FROM helper_settings WHERE kind = ?').get(kind);
+    return row ? String(row.executable_path) : undefined;
+  }
+
+  /** Only the main-owned picker service writes paths after validation and probing. */
+  setHelperSelection(kind: HelperKind, executable?: string): void {
+    if (executable === undefined) this.db.prepare('DELETE FROM helper_settings WHERE kind = ?').run(kind);
+    else this.db.prepare('INSERT INTO helper_settings VALUES (?,?) ON CONFLICT(kind) DO UPDATE SET executable_path = excluded.executable_path').run(kind, executable);
+  }
 
   /** Only empty demo databases are initialized. Existing discussions/preferences
    * are never replaced or upserted. These are synthetic observations, not a

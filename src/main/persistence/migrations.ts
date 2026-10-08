@@ -156,6 +156,11 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
     FOREIGN KEY(item_id, comment_id) REFERENCES comments(item_id, id) ON DELETE CASCADE
   ) STRICT;
   CREATE INDEX seen_entries_comment ON seen_operation_entries(item_id, comment_id);
+`) }, { version: 7, apply: db => db.exec(`
+  CREATE TABLE helper_settings (
+    kind TEXT PRIMARY KEY NOT NULL CHECK(kind IN ('yt-dlp','post-archiver')),
+    executable_path TEXT NOT NULL
+  ) STRICT;
 `) }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 

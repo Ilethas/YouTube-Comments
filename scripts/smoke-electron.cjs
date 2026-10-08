@@ -8,6 +8,7 @@ const { spawn } = require('node:child_process');
 const entry = path.join(__dirname, '../.vite/build/main.js');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const dateEvaluationNow = Date.parse('2026-10-07T12:00:00Z');
+const helperChoices = [], helperExecutions = [];
 
 // A real Chromium paint check: jsdom cannot verify hover/pseudo-element layering.
 async function verifyTabHover(window) {
@@ -86,6 +87,50 @@ async function verifyWindow(window, nativeTheme) {
     assert.equal(result.ok, true);
     // Normalize absent optional values for the serialized restart checkpoint.
     return JSON.parse(JSON.stringify(result.value));
+  }
+  async function verifyHelperSettings() {
+    const helpers = path.join(root, 'helpers');
+    const status = async kind => {
+      const result = await js(`window.reader.getHelperStatus({kind:${JSON.stringify(kind)}})`);
+      assert.equal(result.ok, true); assert.equal(JSON.stringify(result).includes('private diagnostic'), false);
+      return result.value;
+    };
+    for (const operation of ['getHelperStatus', 'chooseHelper', 'clearHelper']) {
+      for (const payload of [{kind:'other'}, {kind:'yt-dlp',path:'evil.exe'}, {kind:'yt-dlp',arguments:['--exec','evil']}]) {
+        assert.deepEqual(await js(`window.reader.${operation}(${JSON.stringify(payload)})`), { ok:false,error:{code:'INVALID_REQUEST'} });
+      }
+    }
+    if (phase === 'environment') {
+      assert.equal((await status('yt-dlp')).mode, 'environment');
+      assert.equal((await status('yt-dlp')).state, 'ready');
+      assert.equal((await status('post-archiver')).state, 'invalid-path');
+      for (const kind of ['yt-dlp','post-archiver']) for (const operation of ['chooseHelper','clearHelper'])
+        assert.deepEqual(await js(`window.reader.${operation}({kind:${JSON.stringify(kind)}})`), {ok:false,error:{code:'FORBIDDEN'}});
+      await js("document.querySelector('.workspace-actions button:last-child').click()");
+      await waitFor("document.querySelectorAll('.helper-tool[aria-busy=false]').length===2", 'environment helper status');
+      assert.equal(await js("[...document.querySelectorAll('.helper-tool .helper-actions button:not(:last-child)')].every(button=>button.disabled)"), true);
+      return;
+    }
+    for (const kind of ['yt-dlp','post-archiver']) {
+      const initial = await status(kind);
+      assert.equal(initial.mode, phase === 'read' ? 'configured' : 'PATH');
+      assert.equal(initial.state, 'ready');
+      assert.equal(initial.path, path.join(helpers, `${phase === 'read' ? 'chosen-' : ''}${kind}.exe`));
+      if (phase === 'write') {
+        for (const choice of [undefined, path.join(helpers,'missing.exe'), path.join(helpers,'incompatible.exe'), path.join(helpers,`chosen-${kind}.exe`)]) {
+          helperChoices.push(choice);
+          const result = await js(`window.reader.chooseHelper({kind:${JSON.stringify(kind)}})`);
+          if (choice === undefined) assert.deepEqual(result, {ok:true,value:null});
+          else if (choice.endsWith('missing.exe')) assert.deepEqual(result, {ok:false,error:{code:'HELPER_UNAVAILABLE'}});
+          else if (choice.endsWith('incompatible.exe')) assert.deepEqual(result, {ok:false,error:{code:'HELPER_INCOMPATIBLE'}});
+          else { assert.equal(result.value.mode,'configured'); assert.equal(result.value.path,choice); }
+          if (!choice || !choice.includes('chosen-')) assert.equal((await status(kind)).path,initial.path);
+        }
+      } else if (phase === 'read') {
+        const reset = await js(`window.reader.clearHelper({kind:${JSON.stringify(kind)}})`);
+        assert.equal(reset.value.mode,'PATH'); assert.equal(reset.value.path,path.join(helpers,`${kind}.exe`));
+      }
+    }
   }
   // Query clocks are overridden only in this disposable verification renderer.
   // Source timestamps are manufactured only in test-only helper fixtures below.
@@ -218,7 +263,9 @@ async function verifyWindow(window, nativeTheme) {
   }
 
   await waitFor("document.querySelectorAll('input[type=checkbox]').length >= 24", 'bootstrap');
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'closeTab', 'moveTab', 'openLibrary', 'openSettings', 'openStoredItem', 'refresh', 'removeLibraryItem', 'toggleSeen', 'undoSeen', 'updatePreferences']);
+  await verifyHelperSettings();
+  if (phase === 'environment') return;
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'chooseHelper', 'clearHelper', 'closeTab', 'getHelperStatus', 'moveTab', 'openLibrary', 'openSettings', 'openStoredItem', 'refresh', 'removeLibraryItem', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   assert.deepEqual(await js("window.reader.acquire({url:'https://www.youtube.com/watch?v=abcdefghijk',executable:'evil'})"),
     { ok: false, error: { code: 'INVALID_REQUEST' } });
   assert.deepEqual(await js("window.reader.refresh({itemId:'video-demo',url:'https://example.com'})"),
@@ -576,6 +623,9 @@ async function verifyWindow(window, nativeTheme) {
     }
   }
   assert.equal(await js("document.querySelector('[role=alert]') === null"), true);
+  if (phase === 'write') {
+    for (const kind of ['yt-dlp','post-archiver']) assert.ok(helperExecutions.some(run=>run.file===path.join(root,'helpers',`chosen-${kind}.exe`) && !run.probe), `Configured ${kind} used without restart`);
+  }
   console.log(`Electron smoke PASS ${phase}: ${JSON.stringify({ electron: process.versions.electron,
     node: process.versions.node, sqlite: process.versions.sqlite, preferences: (await snapshot()).preferences })}`);
   nativeTheme.themeSource = 'system';
@@ -593,11 +643,12 @@ if (process.versions.electron && process.type === 'browser') {
   childProcess.spawn = (file, args, options) => {
     if (path.dirname(file) !== helpers) return originalSpawn(file, args, options);
     assert.equal(options.shell, false);
+    helperExecutions.push({file,probe:args.includes('--version')});
     const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
     setTimeout(() => {
       let code = 0;
-      if (args.includes('--version')) child.stdout.emit('data', Buffer.from(path.basename(file) === 'yt-dlp.exe' ? '2026.08.19\n' : 'post-archiver 0.4.0\n'));
-      else if (path.basename(file) === 'yt-dlp.exe') {
+      if (args.includes('--version')) child.stdout.emit('data', Buffer.from(path.basename(file) === 'incompatible.exe' ? 'unsupported' : path.basename(file).includes('yt-dlp') ? '2026.08.19\n' : 'post-archiver 0.4.0\n'));
+      else if (path.basename(file).includes('yt-dlp')) {
         const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/main/extractors/__fixtures__/yt-nested-a.json'), 'utf8')).raw;
         raw.comments[1].timestamp = dateEvaluationNow / 1000 - 23 * 3600;
         raw.comments[2].timestamp = dateEvaluationNow / 1000 - 8 * 24 * 3600;
@@ -622,7 +673,14 @@ if (process.versions.electron && process.type === 'browser') {
     }, args.includes('--version') ? 0 : 150);
     return child;
   };
-  const { app, nativeTheme } = require('electron');
+  const { app, nativeTheme, dialog } = require('electron');
+  // Test-only main native-dialog seam; the renderer never supplies selected paths.
+  dialog.showOpenDialog = async (parent, options) => {
+    assert.equal(parent.constructor.name, 'BrowserWindow');
+    assert.deepEqual(options.properties,['openFile']);
+    assert.deepEqual(options.filters[0].extensions,['exe']);
+    const selected=helperChoices.shift(); return {canceled:selected===undefined,filePaths:selected ? [selected] : []};
+  };
   const watchdog = setTimeout(() => { console.error('Electron smoke timed out'); app.exit(1); }, 30000);
   let rendererFailed = false;
   app.on('browser-window-created', (_event, window) => {
@@ -647,14 +705,18 @@ if (process.versions.electron && process.type === 'browser') {
     try {
       const helpers = path.join(directory, 'helpers');
       fs.mkdirSync(helpers);
-      for (const name of ['yt-dlp.exe', 'post-archiver.exe']) fs.writeFileSync(path.join(helpers, name), 'test-only fake executable');
-      for (const phase of ['write', 'read', 'readsystem']) {
+      for (const name of ['yt-dlp.exe', 'post-archiver.exe','chosen-yt-dlp.exe','chosen-post-archiver.exe','incompatible.exe']) fs.writeFileSync(path.join(helpers, name), 'test-only fake executable');
+      for (const phase of ['write', 'read', 'readsystem', 'environment']) {
         const environment = { ...process.env, YOUTUBE_COMMENTS_DEMO_ROOT: directory, YOUTUBE_COMMENTS_SMOKE_PHASE: phase };
         environment.PATH = `${helpers}${path.delimiter}${process.env.PATH ?? process.env.Path ?? ''}`;
         delete environment.Path;
         delete environment.ELECTRON_RUN_AS_NODE;
         delete environment.YOUTUBE_COMMENTS_YTDLP_EXE;
         delete environment.YOUTUBE_COMMENTS_POST_ARCHIVER_EXE;
+        if (phase==='environment') {
+          environment.YOUTUBE_COMMENTS_YTDLP_EXE=path.join(helpers,'yt-dlp.exe');
+          environment.YOUTUBE_COMMENTS_POST_ARCHIVER_EXE=path.join(helpers,'missing.exe');
+        }
         const child = spawn(require('electron'), [__filename], { env: environment, stdio: 'inherit', windowsHide: true });
         await new Promise((resolve, reject) => {
           child.on('error', reject);
@@ -664,13 +726,14 @@ if (process.versions.electron && process.type === 'browser') {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 6);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 7);
+        assert.equal(db.prepare('SELECT count(*) AS count FROM helper_settings').get().count,0);
         assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 7);
         assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 3);
         assert.equal(db.prepare('SELECT count(*) AS count FROM comments').get().count, 28);
         assert.deepEqual({ ...db.prepare('SELECT locale, appearance FROM preferences').get() }, { locale: 'en', appearance: 'system' });
       } finally { db.close(); }
-      console.log('Electron smoke PASS: two real restarts, bulk/matching/date/subtree/Refresh recovery and safe partial Undo');
+      console.log('Electron smoke PASS: real restarts, helper selection/reset/environment authority, bulk recovery and safe partial Undo');
     } finally {
       // Clean only the newly created test directory, never a configured profile.
       if (path.dirname(directory) !== os.tmpdir() || !path.basename(directory).startsWith('youtube-comments-electron-test-')) throw new Error('Unsafe cleanup');

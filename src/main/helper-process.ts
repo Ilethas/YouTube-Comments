@@ -3,8 +3,9 @@ import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { access, stat } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
+import type { HelperKind, HelperStatus } from '../shared/helper-settings';
 
-export type HelperName = 'yt-dlp' | 'post-archiver';
+export type HelperName = HelperKind;
 export interface ProcessRequest {
   readonly executable: string;
   readonly arguments: readonly string[];
@@ -28,22 +29,44 @@ export const helperOverrideVariables = {
   'post-archiver': 'YOUTUBE_COMMENTS_POST_ARCHIVER_EXE',
 } as const;
 
-/** Main startup configuration wins over PATH. A configured invalid path fails closed
- * as unavailable, including empty/relative/directory/batch paths; never fallback.
- * Selection is not trust: live extraction must still probe the selected binary. */
-export function createHelperResolver(environment: NodeJS.ProcessEnv = process.env, platform = process.platform): ResolveHelper {
+/** Strict direct executable validation, also applied after native file selection. */
+export async function isHelperExecutable(file: string, platform = process.platform): Promise<boolean> {
+  const root = path.parse(file).root;
+  if (!path.isAbsolute(file) || /\.(bat|cmd)$/i.test(file) || file.includes('\0')
+    || (platform === 'win32' && (path.extname(file).toLowerCase() !== '.exe'
+      || (process.platform === 'win32' && (root === '\\' || root === '/'))))) return false;
+  try {
+    await access(file, platform === 'win32' ? constants.F_OK : constants.X_OK);
+    return (await stat(file)).isFile();
+  } catch { return false; }
+}
+
+export interface HelperResolution {
+  readonly mode: HelperStatus['mode'];
+  readonly path?: string;
+  readonly executable?: string;
+}
+/** Environment is captured at startup; saved settings are read for each operation.
+ * Invalid higher-priority configuration never falls through to another source. */
+export function createHelperResolution(environment: NodeJS.ProcessEnv = process.env, platform = process.platform,
+  selection: (name: HelperName) => string | undefined = () => undefined): (name: HelperName) => Promise<HelperResolution> {
   const startup = { ...environment };
   return async name => {
     const override = startup[helperOverrideVariables[name]];
-    if (override === undefined) return resolvePathHelper(name, startup, platform);
-    const root = path.parse(override).root;
-    if (!path.isAbsolute(override) || (platform === 'win32' && (path.extname(override).toLowerCase() !== '.exe'
-      || (process.platform === 'win32' && (root === '\\' || root === '/'))))) return undefined;
-    try {
-      await access(override, platform === 'win32' ? constants.F_OK : constants.X_OK);
-      return (await stat(override)).isFile() ? override : undefined;
-    } catch { return undefined; }
+    const saved = override === undefined ? selection(name) : undefined;
+    const file = override ?? saved;
+    if (file !== undefined) return { mode: override !== undefined ? 'environment' : 'configured', path: file,
+      executable: await isHelperExecutable(file, platform) ? file : undefined };
+    const executable = await resolvePathHelper(name, startup, platform);
+    return { mode: executable ? 'PATH' : 'unavailable', path: executable, executable };
   };
+}
+
+/** Selection is not trust: every acquisition still probes the exact selected binary. */
+export function createHelperResolver(environment: NodeJS.ProcessEnv = process.env, platform = process.platform,
+  selection: (name: HelperName) => string | undefined = () => undefined): ResolveHelper {
+  const resolve = createHelperResolution(environment, platform, selection);
+  return async name => (await resolve(name)).executable;
 }
 
 /** Development PATH lookup only. Windows requires .exe: batch wrappers need a shell.
@@ -53,12 +76,10 @@ export async function resolvePathHelper(name: HelperName, environment = process.
   const entries = (environment.PATH ?? environment.Path ?? '').split(separator);
   for (const entry of entries) {
     const directory = entry.replace(/^"|"$/g, '');
-    if (!path.isAbsolute(directory)) continue;
+    if (!path.isAbsolute(directory) || (platform === 'win32' && process.platform === 'win32'
+      && ['\\', '/'].includes(path.parse(directory).root))) continue;
     const file = path.join(directory, platform === 'win32' ? `${name}.exe` : name);
-    try {
-      await access(file, platform === 'win32' ? constants.F_OK : constants.X_OK);
-      if ((await stat(file)).isFile()) return file;
-    } catch { /* Try the next PATH directory. */ }
+    if (await isHelperExecutable(file, platform)) return file;
   }
   return undefined;
 }

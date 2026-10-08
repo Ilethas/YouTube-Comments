@@ -34,6 +34,9 @@ beforeEach(() => {
     return { ok: true as const, value: state.workspace };
   };
   api = {
+    getHelperStatus: vi.fn(async ({ kind }) => ({ ok: true as const, value: { kind, mode: 'unavailable' as const, state: 'unavailable' as const, requiredVersion: kind === 'yt-dlp' ? '2026.08.19' : '0.4.0' } })),
+    chooseHelper: vi.fn(async () => ({ ok: true as const, value: null })),
+    clearHelper: vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } })),
     bulkSeen: vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } })),
     undoSeen: vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } })),
     openStoredItem: vi.fn(open),

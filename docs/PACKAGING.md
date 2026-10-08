@@ -1,6 +1,6 @@
 # Packaging and distribution
 
-Windows is the initial development and packaging target. Keep future Linux/macOS support possible, but neither is an initial implementation or release requirement. This document separates that target from the existing scaffold; no release is implemented by this documentation task. See [Architecture](ARCHITECTURE.md), [Database](DATABASE.md), and [Extractors](EXTRACTORS.md) for the boundaries packaging must preserve.
+Windows is the initial development and packaging target. Keep future Linux/macOS support possible, but neither is an initial implementation or release requirement. This document separates that target from the existing scaffold; no release-ready package is established. See [Architecture](ARCHITECTURE.md), [Database](DATABASE.md), and [Extractors](EXTRACTORS.md) for the boundaries packaging must preserve.
 
 ## Current scaffold
 
@@ -46,13 +46,19 @@ $env:YOUTUBE_COMMENTS_POST_ARCHIVER_EXE =
 npm.cmd start
 ```
 
-Override → safe direct PATH → HELPER_UNAVAILABLE. A configured invalid override
-fails closed without PATH fallback; unset it to use PATH. Windows requires an
-absolute regular `.exe`; the same pinned version probe verifies it. No helper
-download/bundling/installation discovery or Settings UI is introduced. Schema 3
-adds preserving workspace migration, without completing release/installer work.
+[ADR 0014](decisions/0014-main-owned-helper-settings.md) implements startup environment
+> saved profile helper selection > safe direct PATH > HELPER_UNAVAILABLE. Invalid
+higher-priority paths and incompatible versions fail closed. Windows requires an
+absolute regular .exe and the unchanged exact version probe: yt-dlp 2026.08.19 or
+post-archiver 0.4.0. Settings uses a main-owned native picker; saved selections take
+effect for later acquisition/Refresh without restart. Use automatic detection clears
+only the saved selection. Environment-controlled helpers disable Browse/reset.
+Development and production naturally have independent schema-7 configuration.
 
-Initial backends are `yt-dlp` and `post-archiver-improved` for public individual posts. ADR 0005's exact-version-checked direct PATH lookup is extended by ADR 0006's explicit startup overrides above. Windows requires direct .exe files. Helpers are not bundled/downloaded/installed and no Python environment is managed. A working development installation does not establish end-user distribution support.
+Helpers remain user-installed, not bundled/downloaded/updated. No Python runtime
+is managed. Desktop executable selection does not establish release-ready helper
+distribution; artifacts, licensing, integrity, update ownership and completed
+installer verification remain open.
 
 Before committing to helper bundling, decide and document:
 
@@ -62,7 +68,7 @@ Before committing to helper bundling, decide and document:
 - Applicable redistribution licenses, notices, signing, and artifact integrity checks.
 - Whether updates arrive with the app or through a separate mechanism, and how failures are handled without compromising stored discussions.
 
-The application license in `package.json` does not establish redistribution rights for helpers or their dependencies. Do the assessment for the actual selected artifacts. No automatic downloading/updating behavior or user-specified binary-path UI is committed here. See the [extractor contract](EXTRACTORS.md) and [decision register](decisions/README.md).
+The application license in `package.json` does not establish redistribution rights for helpers or their dependencies. Do the assessment for the actual selected artifacts. No automatic downloading/updating behavior is implemented; user selection is implemented by ADR 0014. See the [extractor contract](EXTRACTORS.md) and [decision register](decisions/README.md).
 
 ## Protecting durable data
 

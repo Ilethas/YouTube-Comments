@@ -6,6 +6,7 @@ import { ReaderRepository } from './main/persistence/reader-repository';
 import { resolveDatabasePath } from './main/persistence/profile';
 import { ReaderService } from './main/reader-service';
 import { registerReaderIpc } from './main/reader-ipc';
+import { createHelperPicker } from './main/helper-picker';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -63,7 +64,7 @@ app.on('ready', () => {
       if (mode === 'development') repository.initializeDemo();
       return repository;
     } catch (error) { repository.close(); throw error; }
-  }, app.getPreferredSystemLanguages());
+  }, app.getPreferredSystemLanguages(), console.error, undefined, { choose: createHelperPicker(() => mainWindow) });
   registerReaderIpc(service, () => mainWindow, documentUrl);
   createWindow();
 });

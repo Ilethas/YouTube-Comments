@@ -34,18 +34,19 @@ process or source relationship semantics cross this presentation change.
 Author avatar evidence flows adapter → normalized remote JSON → source-independent
 Author → decorative anonymous HTTPS image/fallback. Older JSON defaults missing
 avatar evidence to unavailable in memory. CSP permits HTTPS images without relaxing
-script/process access. Main snapshots exact executable overrides before direct PATH
-lookup; values and paths never cross preload. See [Extractors](EXTRACTORS.md).
+script/process access. Main snapshots authoritative executable overrides and reads current saved
+profile configuration before safe direct PATH lookup. Only display-only helper
+path/status evidence crosses preload (ADR 0014). See [Extractors](EXTRACTORS.md).
 
 `acquisition-target.ts` owns supported URL validation/canonicalization;
-`helper-process.ts` owns startup override/direct PATH lookup and no-shell asynchronous spawning;
+`helper-process.ts` owns environment/saved/PATH resolution, strict executable validation and no-shell asynchronous spawning;
 `live-extraction.ts` probes pinned versions, builds trusted commands, owns anonymous
 Community temporary config/output, enforces deadlines and normalizes before writes.
 `acquisition-service.ts` coordinates the temporary single-live-operation lock,
 stored-identity refresh, repository ingestion and compact acknowledgment.
 `ReaderService` validates exact intent payloads. The IPC sender/frame/document
-checks are unchanged. Raw output, paths, environment and process capability never
-cross preload. Normal quit aborts/awaits child cleanup before closing SQLite.
+checks are unchanged. Raw output, environment and process capability never cross preload;
+ADR 0014 permits narrow display-only helper path/version/status evidence. Normal quit aborts/awaits child cleanup before closing SQLite.
 
 Successful acquire/refresh returns committed ReaderState plus item/coverage/count
 summary. Existing seen state is never written by merge, including edits made
@@ -119,7 +120,7 @@ flowchart TB
 
 The privilege boundary is renderer -> typed preload/contextBridge API -> privileged application backend owned by the Electron main side -> persistence/extractors. The renderer never directly owns or accesses SQLite and receives no generic Node, filesystem, SQL, shell, or process-launch capability. The main-side backend may later delegate database work to an internal worker if justified; that is an implementation decision within the same privilege boundary. Extractor processes are invoked only by Electron main. Backend output is untrusted data, not executable UI content.
 
-Implemented IPC maintains context isolation and disabled renderer Node integration, validates exact payload shapes/arity and allowed senders, and exposes bootstrap, manual seen changes, preferences, acquire({url}), refresh({itemId}), openStoredItem({itemId}), openLibrary(), openSettings(), activateTab({tabId}), closeTab({tabId}), moveTab({tabId,toIndex}) and removeLibraryItem({itemId}). Only the owning window's top-level expected document is accepted. TypeScript does not replace runtime validation. Stable error codes support localized failure context; broader request-ID/diagnostic policy remains future work.
+Implemented IPC maintains context isolation and disabled renderer Node integration, validates exact payload shapes/arity and allowed senders, and exposes bootstrap, manual seen changes, preferences, acquire({url}), refresh({itemId}), openStoredItem({itemId}), openLibrary(), openSettings(), activateTab({tabId}), closeTab({tabId}), moveTab({tabId,toIndex}) , removeLibraryItem({itemId}), getHelperStatus({kind}), chooseHelper({kind}) and clearHelper({kind}). Only the owning window's top-level expected document is accepted. TypeScript does not replace runtime validation. Stable error codes support localized failure context; broader request-ID/diagnostic policy remains future work.
 
 The bridge should express intent such as opening an item, querying comments, setting seen state for a validated scope, refreshing, or persisting tab preferences. These are conceptual operations, not finalized method signatures. Main resolves and validates identities, scope, executable selection, and arguments. Do not expose a generic `execute(command)`, `query(sql)`, or unrestricted IPC forwarding API. Permalink opening and copy actions also use appropriately constrained application capabilities. Detailed sandbox/CSP/navigation policy and API contracts must be finalized with the relevant implementation increment.
 
@@ -246,3 +247,18 @@ The [decision register](decisions/README.md) identifies unresolved policies sepa
 Schema 5 adds explicit durable attempt ordinals, preserving existing insertion order and assigning new order within the merge/history transaction. Main selects the latest accepted attempt and exposes only its identity on ContentItem through the existing ReaderState; the typed preload command surface stays unchanged. The pure domain NEW predicate uses baseline and comment first-discovery identity. No renderer history access, mutable NEW flag or restart-specific renderer persistence is added.
 
 Pure renderer marker projection joins virtual rows, applied result, live seen and NEW IDs. Aggregation uses full virtualizer starts/sizes, measured header margin and bottom extent, with three 6px category lanes and 3px bands. Three compound SVG paths and one labeled keyboard stop keep marker DOM constant; targets/counts remain data. The ruler portal belongs to its reader panel, so hidden discussions hide it and preserve tab render isolation. Pointer/keyboard activation shares session selection and ADR 0010 index/mount/exact-ID reveal. O(N) projections/target memory and full bootstrap/query costs remain Q-21.
+
+## External helper Settings boundary (ADR 0014)
+
+[ADR 0014](decisions/0014-main-owned-helper-settings.md) adds three exact helper-kind
+intents: get/recheck status, choose executable and clear saved selection. Main owns
+the parented native picker, validation/probe and schema-7 helper_settings writes;
+renderer input has no path, arguments or shell fields. Configuration remains outside
+ReaderState/Preferences and discussion removal. Environment > saved setting > safe
+PATH is fail-closed for configured sources. Exact probes are shared with live
+extraction; the resolver reads current saved settings for every later acquisition.
+Settings checks lazily once when first viewed, with explicit Recheck and acknowledged
+Choose/reset status; ordinary Reader/bootstrap renders launch no probes. Configuration
+commands serialize separately from the unchanged acquisition lock. Normal quit aborts
+probes and awaits configuration/acquisition work before releasing SQLite. Raw diagnostics
+stay privileged; status paths are plain display evidence, never execution requests.

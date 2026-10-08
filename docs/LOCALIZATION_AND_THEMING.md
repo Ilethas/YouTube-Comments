@@ -6,8 +6,10 @@ English and Polish UI localization and System/Light/Dark appearance are implemen
 durable Language/Appearance controls into the singleton closable Settings tab.
 Library/Settings launch controls, kind accessibility labels, reorder shortcut help,
 metadata filter/empty/open state, demo protection, modal confirmation, removal/busy
-errors and external-tools explanation have stable English/Polish keys. Paths stay
-main-only. Native dialog provides focus containment; Cancel receives initial focus.
+errors and external-tools explanation have stable English/Polish keys. ADR 0014
+adds localized helper source/state/versions, native-selection intent, automatic reset,
+Recheck, environment authority and retained-selection errors. Full wrapping helper
+paths have titles and are display-only evidence; path input/validation stay in main. Native dialog provides focus containment; Cancel receives initial focus.
 Neutral tree rails and separate unseen row tint use theme tokens; badge/checkbox
 retain non-color state. Metadata filtering uses locale-independent lowercase
 matching over original metadata and does not settle discussion search comparisons.
@@ -57,7 +59,7 @@ The foundation selects a small typed dictionary instead of adding `i18next`/`rea
 
 Avoid constructing sentences by concatenating translated fragments. English and Polish need room for different word order and plural forms. Keep source content distinct from application markup when inserting it into localized messages.
 
-Implemented IPC errors carry stable codes in structured results; bootstrap/save context uses localized keys rather than English protocol sentences. Driver details and paths stay in privileged diagnostics. ADR 0005 adds English/Polish acquisition, refresh, progress, coverage and stable helper/failure context. Raw stdout/stderr and paths stay in main; richer diagnostics and request-ID policy remain open. See [extractor diagnostics](EXTRACTORS.md), [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md), and [architecture](ARCHITECTURE.md).
+Implemented IPC errors carry stable codes in structured results; bootstrap/save context uses localized keys rather than English protocol sentences. Database paths and driver details stay in privileged diagnostics. ADR 0005 adds English/Polish acquisition, refresh, progress, coverage and stable helper/failure context. Raw stdout/stderr stay in main; ADR 0014 exposes display-only helper paths; richer diagnostics and request-ID policy remain open. See [extractor diagnostics](EXTRACTORS.md), [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md), and [architecture](ARCHITECTURE.md).
 
 ## Format dates and numbers; preserve meaning
 

@@ -1,6 +1,6 @@
 # Extractors and normalization
 
-Pure backend adapters, a source-independent observation contract, sanitized fixtures, and command-spec builders are implemented in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). Normalized fixture ingestion into SQLite is implemented in [ADR 0004](decisions/0004-durable-observation-merge.md). Main-only live public helper execution, acquisition/refresh orchestration and minimal renderer controls are implemented in [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md). Helpers remain development PATH dependencies, not bundled artifacts. Start with [How it works](HOW_IT_WORKS.md); the surrounding process boundary is described in [Architecture](ARCHITECTURE.md).
+Pure backend adapters, a source-independent observation contract, sanitized fixtures, and command-spec builders are implemented in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). Normalized fixture ingestion into SQLite is implemented in [ADR 0004](decisions/0004-durable-observation-merge.md). Main-only live public helper execution, acquisition/refresh orchestration and minimal renderer controls are implemented in [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md). Helpers use installed executables selected by startup environment, saved Settings or safe direct PATH; they are not bundled artifacts. Start with [How it works](HOW_IT_WORKS.md); the surrounding process boundary is described in [Architecture](ARCHITECTURE.md).
 
 ## Supported acquisition targets
 
@@ -33,7 +33,7 @@ Both adapters derive canonical YouTube item URLs explicitly from their source it
 
 Command specs ignore config/plugins, disable playlists/media download, enable comments, request single JSON and require explicit finite retry/timeout inputs for yt-dlp. They use no unavailable-format tolerance flags. Community requires an individual post URL, comments, explicit output/config locations and comment/reply limits, with child-only `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`; broken `--quiet` is omitted. Builders neither create config files nor decide helper path precedence, overall process deadlines or distribution.
 
-## Development runner contract
+## Installed-helper runner contract
 
 Resolve `yt-dlp.exe` / `post-archiver.exe` from absolute PATH directories on
 Windows; `.bat` wrappers are excluded because no shell is allowed. Probe the
@@ -122,15 +122,30 @@ Record useful diagnostics without presenting raw backend terminology as the only
 
 ## Finding and distributing helpers
 
-ADR 0006 adds main-only startup overrides, before direct PATH resolution:
-`YOUTUBE_COMMENTS_YTDLP_EXE` and `YOUTUBE_COMMENTS_POST_ARCHIVER_EXE`.
-An unset variable permits PATH lookup. A configured value must be an absolute
-regular file, directly executable (`.exe` on Windows; executable permissions on
-other systems). Empty, missing, relative, root/drive-relative Windows, directory,
-`.bat` or `.cmd` paths fail closed with `HELPER_UNAVAILABLE`; no fallback to PATH.
-Selection still runs ADR 0005's same exact version probe on that executable before
-trusting output. Execution remains `shell:false`. No Python scanning, wrapper
-parsing, path Settings UI or renderer path capability exists.
+[ADR 0014](decisions/0014-main-owned-helper-settings.md) adds desktop configuration.
+Resolution is authoritative startup `YOUTUBE_COMMENTS_YTDLP_EXE` /
+`YOUTUBE_COMMENTS_POST_ARCHIVER_EXE` > current saved profile selection > safe direct
+PATH > `HELPER_UNAVAILABLE`. Unset variables allow saved settings/PATH; explicitly
+set invalid or empty overrides fail closed and disable editing/reset for that
+helper. Overrides are never persisted. Broken or incompatible saved selections
+also fail closed without PATH fallback; Use automatic detection clears only that
+saved selection and immediately checks PATH.
+
+Main owns a window-parented native single-file picker, absolute/regular executable
+validation and the same exact bounded version probe before saving. Windows requires
+.exe; .bat/.cmd, relative/missing/directory paths and shell execution remain excluded.
+Wrong versions/invalid files retain the prior selection; cancel is a clean no-op.
+Schema 7 stores machine paths separately from discussion data/preferences. Both
+helpers have narrow localized Settings status with source, display path, recognized
+version and required version. Status checks run lazily on first Settings activation
+and explicitly on Recheck; Choose/reset return resulting status. They do not run
+on ordinary Reader renders. Later acquisition/Refresh reads the current saved
+selection and probes every time, without requiring restart. An in-flight operation
+retains its already resolved executable. No renderer path input, process arguments,
+raw output, generic filesystem or executable launcher is exposed.
+
+Helpers are still user-installed. Bundling/download/update, Python environment
+management, artifact licensing/integrity and expanded compatibility remain open.
 
 Author thumbnails normalize as explicit avatar evidence only for usable HTTPS URLs.
 Community empty-string defaults are lossy unknowns; neither absence nor invalid

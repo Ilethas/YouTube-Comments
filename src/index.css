@@ -214,3 +214,10 @@ time, .muted { color: var(--muted); }
 .bulk-fields label { display: flex; flex-direction: column; gap: 0.2rem; }
 .bulk-fields input[type=date] { color: var(--text); background: var(--surface-raised); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; }
 .bulk-fields .reader-help { flex-basis: 100%; margin: 0; }
+/* Compact display-only machine paths; wrap fully without widening Settings. */
+.external-tools { margin-block: 1.25rem; }
+.helper-tool { padding-block: .65rem; border-bottom: 1px solid var(--border); }
+.helper-heading, .helper-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem 1rem; }
+.helper-heading h3 { margin: 0; font-size: 1rem; }
+.helper-path { overflow-wrap: anywhere; font-family: monospace; font-size: .85rem; margin-block: .5rem; }
+.helper-version { font-size: .85rem; margin-block: .4rem; }

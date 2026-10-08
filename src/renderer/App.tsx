@@ -16,6 +16,7 @@ import { shortcutHint } from './shortcuts';
 import { readerShortcut } from './keyboard-routing';
 import type { BulkSeenRequest, SeenMutationResult } from '../domain/seen-operation';
 import type { SeenFeedback } from './BulkSeenControls';
+import { ExternalTools } from './ExternalTools';
 
 export function App({ api = window.reader }: { api?: ReaderApi }) {
   const [state, setState] = useState<ReaderState>();
@@ -335,7 +336,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
           {(['system', 'light', 'dark'] as const).map(value => <option key={value} value={value}>{t(value)}</option>)}
         </select></label>
       </div>
-        <h2>{t('externalTools')}</h2><p>{t('externalToolsHelp')}</p>
+        <ExternalTools api={api} locale={locale} active={activeId === 'settings'} />
         <KeyboardShortcuts locale={locale} />
       </div>
     </main>}

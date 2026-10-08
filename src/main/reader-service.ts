@@ -1,4 +1,4 @@
-import { isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshRequest, isTabRequest, isMoveTabRequest, isBulkSeenRequest } from '../shared/reader-api';
+import { isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshRequest, isTabRequest, isMoveTabRequest, isBulkSeenRequest, isHelperRequest } from '../shared/reader-api';
 import type { AcquisitionResult, ReaderOperation, ReaderState, Result } from '../shared/reader-api';
 import type { SeenMutationResult, SeenUndoResult } from '../domain/seen-operation';
 import type { Preferences } from '../shared/preferences';
@@ -9,16 +9,21 @@ import { createLiveExtractor } from './live-extraction';
 import type { ExtractLive } from './live-extraction';
 import { InvalidWorkspaceMoveError } from '../domain/workspace';
 import type { WorkspaceState } from '../domain/workspace';
+import type { HelperStatus } from '../shared/helper-settings';
+import { HelperSettingsService } from './helper-settings';
+import type { HelperSettingsOptions } from './helper-settings';
 
 /** Small use-case boundary: validate before touching persistence; failures carry
  * stable codes. Diagnostics are reported only on the privileged side. */
 export class ReaderService {
   private repository?: ReaderRepository;
   private acquisition?: AcquisitionService;
+  private helpers?: HelperSettingsService;
   private failure?: 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA';
   constructor(private readonly open: () => ReaderRepository, private readonly languages: readonly string[],
     private readonly diagnose: (error: unknown) => void = console.error,
-    private readonly extract: ExtractLive = createLiveExtractor()) {
+    private readonly extract?: ExtractLive,
+    private readonly helperOptions: HelperSettingsOptions = {}) {
     this.initializeStorage();
   }
 
@@ -27,7 +32,9 @@ export class ReaderService {
   private initializeStorage(): void {
     try {
       this.repository = this.open();
-      this.acquisition = new AcquisitionService(this.repository, this.languages, this.extract);
+      this.helpers = new HelperSettingsService(this.repository, this.helperOptions);
+      this.acquisition = new AcquisitionService(this.repository, this.languages,
+        this.extract ?? createLiveExtractor({ resolve: this.helpers.resolve, execute: this.helperOptions.execute }));
       this.failure = undefined;
     }
     catch (error) {
@@ -43,8 +50,18 @@ export class ReaderService {
   dispatch(operation: 'updatePreferences', args: readonly unknown[]): Result<Preferences>;
   dispatch(operation: 'openStoredItem' | 'activateTab' | 'closeTab' | 'openLibrary' | 'openSettings' | 'moveTab', args: readonly unknown[]): Result<WorkspaceState>;
   dispatch(operation: 'acquire' | 'refresh', args: readonly unknown[]): Promise<Result<AcquisitionResult>>;
-  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState> | Promise<Result<AcquisitionResult>>;
-  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState> | Promise<Result<AcquisitionResult>> {
+  dispatch(operation: 'getHelperStatus' | 'clearHelper', args: readonly unknown[]): Promise<Result<HelperStatus>>;
+  dispatch(operation: 'chooseHelper', args: readonly unknown[]): Promise<Result<HelperStatus | null>>;
+  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState> | Promise<Result<AcquisitionResult | HelperStatus | null>>;
+  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState> | Promise<Result<AcquisitionResult | HelperStatus | null>> {
+    if (operation === 'getHelperStatus' || operation === 'chooseHelper' || operation === 'clearHelper') {
+      if (args.length !== 1 || !isHelperRequest(args[0])) return Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
+      if (!this.helpers) return Promise.resolve({ ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } });
+      const kind = args[0].kind;
+      const pending = operation === 'getHelperStatus' ? this.helpers.getStatus(kind)
+        : operation === 'chooseHelper' ? this.helpers.choose(kind) : this.helpers.clear(kind);
+      return pending.catch(error => { this.diagnose(error); return { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }; });
+    }
     if (operation === 'acquire' || operation === 'refresh') {
       if (args.length !== 1 || (operation === 'acquire' ? !isAcquireRequest(args[0]) : !isRefreshRequest(args[0]))) {
         return Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
@@ -88,7 +105,11 @@ export class ReaderService {
       return { ok: false, error: { code: error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError || error instanceof InvalidSeenTargetError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
     }
   }
-  close(): void { void this.acquisition?.close(); this.repository?.close(); }
+  /** Synchronous idle-only test cleanup. Runtime quit uses shutdown to await children. */
+  close(): void { void this.acquisition?.close(); void this.helpers?.shutdown(); this.repository?.close(); }
   /** Await child termination and workspace cleanup before releasing the database. */
-  async shutdown(): Promise<void> { await this.acquisition?.close(); this.repository?.close(); }
+  async shutdown(): Promise<void> {
+    await Promise.all([this.acquisition?.close(), this.helpers?.shutdown()]);
+    this.repository?.close();
+  }
 }

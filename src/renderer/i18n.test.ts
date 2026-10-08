@@ -38,6 +38,8 @@ it('preserves Polish accents in workspace and destructive confirmation text', ()
   expect(t('removeFromLibrary')).toBe('Usuń z Biblioteki');
   expect(t('removeDescription')).toContain('trwałe usunięcie');
   expect(t('removeDescription')).toContain('historii odświeżania');
-  expect(t('externalToolsHelp')).toContain('Ścieżki');
+  expect(t('externalToolsHelp')).toContain('odświeżania');
+  expect(t('helperBrowse')).toContain('Wybierz');
+  expect(t('helperInvalidPath')).toContain('niedostępna');
   expect(t('reorderHelp')).toContain('Przeciągnij kartę');
 });

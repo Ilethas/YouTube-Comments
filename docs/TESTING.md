@@ -1,5 +1,54 @@
 # Testing strategy
 
+## External helper Settings (2026-10-08)
+
+[ADR 0014](decisions/0014-main-owned-helper-settings.md) narrows Q-19 to remaining
+helper distribution/compatibility work. **462 offline tests across 39 files pass**.
+Typecheck and lint pass without warnings. Standalone renderer and Forge
+main/preload/renderer/worker bundles build successfully. The renderer is
+410.76 kB / 127.16 kB gzip; the query worker remains 2.60 kB. Forge still exits 0
+at finalizing without producing a completed executable; no release/package
+completion is claimed. The existing Vite CJS deprecation remains non-failing.
+
+New deterministic coverage verifies environment > saved > PATH, authoritative
+invalid/empty overrides, broken saved paths without fallback, per-helper reset,
+absolute regular Windows .exe acceptance and relative/directory/missing/.bat/.cmd
+rejection. Selection and acquisition share the unchanged exact version probe.
+Wrong/unverified versions, failed probes and cancellation retain prior selections;
+only fixed status/version/path evidence crosses IPC, never raw diagnostics.
+Temporary SQLite checks reopen selections/reset, isolate another profile, and
+preserve every schema-6 discussion/comment/state/history/workspace/preferences/Undo
+row through schema-7 migration and injected rollback/retry. Runtime tests verify
+later acquisition/Refresh switches to a new selection or PATH immediately without
+restart. Exact helper-kind/arity tests reject extra executable/path/argument/shell
+fields before privileged work; sender/frame/document guards cover all 17 intents.
+
+Component checks cover both helpers, English/Polish, full accessible wrapping path,
+automatic/custom/environment sources, ready/unavailable/incompatible/broken states,
+Browse/reset/Recheck, clean cancellation and retained selection after failure.
+Status checks are lazy once per mounted Settings section, including StrictMode,
+and ordinary Reader renders/tab activation do not re-probe. Native picker tests
+verify parenting, single-file .exe convenience filtering and clean cancellation.
+
+`npm.cmd run test:electron` passes against the real built entry with Electron
+44.4.5 / embedded Node 24.21.0 / SQLite 3.53.4. Four disposable-profile process
+phases verify automatic resolution, main-owned selection/cancel/rejection,
+acquisition through each newly selected helper, saved selection after restart,
+reset and its persistence after another restart, and valid/invalid environment
+authority with disabled controls. Environment values never enter helper_settings.
+The existing seen/history/workspace/date/NEW/Undo workflows continue passing.
+Native-dialog results and subprocess outputs are injected only in the unshipped
+main-side smoke script; no renderer injection or runtime test switch is added.
+
+Actual native dialog interaction and live installed-helper/YouTube acquisition
+remain unverified by this offline run. For a manual walkthrough, use a new
+disposable profile: check both PATH-resolved helpers in Settings, choose their
+installed exact-version executables, restart, acquire/Refresh through both, reset
+to automatic, reject incompatible/missing choices while retaining a valid prior
+selection, and restart with authoritative environment overrides. Never use a
+valuable production profile for this check. Bundling/download/update, artifacts,
+licensing/integrity and completed installer/release verification remain open.
+
 ## Atomic bulk seen actions and durable safe Undo (2026-10-08)
 
 [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md) resolves Q-09.

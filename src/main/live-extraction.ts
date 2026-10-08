@@ -9,6 +9,7 @@ import { normalizeYtDlp } from './extractors/yt-dlp';
 import { normalizeCommunityArchive } from './extractors/community';
 import { executeProcess, createHelperResolver } from './helper-process';
 import type { ExecuteProcess, ResolveHelper, ProcessOutcome } from './helper-process';
+import { probeHelper } from './helper-probe';
 
 export type LiveExtraction = { readonly extraction: NormalizedExtraction; readonly error?: ErrorCode };
 export type ExtractLive = (target: AcquisitionTarget, signal: AbortSignal) => Promise<LiveExtraction>;
@@ -31,7 +32,6 @@ export function createLiveExtractor(options: { readonly execute?: ExecuteProcess
     const started = Date.now();
     const remaining = () => Math.max(1, (options.deadlineMs ?? 180000) - (Date.now() - started));
     let workspace: string | undefined;
-    const additions: Readonly<Record<string, string>> = community ? { PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' } : {};
     const processFailure = (outcome: ProcessOutcome) => {
       if (outcome.status === 'exited' && outcome.exitCode === 0) return undefined;
       if (outcome.exitCode !== undefined) evidence.push(`exit-code:${outcome.exitCode}`);
@@ -42,13 +42,11 @@ export function createLiveExtractor(options: { readonly execute?: ExecuteProcess
       try {
         const executable = await resolve(name);
         if (!executable) return failure('HELPER_UNAVAILABLE', 'helper-not-found');
-        const probe = await execute({ executable, arguments: community ? ['--version'] : ['--ignore-config', '--no-plugin-dirs', '--version'],
-          environmentAdditions: additions, timeoutMs: Math.min(10000, remaining()), maxStdoutBytes: 4096, signal });
-        const probeFailure = processFailure(probe);
+        const probe = await probeHelper(name, executable, execute, signal, Math.min(10000, remaining()));
+        const probeFailure = processFailure(probe.outcome);
         if (probeFailure) return probeFailure;
-        const detected = (community ? /^post-archiver (\d+\.\d+\.\d+)$/ : /^(\d{4}\.\d{2}\.\d{2})$/).exec(probe.stdout.trim());
-        version = detected?.[1] ?? 'unverified';
-        if (version !== (community ? '0.4.0' : '2026.08.19')) return failure('HELPER_INCOMPATIBLE', 'unsupported-or-unverified-version');
+        version = probe.version ?? 'unverified';
+        if (!probe.compatible) return failure('HELPER_INCOMPATIBLE', 'unsupported-or-unverified-version');
         evidence.push('executable-version-verified');
         if (remaining() <= 1 || signal.aborted) return failure('ACQUISITION_FAILED', 'execution-deadline-or-shutdown');
         let spec;
