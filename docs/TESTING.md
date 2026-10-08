@@ -1,5 +1,103 @@
 # Testing strategy
 
+## Atomic bulk seen actions and durable safe Undo (2026-10-08)
+
+[ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md) resolves Q-09.
+**444 offline tests across 36 files pass**. Typecheck and lint pass without
+warnings. Standalone renderer and Forge main/preload/renderer/worker bundle checks
+pass. Forge still exits 0 at finalizing without a completed executable; this is
+not a release/package fix. The renderer is 406.23 kB / 125.97 kB gzip; the query
+worker remains 2.60 kB and excludes Temporal. Existing Vite CJS deprecation and
+occasional Electron shutdown GPU diagnostics remain non-failing observations.
+
+Schema-5 to 6 tests preserve existing seen values, initialize zero revisions and
+verify complete migration rollback/retry. Temporary SQLite checks cover both All
+assignments, discussion isolation, exact frozen matching IDs despite stale seen
+state, context/raw-only exclusion, malformed/duplicate/cross-item rejection and
+50k matching payloads. Publication scopes reuse ADR 0012: own instant only,
+estimated/coarse inclusion, missing/label-only exclusion, local whole-day To,
+From/between and Warsaw DST boundaries. Its existing injected multi-zone/DST pure
+tests remain. Invalid ranges fail before mutation; targets include hidden rows.
+
+Recovery checks cover changed-only entries, no-op revision preservation, same-item
+supersession, other-item independence, one-change multi-target bulk recovery,
+single-target preservation and mixed subtree restoration. More than one actual
+subtree change creates recovery; one change preserves earlier recovery, including
+when several descendants were targeted. Later single edits and away-and-back
+revisions win during partial Undo; unrelated edits do not prevent restoration.
+All-stale recovery returns zero restored, counts every skip and consumes itself.
+Tests reopen the database and tab, preserve revisions across Refresh, exclude
+post-operation discoveries and cascade recovery on removal. Composite foreign keys
+reject cross-item entries. Injected late update, entry and Undo failures preserve
+exact prior states, revisions, recovery entries and descriptors.
+
+Renderer tests cover closed compact controls, conditional dates, English/Polish,
+localized action/scope/count confirmation, initial Cancel focus, Escape, pending
+write ownership, error/retry and exact frozen matching requests. Confirmation
+remains visible outside a hidden discussion panel and retains its named captured
+discussion during parallel acquisition. Acknowledged bulk/Undo preserve applied
+IDs, roles/counts, visible membership and NEW while updating live unseen/ruler
+state. No-op/error feedback preserves recovery. FIFO local save tests retain later
+accepted commands. Ctrl+Z works only with discussion recovery outside editable
+controls; input/textarea/select/contenteditable preserve native Undo, and missing
+recovery does not swallow the key. Settings includes the centralized shortcut.
+
+Generated disposable SQLite measurements from a passing suite run (rounded ms):
+
+| Changed rows | Publication target resolution | State-write replay | Recovery-entry replay | Bulk commit + repository acknowledgment | Undo commit + repository acknowledgment | Recovery file growth |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 10,000 | 10.9 | 14.2 | 68.3 | 202.1 | 250.2 | 3,059,712 bytes |
+| 50,000 | 12.7 | 171.3 | 883.2 | 2,478.5 | 2,116.8 | 15,241,216 bytes |
+
+The target timing uses preloaded stored comments and the shared publication
+resolver/predicate. Replay measurements use prepared statements inside rolled-back
+transactions, separating writes from entry creation; they are not complete command
+latencies and should not be added together. End-to-end repository timings include
+full stored projection, real transaction commit and result construction, but exclude
+Electron IPC cloning and renderer paint. SQLite file growth includes indexes and
+allocated pages, not a theoretical entry size. A late 10k/50k failure proves atomic
+rollback before successful All/Undo; subsequent full-size subtree and matching
+commands/Undo also pass, retaining only one operation and exactly changed entries.
+Measurements are local observations, not millisecond CI thresholds. Synchronous
+50k main work still occupies seconds; Q-21 backend worker/clone/paging choices remain
+open and this milestone does not redesign bootstrap.
+
+`node scripts/profile-discussions.cjs --50k` passes on generated flat/shallow/mixed
+discussions in a disposable Electron profile. It measures renderer reconciliation
+and paint separately from SQLite, verifies frozen applied views and observes
+bounded mounted rows after bulk/Undo and scrolling. The detailed ignored artifact
+is `.vite/performance-results.json`; the ruler retains four structural SVG nodes
+with pixel-bounded buckets. Two-frame paint observation contributes a timing floor;
+these numbers are not full IPC-to-paint latency or hardware-independent budgets.
+
+| Rows | Bulk acknowledgment + paint, flat/shallow/mixed | Undo acknowledgment + paint, flat/shallow/mixed | Mounted rows after acknowledgment / during scroll |
+| --- | --- | --- | --- |
+| 10,000 | 24.3 / 21.9 / 25.2 ms | 32.7 / 33.4 / 33.3 ms | 10 / 19 |
+| 50,000 | 42.5 / 44.3 / 47.7 ms | 53.3 / 51.0 / 50.6 ms | 10 / 19 |
+
+`npm run test:electron` passes the actual production bundles, bridge and query
+worker through **two real process restarts**. On its disposable generated/acquired
+fixture it verifies All seen/unseen then Undo; applied Unseen matching bulk keeps
+the view frozen until Apply; date-range bulk reaches comments outside an empty
+displayed result; mixed Ctrl+click recovers the original mixture; Refresh preserves
+existing recovery and excludes new rows; bulk then a later manual edit survives
+restart and Ctrl+Z restores only still-owned rows. The second restart verifies
+consumption. No valuable production/development database is used for bulk writes,
+and no live YouTube requests are required.
+
+Agent-driven Chromium inspection covers `.vite/bulk-confirm-pl-dark.png` and
+`.vite/bulk-controls-en-light.png`. These ignored local captures verify presentation,
+not brittle pixel snapshots or owner physical-input acceptance. For an owner pass,
+use the disposable smoke or a separately configured disposable profile and repeat
+the workflows above, then the generated 10k/50k checks. Ordinary viewing/navigation
+must remain manual, matching roles remain frozen, and later intentional edits must
+win during recovery.
+
+Redo/history, sorting/collapse, persistent query/scroll/selection, backup/export,
+global search, arbitrary discovery bulk and release/packaging work remain outside
+this milestone. Historical sections below describe their dated milestone state;
+this section is current.
+
 ## Publication-date and latest-discovery filtering (2026-10-07)
 
 [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md)
@@ -54,8 +152,8 @@ the workstation zone. For an owner pass, run the disposable smoke or use a separ
 development root, open Date / discoveries, check each mode and combined search,
 then Apply, navigate and Refresh; normal seen state must remain manual.
 
-Bulk seen commands and undo/recovery are still unimplemented. Q-09 must define
-recoverability before shipping them; future date bulk MUST reuse ADR 0012's exact
+At this earlier milestone bulk seen commands and undo/recovery were unimplemented;
+ADR 0013 now closes Q-09. Date bulk reuses ADR 0012's exact
 `resolvePublication` / `publicationMatches` semantics. Arbitrary historical
 discovery windows, sorting, collapse, persisted filters/scroll, global search and
 broader Q-21 storage/query scaling remain future work. Historical sections below
@@ -650,7 +748,7 @@ Integration tests should cover:
 - Backup consistency and successful round-trip restoration once the database backup mechanism is chosen.
 - Database-enforced constraints and query results, especially matching identities/counts and tree reconstruction at realistic data sizes.
 
-Exact migration support windows, backup formats, and undo retention are unresolved in [Database](DATABASE.md) and the [decision register](decisions/README.md). Tests should encode the policy that is selected, not invent it.
+Exact migration support windows and backup formats remain unresolved in [Database](DATABASE.md) and the [decision register](decisions/README.md). Undo retention and revision ownership are implemented by ADR 0013: one durable operation per discussion without expiry, consumed once with later edits protected. Tests encode that policy.
 
 ## Fixtures and process tests
 

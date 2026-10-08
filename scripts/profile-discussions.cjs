@@ -22,6 +22,8 @@ if (process.argv.includes('--child')) {
         for (const shape of ['flat', 'shallow', 'mixed']) {
           const initial = await js(`profile.load({count:${count},shape:'${shape}',newIndexes:[${count - 1}]})`);
           initial.heapUsedMB = Math.round((await window.webContents.debugger.sendCommand('Runtime.getHeapUsage')).usedSize / 1024 / 1024);
+          const seenAcknowledgments = await js('profile.bulkAcknowledgment()');
+          assert.ok(seenAcknowledgments.bulk.rows < 100 && seenAcknowledgments.undo.rows < 100, 'Bulk/Undo keep row mounting bounded');
           const toggle = await js('profile.toggle()'), switchPanel = await js('profile.switch()');
           const scroll = await js('profile.scroll(.75)');
           const rulerNavigation = await js('profile.rulerNavigate()');
@@ -29,7 +31,7 @@ if (process.argv.includes('--child')) {
           const apply = await js('profile.apply()');
           const filteredNavigation = await js('profile.navigate()');
           const refresh = await js("profile.apply('',true)");
-          report({ count, shape, initial, toggle, switchPanel, scroll, rulerNavigation, navigation, apply, filteredNavigation, refresh });
+          report({ count, shape, initial, seenAcknowledgments, toggle, switchPanel, scroll, rulerNavigation, navigation, apply, filteredNavigation, refresh });
           assert.equal(rulerNavigation.selected, `generated-${count - 1}`);
           assert.equal(rulerNavigation.exactSelectedVisible, true, 'Ruler reveals distant unmounted NEW target');
           assert.ok(initial.rulerNodes < 10 && initial.rulerBuckets <= 300, 'Ruler DOM/pixel bands stay bounded');

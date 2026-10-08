@@ -134,6 +134,28 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
     UPDATE extraction_attempts SET attempt_order = (SELECT COALESCE(MAX(attempt_order), 0) + 1 FROM extraction_attempts)
       WHERE id = NEW.id;
   END;
+`) }, { version: 6, apply: db => db.exec(`
+  ALTER TABLE comment_state ADD COLUMN revision INTEGER NOT NULL DEFAULT 0 CHECK(revision >= 0);
+  CREATE TABLE seen_operations (
+    id TEXT PRIMARY KEY NOT NULL,
+    item_id TEXT NOT NULL UNIQUE REFERENCES content_items(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('all','matching','publication','subtree')),
+    target_seen INTEGER NOT NULL CHECK(target_seen IN (0,1)),
+    target_count INTEGER NOT NULL CHECK(target_count >= 2),
+    changed_count INTEGER NOT NULL CHECK(changed_count >= 1 AND changed_count <= target_count),
+    UNIQUE(id, item_id)
+  ) STRICT;
+  CREATE TABLE seen_operation_entries (
+    operation_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    comment_id TEXT NOT NULL,
+    written_revision INTEGER NOT NULL CHECK(written_revision > 0),
+    PRIMARY KEY(operation_id, comment_id),
+    FOREIGN KEY(operation_id, item_id) REFERENCES seen_operations(id, item_id) ON DELETE CASCADE,
+    FOREIGN KEY(item_id, comment_id) REFERENCES comments(item_id, id) ON DELETE CASCADE
+  ) STRICT;
+  CREATE INDEX seen_entries_comment ON seen_operation_entries(item_id, comment_id);
 `) }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 

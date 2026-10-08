@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
+import type { SeenMutationResult } from '../domain/seen-operation';
+function mutation(comments: ReaderState['comments'][string]): SeenMutationResult { return { comments, targetCount: comments.length, changedCount: 1, undo: null }; }
 import { initialComments, items } from '../fixtures/discussions';
 import { toggleSeen } from '../domain/discussion';
 import type { AcquisitionResult, ReaderApi, ReaderState, Result } from '../shared/reader-api';
@@ -25,13 +27,15 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() { /* jsdom has no layout. */ } unobserve() { /* Test only. */ } disconnect() { /* Test only. */ } });
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: function(this: HTMLElement, options: ScrollToOptions) { this.scrollTop = options.top ?? 0; } });
   vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate: async (comments, query) => evaluateDiscussionQuery(comments, query), dispose: vi.fn() } as QueryExecutor as ReturnType<typeof createQueryExecutor>));
-  state = { items, comments: initialComments, preferences: { locale: 'en', appearance: 'system' },
+  state = { seenUndo: {}, items, comments: initialComments, preferences: { locale: 'en', appearance: 'system' },
     workspace: { tabs: items.map(item => discussionTab(item.id)), activeTabId: discussionTab(items[0].id).id, revision: 0 } };
   const open: ReaderApi['openStoredItem'] = async ({ itemId }) => {
     state = { ...state, workspace: openWorkspaceTab(state.workspace, discussionTab(itemId)) };
     return { ok: true as const, value: state.workspace };
   };
   api = {
+    bulkSeen: vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } })),
+    undoSeen: vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } })),
     openStoredItem: vi.fn(open),
     activateTab: vi.fn(async ({ tabId }) => {
       state = { ...state, workspace: openWorkspaceTab(state.workspace, state.workspace.tabs.find(tab => tab.id === tabId) ?? discussionTab(tabId.replace(/^discussion:/, ''))) };
@@ -56,7 +60,7 @@ beforeEach(() => {
     toggleSeen: vi.fn<ReaderApi['toggleSeen']>(async request => {
       const comments = toggleSeen(state.comments[request.itemId], request.commentId, request.subtree);
       state = { ...state, comments: { ...state.comments, [request.itemId]: comments } };
-      return { ok: true as const, value: comments };
+      return { ok: true as const, value: mutation(comments) };
     }),
     updatePreferences: vi.fn<ReaderApi['updatePreferences']>(async change => {
       state = { ...state, preferences: { ...state.preferences, ...change } };
@@ -154,12 +158,12 @@ it('draft, query evaluation, navigation and seen saves in A keep B/C idle; draft
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   await waitFor(() => expect(checkboxes().length).toBe(initialComments['video-demo'].length));
   window.__readerWork = {};
-  let resolve!: (result: Result<ReaderState['comments'][string]>) => void;
+  let resolve!: (result: Result<SeenMutationResult>) => void;
   vi.mocked(api.toggleSeen).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
   fireEvent.click(checkboxes()[0]);
   expectUnrelatedIdle();
   expect(work()['forest:video-demo'] ?? 0).toBe(0);
-  await act(async () => resolve({ ok: true, value: toggleSeen(initialComments['video-demo'], initialComments['video-demo'][0].id, false) }));
+  await act(async () => resolve({ ok: true, value: mutation(toggleSeen(initialComments['video-demo'], initialComments['video-demo'][0].id, false)) }));
   expect(work()['forest:video-demo']).toBeGreaterThan(0);
   expectUnrelatedIdle();
 });
@@ -248,7 +252,7 @@ it('unsupported schema explains the failure without presenting Retry', async () 
 });
 
 it('keeps acknowledged checkbox state during a pending write and after a failed save', async () => {
-  let finish: (result: Result<readonly import('../domain/discussion').Comment[]>) => void = () => { throw new Error('Not started'); };
+  let finish: (result: Result<SeenMutationResult>) => void = () => { throw new Error('Not started'); };
   api.toggleSeen = vi.fn<ReaderApi['toggleSeen']>(() => new Promise(resolve => { finish = resolve; }));
   await showReader();
   const original = checked();
@@ -277,7 +281,7 @@ it('failed preferences keep saved language/appearance and rejected transport is 
 function acquired(): AcquisitionResult {
   const item = { ...items[0], id: 'acquired-video', removable: true, sourceId: 'abcdefghijk', title: 'Acquired video' };
   const comment = { ...initialComments['video-demo'][0], id: 'acquired-comment', itemId: item.id, parentId: null, seen: false, text: 'Acquired comment' };
-  return { state: { items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system' },
+  return { state: { seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system' },
     workspace: { tabs: [...items, item].map(item => discussionTab(item.id)), activeTabId: discussionTab(item.id).id, revision: 1 } },
     summary: { itemId: item.id, coverage: 'unknown', inserted: 1, updated: 0, warnings: 0 } };
 }
@@ -338,7 +342,7 @@ it('overlapping acknowledgments preserve newer seen edits and newly acquired mem
   api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true as const, value: value.state }));
   let finish: (result: Result<AcquisitionResult>) => void = () => { throw new Error('Not started'); };
   api.refresh = vi.fn<ReaderApi['refresh']>(() => new Promise(resolve => { finish = resolve; }));
-  api.toggleSeen = vi.fn<ReaderApi['toggleSeen']>(async () => ({ ok: true as const, value: [{ ...value.state.comments['acquired-video'][0], seen: true }] }));
+  api.toggleSeen = vi.fn<ReaderApi['toggleSeen']>(async () => ({ ok: true as const, value: mutation([{ ...value.state.comments['acquired-video'][0], seen: true }]) }));
   await showReader();
   await userEvent.click(screen.getByRole('tab', { name: /Acquired video/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
@@ -353,7 +357,7 @@ it('overlapping acknowledgments preserve newer seen edits and newly acquired mem
 it('a seen acknowledgment arriving after refresh changes only seen and keeps new comments/remote fields', async () => {
   const value = acquired(), rows = value.state.comments['acquired-video'];
   api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true as const, value: value.state }));
-  let finishSeen: (result: Result<typeof rows>) => void = () => { throw new Error('Not started'); };
+  let finishSeen: (result: Result<SeenMutationResult>) => void = () => { throw new Error('Not started'); };
   let finishRefresh: (result: Result<AcquisitionResult>) => void = () => { throw new Error('Not started'); };
   api.toggleSeen = vi.fn<ReaderApi['toggleSeen']>(() => new Promise(resolve => { finishSeen = resolve; }));
   api.refresh = vi.fn<ReaderApi['refresh']>(() => new Promise(resolve => { finishRefresh = resolve; }));
@@ -364,7 +368,7 @@ it('a seen acknowledgment arriving after refresh changes only seen and keeps new
   finishRefresh({ ok: true as const, value: { ...value, state: { ...value.state, comments: { ...value.state.comments,
     'acquired-video': [{ ...rows[0], text: 'Updated remote comment' }, { ...rows[0], id: 'later-discovery', text: 'Later discovery' }] } } } });
   await screen.findByText('Later discovery');
-  finishSeen({ ok: true as const, value: [{ ...rows[0], seen: true }] });
+  finishSeen({ ok: true as const, value: mutation([{ ...rows[0], seen: true }]) });
   await waitFor(() => expect(checked()).toEqual([true, false]));
   expect(screen.getByText('Updated remote comment')).toBeTruthy();
   expect(screen.getByText('Later discovery')).toBeTruthy();
@@ -917,4 +921,82 @@ it('date/discovery controls are compact independent drafts, validate ranges, App
   expect(control('Data publikacji')).toBeDefined(); expect(control('Do (cały dzień)')).toBeDefined();
   fireEvent.change(control('Od'), { target: { value: '2001-01-02' } });
   expect(screen.getByRole('alert').textContent).toContain('Data Od musi');
+});
+
+const recovery = { id: 'recovery', itemId: 'video-demo', kind: 'all' as const, targetSeen: true, targetCount: 12, changedCount: 6, createdAt: '2026-10-08T12:00:00Z' };
+it('bulk and Undo acknowledge live state/ruler while retaining applied IDs, roles and counts until Apply', async () => {
+  const original = state.comments['video-demo'];
+  api.bulkSeen = vi.fn(async request => {
+    const ids = request.target.kind === 'matching' ? request.target.ids : original.map(row => row.id);
+    const comments = state.comments[request.itemId].map(row => ids.includes(row.id) ? { ...row, seen: request.seen } : row);
+    state = { ...state, comments: { ...state.comments, [request.itemId]: comments }, seenUndo: { ...state.seenUndo, [request.itemId]: recovery } };
+    return { ok: true as const, value: { comments, changedCount: ids.length, targetCount: ids.length, undo: recovery } };
+  });
+  api.undoSeen = vi.fn(async () => ({ ok: true as const, value: { comments: original, changedCount: 6, targetCount: 6, undo: null, restored: 6, skipped: 0 } }));
+  await showReader();
+  fireEvent.change(currentView().getByLabelText('Seen filter'), { target: { value: 'unseen' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  const matches = appliedRows(), summary = currentView().getByText(/Applied:/).textContent;
+  const ruler = screen.getByRole('tabpanel').querySelector<HTMLElement>('.discussion-ruler');
+  if (!ruler) throw new Error('Missing ruler');
+  const newCount = ruler.dataset.newCount;
+  fireEvent.click(currentView().getByText('Bulk actions', { selector: 'summary' }));
+  fireEvent.change(currentView().getByLabelText('Scope'), { target: { value: 'matching' } });
+  await userEvent.click(currentView().getByRole('button', { name: 'Continue' }));
+  fireEvent.keyDown(document, { key: 'z', ctrlKey: true }); expect(api.undoSeen).not.toHaveBeenCalled();
+  await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Continue' }));
+  await currentView().findByRole('button', { name: 'Undo' });
+  expect(api.bulkSeen).toHaveBeenCalledWith({ itemId: 'video-demo', seen: true, target: { kind: 'matching', ids: matches.map(id => id.replace('comment-', '')) } });
+  expect(appliedRows()).toEqual(matches); expect(currentView().getByText(/Applied:/).textContent).toBe(summary);
+  expect(ruler.dataset.unseenCount).toBe('0'); expect(ruler.dataset.newCount).toBe(newCount);
+  const search = currentView().getByLabelText('Search this discussion');
+  fireEvent.keyDown(search, { key: 'z', ctrlKey: true }); expect(api.undoSeen).not.toHaveBeenCalled();
+  fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+  await waitFor(() => expect(currentView().queryByRole('button', { name: 'Undo' })).toBeNull());
+  expect(appliedRows()).toEqual(matches); expect(currentView().getByText(/Applied:/).textContent).toBe(summary);
+  expect(Number(ruler.dataset.unseenCount)).toBeGreaterThan(0);
+  expect(currentView().getByText('Seen changes saved · Apply to update this view')).toBeTruthy();
+  // Execute against the frozen set again, then Apply explicitly removes those matches.
+  await userEvent.click(currentView().getByRole('button', { name: 'Continue' }));
+  await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Continue' }));
+  await waitFor(() => expect(ruler.dataset.unseenCount).toBe('0'));
+  await userEvent.click(currentView().getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(appliedRows()).toEqual([]));
+});
+it.each(['input', 'textarea', 'select', 'contenteditable'])('Ctrl+Z respects %s and leaves unavailable recovery unconsumed', async tag => {
+  state = { ...state, seenUndo: { 'video-demo': recovery } }; await showReader();
+  const element = document.createElement(tag === 'contenteditable' ? 'div' : tag);
+  if (tag === 'contenteditable') element.setAttribute('contenteditable', 'true');
+  document.body.append(element);
+  const event = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true });
+  element.dispatchEvent(event); expect(event.defaultPrevented).toBe(false); expect(api.undoSeen).not.toHaveBeenCalled(); element.remove();
+  await userEvent.click(screen.getByRole('tab', { name: /Community Post/ }));
+  const unavailable = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true });
+  document.dispatchEvent(unavailable); expect(unavailable.defaultPrevented).toBe(false);
+});
+it('queues Undo after an acknowledged checkbox write rather than dropping later user intent', async () => {
+  state = { ...state, seenUndo: { 'video-demo': recovery } };
+  let finish!: (result: Result<SeenMutationResult>) => void;
+  api.toggleSeen = vi.fn<ReaderApi['toggleSeen']>(() => new Promise(resolve => { finish = resolve; }));
+  api.undoSeen = vi.fn(async () => ({ ok: true as const, value: { ...mutation(state.comments['video-demo']), undo: null, restored: 5, skipped: 1 } }));
+  await showReader(); fireEvent.click(checkboxes()[0]); fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+  expect(api.undoSeen).not.toHaveBeenCalled();
+  finish({ ok: true, value: { ...mutation(state.comments['video-demo']), undo: recovery } });
+  await waitFor(() => expect(api.undoSeen).toHaveBeenCalledTimes(1));
+  expect(await currentView().findByText('Restored 5 comments; later edits preserved: 1.')).toBeTruthy();
+});
+it('bulk no-op/error retains prior acknowledged checkboxes and durable Undo', async () => {
+  state = { ...state, seenUndo: { 'video-demo': recovery } };
+  api.bulkSeen = vi.fn(async () => ({ ok: true as const, value: { comments: state.comments['video-demo'], targetCount: 12, changedCount: 0, undo: recovery } }));
+  await showReader(); const original = checked();
+  fireEvent.click(currentView().getByText('Bulk actions', { selector: 'summary' }));
+  fireEvent.click(currentView().getByRole('button', { name: 'Continue' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Continue' }));
+  await currentView().findByText('Nothing needed changing. Previous Undo remains available.');
+  expect(checked()).toEqual(original); expect(currentView().getByRole('button', { name: 'Undo' })).toBeTruthy();
+  api.bulkSeen = vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } }));
+  fireEvent.click(currentView().getByRole('button', { name: 'Continue' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Continue' }));
+  await within(screen.getByRole('dialog')).findByRole('alert');
+  expect(checked()).toEqual(original); expect(currentView().getByRole('button', { name: 'Undo' })).toBeTruthy();
 });

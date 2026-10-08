@@ -9,6 +9,9 @@ import type { DiscussionViewSession } from './discussion-view-session';
 import { navigateDiscussion } from './discussion-navigation';
 import { recordRenderWork } from './render-work';
 import { seenHelp } from './shortcuts';
+import { BulkSeenControls } from './BulkSeenControls';
+import type { SeenFeedback } from './BulkSeenControls';
+import type { BulkSeenRequest, SeenUndoDescriptor } from '../domain/seen-operation';
 
 const demo = (id: string) => id === 'video-demo' || id === 'post-demo';
 interface Props {
@@ -21,6 +24,11 @@ interface Props {
   coverageLimited: boolean;
   onRefresh: (itemId: string) => void;
   onToggle: (itemId: string, commentId: string, subtree: boolean) => void;
+  undo?: SeenUndoDescriptor | null;
+  feedback?: SeenFeedback;
+  onBulk?: (request: BulkSeenRequest) => Promise<boolean>;
+  onUndo?: (itemId: string) => void;
+  onBulkModal?: (open: boolean) => void;
 }
 
 function VideoDescription({ id, text, locale }: { id: string; text: string; locale: Locale }) {
@@ -34,7 +42,7 @@ function VideoDescription({ id, text, locale }: { id: string; text: string; loca
 
 /** Mounted content is independent of its workspace visibility wrapper.
  * Session notifications update only this discussion; draft edits reuse the forest. */
-export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onToggle }: Props) {
+export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onToggle, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
   recordRenderWork('panel', item.id);
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const t = translator(locale);
@@ -62,6 +70,8 @@ export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, s
             <div className="discussion-heading"><h2>{countLabel(locale, 'comments', comments.length)}</h2>
               <span>{countLabel(locale, 'unseenCount', comments.filter(comment => !comment.seen).length)}</span></div>
             <p className="reader-help">{seenHelp(locale)}</p>
+            {onBulk && onUndo && onBulkModal && <BulkSeenControls itemId={item.id} title={item.kind === 'video' ? item.title : item.author?.displayName ?? t('unknownAuthor')} comments={comments} result={view.result} locale={locale} disabled={saving}
+              undo={undo} feedback={feedback} execute={onBulk} recover={onUndo} modalChanged={onBulkModal} />}
             <DiscussionQueryControls state={view} locale={locale} edit={draft => session.edit(draft)}
               apply={() => { void session.apply(comments, false, item); }} navigate={(kind, direction) => navigateDiscussion(session, comments, kind, direction)}
               unseenCount={visibleUnseenIds(view.result, comments).length} />

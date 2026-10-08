@@ -98,7 +98,7 @@ it.each(['partial', 'unknown'] as const)('accepted %s refresh supersedes the coh
 it('schema 4 → 5 freezes existing attempt insertion order transactionally without rewriting discussion facts', () => {
   repository.ingest(fixture()); repository.ingest(fixture('yt-membership-b'));
   const before = state(), db = raw();
-  db.exec('DROP TRIGGER assign_attempt_order; DROP INDEX latest_accepted_attempt; DROP INDEX extraction_attempt_order; ALTER TABLE extraction_attempts DROP COLUMN attempt_order; PRAGMA user_version=4;');
+  db.exec('DROP TABLE seen_operation_entries; DROP TABLE seen_operations; ALTER TABLE comment_state DROP COLUMN revision; DROP TRIGGER assign_attempt_order; DROP INDEX latest_accepted_attempt; DROP INDEX extraction_attempt_order; ALTER TABLE extraction_attempts DROP COLUMN attempt_order; PRAGMA user_version=4;');
   const historyRows = db.prepare('SELECT * FROM extraction_attempts ORDER BY rowid').all();
   expect(() => migrateDatabase(db, [...migrations.slice(0, 4), { version: 5, apply: database => {
     migrations[4].apply(database); throw new Error('injected order migration failure');
@@ -237,7 +237,7 @@ it('persists direct-parent evidence and applies Ctrl+click to the complete displ
   repository.ingest(fixture());
   const before = comments(), child = required(before.find(comment => comment.relationship?.kind === 'direct-parent'));
   expect(child.directParentId).toBe(child.parentId); expect(child.parentId).not.toBeNull();
-  const changed = repository.toggleSeen({ itemId: child.itemId, commentId: required(child.parentId), subtree: true });
+  const changed = repository.toggleSeen({ itemId: child.itemId, commentId: required(child.parentId), subtree: true }).comments;
   expect(changed.find(comment => comment.id === child.id)?.seen).toBe(true);
   expect(walkComments(buildCommentTree(changed))).toHaveLength(before.length);
 });
@@ -384,7 +384,7 @@ it('stores bounded structural diagnostics/provenance and retains reserved comple
 
 function schemaOne(db: DatabaseSync) {
   // Use the actual ordered schema-1 migration, then populate real legacy columns.
-  db.exec('DROP TABLE workspace; DROP TABLE workspace_tabs; DROP TABLE comment_state; DROP TABLE comments; DROP TABLE content_items; DROP TABLE extraction_attempts; DROP TABLE preferences; PRAGMA user_version = 0');
+  db.exec('DROP TABLE seen_operation_entries; DROP TABLE seen_operations; DROP TABLE workspace; DROP TABLE workspace_tabs; DROP TABLE comment_state; DROP TABLE comments; DROP TABLE content_items; DROP TABLE extraction_attempts; DROP TABLE preferences; PRAGMA user_version = 0');
   migrateDatabase(db, migrations.slice(0, 1));
   db.exec(`INSERT INTO content_items VALUES ('old-item',0,'video','opaque-item','title','description',NULL,'author','name',NULL,'2026-09-01T00:00:00Z','old-baseline');
     INSERT INTO comments VALUES ('old-root','old-item',NULL,0,'source-root',NULL,'name',NULL,'root text',NULL,'2026-09-02T00:00:00Z','2026-09-03T00:00:00Z','old-baseline',12,NULL,1);
@@ -396,10 +396,10 @@ it('schema 1 to 2 preserves legacy IDs, all remote fields, seen/preferences and 
   const db = raw(); schemaOne(db);
   const items = db.prepare('SELECT * FROM content_items').all(), old = db.prepare('SELECT * FROM comments ORDER BY position').all();
   migrateDatabase(db);
-  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(5);
+  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(6);
   expect(db.prepare('SELECT * FROM content_items').all()).toMatchObject(items);
   expect(db.prepare('SELECT * FROM comments ORDER BY position').all()).toMatchObject(old);
-  expect(db.prepare('SELECT * FROM comment_state ORDER BY comment_id').all()).toEqual([{ comment_id: 'old-child', seen: 0 }, { comment_id: 'old-root', seen: 1 }]);
+  expect(db.prepare('SELECT * FROM comment_state ORDER BY comment_id').all()).toEqual([{ comment_id: 'old-child', seen: 0, revision: 0 }, { comment_id: 'old-root', seen: 1, revision: 0 }]);
   expect(state().preferences).toEqual({ locale: 'pl', appearance: 'dark' });
   expect(comments()[1]).toMatchObject({ id: 'old-child', parentId: 'old-root', directParentId: 'old-root' });
   expect(repository.history().every(attempt => attempt.provenance.backend === 'synthetic-demo')).toBe(true);

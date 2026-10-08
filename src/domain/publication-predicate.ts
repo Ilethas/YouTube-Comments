@@ -5,6 +5,12 @@ export interface PublicationBounds {
   readonly to?: number;
   readonly toInclusive: boolean;
 }
+/** Shared best-available instant projection: calendar/label-only values are not
+ * instants. Used by both query projection and authoritative bulk resolution. */
+export function ownPublicationInstant(publishedAt: string | undefined): number | undefined {
+  const instant = publishedAt && /T.*(?:Z|[+-]\d{2}:\d{2})$/.test(publishedAt) ? Date.parse(publishedAt) : NaN;
+  return Number.isFinite(instant) ? instant : undefined;
+}
 /** Own best-available publication instant only. Precision/estimatedness never
  * change membership; absent/invalid instants cannot match an active predicate. */
 export function publicationMatches(instant: number | undefined, bounds: PublicationBounds | undefined): boolean {

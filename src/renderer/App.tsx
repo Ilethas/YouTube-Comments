@@ -14,6 +14,8 @@ import { navigateDiscussion } from './discussion-navigation';
 import { KeyboardShortcuts, keyboardShortcutsTarget } from './KeyboardShortcuts';
 import { shortcutHint } from './shortcuts';
 import { readerShortcut } from './keyboard-routing';
+import type { BulkSeenRequest, SeenMutationResult } from '../domain/seen-operation';
+import type { SeenFeedback } from './BulkSeenControls';
 
 export function App({ api = window.reader }: { api?: ReaderApi }) {
   const [state, setState] = useState<ReaderState>();
@@ -61,6 +63,11 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   const removedIds = useRef(new Set<string>());
   // Acknowledged presentation snapshot. SQLite owns all durable state.
   const [comments, setComments] = useState(initialState.comments);
+  const [seenUndo, setSeenUndo] = useState(initialState.seenUndo);
+  const [seenFeedback, setSeenFeedback] = useState<Readonly<Record<string, SeenFeedback>>>({});
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const acknowledgedUndo = useRef(new Map<string, SeenMutationResult['undo']>());
+  const saveQueue = useRef(Promise.resolve());
   const [saving, setSaving] = useState(false);
   const [savingItemId, setSavingItemId] = useState<string>();
   const [saveError, setSaveError] = useState(false);
@@ -75,6 +82,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     if (acquisitionBusy.current) return;
     acquisitionBusy.current = true;
     acknowledgedSeen.current.clear();
+    acknowledgedUndo.current.clear();
     setAcquiring(refresh ? 'refreshing' : 'acquiring');
     setAcquisitionError(undefined);
     setAcquisitionStatus(undefined);
@@ -85,6 +93,8 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
         const mergedComments = Object.fromEntries(Object.entries(result.value.state.comments).filter(([id]) => !removedIds.current.has(id)).map(([id, rows]) => [id,
           rows.map(comment => ({ ...comment, seen: acknowledgedSeen.current.get(comment.id) ?? comment.seen }))]));
         setComments(mergedComments);
+        setSeenUndo(Object.fromEntries(Object.entries(result.value.state.seenUndo).filter(([id]) => !removedIds.current.has(id))
+          .map(([id, undo]) => [id, acknowledgedUndo.current.has(id) ? acknowledgedUndo.current.get(id) ?? null : undo])));
         const refreshedId = result.value.summary.itemId;
         if (mergedComments[refreshedId]) views.refresh(refreshedId, mergedComments[refreshedId], result.value.state.items.find(item => item.id === refreshedId));
         acceptWorkspace(result.value.state.workspace);
@@ -124,6 +134,8 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       if (result.ok) {
         removedIds.current.add(id);
         views.remove(id);
+        setSeenUndo(current => Object.fromEntries(Object.entries(current).filter(([itemId]) => itemId !== id)));
+        setSeenFeedback(current => Object.fromEntries(Object.entries(current).filter(([itemId]) => itemId !== id)));
         setItems(current => current.filter(item => item.id !== id));
         setComments(current => Object.fromEntries(Object.entries(current).filter(([itemId]) => itemId !== id)));
         acceptWorkspace(result.value.workspace);
@@ -132,18 +144,21 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     } catch { setRemovalError('STORAGE_UNAVAILABLE'); }
     finally { removalBusy.current = false; setRemovalPending(false); }
   }
-  const save = useCallback(async function save<T>(action: () => Promise<Result<T>>, accept: (value: T) => void, itemId?: string) {
-    if (busy.current) return;
-    busy.current = true;
-    setSaving(true);
-    setSavingItemId(itemId);
-    setSaveError(false);
-    try {
-      const result = await action();
-      if (result.ok) accept(result.value);
-      else setSaveError(true);
-    } catch { setSaveError(true); }
-    finally { busy.current = false; setSaving(false); setSavingItemId(undefined); }
+  const save = useCallback(function save<T>(action: () => Promise<Result<T>>, accept: (value: T) => void, itemId?: string): Promise<boolean> {
+    // FIFO acknowledgments preserve later user intent, including across discussions.
+    let succeeded = false;
+    const run = async () => {
+      busy.current = true; setSaving(true); setSavingItemId(itemId); setSaveError(false);
+      try {
+        const result = await action();
+        if (result.ok) { accept(result.value); succeeded = true; }
+        else setSaveError(true);
+      } catch { setSaveError(true); }
+      finally { busy.current = false; setSaving(false); setSavingItemId(undefined); }
+    };
+    const task = busy.current ? saveQueue.current.then(run) : run();
+    saveQueue.current = task.catch(() => undefined);
+    return task.then(() => succeeded);
   }, []);
   const t = translator(locale);
   const openItems = workspace.tabs.flatMap(tab => tab.kind === 'discussion' ? items.find(item => item.id === tab.itemId) ?? [] : []);
@@ -164,17 +179,40 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   }, [appearance]);
 
   const refreshItem = useCallback((itemId: string) => { void acquire(() => api.refresh({ itemId }), true); }, [acquire, api]);
+  const acceptSeen = useCallback((itemId: string, value: SeenMutationResult) => {
+    if (removedIds.current.has(itemId)) return;
+    const seen = new Map(value.comments.map(comment => [comment.id, comment.seen]));
+    if (acquisitionBusy.current) {
+      for (const [id, state] of seen) acknowledgedSeen.current.set(id, state);
+      acknowledgedUndo.current.set(itemId, value.undo);
+    }
+    setSeenUndo(current => ({ ...current, [itemId]: value.undo }));
+    setComments(current => !current[itemId] ? current : ({ ...current, [itemId]: current[itemId].map(comment => {
+      const next = seen.get(comment.id) ?? comment.seen;
+      return next === comment.seen ? comment : { ...comment, seen: next };
+    }) }));
+    if (value.changedCount) views.seenChanged(itemId);
+  }, [views]);
   const toggleComment = useCallback((itemId: string, commentId: string, subtree: boolean) => {
     void save(() => api.toggleSeen({ itemId, commentId, subtree }), value => {
-      const seen = new Map(value.map(comment => [comment.id, comment.seen]));
-      if (acquisitionBusy.current) for (const [id, state] of seen) acknowledgedSeen.current.set(id, state);
-      setComments(current => !current[itemId] ? current : ({ ...current, [itemId]: current[itemId].map(comment => {
-        const next = seen.get(comment.id) ?? comment.seen;
-        return next === comment.seen ? comment : { ...comment, seen: next };
-      }) }));
-      views.seenChanged(itemId);
+      acceptSeen(itemId, value);
+      if (subtree && value.changedCount > 1) setSeenFeedback(current => ({ ...current, [itemId]: { kind: 'marked', count: value.changedCount, seen: value.undo?.targetSeen } }));
     }, itemId);
-  }, [api, save, views]);
+  }, [api, save, acceptSeen]);
+  const bulkSeen = useCallback(async (request: BulkSeenRequest) => {
+    const success = await save(() => api.bulkSeen(request), value => {
+      acceptSeen(request.itemId, value);
+      setSeenFeedback(current => ({ ...current, [request.itemId]: { kind: value.changedCount ? 'marked' : 'noop', count: value.changedCount, seen: request.seen } }));
+    }, request.itemId);
+    if (!success) setSeenFeedback(current => ({ ...current, [request.itemId]: { kind: 'error' } }));
+    return success;
+  }, [api, save, acceptSeen]);
+  const undoSeen = useCallback((itemId: string) => {
+    void save(() => api.undoSeen({ itemId }), value => {
+      acceptSeen(itemId, value);
+      setSeenFeedback(current => ({ ...current, [itemId]: { kind: 'undo', count: value.restored, skipped: value.skipped } }));
+    }, itemId).then(success => { if (!success) setSeenFeedback(current => ({ ...current, [itemId]: { kind: 'error' } })); });
+  }, [api, save, acceptSeen]);
   useLayoutEffect(() => {
     if (!showAcquisition || !focusUrl) return;
     const input = document.getElementById('source-url') as HTMLInputElement | null;
@@ -191,7 +229,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   useEffect(() => {
     function keyboard(event: KeyboardEvent) {
       const tab = workspace.tabs.find(tab => tab.id === activeId);
-      const command = readerShortcut(event, { activeKind: tab?.kind, modalOpen: !!removing, workspaceBusy: workspaceBusy.current });
+      const command = readerShortcut(event, { activeKind: tab?.kind, modalOpen: !!removing || bulkModalOpen, workspaceBusy: workspaceBusy.current, undoAvailable: tab?.kind === 'discussion' && !!seenUndo[tab.itemId] });
       if (!command) return;
       if (command === 'next-tab' || command === 'previous-tab') {
         const index = workspace.tabs.findIndex(value => value.id === activeId);
@@ -212,7 +250,8 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
         void workspaceAction(() => api.openSettings(), '@shortcuts');
       } else if (tab?.kind === 'discussion') {
         const session = views.get(tab.itemId, comments[tab.itemId]);
-        if (command === 'apply-view') void session.apply(comments[tab.itemId], false, items.find(item => item.id === tab.itemId));
+        if (command === 'undo-seen') undoSeen(tab.itemId);
+        else if (command === 'apply-view') void session.apply(comments[tab.itemId], false, items.find(item => item.id === tab.itemId));
         else navigateDiscussion(session, comments[tab.itemId], 'match', command === 'previous-match' ? -1 : 1);
       } else {
         return;
@@ -307,7 +346,8 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       className="reader-panel" hidden={activeId !== discussionTab(item.id).id} tabIndex={0}>
       <DiscussionPanel item={item} comments={comments[item.id]} session={views.get(item.id, comments[item.id])}
         locale={locale} saving={saving && savingItemId === item.id} refreshDisabled={!!acquiring}
-        coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onToggle={toggleComment} />
+        coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onToggle={toggleComment}
+        undo={seenUndo[item.id]} feedback={seenFeedback[item.id]} onBulk={bulkSeen} onUndo={undoSeen} onBulkModal={setBulkModalOpen} />
     </main>)}
   </div>;
 }

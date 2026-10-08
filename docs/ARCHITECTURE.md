@@ -6,7 +6,7 @@ Status: target architecture, with proposed organization explicitly identified. [
 
 The repository uses Electron Forge/Vite and strict TypeScript. [src/main.ts](../src/main.ts) creates a sandboxed, context-isolated window with Node integration disabled; navigation/new windows are blocked. [src/preload.ts](../src/preload.ts) exposes the narrow `window.reader` API. [src/renderer.tsx](../src/renderer.tsx) mounts the React reader, with components and localization in `src/renderer`, pure domain rules in `src/domain`, and explicitly synthetic fixtures used for main-side initialization.
 
-The persistence milestone adds `src/main/persistence` for SQLite profiles/migrations/repository mapping, `src/main/reader-service.ts` for validated use cases and structured outcomes, `src/main/reader-ipc.ts` for channel/sender routing, `src/shared` for driver-free contracts/preferences, and `src/preload/reader-bridge.ts` for the private transport wrapper. One main-owned built-in SQLite connection stores normalized discussions, separate per-comment local state, and preferences. The renderer loads asynchronously and updates only after save acknowledgment; it has no fixture-state fallback. Ctrl subtree changes are transactional and preserve displayed order. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) records these choices; [ADR 0001](decisions/0001-synthetic-reader-foundation.md) remains the foundation record. ADR 0004 adds pure normalized merge planning and transactional SQLite ingestion/history. [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) adds main-only live public acquisition/refresh and minimal UI. ADR 0008 adds active-discussion search/seen filtering, stable applied views and match/unseen navigation; ADR 0010 adds bounded variable-height rendering; ADR 0011 adds durable NEW and the applied-view ruler; ADR 0012 adds system-zone publication-date and latest-discovery filtering; bulk actions remain targets. The broader target below is not a completed security review. See [Testing](TESTING.md).
+The persistence milestone adds `src/main/persistence` for SQLite profiles/migrations/repository mapping, `src/main/reader-service.ts` for validated use cases and structured outcomes, `src/main/reader-ipc.ts` for channel/sender routing, `src/shared` for driver-free contracts/preferences, and `src/preload/reader-bridge.ts` for the private transport wrapper. One main-owned built-in SQLite connection stores normalized discussions, separate per-comment local state, and preferences. The renderer loads asynchronously and updates only after save acknowledgment; it has no fixture-state fallback. Ctrl subtree changes are transactional and preserve displayed order. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) records these choices; [ADR 0001](decisions/0001-synthetic-reader-foundation.md) remains the foundation record. ADR 0004 adds pure normalized merge planning and transactional SQLite ingestion/history. [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) adds main-only live public acquisition/refresh and minimal UI. ADR 0008 adds active-discussion search/seen filtering, stable applied views and match/unseen navigation; ADR 0010 adds bounded variable-height rendering; ADR 0011 adds durable NEW and the applied-view ruler; ADR 0012 adds system-zone publication-date and latest-discovery filtering; bulk actions and durable safe Undo are implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md). The broader target below is not a completed security review. See [Testing](TESTING.md).
 
 Initial development and packaging target Windows. Platform integrations should avoid unnecessary barriers to later Linux/macOS support, but those platforms are not initial implementation or packaging requirements.
 
@@ -63,8 +63,30 @@ numeric bounds. The worker import graph excludes that resolver/Temporal: it sees
 only normalized own publication milliseconds, durable NEW eligibility and resolved
 bounds, alongside existing narrow query fields. It never obtains clock/locale/zone
 or extractor JSON. Cancellable evaluation/deadline and frozen applied results remain.
-Future date bulk MUST reuse the same resolver/predicate semantics on the privileged
-backend. No IPC capability, schema, mutable NEW state or durable query state changes.
+ADR 0013 date bulk reuses the same resolver/predicate semantics on the privileged
+backend. ADR 0012 itself adds no IPC capability, schema, mutable NEW state or durable
+query state changes.
+
+## Atomic seen-command boundary (ADR 0013)
+
+The intent bridge adds `bulkSeen({itemId, seen, target})` and `undoSeen({itemId})`.
+Exact runtime payload/arity and existing sender/frame/document guards apply.
+Matching accepts bounded frozen IDs (100k maximum, 256 characters each), rejects
+duplicates/malformed IDs, and validates every ID's same-item ownership before
+writing. All and semantic publication targets are resolved authoritatively from
+stored rows inside the mutation transaction. Main calls ADR 0012's resolver and
+shared own-instant/predicate code, with a fresh system IANA zone. There is no
+generic SQL, arbitrary-ID write, revision or recovery-row renderer capability.
+
+Schema 6 revisions and one operation per discussion support conditional partial
+Undo. Target resolution, state writes, replacement and entries commit together;
+Undo restoration/consumption likewise. Synchronous main transactions define
+ordering; asynchronous extraction remains parallel outside them and never writes
+existing seen/revisions. New comments are not retroactive targets. The renderer
+FIFO acknowledgment queue prevents accepted local commands from overtaking each
+other, and reconciles undo descriptors alongside seen states across overlapping
+remote responses. Bootstrap supplies durable undo availability per discussion.
+Full bootstrap/acknowledgment remains O(N), independently of bounded virtual DOM.
 
 ## Required process boundary
 
@@ -160,7 +182,7 @@ This separation prevents a common destructive shortcut: replacing a database row
 
 The initial query path evaluates all locally stored comments of the active discussion, including collapsed and unrendered comments. Raw search matches satisfy search alone; active-filter matches satisfy the complete filter set at the applied evaluation. Context expansion includes complete trees containing active-filter matches. Query results preserve this distinction for counts, bulk targeting, and navigation independently of mounted rows. Library-wide search is future scope. SQL may accelerate predicates; semantics remain the contract. ADR 0008 selects the bounded renderer worker execution location; indexes, query batching and large-data execution remain open.
 
-Seen mutations are explicit application commands with a validated target scope. Generic all/date bulk actions target the active discussion; matching bulk actions target the last applied active-filter matching IDs, including while seen edits await Apply. Successful writes persist immediately without silently rebuilding the applied matching set or displayed membership/order. Failures require visible feedback or rollback of optimistic presentation. The view must not misrepresent failed writes as saved. [Seen state](SEEN_STATE.md) defines subtree, bulk, and recoverability semantics without prescribing an undo mechanism.
+Seen mutations are explicit application commands with a validated target scope. Generic all/date bulk actions target the active discussion; matching bulk actions target the last applied active-filter matching IDs, including while seen edits await Apply. Successful writes persist immediately without silently rebuilding the applied matching set or displayed membership/order. Failures require visible feedback or rollback of optimistic presentation. The view must not misrepresent failed writes as saved. [Seen state](SEEN_STATE.md) defines subtree, bulk, and recoverability semantics with durable revision-owned recovery under ADR 0013.
 
 The applied active-filter set is the authority for matching counts, match/context roles, matching bulk actions, and filtered-reader next/previous match navigation. Seen changes update live checkbox state but do not replace that set. Apply recomputes it locally. ADR 0008 selects separate draft/saved-seen indications and applied role badges; they must not redefine the applied matching set.
 

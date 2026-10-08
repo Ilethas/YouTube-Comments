@@ -1,6 +1,7 @@
 import type { Comment, ContentItem } from '../domain/discussion';
 import type { Appearance, Locale, Preferences } from './preferences';
 import type { WorkspaceState } from '../domain/workspace';
+import type { BulkSeenRequest, SeenMutationResult, SeenUndoResult, SeenUndoDescriptor } from '../domain/seen-operation';
 
 export type ErrorCode = 'INVALID_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA'
   | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'HELPER_INCOMPATIBLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE' | 'NOT_REMOVABLE';
@@ -15,6 +16,7 @@ export interface ReaderState {
   readonly comments: Readonly<Record<string, readonly Comment[]>>;
   readonly preferences: Preferences;
   readonly workspace: WorkspaceState;
+  readonly seenUndo: Readonly<Record<string, SeenUndoDescriptor | null>>;
 }
 export interface ToggleSeenRequest {
   readonly itemId: string;
@@ -37,7 +39,9 @@ export interface AcquisitionResult {
 /** Intent-only capabilities. No generic invoke, SQL, paths or Node handles. */
 export interface ReaderApi {
   bootstrap(): Promise<Result<ReaderState>>;
-  toggleSeen(request: ToggleSeenRequest): Promise<Result<readonly Comment[]>>;
+  toggleSeen(request: ToggleSeenRequest): Promise<Result<SeenMutationResult>>;
+  bulkSeen(request: BulkSeenRequest): Promise<Result<SeenMutationResult>>;
+  undoSeen(request: RefreshRequest): Promise<Result<SeenUndoResult>>;
   updatePreferences(change: PreferenceChange): Promise<Result<Preferences>>;
   acquire(request: AcquireRequest): Promise<Result<AcquisitionResult>>;
   refresh(request: RefreshRequest): Promise<Result<AcquisitionResult>>;
@@ -52,6 +56,7 @@ export interface ReaderApi {
 
 export const readerChannels = {
   bootstrap: 'reader:bootstrap', toggleSeen: 'reader:toggle-seen', updatePreferences: 'reader:preferences',
+  bulkSeen: 'reader:bulk-seen', undoSeen: 'reader:undo-seen',
   acquire: 'reader:acquire', refresh: 'reader:refresh',
   openLibrary: 'reader:open-library', openSettings: 'reader:open-settings', moveTab: 'reader:move-tab', removeLibraryItem: 'reader:remove-library-item',
   openStoredItem: 'reader:open-stored-item', activateTab: 'reader:activate-tab', closeTab: 'reader:close-tab',
@@ -65,6 +70,20 @@ function exactKeys(value: unknown, keys: readonly string[]): value is Record<str
 function identifier(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 256
     && [...value].every(character => character.charCodeAt(0) >= 32);
+}
+/** Bounded frozen matching payload supports 50k discussions without generic ID writes.
+ * Main separately enforces item ownership before any mutation. */
+export function isBulkSeenRequest(value: unknown): value is BulkSeenRequest {
+  if (!exactKeys(value, ['itemId', 'seen', 'target']) || !identifier(value.itemId) || typeof value.seen !== 'boolean') return false;
+  const target = value.target;
+  if (exactKeys(target, ['kind']) && target.kind === 'all') return true;
+  if (exactKeys(target, ['kind', 'ids']) && target.kind === 'matching') return Array.isArray(target.ids)
+    && target.ids.length <= 100000 && target.ids.every(identifier) && new Set(target.ids).size === target.ids.length;
+  if (target === null || typeof target !== 'object' || Array.isArray(target)) return false;
+  const date = target as Record<string, unknown>;
+  return Object.hasOwn(date, 'kind') && date.kind === 'publication' && Object.keys(date).every(key => ['kind', 'from', 'to'].includes(key))
+    && (Object.hasOwn(date, 'from') || Object.hasOwn(date, 'to'))
+    && ['from', 'to'].every(key => !Object.hasOwn(date, key) || typeof date[key] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date[key] as string));
 }
 /** Validate untrusted serialized payloads at main, including unexpected fields. */
 export function isToggleSeenRequest(value: unknown): value is ToggleSeenRequest {

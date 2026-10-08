@@ -1,8 +1,40 @@
 # UI and navigation
 
-The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements bounded variable-height rendering and unmounted-target reveal. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable latest-accepted post-baseline NEW. [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date/latest-discovery filtering; bulk actions remain targets. Counts cover all stored comments; synthetic examples remain isolated. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
+The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements bounded variable-height rendering and unmounted-target reveal. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable latest-accepted post-baseline NEW. [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date/latest-discovery filtering; bulk actions and durable safe Undo are implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md). Counts cover all stored comments; synthetic examples remain isolated. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
 
 Windows is the initial target platform. Other platform support is a later possibility; see [packaging](PACKAGING.md).
+
+## Bulk seen actions and recovery (ADR 0013)
+
+Each discussion has closed-by-default Bulk actions details. Action is explicitly
+Mark seen / Mark unseen. Scope is All comments, Current APPLIED matches with count,
+Published on/after, Published on/before, or Published between. Only publication
+scopes show date inputs. Unrestricted views disable matching scope. All/date
+resolve all stored comments; matching captures exactly applied active IDs, never
+context, raw-only hits or mounted rows. Calendar semantics reuse ADR 0012.
+
+Localized native confirmation states active-discussion scope, action, scope and
+current target preview and the captured discussion's name. The dialog is outside
+tab panels, so parallel acquisition activating another tab cannot hide or retarget
+it. Cancel starts focused; Escape cancels; pending writes
+cannot dismiss it. All/date always confirm because their target count can grow
+through Refresh before the transaction. A frozen matching target of zero/one
+does not need multi-comment confirmation. Ctrl+click stays unconfirmed.
+
+Acknowledged status reports changed counts, no-op preservation or errors. Undo
+appears next to this area whenever the discussion's durable descriptor exists,
+including after restart or tab reopen. Its tooltip names this discussion's latest
+recoverable multi-comment seen change. Safe partial Undo reports restored/skipped
+counts; later edits win even after returning to the same seen value. Fully stale
+Undo consumes recovery with zero restored. There is no redo or ordinary-click Undo.
+
+Local writes are FIFO acknowledged, not optimistic. Bulk/Undo update live seen,
+unseen counts/navigation and the ruler UNSEEN lane, preserving applied IDs,
+membership/order, MATCH/CONTEXT roles/counts, query drafts, selection and NEW.
+Applied Seen/Unseen criteria show the saved-but-stale Apply indication. Undo never
+reverts Apply, criteria, Refresh or navigation. Recovery has no expiry; only a later
+successful qualifying same-discussion operation replaces it, or Undo/removal consumes
+it. See [Seen state](SEEN_STATE.md) and [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md).
 
 ## Keyboard shortcuts and discoverability
 
@@ -29,9 +61,10 @@ Background close controls omit Ctrl+W because that command closes the active tab
 | F3 / Shift+F3 | Next/previous applied match, including from query controls; never save seen state. |
 | Alt+Left / Alt+Right | Reorder only the focused workspace tab. |
 | Left / Right / Home / End | Existing activation/focus navigation on workspace tabs. |
+| Ctrl+Z | Undo latest recoverable multi-comment seen change in the active discussion, outside editable controls and confirmation dialogs; unavailable recovery leaves the key unconsumed. |
 | Ctrl+Click | Seen checkbox applies its resulting state to the comment and all descendants. |
 | Enter | Existing natural URL submission or discussion query form Apply. |
-| Escape | Existing drag cancellation, URL form hiding and removal dialog cancellation unless removal is pending. |
+| Escape | Drag cancellation, URL form hiding and removal/bulk dialog cancellation unless its write is pending. |
 
 One Reader document routing boundary handles workspace/focus/help and discussion
 commands. Focused-tab keys, native form submission and contextual cancellation
@@ -41,7 +74,7 @@ typing/navigation. Explicit exceptions are workspace cycling/close, search focus
 URL focus and F1; discussion Apply/match keys also work in query controls but do
 not interrupt unrelated editable controls such as the URL form.
 
-Removal confirmation suspends every top-level shortcut while open, including
+Removal or bulk confirmation suspends every top-level shortcut while open, including
 while its write is pending. The native modal retains keyboard/focus ownership;
 Escape still follows its existing safe cancellation rule. Pending workspace writes
 do not launch another workspace command. Defaults are prevented only after a
@@ -79,7 +112,7 @@ effect on YouTube. Cancel is initially focused; Escape cancels unless a write is
 pending. Success updates Library and removes the discussion's view with ordinary
 neighbor rules; failure retains the item. Synthetic demo removal is unavailable
 with an explanation. Main rejects removal while that source is being acquired/
-refreshed; wait and retry. No undo or remote delete is implemented.
+refreshed; wait and retry. Library removal has no Undo or remote deletion; seen-state Undo is separate.
 
 Settings is a normal singleton tab containing durable Language and Appearance.
 The compact toolbar has branding, Add/Open, Library and Settings; preference
@@ -95,7 +128,7 @@ Unseen uses a subtle row tint plus UNSEEN text and the explicit checkbox. Rails
 never indicate seen state. Compact 32px avatars, bylines and multiline bodies stay.
 
 No persisted scroll, filters, sorting, expansion, selected comment or complete
-workspace restoration is claimed. Query criteria, applied results and selection are independent per-discussion session state, retained on close/reopen and cleared on Library removal. Bulk actions and collapse remain targets; variable-height presentation is implemented in ADR 0010.
+workspace restoration is claimed. Query criteria, applied results and selection are independent per-discussion session state, retained on close/reopen and cleared on Library removal. Bulk actions and durable safe Undo are implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md); collapse remains a target; variable-height presentation is implemented in ADR 0010.
 
 Avatars use only usable HTTPS URLs, anonymous CORS, no-referrer, lazy loading,
 async decoding and fixed dimensions. Empty alt text avoids duplicating the byline;
@@ -157,7 +190,7 @@ The user-specified Ctrl+click gesture is exposed through seen-control help and t
 Settings shortcut reference. Platform-specific alternative gestures and keyboard
 equivalents remain unspecified; they must preserve the same [seen-state semantics](SEEN_STATE.md).
 
-Bulk controls must support all comments, before/after/between publication timestamps, and actual matching filter results, scoped to the active discussion. “All comments” means every stored comment for the active video or Community Post. Date operations affect each qualifying comment independently, while matching-only operations use the last applied active-filter matching IDs and exclude visible context. Undo/recoverability is a design requirement; its mechanism is unresolved.
+Bulk controls must support all comments, on/before, on/after and between local publication dates, and actual matching filter results, scoped to the active discussion. “All comments” means every stored comment for the active video or Community Post. Date operations affect each qualifying comment independently, while matching-only operations use the last applied active-filter matching IDs and exclude visible context. ADR 0013 supplies one durable recovery operation per discussion and safe partial Undo.
 
 ### Context, matches, discovery, and state
 
@@ -279,7 +312,7 @@ and captures the current visible identity/offset at evaluation completion, using
 retained selection then start only if that anchor disappears. Header scroll is
 preserved. Failed queries retain the current view/scroll. None of this is durable
 scroll restoration across restart. SQLite query/index/clone/memory scaling,
-collapse, sorting and bulk recovery remain separate targets. ADR 0011 adds the ruler and durable NEW.
+collapse and sorting remain separate targets. Bulk recovery is implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md). ADR 0011 adds the ruler and durable NEW.
 
 Assume thousands or tens of thousands of comments. Virtualize the large comment view while keeping the complete result model available to filtering, counts, bulk actions, and navigation. Do not render the entire dataset merely to enable search or overview-ruler positioning.
 

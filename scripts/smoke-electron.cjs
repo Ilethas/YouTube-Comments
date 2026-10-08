@@ -105,6 +105,31 @@ async function verifyWindow(window, nativeTheme) {
     }
   }
 
+  async function bulkUi(scope, seen, dates = {}) {
+    await js(`(() => {const panel=document.querySelector('[role=tabpanel]:not([hidden])'); panel.querySelector('.bulk-controls').open=true;
+      const fields=panel.querySelector('.bulk-fields'), selects=fields.querySelectorAll('select');
+      selects[0].value=${JSON.stringify(String(seen))}; selects[0].dispatchEvent(new Event('change',{bubbles:true}));
+      selects[1].value=${JSON.stringify(scope)}; selects[1].dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await pause(20);
+    for (const [index, date] of Object.values(dates).entries()) await js(`(() => {const input=document.querySelector('[role=tabpanel]:not([hidden]) .bulk-fields').querySelectorAll('input')[${index}];
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(date)}); input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .bulk-fields button').click()");
+    await waitFor("document.querySelector('dialog[open]') !== null", 'bulk confirmation');
+    assert.equal(await js("document.activeElement === document.querySelector('dialog .dialog-actions button')"), true, 'Bulk Cancel initially focused');
+    if (phase === 'write' && scope === 'between') {
+      window.showInactive(); await pause(30);
+      fs.writeFileSync(path.join(__dirname, '../.vite/bulk-confirm-pl-dark.png'), (await contents.capturePage()).toPNG());
+      window.hide();
+    }
+    await js("document.querySelector('dialog .dialog-actions button:last-child').click()");
+    await waitFor("!document.querySelector('dialog') && !document.querySelector('[role=tabpanel]:not([hidden]) .bulk-fields button:disabled')", 'bulk committed');
+    return snapshot();
+  }
+  async function undoUi() {
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .bulk-area > button').click()");
+    await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .bulk-area > button') && !document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input:disabled')", 'Undo committed');
+    return snapshot();
+  }
   // Native Chromium key input complements synthetic DOM/unit routing checks.
   async function verifyKeyboardShortcuts() {
     const before = await snapshot();
@@ -161,7 +186,7 @@ async function verifyWindow(window, nativeTheme) {
     key('W', ['control']); await active('library'); // closing Settings chooses right
     key('F1'); await waitFor("document.activeElement.id === 'keyboard-shortcuts' && !document.querySelector('.tabs button:disabled')", 'F1 reopens singleton');
     const rows = await js("Array.from(document.querySelectorAll('#panel-settings tr[data-shortcut-id]'),row=>({id:row.dataset.shortcutId,keys:row.querySelector('td').textContent}))");
-    assert.equal(rows.length, 18); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
+    assert.equal(rows.length, 19); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
     assert.equal(rows.find(row => row.id === 'previous-tab').keys, 'Ctrl+Shift+Tab');
     const hints = await js("({apply:document.querySelector('#panel-video-demo .query-controls button[type=submit]').title,next:document.querySelector('#panel-video-demo .query-navigation button:nth-child(2)').title,add:document.querySelector('[aria-controls=acquisition-form]').title,seen:document.querySelector('.seen-control').title,tab:document.querySelector('[role=tab]').title})");
     assert.match(hints.apply, /Ctrl\+Enter/); assert.match(hints.next, /F3/); assert.match(hints.add, /Ctrl\+L/);
@@ -193,7 +218,7 @@ async function verifyWindow(window, nativeTheme) {
   }
 
   await waitFor("document.querySelectorAll('input[type=checkbox]').length >= 24", 'bootstrap');
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'closeTab', 'moveTab', 'openLibrary', 'openSettings', 'openStoredItem', 'refresh', 'removeLibraryItem', 'toggleSeen', 'updatePreferences']);
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'closeTab', 'moveTab', 'openLibrary', 'openSettings', 'openStoredItem', 'refresh', 'removeLibraryItem', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   assert.deepEqual(await js("window.reader.acquire({url:'https://www.youtube.com/watch?v=abcdefghijk',executable:'evil'})"),
     { ok: false, error: { code: 'INVALID_REQUEST' } });
   assert.deepEqual(await js("window.reader.refresh({itemId:'video-demo',url:'https://example.com'})"),
@@ -328,12 +353,18 @@ async function verifyWindow(window, nativeTheme) {
     assert.deepEqual((await snapshot()).comments, beforeNavigation.comments);
     await draftQuery('smoke', 'unseen'); await dateControl('publication-preset', 'last-24-hours'); await applyQuery();
     await draftQuery('unapplied draft');
+    const beforeRefreshSeen = await snapshot();
+    const recoveryBeforeRefresh = await bulkUi('all', false);
+    assert.ok(recoveryBeforeRefresh.seenUndo[video.id]);
     // The applied rolling criteria resolve against this fresh clock on Refresh.
     await js(`Date.now = () => ${dateEvaluationNow + 3600000}; void 0`);
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
     await waitFor("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) .comment-text')).some(row=>row.textContent.includes('New smoke comment'))", 'refresh applied query');
     assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-search input').value"), 'unapplied draft');
     assert.ok((await visibleMatches()).length > 0);
+    const afterRefreshUndo = await undoUi();
+    for (const row of beforeRefreshSeen.comments[video.id]) assert.equal(afterRefreshUndo.comments[video.id].find(comment=>comment.id===row.id).seen,row.seen);
+    assert.equal(afterRefreshUndo.comments[video.id].find(comment=>comment.source.commentId==='smoke-new').seen,false);
     await draftQuery(''); await dateControl('publication-preset', 'all'); await applyQuery();
     state = await snapshot();
     assert.equal(state.items.length, 3);
@@ -446,6 +477,55 @@ async function verifyWindow(window, nativeTheme) {
     await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-${video.id}'`, 'active video checkpoint');
     state = await snapshot();
     assert.equal(state.workspace.activeTabId, 'discussion:' + video.id);
+    const bulkOriginal = await snapshot();
+    for (const seen of [true, false]) {
+      const marked = await bulkUi('all', seen);
+      assert.ok(marked.comments[video.id].every(comment=>comment.seen===seen));
+      assert.deepEqual((await undoUi()).comments, bulkOriginal.comments, 'All bulk then Undo restores mixture');
+    }
+    // Frozen APPLIED matching membership survives seen writes; Apply is explicit.
+    await bulkUi('all', false);
+    await draftQuery('smoke', 'unseen'); await applyQuery();
+    const frozen = await visibleMatches(); assert.equal(frozen.length, 2);
+    await bulkUi('matching', true);
+    assert.deepEqual(await visibleMatches(), frozen, 'Bulk leaves applied membership frozen');
+    await applyQuery(); assert.equal((await visibleMatches()).length,0);
+    await undoUi(); assert.equal((await visibleMatches()).length,0, 'Undo does not revert Apply');
+    await applyQuery(); assert.deepEqual(await visibleMatches(), frozen);
+    // A date action resolves all stored rows even with no displayed conversations.
+    await draftQuery('no displayed match'); await applyQuery();
+    assert.equal(await js("document.querySelectorAll('[role=tabpanel]:not([hidden]) .comment').length"),0);
+    const dateBefore = await snapshot();
+    const dated = await bulkUi('between', true, { from:'2000-01-01', to:'2099-12-31' });
+    assert.equal(dated.comments[video.id].filter(comment=>comment.seen).length,dated.comments[video.id].filter(comment=>comment.publishedAt).length);
+    assert.deepEqual((await undoUi()).comments,dateBefore.comments);
+    await draftQuery(''); await applyQuery();
+    // Restore starting live state using ordinary acknowledged clicks.
+    for (const row of bulkOriginal.comments[video.id]) if ((await snapshot()).comments[video.id].find(comment=>comment.id===row.id).seen !== row.seen) {
+      await js(`document.getElementById(${JSON.stringify('comment-' + encodeURIComponent(row.id))}).querySelector('input').click()`);
+      await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input:disabled')", 'restore verification row');
+    }
+    // Mixed Ctrl+click subtree is recoverable through the established gesture.
+    await js("document.getElementById('tab-discussion:video-demo').click()");
+    await waitFor("document.querySelector('[role=tabpanel]:not([hidden])').id==='panel-video-demo'", 'demo subtree');
+    await js("document.getElementById('comment-v3').querySelector('input').click()");
+    await waitFor("document.getElementById('comment-v3').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'mixed subtree preparation');
+    const mixed = await snapshot();
+    await js("document.getElementById('comment-v2').querySelector('input').dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}))");
+    await waitFor("document.getElementById('comment-v2').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'mixed subtree assignment');
+    assert.deepEqual((await undoUi()).comments,mixed.comments,'Undo restores mixed subtree');
+    await js("document.getElementById('comment-v3').querySelector('input').click()");
+    await waitFor("!document.getElementById('comment-v3').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'restore demo');
+    await js(`document.getElementById('tab-discussion:${video.id}').click()`);
+    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id==='panel-${video.id}'`, 'restart recovery preparation');
+    assert.deepEqual((await snapshot()).comments,bulkOriginal.comments);
+    const restartOperation = await bulkUi('all',true);
+    const laterEdit = bulkOriginal.comments[video.id].find(comment=>!comment.seen);
+    await js(`document.getElementById(${JSON.stringify('comment-' + encodeURIComponent(laterEdit.id))}).querySelector('input').click()`);
+    await waitFor(`!document.getElementById(${JSON.stringify('comment-' + encodeURIComponent(laterEdit.id))}).querySelector('input').checked && !document.querySelector('.seen-control input:disabled')`, 'later manual edit before restart');
+    assert.ok(restartOperation.seenUndo[video.id].changedCount > 1);
+    fs.writeFileSync(path.join(root,'seen-before.json'),JSON.stringify(bulkOriginal));
+    state = await snapshot();
     fs.writeFileSync(checkpoint, JSON.stringify(state));
   } else {
     const saved = JSON.parse(fs.readFileSync(checkpoint, 'utf8'));
@@ -460,6 +540,17 @@ async function verifyWindow(window, nativeTheme) {
     assert.deepEqual(await js("Array.from(document.querySelectorAll('#panel-video-demo .seen-control input'), input => input.checked)"),
       saved.comments['video-demo'].map(comment => comment.seen));
     if (phase === 'read') {
+      const itemId = saved.workspace.tabs.find(tab=>tab.id===saved.workspace.activeTabId).itemId;
+      assert.ok(saved.seenUndo[itemId], 'Durable recovery exposed after real restart');
+      await js("document.querySelector('[role=tabpanel]:not([hidden])').focus()");
+      contents.sendInputEvent({ type:'keyDown',keyCode:'Z',modifiers:['control'] });
+      contents.sendInputEvent({ type:'keyUp',keyCode:'Z',modifiers:['control'] });
+      await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .bulk-area > button')",'native Ctrl+Z after restart');
+      const beforeBulk = JSON.parse(fs.readFileSync(path.join(root,'seen-before.json'),'utf8'));
+      assert.deepEqual((await snapshot()).comments,beforeBulk.comments,'Restart Undo preserves later edit and restores other rows');
+      assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .bulk-area [role=status]').textContent.includes('1')"),true,'Partial Undo feedback');
+      saved.comments = beforeBulk.comments;
+
       await preference(1, 'system');
       nativeTheme.themeSource = 'light';
       await waitFor("getComputedStyle(document.documentElement).getPropertyValue('--background').trim() === '#f2f4f6'", 'System light');
@@ -469,6 +560,10 @@ async function verifyWindow(window, nativeTheme) {
       assert.equal(await js("getComputedStyle(document.documentElement).getPropertyValue('--background').trim()"), '#f2f4f6');
       await preference(1, 'system');
       await preference(0, 'en');
+      await js("document.querySelector('[role=tabpanel]:not([hidden]) .bulk-controls').open=true; document.documentElement.dataset.appearance='light'; void 0");
+      window.showInactive(); await pause(30);
+      fs.writeFileSync(path.join(__dirname, '../.vite/bulk-controls-en-light.png'), (await contents.capturePage()).toPNG());
+      window.hide();
       assert.equal(await js("document.querySelector('.brand strong').textContent"), 'Discussion reader');
       await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-dates').open=true; document.documentElement.dataset.appearance='light'; void 0");
       window.showInactive(); await pause(50);
@@ -569,13 +664,13 @@ if (process.versions.electron && process.type === 'browser') {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 5);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 6);
         assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 7);
         assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 3);
         assert.equal(db.prepare('SELECT count(*) AS count FROM comments').get().count, 28);
         assert.deepEqual({ ...db.prepare('SELECT locale, appearance FROM preferences').get() }, { locale: 'en', appearance: 'system' });
       } finally { db.close(); }
-      console.log('Electron smoke PASS: two real restarts and closed-file SQLite persistence');
+      console.log('Electron smoke PASS: two real restarts, bulk/matching/date/subtree/Refresh recovery and safe partial Undo');
     } finally {
       // Clean only the newly created test directory, never a configured profile.
       if (path.dirname(directory) !== os.tmpdir() || !path.basename(directory).startsWith('youtube-comments-electron-test-')) throw new Error('Unsafe cleanup');

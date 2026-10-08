@@ -4,6 +4,19 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  bulkActions: 'Bulk actions', bulkAction: 'Action', bulkScope: 'Scope', bulkMarkSeen: 'Mark seen', bulkMarkUnseen: 'Mark unseen',
+  bulkAll: 'All comments', bulkAppliedMatches: 'Current APPLIED matches ({count})', bulkAfter: 'Published on or after', bulkBefore: 'Published on or before', bulkBetween: 'Published between',
+  bulkAfterDate: 'Published on or after {date}', bulkBeforeDate: 'Published on or before {date}', bulkBetweenDates: 'Published between {from} and {to}',
+  bulkExecute: 'Continue', bulkConfirmTitle: 'Confirm seen change',
+  bulkConfirm: 'Active discussion only: {action}. Scope: {scope}. Current target count: {count}.',
+  bulkRecoveryHelp: 'Undo will be available for a multi-comment command that changes state. It replaces this discussion’s previous recovery. Later manual edits are preserved.',
+  bulkScopeHelp: 'Active discussion only. Current matches uses exactly the last APPLIED match set, excluding context. All comments includes hidden comments.',
+  bulkDateHelp: 'Each comment’s own publication time, across all stored comments. Whole calendar days in the current system time zone; approximate times included, missing times excluded.',
+  bulkInvalidDate: 'Enter valid calendar dates with From on or before To.', bulkFailed: 'The seen change failed. Previously saved state and recovery were retained.',
+  bulkNoop: 'Nothing needed changing. Previous Undo remains available.', bulkMarkedSeen: 'Marked {comments} seen.', bulkMarkedUnseen: 'Marked {comments} unseen.',
+  bulkRestored: 'Restored {comments}; later edits preserved: {skipped}.', bulkUndo: 'Undo',
+  bulkUndoHelp: 'Undo latest recoverable multi-comment seen change for this discussion', bulkUndoScope: 'Active discussion with recovery; outside editable controls and confirmation dialogs',
+
   dateAndDiscovery: 'Date / discoveries', publicationPreset: 'Publication date', dateCustom: 'Custom / no preset',
   dateToday: 'Today', dateLast24Hours: 'Last 24 hours', dateLast7Days: 'Last 7 days', dateFrom: 'From', dateTo: 'To (whole day)',
   datePresetDisablesCustom: 'The preset replaces From / To.', discoveryFilter: 'Discovery', discoveryAll: 'All discoveries', discoveryNew: 'NEW from latest refresh',
@@ -78,6 +91,19 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  bulkActions: 'Działania zbiorcze', bulkAction: 'Działanie', bulkScope: 'Zakres', bulkMarkSeen: 'Oznacz jako przeczytane', bulkMarkUnseen: 'Oznacz jako nieprzeczytane',
+  bulkAll: 'Wszystkie komentarze', bulkAppliedMatches: 'Bieżące ZASTOSOWANE dopasowania ({count})', bulkAfter: 'Opublikowane w dniu lub po', bulkBefore: 'Opublikowane w dniu lub przed', bulkBetween: 'Opublikowane między',
+  bulkAfterDate: 'Opublikowane w dniu {date} lub po nim', bulkBeforeDate: 'Opublikowane w dniu {date} lub przed nim', bulkBetweenDates: 'Opublikowane między {from} a {to}',
+  bulkExecute: 'Dalej', bulkConfirmTitle: 'Potwierdź zmianę stanu',
+  bulkConfirm: 'Tylko aktywna dyskusja: {action}. Zakres: {scope}. Bieżąca liczba celów: {count}.',
+  bulkRecoveryHelp: 'Cofnięcie będzie dostępne dla działania obejmującego wiele komentarzy, które zmieni stan. Zastępuje poprzednie cofnięcie tej dyskusji. Późniejsze ręczne zmiany zostaną zachowane.',
+  bulkScopeHelp: 'Tylko aktywna dyskusja. Bieżące dopasowania to dokładnie ostatni ZASTOSOWANY zbiór, bez kontekstu. Wszystkie komentarze obejmują też ukryte.',
+  bulkDateHelp: 'Własny czas publikacji każdego zapisanego komentarza. Całe dni kalendarzowe w bieżącej strefie systemu; przybliżone czasy są uwzględniane, brakujące wykluczane.',
+  bulkInvalidDate: 'Podaj prawidłowe daty; Od nie może być późniejsze niż Do.', bulkFailed: 'Zmiana stanu nie powiodła się. Zachowano poprzedni zapisany stan i możliwość cofnięcia.',
+  bulkNoop: 'Żaden stan nie wymagał zmiany. Poprzednie cofnięcie pozostaje dostępne.', bulkMarkedSeen: 'Oznaczono jako przeczytane: {comments}.', bulkMarkedUnseen: 'Oznaczono jako nieprzeczytane: {comments}.',
+  bulkRestored: 'Przywrócono: {comments}; zachowane późniejsze zmiany: {skipped}.', bulkUndo: 'Cofnij',
+  bulkUndoHelp: 'Cofnij ostatnią odwracalną zbiorczą zmianę stanu w tej dyskusji', bulkUndoScope: 'Aktywna dyskusja z możliwością cofnięcia; poza edytowanymi polami i oknami potwierdzenia',
+
   dateAndDiscovery: 'Data / odkrycia', publicationPreset: 'Data publikacji', dateCustom: 'Własny zakres / bez presetu',
   dateToday: 'Dzisiaj', dateLast24Hours: 'Ostatnie 24 godziny', dateLast7Days: 'Ostatnie 7 dni', dateFrom: 'Od', dateTo: 'Do (cały dzień)',
   datePresetDisablesCustom: 'Preset zastępuje pola Od / Do.', discoveryFilter: 'Odkrycie', discoveryAll: 'Wszystkie odkrycia', discoveryNew: 'NOWE z ostatniego odświeżenia',

@@ -1,6 +1,6 @@
 import { buildCommentTree, isNewDiscovery, walkComments } from './discussion';
 import type { Comment, ContentItem } from './discussion';
-import { publicationMatches } from './publication-predicate';
+import { publicationMatches, ownPublicationInstant } from './publication-predicate';
 import type { PublicationBounds } from './publication-predicate';
 import type { PublicationCriteria } from './publication-filter';
 
@@ -48,11 +48,10 @@ export type QueryComment = Pick<Comment, 'id' | 'itemId' | 'parentId' | 'text' |
 export function queryComments(comments: readonly Comment[], item?: ContentItem): readonly QueryComment[] {
   return comments.map(comment => {
     const { id, itemId, parentId, text, seen, directParentId, relationshipStatus, author, relationship, publishedAt } = comment;
-    const instant = publishedAt && /T.*(?:Z|[+-]\d{2}:\d{2})$/.test(publishedAt) ? Date.parse(publishedAt) : NaN;
     return {
       id, itemId, parentId, text, seen, directParentId, relationshipStatus, relationshipKind: relationship?.kind,
       author: author ? { displayName: author.displayName, handle: author.handle } : undefined,
-      publicationInstant: Number.isFinite(instant) ? instant : undefined,
+      publicationInstant: ownPublicationInstant(publishedAt),
       newDiscovery: item ? isNewDiscovery(item, comment) : false,
     };
   });

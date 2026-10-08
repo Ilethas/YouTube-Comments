@@ -16,6 +16,10 @@ import type { AttemptTarget, MergeAttempt, StoredCommentObservation, StoredConte
 import { closeWorkspaceTab, discussionTab, openWorkspaceTab, moveWorkspaceTab } from '../../domain/workspace';
 import type { WorkspaceState, WorkspaceTab } from '../../domain/workspace';
 import { isHttpsImageUrl } from '../../domain/remote-image';
+import type { BulkSeenRequest, SeenMutationResult, SeenUndoDescriptor, SeenUndoResult } from '../../domain/seen-operation';
+import { resolvePublication } from '../../domain/publication-filter';
+import { publicationMatches, ownPublicationInstant } from '../../domain/publication-predicate';
+import { isBulkSeenRequest } from '../../shared/reader-api';
 
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 function optionalText(row: Row, key: string): string | undefined {
@@ -39,6 +43,7 @@ function authorValues(value?: Author) { return [value?.sourceId ?? null, value?.
 function booleanValue(value?: boolean) { return value === undefined ? null : Number(value); }
 export class MissingCommentError extends Error {}
 export class NotRemovableError extends Error {}
+export class InvalidSeenTargetError extends Error {}
 
 /** Privileged dependency injection, never a renderer capability. */
 export interface IngestionDependencies { readonly now: () => string; readonly newId: () => string }
@@ -101,7 +106,7 @@ export class ReaderRepository {
         (id,item_id,parent_id,position,source_comment_id,author_source_id,author_display_name,
          author_handle,text,published_at,first_discovered_at,last_observed_at,first_discovery_id,
          like_count,is_creator,is_pinned) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-      const insertState = this.db.prepare('INSERT INTO comment_state VALUES (?,?)');
+      const insertState = this.db.prepare('INSERT INTO comment_state (comment_id,seen) VALUES (?,?)');
       items.forEach((item, index) => {
         buildCommentTree(initialComments[item.id]);
         insertItem.run(item.id, index, item.kind, item.sourceId, item.kind === 'video' ? item.title : null,
@@ -222,7 +227,7 @@ export class ReaderRepository {
             author_handle,text,published_at,like_count,is_creator,is_pinned,remote_json,last_observed_at,last_attempt_id,
             first_discovered_at,first_discovery_id,first_attempt_id) VALUES (?,?,NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
             .run(comment.id, item.id, position++, remote.sourceId, ...values, comment.firstDiscoveredAt, comment.firstDiscoveryId, comment.firstDiscoveryId);
-          this.db.prepare('INSERT INTO comment_state VALUES (?,0)').run(comment.id);
+          this.db.prepare('INSERT INTO comment_state (comment_id,seen) VALUES (?,0)').run(comment.id);
         } else {
           this.db.prepare(`UPDATE comments SET author_source_id=?,author_display_name=?,author_handle=?,text=?,published_at=?,
             like_count=?,is_creator=?,is_pinned=?,remote_json=?,last_observed_at=?,last_attempt_id=? WHERE id=?`).run(...values, comment.id);
@@ -251,6 +256,7 @@ export class ReaderRepository {
   bootstrap(languages: readonly string[]): ReaderState {
     const items = this.readItems();
     return { items, comments: Object.fromEntries(items.map(item => [item.id, this.readComments(item)])),
+      seenUndo: Object.fromEntries(items.map(item => [item.id, this.seenUndo(item.id)])),
       preferences: this.preferences(languages), workspace: this.workspace() };
   }
 
@@ -320,20 +326,88 @@ export class ReaderRepository {
 
   /** Read current stored target state and resolve every descendant through the
    * pure domain rule inside ONE transaction. Return only committed state. */
-  toggleSeen(request: ToggleSeenRequest): readonly Comment[] {
+  toggleSeen(request: ToggleSeenRequest): SeenMutationResult {
     return transaction(this.db, () => {
       const item = this.readItems().find(item => item.id === request.itemId);
       if (!item) throw new MissingCommentError('Unknown discussion');
       const current = this.readComments(item);
-      if (!current.some(comment => comment.id === request.commentId)) throw new MissingCommentError('Unknown comment');
+      const clicked = current.find(comment => comment.id === request.commentId);
+      if (!clicked) throw new MissingCommentError('Unknown comment');
       const changed = toggleSeen(current, request.commentId, request.subtree);
-      const update = this.db.prepare('UPDATE comment_state SET seen = ? WHERE comment_id = ?');
-      changed.forEach((comment, index) => {
-        if (comment !== current[index]) {
-          if (update.run(Number(comment.seen), comment.id).changes !== 1) throw new Error('Missing local state');
-        }
-      });
-      return changed;
+      const targets = changed.filter((comment, index) => comment !== current[index]);
+      return this.assignSeen(current, new Set(targets.map(comment => comment.id)), !clicked.seen, 'subtree', request.subtree);
+    });
+  }
+
+  private seenUndo(itemId: string): SeenUndoDescriptor | null {
+    const row = this.db.prepare('SELECT * FROM seen_operations WHERE item_id=?').get(itemId);
+    return row ? { id: String(row.id), itemId, createdAt: String(row.created_at), kind: row.kind as SeenUndoDescriptor['kind'],
+      targetSeen: row.target_seen === 1, targetCount: Number(row.target_count), changedCount: Number(row.changed_count) } : null;
+  }
+
+  /** Called inside the command transaction. Only actual transitions own revisions.
+   * A subtree requires >1 changed row; a bulk command with >1 targets retains even
+   * a single actual transition. No-op and ordinary edits retain the old recovery. */
+  private assignSeen(current: readonly Comment[], ids: ReadonlySet<string>, seen: boolean,
+    kind: SeenUndoDescriptor['kind'], recoverable = true): SeenMutationResult {
+    const changes = current.filter(comment => ids.has(comment.id) && comment.seen !== seen);
+    const record = recoverable && changes.length > 0 && (kind === 'subtree' ? changes.length > 1 : ids.size > 1);
+    let operationId: string | undefined;
+    if (record) {
+      this.db.prepare('DELETE FROM seen_operations WHERE item_id=?').run(current[0].itemId);
+      operationId = this.ingestion.newId();
+      this.db.prepare('INSERT INTO seen_operations VALUES (?,?,?,?,?,?,?)').run(operationId, current[0].itemId,
+        this.ingestion.now(), kind, Number(seen), ids.size, changes.length);
+    }
+    const update = this.db.prepare('UPDATE comment_state SET seen=?, revision=revision+1 WHERE comment_id=? RETURNING revision');
+    const insert = this.db.prepare('INSERT INTO seen_operation_entries VALUES (?,?,?,?)');
+    for (const comment of changes) {
+      const row = update.get(Number(seen), comment.id);
+      if (!row) throw new Error('Missing local state');
+      if (operationId) insert.run(operationId, comment.itemId, comment.id, row.revision);
+    }
+    return { comments: current.map(comment => ids.has(comment.id) && comment.seen !== seen ? { ...comment, seen } : comment),
+      targetCount: ids.size, changedCount: changes.length, undo: current[0] ? this.seenUndo(current[0].itemId) : null };
+  }
+
+  /** All target resolution, validation, writes and log replacement share one
+   * transaction. Publication uses precisely the filtering resolver/predicate. */
+  bulkSeen(request: BulkSeenRequest): SeenMutationResult {
+    if (!isBulkSeenRequest(request)) throw new InvalidSeenTargetError('Invalid seen intent');
+    return transaction(this.db, () => {
+      const item = this.readItems().find(item => item.id === request.itemId);
+      if (!item) throw new MissingCommentError('Unknown discussion');
+      const current = this.readComments(item), target = request.target;
+      let ids: Set<string>;
+      if (target.kind === 'matching') {
+        ids = new Set(target.ids);
+        const owned = new Set(current.map(comment => comment.id));
+        if (target.ids.some(id => !owned.has(id))) throw new InvalidSeenTargetError('Unowned matching identity');
+      } else if (target.kind === 'publication') {
+        const resolved = resolvePublication({ kind: 'custom', from: target.from, to: target.to }, { now: Date.now(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+        if (!resolved.ok || !resolved.bounds) throw new InvalidSeenTargetError('Invalid publication range');
+        ids = new Set(current.filter(comment => publicationMatches(ownPublicationInstant(comment.publishedAt), resolved.bounds)).map(comment => comment.id));
+      } else ids = new Set(current.map(comment => comment.id));
+      const result = this.assignSeen(current, ids, request.seen, target.kind);
+      return { ...result, undo: this.seenUndo(request.itemId) };
+    });
+  }
+
+  /** One-shot partial recovery: later revision ownership wins even after a user
+   * changes a state away and back. Consume only after all conditional writes. */
+  undoSeen(itemId: string): SeenUndoResult {
+    return transaction(this.db, () => {
+      const item = this.readItems().find(item => item.id === itemId);
+      if (!item) throw new MissingCommentError('Unknown discussion');
+      const operation = this.seenUndo(itemId);
+      if (!operation) throw new MissingCommentError('No recoverable operation');
+      const entries = this.db.prepare('SELECT comment_id,written_revision FROM seen_operation_entries WHERE operation_id=? AND item_id=?').all(operation.id, itemId);
+      const update = this.db.prepare('UPDATE comment_state SET seen=?,revision=revision+1 WHERE comment_id=? AND revision=? AND seen=?');
+      let restored = 0;
+      for (const entry of entries) restored += Number(update.run(Number(!operation.targetSeen), entry.comment_id, entry.written_revision, Number(operation.targetSeen)).changes);
+      this.db.prepare('DELETE FROM seen_operations WHERE id=? AND item_id=?').run(operation.id, itemId);
+      return { comments: this.readComments(item), targetCount: operation.changedCount, changedCount: restored, undo: null,
+        restored, skipped: operation.changedCount - restored };
     });
   }
 

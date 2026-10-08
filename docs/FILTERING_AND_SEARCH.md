@@ -1,6 +1,24 @@
 # Filtering and search
 
-Active-discussion content/author/direct-parent-author search, All/Unseen/Seen, stable session applied results and navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements presentation virtualization without changing query semantics. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable NEW. [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date and latest-refresh discovery filters. Sorting and bulk actions remain targets. The [product requirements](PRODUCT_REQUIREMENTS.md) establish the scope, [seen state](SEEN_STATE.md) defines local user state, and [UI and navigation](UI_AND_NAVIGATION.md) explains how results are read. Unresolved choices are also tracked in the [decision register](decisions/README.md).
+Active-discussion content/author/direct-parent-author search, All/Unseen/Seen, stable session applied results and navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements presentation virtualization without changing query semantics. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable NEW. [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date and latest-refresh discovery filters. [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md) implements bulk actions and durable safe Undo. Sorting remains a target. The [product requirements](PRODUCT_REQUIREMENTS.md) establish the scope, [seen state](SEEN_STATE.md) defines local user state, and [UI and navigation](UI_AND_NAVIGATION.md) explains how results are read. Unresolved choices are also tracked in the [decision register](decisions/README.md).
+
+## Implemented bulk target boundary (ADR 0013)
+
+Current APPLIED matches sends exactly captured `activeMatchIds`; main validates
+ownership without reevaluating search/seen/date/discovery. A later saved seen edit
+does not change target membership. Unrestricted results disable that scope, since
+All comments expresses its intent. All and publication scopes independently cover
+all stored active-discussion comments, including hidden trees and unmounted rows.
+Publication bulk shares `resolvePublication`, `ownPublicationInstant` and
+`publicationMatches` with ADR 0012: on/after is custom From, on/before is custom
+To through the whole local day, and between sets both. Invalid ranges cannot write.
+
+Bulk and Undo change live seen only. Applied matching IDs, context/raw roles,
+match/thread counts and displayed preorder remain frozen; the live unseen ruler
+and navigation update. An applied Seen/Unseen query invites Apply. Undo neither
+reverts previous Apply nor recomputes criteria. NEW/publication/discovery remain
+independent. Recovery rules are in [Seen state](SEEN_STATE.md) and
+[ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md).
 
 ## A match belongs to a comment; context belongs to its conversation
 
@@ -128,7 +146,7 @@ all displayed matches/context. Navigation uses those same application IDs.
 
 Future date-based bulk operations MUST reuse `resolvePublication` and
 `publicationMatches` with these exact timezone, boundary, clock and evidence rules,
-rather than creating a second date model. Bulk actions and undo remain future work.
+rather than creating a second date model. Bulk actions and safe Undo reuse these rules under [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md).
 Q-03 is closed; Q-05 now covers only future arbitrary historical discovery windows.
 
 ## Keep the reader stable while seen state changes

@@ -1,6 +1,6 @@
 # Seen state
 
-Seen/unseen is a durable, manual property of each individual comment. It is the reader's record of processing a contribution, not evidence that the application displayed it. Ordinary and Ctrl+click behavior now persists in main-owned SQLite through the typed bridge. The service reads the current target state, resolves the pure domain action, and commits all subtree changes in one transaction. The UI waits for acknowledgment and reports failure while retaining its last acknowledged state. Viewing, scrolling, tabs, language, and appearance do not mark comments seen. Reopen and late-write rollback tests cover these invariants. Refresh preserves seen state; ADR 0008 implements stable filtered views, and ADR 0011 implements live unseen ruler markers and durable NEW. Bulk operations remain unimplemented. See [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [product requirements](PRODUCT_REQUIREMENTS.md), and the [domain model](DOMAIN_MODEL.md).
+Seen/unseen is a durable, manual property of each individual comment. It is the reader's record of processing a contribution, not evidence that the application displayed it. Ordinary and Ctrl+click behavior now persists in main-owned SQLite through the typed bridge. The service reads the current target state, resolves the pure domain action, and commits all subtree changes in one transaction. The UI waits for acknowledgment and reports failure while retaining its last acknowledged state. Viewing, scrolling, tabs, language, and appearance do not mark comments seen. Reopen and late-write rollback tests cover these invariants. Refresh preserves seen state; ADR 0008 implements stable filtered views, and ADR 0011 implements live unseen ruler markers and durable NEW. Bulk operations and durable safe Undo are implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md). See [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [product requirements](PRODUCT_REQUIREMENTS.md), and the [domain model](DOMAIN_MODEL.md).
 
 [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) uses neutral
 ancestry rails/elbows for structure in both seen states. Unseen rows have a subtle
@@ -42,7 +42,7 @@ For a mixed subtree, Ctrl+click on an unseen parent marks both seen and unseen d
 
 This explicit subtree gesture can affect context-only comments and descendants outside the current filter's actual matches. It is different from “mark matching comments,” whose scope is the matching set. The UI must make those action scopes understandable. A reply discovered by a future refresh is unseen by default; a previous subtree operation is not a continuing rule for future descendants.
 
-The service should resolve the target set from application data and apply a multi-comment change transactionally. A Ctrl+click must not leave only half of a subtree changed after a persistence failure. Exact ordering with concurrent refresh or other state commands must be designed before those operations run concurrently; no ordering may reset existing local state. See [database transactions](DATABASE.md).
+The service should resolve the target set from application data and apply a multi-comment change transactionally. A Ctrl+click must not leave only half of a subtree changed after a persistence failure. Main transaction order and the renderer FIFO acknowledgment queue determine ordering with concurrent Refresh and local commands; no ordering may reset existing local state. See [database transactions](DATABASE.md).
 
 ## Stable filtered views
 
@@ -89,16 +89,16 @@ Support explicitly setting seen or unseen for:
 | Operation | Target rule |
 | --- | --- |
 | All comments | All stored comments in the active discussion by default |
-| Before a timestamp | Comments in the active discussion whose own publication times satisfy the boundary rule |
-| After a timestamp | Comments in the active discussion whose own publication times satisfy the boundary rule |
-| Between two timestamps | Comments in the active discussion whose own publication times satisfy the range rule |
+| Published on or before a local date | Comments in the active discussion whose own publication times satisfy the boundary rule |
+| Published on or after a local date | Comments in the active discussion whose own publication times satisfy the boundary rule |
+| Published between two local dates | Comments in the active discussion whose own publication times satisfy the range rule |
 | Current matching filter set | Last applied active-filter matching IDs in the active discussion |
 
 Date operations never implicitly modify an ancestor or descendant because a related comment matches. A subtree operation and a publication-date operation are different commands, even when invoked from the same discussion.
 
-The application must make the active-discussion scope clear before execution. Initial bulk actions do not imply application-wide changes. When seen edits make the displayed evaluation stale, “current matching filter set” still means the last applied active-filter matching IDs; the action does not first recompute from current persisted state. A raw search match satisfies only the search predicate and may fail another active filter, while a contextual comment is present only to complete a conversation. Neither is a matching-only bulk target unless it belongs to the applied active-filter matching set. Publication-date inclusivity, current-system-zone interpretation and missing/estimated evidence are settled in ADR 0012. Future date-based bulk commands MUST reuse `resolvePublication` and `publicationMatches`, rather than create a second date model; see [filtering and search](FILTERING_AND_SEARCH.md).
+The application must make the active-discussion scope clear before execution. Initial bulk actions do not imply application-wide changes. When seen edits make the displayed evaluation stale, “current matching filter set” still means the last applied active-filter matching IDs; the action does not first recompute from current persisted state. A raw search match satisfies only the search predicate and may fail another active filter, while a contextual comment is present only to complete a conversation. Neither is a matching-only bulk target unless it belongs to the applied active-filter matching set. Publication-date inclusivity, current-system-zone interpretation and missing/estimated evidence are settled in ADR 0012. Date bulk reuses `resolvePublication`, `ownPublicationInstant` and `publicationMatches`, without a second date model; see [filtering and search](FILTERING_AND_SEARCH.md).
 
-Undo/recoverability for bulk actions is a product and design requirement. Capturing each changed comment's previous state in the same transaction as the update is one optional candidate mechanism, not a required implementation. The mechanism and undo contract need a future decision. Open details include history lifetime, persistence across restart, memory/storage limits, interaction with later edits and refresh, and whether all manual state changes are undoable. Do not ship a broad state command with accidental or undefined recovery behavior.
+ADR 0013 resolves Q-09: one durable undoable multi-comment operation per discussion, retained without expiry through restart, close/reopen, Apply and Refresh. A successful multi-target bulk command with changes replaces it; a Ctrl+click replaces it only with more than one actually changed comment. A single-target edit, no-op or failure preserves it. Recovery records only changed IDs and written revisions; the prior state is the opposite of the uniformly assigned value. Undo restores only rows still owned by that revision and assigned value, increments restored revisions and consumes recovery transactionally. Later edits, including away-and-back changes, are skipped. Fully stale recovery succeeds with restored=0/skipped=N. No redo or ordinary-checkbox Undo exists. Discussion removal deletes recovery.
 
 ## Persistence and concurrency
 
@@ -110,7 +110,7 @@ The normalized merge repository updates eligible remote fields and never writes 
 
 [Domain and persistence tests](TESTING.md) must cover ordinary toggles, mixed-state subtrees, collapsed/unmounted descendants, no automatic seen changes, baseline and future replies starting unseen, stable visible membership/order and applied matching IDs, matching-only bulk actions using the last applied active filters, date actions based on each comment's own timestamp, write rollback, and preservation through refresh. Cover automatic active-view recomputation after a successful explicit remote Refresh, while Apply performs no extraction.
 
-ADR 0012 settles publication-date boundaries and latest-refresh discovery filtering without changing seen state. Before bulk features are implemented, resolve undo mechanism and semantics, failed-write presentation, command ordering, and shortcuts beyond the required Ctrl+click interaction. Exact visual treatment and supplementary indicators also need UI design, without reopening the last-applied bulk scope. Capture consequential choices in [decision records](decisions/README.md). A shortcut or recovery design may evolve; the per-comment manual-state invariants may not change silently.
+ADR 0012 settles publication/date boundaries. ADR 0013 implements recoverability, failure presentation, FIFO local command ordering and contextual Ctrl+Z. Full view restoration, sorting/collapse, backup/export and Q-21 scaling remain independent work.
 
 ## Independent ruler categories and NEW (ADR 0011)
 

@@ -12,16 +12,21 @@ import { queryComments, unrestrictedView } from '../domain/discussion-query';
 import { projectReaderRows } from '../renderer/discussion-presentation';
 import { required } from '../renderer/testing/required';
 import type { Locale } from '../renderer/i18n';
+import type { SeenUndoDescriptor } from '../domain/seen-operation';
+import type { SeenFeedback } from '../renderer/BulkSeenControls';
 import '../index.css';
 
 const root = createRoot(required(document.getElementById('root')));
 let comments: readonly Comment[] = [], item: ContentItem, session: DiscussionViewSession;
 let locale: Locale = 'en';
+let undo: SeenUndoDescriptor | null = null, feedback: SeenFeedback | undefined;
+const offlineBulk = async () => false; // Profiling injects acknowledgments below, never main commands.
 const paint = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 function render() {
   flushSync(() => root.render(<div className="app-shell"><main className="reader-panel" id="profile-panel" tabIndex={0}>
     <DiscussionPanel item={item} comments={comments} session={session} locale={locale} saving={false} refreshDisabled={false}
-      coverageLimited={false} onRefresh={noop} onToggle={toggle} />
+      coverageLimited={false} onRefresh={noop} onToggle={toggle}
+      undo={undo} feedback={feedback} onBulk={offlineBulk} onUndo={noop} onBulkModal={noop} />
   </main></div>));
 }
 function noop() { /* Offline harness only. */ }
@@ -39,6 +44,7 @@ const profile = {
     session?.dispose(); flushSync(() => root.render(null));
     const data = 'count' in options ? generateDiscussion(options) : options;
     comments = data.comments; item = data.item;
+    undo = null; feedback = undefined;
     const start = performance.now();
     const result = unrestrictedView(queryComments(comments));
     const identityViewMs = performance.now() - start, beginProjection = performance.now();
@@ -50,6 +56,24 @@ const profile = {
   },
   async toggle() { const id = required(required(document.querySelector<HTMLElement>('.comment-branch')).dataset.commentId);
     const start = performance.now(); toggle(item.id, id, false); await paint(); return { ms: performance.now() - start, ...stats() }; },
+  async bulkAcknowledgment() {
+    const original = comments, result = session.state.result, start = performance.now();
+    // Measure renderer acknowledgment/reconciliation+paint separately from SQLite.
+    const seen = new Map(comments.map(comment => [comment.id, true]));
+    comments = comments.map(comment => comment.seen === seen.get(comment.id) ? comment : { ...comment, seen: true });
+    const changed = original.filter(comment => !comment.seen).length;
+    undo = { id: 'profile-operation', itemId: item.id, kind: 'all', targetSeen: true, targetCount: comments.length, changedCount: changed, createdAt: '2026-10-08T12:00:00Z' };
+    feedback = { kind: 'marked', seen: true, count: changed };
+    session.seenChanged(); render(); await paint();
+    if (session.state.result !== result) throw new Error('Bulk recomputed applied membership');
+    const bulk = { ms: performance.now() - start, ...stats() }, undoStart = performance.now();
+    const previous = new Map(original.map(comment => [comment.id, comment.seen]));
+    comments = comments.map(comment => comment.seen === previous.get(comment.id) ? comment : { ...comment, seen: required(previous.get(comment.id)) });
+    undo = null; feedback = { kind: 'undo', count: changed, skipped: 0 };
+    session.seenChanged(); render(); await paint();
+    if (session.state.result !== result) throw new Error('Undo recomputed applied membership');
+    return { bulk, undo: { ms: performance.now() - undoStart, ...stats() } };
+  },
   async apply(text = 'PROFILE_MATCH', refresh = false) {
     if (!refresh) session.edit({ ...session.state.draft, text });
     const start = performance.now(); await session.apply(comments, refresh, item); await paint();

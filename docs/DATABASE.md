@@ -1,10 +1,40 @@
 # Database and durable data
 
-SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 5 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW.
+SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 6 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW.
 
 The implementation below is deliberately small. Later sections describe the broader conceptual target and must not be read as implemented tables/features. Read the [domain model](DOMAIN_MODEL.md) for meanings and [architecture](ARCHITECTURE.md) for ownership.
 
-## Current schema 5 attempt chronology
+## Schema 6 bounded seen recovery
+
+[ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md) adds
+`comment_state.revision INTEGER NOT NULL DEFAULT 0 CHECK(revision >= 0)`.
+Existing seen values remain unchanged; actual transitions increment revisions,
+including ordinary clicks, subtree/bulk writes and restoration. Refresh only
+inserts new state rows (unseen, revision zero), never updates existing state.
+
+`seen_operations(id, item_id UNIQUE, created_at, kind, target_seen, target_count,
+changed_count)` stores at most one recovery per discussion. Safe kinds are all,
+matching, publication and subtree. `seen_operation_entries(operation_id, item_id,
+comment_id, written_revision)` stores only actual changed rows. Composite foreign
+keys enforce operation/item and comment/item ownership, with cascading deletion.
+The prior seen value is the inverse of the operation's uniform target, avoiding
+per-entry duplicate values. No query text, criteria history or extractor dump is
+copied. Bootstrap exposes only safe descriptors, never revisions or entry rows.
+
+One transaction resolves targets, changes states and replaces/creates recovery.
+Undo conditionally restores only still-owned rows and consumes the record in one
+transaction; changed-away-and-back rows remain stale. All-stale recovery is a
+successful consumed attempt. No-op/failure/single-row edits retain prior recovery.
+Bulk with multiple targets and one actual change records that change; Ctrl+click
+requires more than one actual change. Closing tabs, Apply, Refresh and restart
+retain it without expiry; discussion removal deletes it. No redo/stack exists.
+
+A 50k changed operation keeps 50k small entries, not an unbounded history stack.
+Prepared statements and indexes keep row work linear. Undo/deletion frees rows
+for SQLite reuse; no automatic VACUUM or database compaction is introduced.
+Measured generated costs and migration/rollback tests are in [Testing](TESTING.md).
+
+## Schema 5 attempt chronology
 
 `extraction_attempts.attempt_order` freezes existing insertion order during the
 additive schema-4 to 5 migration. An AFTER INSERT trigger assigns the next ordinal
@@ -81,7 +111,7 @@ Migration explicitly establishes synthetic history from old discovery labels and
 
 `src/main/persistence` owns path resolution, connection setup, migrations, and explicit row/domain mapping. `content_items` and `comments` store current synthetic content/author metadata and parent relationships; `comment_state` stores local seen state separately; singleton `preferences` stores an explicit optional en/pl choice and System/Light/Dark intent. Fixture ordering is stored so reopen does not reorder the reader. Internal application IDs remain primary keys. Schema 1 originally had no real-source uniqueness constraints; schema 2 adds the conservative owner-approved source scopes above. Same-item parent foreign keys, boolean/enumeration/content constraints, and the parent lookup index are tested. Required local state is created atomically with each fixture comment and missing state fails reads.
 
-Timestamps use ISO 8601 UTC TEXT (Z suffix, supplied precision retained). Optional publication timestamps remain NULL; they never receive discovery-time substitutes. Synthetic labels identify synthetic history. There are no raw payload, undo, search/FTS or backup/export tables. Schema 3 adds the separate bounded workspace above.
+Timestamps use ISO 8601 UTC TEXT (Z suffix, supplied precision retained). Optional publication timestamps remain NULL; they never receive discovery-time substitutes. Synthetic labels identify synthetic history. Schema 2 had no raw payload, undo, search/FTS or backup/export tables; schema 6 adds bounded seen recovery below. Schema 3 adds the separate bounded workspace above.
 
 One main-owned synchronous connection configures foreign keys ON explicitly, `busy_timeout=5000`, and `synchronous=FULL`; new files use SQLite's default DELETE rollback journal. Multi-comment state writes and demo inserts use `BEGIN IMMEDIATE`/commit/rollback. This is appropriate for the current tiny dataset, not a large-data responsiveness claim. No pooling, WAL transition, or worker design is selected.
 
@@ -109,7 +139,7 @@ Do not use localStorage for durable discussions, seen state, tabs or user prefer
 | Tab/view state | Open tab identities/order and per-tab item, scroll, filters, search, sort, reply expansion and selection | Multiple views share comment state but keep their own view preferences |
 | Preferences | Explicit language and appearance choice | Persist intent such as System, not just the resolved current theme |
 | Migration metadata | Applied schema versions and runner bookkeeping | Must support ordered, repeatable startup decisions |
-| Reversible changes | Information required by the chosen bulk undo/recovery mechanism | Recoverability is required; a previous-state operation log is only one candidate |
+| Reversible changes | Information required by the chosen bulk undo/recovery mechanism | Schema 6 stores one operation per item and changed IDs/written revisions (ADR 0013) |
 
 These are logical records, not a requirement for one table per row of this list. For example, seen state can share a comments table if refresh code cannot overwrite it, and first discovery can be represented by a refresh foreign key rather than a separate event table. Schema 2 implements baseline and per-comment first/last attempt references; future presentation must retain the initial-versus-later distinction. Do not create a redundant thread seen column or another durable flag derived from comment state.
 
@@ -143,7 +173,7 @@ flowchart LR
 
 All discussion changes accepted from a refresh belong to one transaction, along with the committed history/discovery information that describes them. A process failure outside that transaction may still produce a failed-attempt history record without touching the prior snapshot. [ADR 0003](decisions/0003-extractor-observations-and-normalization.md) accepts valid partial/unknown observational input without implementing any database writes. [ADR 0004](decisions/0004-durable-observation-merge.md) implements conflict/baseline/history/outcome policy; future process crash reconciliation remains open.
 
-Multi-comment seen operations should be atomic. Undo/recoverability is a required part of bulk-action design, but its mechanism is unresolved. Capturing previous states in the same transaction is an optional candidate, not a mandated implementation; a future decision must define how the chosen mechanism remains consistent with state changes. An operation cannot report success after only part of its target set was written. Apply changes / Update view does not commit seen edits; they have already been persisted.
+Multi-comment seen commands and recovery are atomic under ADR 0013. Target resolution, state/revision updates, operation replacement and changed-entry creation commit together. Undo conditional restoration and log consumption also commit together. Failed transactions preserve prior states, revisions and recovery. Apply recomputes views; seen changes have already been saved.
 
 Matching-only bulk commands receive the last applied active-filter matching IDs from the active discussion, with backend validation of their scope. They do not replace that set with a fresh database predicate merely because seen state has changed since evaluation. Raw search matches and contextual IDs must stay distinct from these targets. A successful explicit remote Refresh commits its merge and then triggers active-view recomputation; Apply recomputes without extraction. See [seen state](SEEN_STATE.md).
 
@@ -185,4 +215,4 @@ The target is thousands to tens of thousands of comments per discussion. Measure
 
 Use temporary SQLite databases for integration tests of migrations, source-key uniqueness, baseline/first discovery, refresh rollback, missing comments, seen-state preservation, multi-comment atomicity, active-discussion scope, last-applied matching targets and restoration of durable preferences/view state. Tests should include populated old-schema fixtures when migrations exist and verified backup/restore behavior when implemented. See [testing](TESTING.md).
 
-Before a storage increment opens or changes durable data, choose the driver/native-module approach, initial schema and identity constraints, timestamp conventions, migration mechanism, connection ownership and isolated development/test paths needed by that increment. Resolve source collision, parent and partial-result policies before the associated ingestion writes. The final backup implementation, undo mechanism/retention, export format, raw-diagnostic retention and exact restored-view representation remain open until their dependent work is scoped; they are not universal gates before scaffolding or domain-only work. Data protection and eventual backup/restore remain product requirements throughout. These dependency notes do not define the first implementation milestone. Track choices in [decision records](decisions/README.md); [packaging](PACKAGING.md) must reflect any driver or helper distribution decision.
+Before a storage increment opens or changes durable data, choose the driver/native-module approach, initial schema and identity constraints, timestamp conventions, migration mechanism, connection ownership and isolated development/test paths needed by that increment. Resolve source collision, parent and partial-result policies before the associated ingestion writes. The final backup implementation, export format, raw-diagnostic retention and exact restored-view representation remain open until their dependent work is scoped; they are not universal gates before scaffolding or domain-only work. Data protection and eventual backup/restore remain product requirements throughout. These dependency notes do not define the first implementation milestone. Track choices in [decision records](decisions/README.md); [packaging](PACKAGING.md) must reflect any driver or helper distribution decision.
