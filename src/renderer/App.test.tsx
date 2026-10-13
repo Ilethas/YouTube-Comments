@@ -34,7 +34,8 @@ beforeEach(() => {
     return { ok: true as const, value: state.workspace };
   };
   api = {
-    getHelperStatus: vi.fn(async ({ kind }) => ({ ok: true as const, value: { kind, mode: 'unavailable' as const, state: 'unavailable' as const, requiredVersion: kind === 'yt-dlp' ? '2026.08.19' : '0.4.0' } })),
+    openSource: vi.fn(async () => ({ ok: true as const, value: null })),
+    getHelperStatus: vi.fn(async ({ kind }) => ({ ok: true as const, value: { kind, mode: 'unavailable' as const, state: 'unavailable' as const, testedVersion: kind === 'yt-dlp' ? '2026.08.19' : '0.4.0' } })),
     chooseHelper: vi.fn(async () => ({ ok: true as const, value: null })),
     clearHelper: vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } })),
     bulkSeen: vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } })),
@@ -331,13 +332,13 @@ it('acquisition shows busy but checkboxes remain usable; failure retains visible
   expect(checked()[0]).toBe(!original[0]);
   expect(screen.queryByRole('status')).toBeNull();
 });
-it('refresh failure preserves acquired comments and reports incompatible helper distinctly', async () => {
+it('refresh failure preserves acquired comments and reports invalid helper', async () => {
   api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true as const, value: acquired().state }));
-  api.refresh = vi.fn<ReaderApi['refresh']>(async () => ({ ok: false, error: { code: 'HELPER_INCOMPATIBLE' } }));
+  api.refresh = vi.fn<ReaderApi['refresh']>(async () => ({ ok: false, error: { code: 'HELPER_UNAVAILABLE' } }));
   await showReader();
   await userEvent.click(screen.getByRole('tab', { name: /Acquired video/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-  expect((await screen.findByRole('alert')).textContent).toContain('version');
+  expect((await screen.findByRole('alert')).textContent).toContain('unavailable or invalid');
   expect(screen.getByText('Acquired comment')).toBeTruthy();
 });
 it('overlapping acknowledgments preserve newer seen edits and newly acquired membership', async () => {

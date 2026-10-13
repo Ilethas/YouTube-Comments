@@ -43,11 +43,11 @@ export function createLiveExtractor(options: { readonly execute?: ExecuteProcess
         const executable = await resolve(name);
         if (!executable) return failure('HELPER_UNAVAILABLE', 'helper-not-found');
         const probe = await probeHelper(name, executable, execute, signal, Math.min(10000, remaining()));
-        const probeFailure = processFailure(probe.outcome);
-        if (probeFailure) return probeFailure;
+        if (probe.outcome.status !== 'exited' || probe.outcome.exitCode !== 0) return failure('HELPER_UNAVAILABLE', `probe-${probe.outcome.status}`);
         version = probe.version ?? 'unverified';
-        if (!probe.compatible) return failure('HELPER_INCOMPATIBLE', 'unsupported-or-unverified-version');
+        if (!probe.version) return failure('HELPER_UNAVAILABLE', 'invalid-helper-identity');
         evidence.push('executable-version-verified');
+        if (!probe.tested) evidence.push('untested-helper-version');
         if (remaining() <= 1 || signal.aborted) return failure('ACQUISITION_FAILED', 'execution-deadline-or-shutdown');
         let spec;
         let outputDirectory: string | undefined;

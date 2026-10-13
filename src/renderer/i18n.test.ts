@@ -40,6 +40,8 @@ it('preserves Polish accents in workspace and destructive confirmation text', ()
   expect(t('removeDescription')).toContain('historii odświeżania');
   expect(t('externalToolsHelp')).toContain('odświeżania');
   expect(t('helperBrowse')).toContain('Wybierz');
-  expect(t('helperInvalidPath')).toContain('niedostępna');
+  expect(t('helperInvalidPath')).toContain('Niedostępny');
+  expect(t('openSource')).toBe('Otwórz w YouTube');
+  expect(t('helperUntested')).toBe('Nieprzetestowana wersja');
   expect(t('reorderHelp')).toContain('Przeciągnij kartę');
 });

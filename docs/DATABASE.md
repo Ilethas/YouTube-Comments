@@ -1,5 +1,18 @@
 # Database and durable data
 
+## Usability command extensions (ADR 0015)
+
+[ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) needs no migration; schema remains 7. Publication command targets add
+optional fromTime/toTime HH:mm strings associated with from/to dates. Main resolves
+them with fresh system IANA rules inside the existing seen transaction. Recovery
+still records only changed IDs and revision ownership; calendar criteria/zone
+are neither persisted nor needed for Undo. Invalid/DST-ambiguous/nonexistent
+explicit times roll back without changing rows or prior recovery. Date-only
+boundaries retain ADR 0012. Source-browser opening is read-only and never updates
+workspace/content/history. Helper selections already store paths only; tested
+versus untested is probe evidence, not a new durable configuration field.
+
+
 SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 7 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW. [ADR 0014](decisions/0014-main-owned-helper-settings.md) adds separate profile-local helper selections.
 
 The implementation below is deliberately small. Later sections describe the broader conceptual target and must not be read as implemented tables/features. Read the [domain model](DOMAIN_MODEL.md) for meanings and [architecture](ARCHITECTURE.md) for ownership.

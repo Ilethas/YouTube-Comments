@@ -12,6 +12,8 @@ import { seenHelp } from './shortcuts';
 import { BulkSeenControls } from './BulkSeenControls';
 import type { SeenFeedback } from './BulkSeenControls';
 import type { BulkSeenRequest, SeenUndoDescriptor } from '../domain/seen-operation';
+import type { Result } from '../shared/reader-api';
+import { SourceAction } from './SourceAction';
 
 const demo = (id: string) => id === 'video-demo' || id === 'post-demo';
 interface Props {
@@ -23,6 +25,7 @@ interface Props {
   refreshDisabled: boolean;
   coverageLimited: boolean;
   onRefresh: (itemId: string) => void;
+  onOpenSource?: (itemId: string) => Promise<Result<null>>;
   onToggle: (itemId: string, commentId: string, subtree: boolean) => void;
   undo?: SeenUndoDescriptor | null;
   feedback?: SeenFeedback;
@@ -42,7 +45,7 @@ function VideoDescription({ id, text, locale }: { id: string; text: string; loca
 
 /** Mounted content is independent of its workspace visibility wrapper.
  * Session notifications update only this discussion; draft edits reuse the forest. */
-export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onToggle, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
+export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onOpenSource, onToggle, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
   recordRenderWork('panel', item.id);
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const t = translator(locale);
@@ -58,8 +61,9 @@ export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, s
                 role={coverageLimited ? 'status' : undefined}>{t(coverageLimited ? 'coverageShort' : 'savedShort')}</span>
               {!demo(item.id) && <button disabled={refreshDisabled} onClick={() => { onRefresh(item.id); }}>{t('refresh')}</button>}
             </div>
-            {item.kind === 'video' ? <><h1>{item.title}</h1>{item.description && <VideoDescription id={item.id} text={item.description} locale={locale} />}</>
-              : <><h1>{item.author?.displayName ?? t('unknownAuthor')}</h1><p className="post-text">{item.text}</p></>}
+            <div className="item-title"><h1>{item.kind === 'video' ? item.title : item.author?.displayName ?? t('unknownAuthor')}</h1>
+              {!demo(item.id) && onOpenSource && <SourceAction itemId={item.id} locale={locale} open={onOpenSource} />}</div>
+            {item.kind === 'video' ? item.description && <VideoDescription id={item.id} text={item.description} locale={locale} /> : <p className="post-text">{item.text}</p>}
             <div className="item-meta"><strong>{item.author?.displayName ?? t('unknownAuthor')}</strong>
               {item.author?.handle && <span>{item.author.handle}</span>}
               {time && <time dateTime={item.publishedAt} title={time.exact} tabIndex={0} aria-label={time.exact}>{time.relative}</time>}

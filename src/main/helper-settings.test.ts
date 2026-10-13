@@ -38,15 +38,15 @@ it('environment > saved > PATH, captures startup authority, and never persists o
   const environment = { PATH: directory, YOUTUBE_COMMENTS_YTDLP_EXE: override }, choose = vi.fn();
   const env = helper(environment, choose); environment.YOUTUBE_COMMENTS_YTDLP_EXE = 'missing.exe';
   expect(await env.resolve('yt-dlp')).toBe(override);
-  expect(await env.getStatus('yt-dlp')).toMatchObject({ value: { mode: 'environment', path: override, state: 'ready', version: '2026.08.19' } });
+  expect(await env.getStatus('yt-dlp')).toMatchObject({ value: { mode: 'environment', path: override, state: 'tested', version: '2026.08.19' } });
   expect(await env.choose('yt-dlp')).toMatchObject({ error: { code: 'FORBIDDEN' } });
   expect(await env.clear('yt-dlp')).toMatchObject({ error: { code: 'FORBIDDEN' } });
   expect(choose).not.toHaveBeenCalled(); expect(repository.getHelperSelection('yt-dlp')).toBe(custom);
   const configured = helper(); expect(await configured.resolve('yt-dlp')).toBe(custom);
-  expect(await configured.getStatus('yt-dlp')).toMatchObject({ value: { mode: 'configured', state: 'ready' } });
-  expect(await configured.clear('yt-dlp')).toMatchObject({ value: { mode: 'PATH', path: path.join(directory, 'yt-dlp.exe'), state: 'ready' } });
+  expect(await configured.getStatus('yt-dlp')).toMatchObject({ value: { mode: 'configured', state: 'tested' } });
+  expect(await configured.clear('yt-dlp')).toMatchObject({ value: { mode: 'PATH', path: path.join(directory, 'yt-dlp.exe'), state: 'tested' } });
   expect(repository.getHelperSelection('yt-dlp')).toBeUndefined();
-  expect(await env.getStatus('post-archiver')).toMatchObject({ value: { mode: 'PATH', state: 'ready', version: '0.4.0' } });
+  expect(await env.getStatus('post-archiver')).toMatchObject({ value: { mode: 'PATH', state: 'tested', version: '0.4.0' } });
   expect(repository.getHelperSelection('post-archiver')).toBeUndefined();
 });
 
@@ -82,20 +82,24 @@ it('rejects relative, missing, directory and batch paths; accepts regular absolu
   expect(await isHelperExecutable(path.join(directory, 'custom.exe'), 'win32')).toBe(true);
 });
 
-it.each(['yt-dlp', 'post-archiver'] as const)('exact %s probe rejects incompatible/unverified output, retains prior selection, and exposes no diagnostics', async kind => {
+it.each(['yt-dlp', 'post-archiver'] as const)('%s identifies tested/untested versions; invalid output retains selection; untested selection persists', async kind => {
   const previous = path.join(directory, kind === 'yt-dlp' ? 'custom.exe' : 'custom-post.exe');
+  const chosen = path.join(directory, 'bad.exe');
   repository.setHelperSelection(kind, previous);
-  const service = helper({}, vi.fn(async () => path.join(directory, 'bad.exe')));
-  for (const version of ['private garbage output', kind === 'yt-dlp' ? '2026.09.01' : 'post-archiver 0.4.1']) {
+  const service = helper({}, vi.fn(async () => chosen));
+  for (const version of ['private garbage output', kind === 'yt-dlp' ? '2026.99.99' : 'other-helper 0.4.1']) {
     execute.mockResolvedValueOnce(output(version));
-    expect(await service.choose(kind)).toEqual({ ok: false, error: { code: 'HELPER_INCOMPATIBLE' } });
+    expect(await service.choose(kind)).toEqual({ ok: false, error: { code: 'HELPER_UNAVAILABLE' } });
     expect(repository.getHelperSelection(kind)).toBe(previous);
   }
   execute.mockResolvedValueOnce(output(kind === 'yt-dlp' ? '2026.08.19' : 'post-archiver 0.4.0'));
-  expect(await service.choose(kind)).toMatchObject({ ok: true, value: { state: 'ready' } });
-  execute.mockResolvedValueOnce(output(kind === 'yt-dlp' ? '2026.09.01' : 'post-archiver 0.4.1'));
-  const status = await service.getStatus(kind);
-  expect(status).toMatchObject({ value: { mode: 'configured', state: 'incompatible' } });
+  expect(await service.choose(kind)).toMatchObject({ ok: true, value: { state: 'tested' } });
+  execute.mockResolvedValueOnce(output(kind === 'yt-dlp' ? '2026.10.07' : 'post-archiver 0.4.1'));
+  expect(await service.choose(kind)).toMatchObject({ ok: true, value: { state: 'untested' } });
+  reopen(); expect(repository.getHelperSelection(kind)).toBe(chosen);
+  execute.mockResolvedValueOnce(output(kind === 'yt-dlp' ? '2026.10.07' : 'post-archiver 0.4.1'));
+  const status = await helper().getStatus(kind);
+  expect(status).toMatchObject({ value: { mode: 'configured', state: 'untested' } });
   expect(JSON.stringify(status)).not.toContain('private');
   expect(execute.mock.calls[0][0]).toMatchObject({ arguments: kind === 'yt-dlp' ? ['--ignore-config', '--no-plugin-dirs', '--version'] : ['--version'], timeoutMs: 10000, maxStdoutBytes: 4096 });
 });
@@ -107,7 +111,7 @@ it('cancel is a successful no-op; failures/timeouts retain settings and status i
   expect(execute).not.toHaveBeenCalled(); expect(repository.getHelperSelection('yt-dlp')).toBe(selected);
   for (const status of ['timeout', 'unavailable', 'failed'] as const) {
     execute.mockResolvedValueOnce({ status, stdout: 'secret stdout', stderr: 'secret stderr' });
-    expect(await service.getStatus('yt-dlp')).toEqual({ ok: true, value: { kind: 'yt-dlp', mode: 'configured', path: selected, requiredVersion: '2026.08.19', state: 'unavailable', version: undefined } });
+    expect(await service.getStatus('yt-dlp')).toEqual({ ok: true, value: { kind: 'yt-dlp', mode: 'configured', path: selected, testedVersion: '2026.08.19', state: 'unavailable', version: undefined } });
   }
 });
 

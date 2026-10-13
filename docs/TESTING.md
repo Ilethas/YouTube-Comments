@@ -1,5 +1,97 @@
 # Testing strategy
 
+## Source links, helper confidence, bulk minutes and marking ergonomics (2026-10-13–14)
+
+[ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md)
+supersedes exact-version permission gates while preserving output validation,
+and records the new source/bulk/gesture boundaries. **533 offline tests across
+42 files pass**. Typecheck and lint pass without warnings. Renderer build and
+Forge main/preload/renderer/worker bundle checks pass. Renderer: 415.90 kB /
+128.84 kB gzip; query worker: unchanged 2.60 kB with no Temporal dependency.
+Forge still exits 0 during finalization without a completed executable; bundling
+is verified, completed packaging is not. The Vite CJS deprecation and occasional
+Electron shutdown GPU diagnostic remain non-failing observations.
+
+New deterministic coverage verifies canonical video/post browser destinations,
+kind/source-kind matching, missing/unsupported/synthetic identity rejection,
+exact item-only payload/arity and arbitrary URL/path/scheme rejection. Browser
+failure preserves content/workspace/history and yields compact localized feedback.
+All 18 bridge intents inherit sender/top-frame/exact-document guards. Component
+tests verify English/Polish source labels, pending duplicate prevention and retry.
+
+Shared probes identify exact tested and credible untested versions of both
+helpers. Malformed/wrong/failed/nonzero/timeout probes block invocation; rejected
+choices retain prior settings. Valid untested native selections persist/reopen
+and later invocation uses normal trusted commands. Tests verify provenance-only
+untested evidence, unchanged unknown/partial coverage, and malformed required
+structure/JSON failing without changing the stored snapshot, seen/Undo or NEW.
+Settings tests cover textual warnings and both versions in both languages.
+
+Bulk tests cover date-only equality with existing query resolution, inclusive
+From, exclusive minute-after-To (including :47 seconds), same-minute ranges,
+mixed absent times, stable Kolkata conversion, Warsaw/New York gaps/overlaps,
+skipped-midnight date-only rules and valid minutes immediately before a gap.
+Malformed dates/times, invalid native partial-clock entries with empty values,
+seconds, time without date, reversed boundaries and
+renderer-supplied zone/instant fields fail without mutation. Temporary SQLite
+checks compare the shared renderer preview predicate with main target evaluation
+under injected identical zone/time, including missing/label-only and usable
+estimated publication evidence, and retain revisions/recovery on validation
+failure. Existing date-filter semantics and regression suites remain unchanged.
+
+Gesture tests cover Shift/Ctrl+Shift application IDs, ordinary/right/middle and
+Alt/Meta exclusions, nested controls/links/inputs/contenteditable/roles/tabbable
+or explicitly interactive descendants, native keyboard Space, checkbox/label
+single invocation, selection intersection and pointer-down selection capture.
+The expanded label handles its own click because browser forwarding can discard
+Ctrl; input/keyboard activation retain their existing handler. A 10k virtual
+reader test changes unmounted descendants while keeping mounted rows bounded,
+applied IDs/membership/order fixed, live unseen updated and NEW unchanged.
+Existing revision-owned durable recovery/partial Undo suites remain passing.
+
+`npm.cmd run test:electron` passes four real built-entry disposable-profile
+phases on Electron 44.4.5 / Node 24.21.0 / SQLite 3.53.4. Main-only dialog/process
+seams supply untested yt-dlp 2026.10.07 and post-archiver 0.4.1, validating Settings
+selection/warning, real preload/IPC, acquisition, persistence across restart,
+reset and environment authority. Browser destinations are captured in a main-only
+seam in this offline test. Built UI checks exercise All/date confirmations with optional times,
+row toggles/subtrees, durable Undo, native Chromium mouse selection plus Shift
+extension, active text selection suppression, actual >=32 px seen labels and
+keyboard focus outlines. A native Backspace edit creates a partial clock with
+empty value and badInput; confirmation is blocked without any seen mutation.
+English/light and Polish/dark Settings/help and Polish
+timed confirmations were captured locally and visually inspected. No runtime
+test hook or renderer executable/URL authority is shipped.
+
+The optional live walkthrough also passed in a fresh disposable profile using
+the installed tested yt-dlp 2026.08.19 and post-archiver 0.4.0. Real header actions
+opened [the video](https://www.youtube.com/watch?v=IFPKfypw2CQ) and
+[the Community Post](https://www.youtube.com/post/UgkxLEL8EllifRA8ZLoEkkTXSJaa0s_cWf6n)
+in the external browser without changing stored state. Video: 173 comments / 173
+avatar observations; Community: 34 / 34. Both Refresh operations preserved seen
+state and restart retained four items/four tabs. Video had no adapter issues;
+Community retained one expected invalid protocol-relative item-avatar warning.
+The sanitized Polish/dark live layout was visually inspected. The walkthrough's
+pre-query-era 360 px first-comment assertion and generic checkbox selector were
+updated for the current controls; first comment was y=437.58 in an 861 px content
+viewport, with useful reader space below it. The seen selector now explicitly
+targets the comment control rather than query-field checkboxes.
+
+Observed single-run wall times: video acquisition **12.47 s**, video Refresh
+**11.94 s**, Community acquisition **4.09 s**. These include live network/helper
+and UI acknowledgment and are not performance budgets or benchmarks. No Refresh
+or acquisition optimization was made; systematic measurement is the next
+milestone. Production profiles were not used. Actual installed untested releases
+and human interaction with the native file chooser remain unverified; controlled
+native-dialog/probe tests cover acceptance/persistence and malformed output.
+
+To repeat the live walkthrough, set both authoritative helper overrides, the
+`YOUTUBE_COMMENTS_LIVE_VIDEO_URL`/`YOUTUBE_COMMENTS_LIVE_POST_URL` variables, and
+optionally `YOUTUBE_COMMENTS_LIVE_OPEN_SOURCE=1` to open the originals, then run
+`node scripts/verify-live-reader.cjs`. It owns and removes a disposable profile;
+ordinary tests remain offline. No helper updates/downloads or production writes
+are needed.
+
 ## External helper Settings (2026-10-08)
 
 [ADR 0014](decisions/0014-main-owned-helper-settings.md) narrows Q-19 to remaining
@@ -809,7 +901,7 @@ cover top-level/thread containment (including deeper nesting without fabricated
 direct parents), default collapse, unreliable flags/counts, image/link metadata,
 publication labels, and conflicting duplicate candidates. Both paired fixture
 sets normalize changing membership independently with no deletion actions.
-Required malformed shapes and unsupported versions fail without publishing
+Required malformed shapes and wrong backends fail without publishing
 observations; malformed optional fields stay unknown. Tests check version and
 preparation provenance, generic-contract separation, missing/cyclic references,
 and pure arguments/child-environment specs. ADR 0005 adds the injected process

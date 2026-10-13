@@ -12,6 +12,7 @@ import type { WorkspaceState } from '../domain/workspace';
 import type { HelperStatus } from '../shared/helper-settings';
 import { HelperSettingsService } from './helper-settings';
 import type { HelperSettingsOptions } from './helper-settings';
+import { sourceUrl } from './source-url';
 
 /** Small use-case boundary: validate before touching persistence; failures carry
  * stable codes. Diagnostics are reported only on the privileged side. */
@@ -23,7 +24,8 @@ export class ReaderService {
   constructor(private readonly open: () => ReaderRepository, private readonly languages: readonly string[],
     private readonly diagnose: (error: unknown) => void = console.error,
     private readonly extract?: ExtractLive,
-    private readonly helperOptions: HelperSettingsOptions = {}) {
+    private readonly helperOptions: HelperSettingsOptions = {},
+    private readonly openBrowser?: (url: string) => Promise<void>) {
     this.initializeStorage();
   }
 
@@ -52,8 +54,10 @@ export class ReaderService {
   dispatch(operation: 'acquire' | 'refresh', args: readonly unknown[]): Promise<Result<AcquisitionResult>>;
   dispatch(operation: 'getHelperStatus' | 'clearHelper', args: readonly unknown[]): Promise<Result<HelperStatus>>;
   dispatch(operation: 'chooseHelper', args: readonly unknown[]): Promise<Result<HelperStatus | null>>;
+  dispatch(operation: 'openSource', args: readonly unknown[]): Promise<Result<null>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState> | Promise<Result<AcquisitionResult | HelperStatus | null>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState> | Promise<Result<AcquisitionResult | HelperStatus | null>> {
+    if (operation === 'openSource') return this.openSource(args);
     if (operation === 'getHelperStatus' || operation === 'chooseHelper' || operation === 'clearHelper') {
       if (args.length !== 1 || !isHelperRequest(args[0])) return Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
       if (!this.helpers) return Promise.resolve({ ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } });
@@ -104,6 +108,22 @@ export class ReaderService {
       this.diagnose(error);
       return { ok: false, error: { code: error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError || error instanceof InvalidSeenTargetError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
     }
+  }
+  private async openSource(args: readonly unknown[]): Promise<Result<null>> {
+    if (args.length !== 1 || !isRefreshRequest(args[0])) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+    if (!this.repository) return { ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } };
+    let url: string | undefined;
+    try {
+      const item = this.repository.getStoredItem(args[0].itemId);
+      if (!item) return { ok: false, error: { code: 'NOT_FOUND' } };
+      url = sourceUrl(item);
+    } catch (error) { this.diagnose(error); return { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }; }
+    if (!url) return { ok: false, error: { code: 'NOT_OPENABLE' } };
+    try {
+      if (!this.openBrowser) throw new Error('Browser capability unavailable');
+      await this.openBrowser(url);
+      return { ok: true, value: null };
+    } catch (error) { this.diagnose(error); return { ok: false, error: { code: 'SOURCE_OPEN_FAILED' } }; }
   }
   /** Synchronous idle-only test cleanup. Runtime quit uses shutdown to await children. */
   close(): void { void this.acquisition?.close(); void this.helpers?.shutdown(); this.repository?.close(); }

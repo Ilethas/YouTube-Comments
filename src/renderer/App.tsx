@@ -161,12 +161,13 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     saveQueue.current = task.catch(() => undefined);
     return task.then(() => succeeded);
   }, []);
+  const openSource = useCallback((itemId: string) => api.openSource({ itemId }), [api]);
   const t = translator(locale);
   const openItems = workspace.tabs.flatMap(tab => tab.kind === 'discussion' ? items.find(item => item.id === tab.itemId) ?? [] : []);
   const isOpen = (id: string) => workspace.tabs.some(tab => tab.kind === 'discussion' && tab.itemId === id);
   const itemLabel = (item: ReaderState['items'][number]) => item.kind === 'video' ? item.title
     : `${item.author?.displayName ?? item.author?.handle ?? t('unknownAuthor')} · ${item.text.replace(/\s+/g, ' ').slice(0, 80)}`;
-  const errorKey = acquisitionError === 'HELPER_UNAVAILABLE' ? 'helperUnavailable' : acquisitionError === 'HELPER_INCOMPATIBLE' ? 'helperIncompatible'
+  const errorKey = acquisitionError === 'HELPER_UNAVAILABLE' ? 'helperUnavailable'
     : acquisitionError === 'INVALID_REQUEST' ? 'invalidUrl' : acquisitionError === 'ACQUISITION_BUSY' ? 'acquisitionBusy'
       : acquisitionError === 'NOT_REFRESHABLE' ? 'notRefreshable' : acquisitionError === 'NOT_FOUND' ? 'itemNotFound'
         : acquisitionError === 'STORAGE_UNAVAILABLE' || acquisitionError === 'UNSUPPORTED_SCHEMA' ? 'saveError' : 'acquisitionFailed';
@@ -347,7 +348,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       className="reader-panel" hidden={activeId !== discussionTab(item.id).id} tabIndex={0}>
       <DiscussionPanel item={item} comments={comments[item.id]} session={views.get(item.id, comments[item.id])}
         locale={locale} saving={saving && savingItemId === item.id} refreshDisabled={!!acquiring}
-        coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onToggle={toggleComment}
+        coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onToggle={toggleComment}
         undo={seenUndo[item.id]} feedback={seenFeedback[item.id]} onBulk={bulkSeen} onUndo={undoSeen} onBulkModal={setBulkModalOpen} />
     </main>)}
   </div>;

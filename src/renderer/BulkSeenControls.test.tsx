@@ -8,6 +8,7 @@ import { translator } from './i18n';
 import type { Locale } from './i18n';
 import type { BulkSeenRequest } from '../domain/seen-operation';
 import { evaluateTestQuery } from '../fixtures/query-testing';
+import * as evaluationTime from './query-evaluation-time';
 
 beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function(this: HTMLDialogElement) { this.setAttribute('open', ''); } });
@@ -76,8 +77,8 @@ it.each(['after', 'before', 'between'] as const)('publication %s shows only requ
   fireEvent.change(screen.getByLabelText('Scope'), { target: { value: scope } });
   expect(document.querySelectorAll('input[type=date]').length).toBe(scope === 'between' ? 2 : 1);
   const dates = { ...(scope !== 'before' ? { from: '2026-09-01' } : {}), ...(scope !== 'after' ? { to: '2026-10-08' } : {}) };
-  if (dates.from) fireEvent.change(screen.getByLabelText('From'), { target: { value: dates.from } });
-  if (dates.to) fireEvent.change(screen.getByLabelText('To (whole day)'), { target: { value: dates.to } });
+  if (dates.from) fireEvent.change(screen.getByLabelText('From date'), { target: { value: dates.from } });
+  if (dates.to) fireEvent.change(screen.getByLabelText('To date'), { target: { value: dates.to } });
   fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'false' } });
   fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Continue' }));
@@ -87,8 +88,42 @@ it('rejects missing/reversed dates before dispatch', () => {
   const { execute } = controls();
   fireEvent.change(screen.getByLabelText('Scope'), { target: { value: 'between' } });
   fireEvent.click(screen.getByRole('button', { name: 'Continue' })); expect(screen.getByRole('alert')).toBeTruthy();
-  fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-10-08' } });
-  fireEvent.change(screen.getByLabelText('To (whole day)'), { target: { value: '2026-10-07' } });
+  fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-10-08' } });
+  fireEvent.change(screen.getByLabelText('To date'), { target: { value: '2026-10-07' } });
   fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  expect(screen.queryByRole('dialog')).toBeNull(); expect(execute).not.toHaveBeenCalled();
+});
+it.each(['en', 'pl'] as const)('optional %s native minute controls send semantic times and confirmation includes them', async locale => {
+  vi.spyOn(evaluationTime, 'systemQueryEvaluationTime').mockReturnValue({ now: 0, timeZone: 'Europe/Warsaw' });
+  const { t, execute } = controls(locale);
+  fireEvent.change(screen.getByLabelText(t('bulkScope')), { target: { value: 'between' } });
+  fireEvent.change(screen.getByLabelText(t('bulkFromDate')), { target: { value: '2026-10-09' } });
+  fireEvent.change(screen.getByLabelText(t('bulkToDate')), { target: { value: '2026-10-09' } });
+  const from = screen.getByLabelText<HTMLInputElement>(t('bulkFromTime')), to = screen.getByLabelText<HTMLInputElement>(t('bulkToTime'));
+  expect(from.type).toBe('time'); expect(from.step).toBe('60');
+  fireEvent.change(from, { target: { value: '14:30' } }); fireEvent.change(to, { target: { value: '18:45' } });
+  fireEvent.click(screen.getByRole('button', { name: t('bulkExecute') }));
+  const dialog = screen.getByRole('dialog'); expect(dialog.textContent).toContain('2026-10-09 14:30'); expect(dialog.textContent).toContain('2026-10-09 18:45');
+  fireEvent.click(within(dialog).getByRole('button', { name: t('bulkExecute') }));
+  await waitFor(() => expect(execute).toHaveBeenCalledWith({ itemId: 'video-demo', seen: true, target: { kind: 'publication', from: '2026-10-09', fromTime: '14:30', to: '2026-10-09', toTime: '18:45' } }));
+});
+it.each(['2026-03-29', '2026-10-25'])('explicit DST time on %s fails locally without mutation; time without date fails too', date => {
+  vi.spyOn(evaluationTime, 'systemQueryEvaluationTime').mockReturnValue({ now: 0, timeZone: 'Europe/Warsaw' });
+  const { execute, t } = controls(); fireEvent.change(screen.getByLabelText('Scope'), { target: { value: 'after' } });
+  fireEvent.change(screen.getByLabelText(t('bulkFromTime')), { target: { value: '02:30' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' })); expect(screen.getByRole('alert')).toBeDefined();
+  fireEvent.change(screen.getByLabelText('From date'), { target: { value: date } });
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' })); expect(screen.getByRole('alert').textContent).toBe(t('bulkInvalidLocalTime'));
+  expect(screen.queryByRole('dialog')).toBeNull(); expect(execute).not.toHaveBeenCalled();
+});
+it('an invalid native time with empty value cannot silently become a whole-day command', () => {
+  const { execute, t } = controls(); fireEvent.change(screen.getByLabelText('Scope'), { target: { value: 'after' } });
+  fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-10-09' } });
+  const clock = screen.getByLabelText<HTMLInputElement>(t('bulkFromTime'));
+  // jsdom has no native partial clock editor; custom validity exercises the
+  // same :invalid boundary used by Chromium's badInput/stepMismatch states.
+  clock.setCustomValidity('Incomplete local minute'); expect(clock.value).toBe('');
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  expect(screen.getByRole('alert').textContent).toBe(t('bulkInvalidDate'));
   expect(screen.queryByRole('dialog')).toBeNull(); expect(execute).not.toHaveBeenCalled();
 });

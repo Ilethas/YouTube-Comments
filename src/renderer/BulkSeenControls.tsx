@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { Comment } from '../domain/discussion';
 import type { BulkSeenRequest, BulkSeenTarget, SeenUndoDescriptor } from '../domain/seen-operation';
 import type { DiscussionViewResult } from '../domain/discussion-query';
-import { resolvePublication } from '../domain/publication-filter';
+import { resolveBulkPublication } from '../domain/publication-filter';
 import { publicationMatches, ownPublicationInstant } from '../domain/publication-predicate';
 import { systemQueryEvaluationTime } from './query-evaluation-time';
 import { translator, countLabel } from './i18n';
@@ -41,8 +41,10 @@ export function BulkSeenControls({ itemId, title, comments, result, locale, disa
   const t = translator(locale), [scope, setScope] = useState<Scope>('all'), [seen, setSeen] = useState(true);
   const number = new Intl.NumberFormat(locale);
   const [from, setFrom] = useState(''), [to, setTo] = useState(''), [error, setError] = useState<string>();
+  const [fromTime, setFromTime] = useState(''), [toTime, setToTime] = useState('');
   const [confirmation, setConfirmation] = useState<{ request: BulkSeenRequest; description: string }>();
   const [pending, setPending] = useState(false);
+  const fields = useRef<HTMLDivElement>(null);
   const matchingAvailable = result.restrictive;
   useEffect(() => { modalChanged(!!confirmation); return () => { modalChanged(false); }; }, [confirmation, modalChanged]);
   async function commit(request: BulkSeenRequest) {
@@ -52,6 +54,9 @@ export function BulkSeenControls({ itemId, title, comments, result, locale, disa
   }
   function prepare() {
     setError(undefined);
+    // Native partially entered dates/times may report an empty value with
+    // badInput. Such a clock entry must never become a whole-day command.
+    if (fields.current?.querySelector('input:invalid')) { setError(t('bulkInvalidDate')); return; }
     let target: BulkSeenTarget, count: number;
     if (scope === 'matching') {
       if (!matchingAvailable) return;
@@ -60,20 +65,21 @@ export function BulkSeenControls({ itemId, title, comments, result, locale, disa
     else {
       const needsFrom = scope !== 'before', needsTo = scope !== 'after';
       if (needsFrom && !from || needsTo && !to) { setError(t('bulkInvalidDate')); return; }
-      target = { kind: 'publication', ...(needsFrom ? { from } : {}), ...(needsTo ? { to } : {}) };
-      const resolved = resolvePublication({ kind: 'custom', from: target.from, to: target.to }, systemQueryEvaluationTime());
-      if (!resolved.ok) { setError(t('bulkInvalidDate')); return; }
+      target = { kind: 'publication', ...(needsFrom ? { from, ...(fromTime ? { fromTime } : {}) } : {}), ...(needsTo ? { to, ...(toTime ? { toTime } : {}) } : {}) };
+      const resolved = resolveBulkPublication(target, systemQueryEvaluationTime());
+      if (!resolved.ok) { setError(t(resolved.error === 'INVALID_LOCAL_TIME' ? 'bulkInvalidLocalTime' : 'bulkInvalidDate')); return; }
       count = comments.filter(comment => publicationMatches(ownPublicationInstant(comment.publishedAt), resolved.bounds)).length;
     }
     const request = { itemId, seen, target };
     const label = scope === 'all' ? t('bulkAll') : scope === 'matching' ? t('bulkAppliedMatches', { count: number.format(count) })
-      : scope === 'after' ? t('bulkAfterDate', { date: from }) : scope === 'before' ? t('bulkBeforeDate', { date: to }) : t('bulkBetweenDates', { from, to });
+      : scope === 'after' ? t('bulkAfterDate', { date: `${from}${fromTime ? ` ${fromTime}` : ''}` }) : scope === 'before' ? t('bulkBeforeDate', { date: `${to}${toTime ? ` ${toTime}` : ''}` })
+        : t('bulkBetweenDates', { from: `${from}${fromTime ? ` ${fromTime}` : ''}`, to: `${to}${toTime ? ` ${toTime}` : ''}` });
     if (scope !== 'matching' || count > 1) setConfirmation({ request, description: t('bulkConfirm', { action: t(seen ? 'bulkMarkSeen' : 'bulkMarkUnseen'), scope: label, count: number.format(count) }) });
     else void commit(request);
   }
   return <div className="bulk-area">
     <details className="bulk-controls"><summary>{t('bulkActions')}</summary>
-      <div className="bulk-fields">
+      <div ref={fields} className="bulk-fields">
         <label>{t('bulkAction')}<select disabled={disabled || pending} value={String(seen)} onChange={event => setSeen(event.target.value === 'true')}>
           <option value="true">{t('bulkMarkSeen')}</option><option value="false">{t('bulkMarkUnseen')}</option></select></label>
         <label>{t('bulkScope')}<select disabled={disabled || pending} value={scope} onChange={event => { setScope(event.target.value as Scope); setError(undefined); }}>
@@ -81,8 +87,10 @@ export function BulkSeenControls({ itemId, title, comments, result, locale, disa
           <option value="after">{t('bulkAfter')}</option><option value="before">{t('bulkBefore')}</option><option value="between">{t('bulkBetween')}</option>
         </select></label>
         {scope !== 'all' && scope !== 'matching' && <>
-          {scope !== 'before' && <label>{t('dateFrom')}<input type="date" value={from} disabled={disabled || pending} onChange={event => setFrom(event.target.value)} /></label>}
-          {scope !== 'after' && <label>{t('dateTo')}<input type="date" value={to} disabled={disabled || pending} onChange={event => setTo(event.target.value)} /></label>}
+          {scope !== 'before' && <label>{t('bulkFromDate')}<input name="bulk-from" type="date" value={from} disabled={disabled || pending} onChange={event => setFrom(event.target.value)} /></label>}
+          {scope !== 'before' && <label>{t('bulkFromTime')}<input name="bulk-fromTime" type="time" step="60" value={fromTime} disabled={disabled || pending} onChange={event => setFromTime(event.target.value)} /></label>}
+          {scope !== 'after' && <label>{t('bulkToDate')}<input name="bulk-to" type="date" value={to} disabled={disabled || pending} onChange={event => setTo(event.target.value)} /></label>}
+          {scope !== 'after' && <label>{t('bulkToTime')}<input name="bulk-toTime" type="time" step="60" value={toTime} disabled={disabled || pending} onChange={event => setToTime(event.target.value)} /></label>}
           <p className="reader-help">{t('bulkDateHelp')}</p>
         </>}
         <button disabled={disabled || pending || scope === 'matching' && !matchingAvailable} onClick={prepare}>{t('bulkExecute')}</button>

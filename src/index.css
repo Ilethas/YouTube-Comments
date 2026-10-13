@@ -142,7 +142,8 @@ time, .muted { color: var(--muted); }
 .badge { display: inline-block; font-size: 10px; font-weight: 600; border-radius: 3px; padding: 1px 4px; background: var(--surface-raised); color: var(--muted); }
 .unseen-badge { background: var(--accent-soft); color: var(--unseen); }
 .new-badge { background: var(--new-surface); color: var(--new-text); }
-.seen-control { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); font-size: 10px; cursor: pointer; padding: 2px; }
+.seen-control { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--muted); font-size: 10px; cursor: pointer; padding: 6px; min-width: 36px; min-height: 36px; flex-shrink: 0; border-radius: 4px; }
+.seen-control:focus-within { outline: 2px solid var(--focus); outline-offset: 1px; }
 .seen-control input { accent-color: var(--accent); width: 18px; height: 18px; margin: 0; }
 .reader-footer { border-top: 1px solid var(--border); color: var(--muted); margin-top: 26px; font-size: 12px; line-height: 1.6; }
 @media (max-width: 850px) {
@@ -212,7 +213,7 @@ time, .muted { color: var(--muted); }
 .bulk-controls summary { cursor: pointer; width: fit-content; }
 .bulk-fields { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; padding-top: 0.5rem; }
 .bulk-fields label { display: flex; flex-direction: column; gap: 0.2rem; }
-.bulk-fields input[type=date] { color: var(--text); background: var(--surface-raised); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; }
+.bulk-fields input[type=date], .bulk-fields input[type=time] { color: var(--text); background: var(--surface-raised); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; }
 .bulk-fields .reader-help { flex-basis: 100%; margin: 0; }
 /* Compact display-only machine paths; wrap fully without widening Settings. */
 .external-tools { margin-block: 1.25rem; }
@@ -221,3 +222,8 @@ time, .muted { color: var(--muted); }
 .helper-heading h3 { margin: 0; font-size: 1rem; }
 .helper-path { overflow-wrap: anywhere; font-family: monospace; font-size: .85rem; margin-block: .5rem; }
 .helper-version { font-size: .85rem; margin-block: .4rem; }
+.helper-warning [role=status], .helper-warning-text { color: var(--new-text); }
+.item-title { display: flex; align-items: center; gap: 8px; }
+.source-action { display: inline-flex; align-items: center; gap: 6px; }
+.source-action small { font-size: 12px; }
+.source-button { display: grid; place-items: center; min-width: 32px; min-height: 32px; padding: 6px; color: var(--accent); background: transparent; border: 1px solid var(--border); border-radius: 4px; }

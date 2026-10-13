@@ -17,7 +17,8 @@ import { closeWorkspaceTab, discussionTab, openWorkspaceTab, moveWorkspaceTab } 
 import type { WorkspaceState, WorkspaceTab } from '../../domain/workspace';
 import { isHttpsImageUrl } from '../../domain/remote-image';
 import type { BulkSeenRequest, SeenMutationResult, SeenUndoDescriptor, SeenUndoResult } from '../../domain/seen-operation';
-import { resolvePublication } from '../../domain/publication-filter';
+import { resolveBulkPublication } from '../../domain/publication-filter';
+import type { QueryEvaluationTime } from '../../domain/publication-filter';
 import { publicationMatches, ownPublicationInstant } from '../../domain/publication-predicate';
 import { isBulkSeenRequest } from '../../shared/reader-api';
 import type { HelperKind } from '../../shared/helper-settings';
@@ -136,6 +137,11 @@ export class ReaderRepository {
       establishSyntheticHistory(this.db, this.ingestion.newId);
       this.writeWorkspace({ tabs: items.map(item => discussionTab(item.id)), activeTabId: items[0] ? discussionTab(items[0].id).id : null, revision: this.workspace().revision + 1 });
     });
+  }
+
+  /** Read-only stored identity lookup; opening a browser never changes the workspace. */
+  getStoredItem(itemId: string): ContentItem | undefined {
+    return this.readItems().find(item => item.id === itemId);
   }
 
   private readItems(): readonly ContentItem[] {
@@ -385,7 +391,7 @@ export class ReaderRepository {
 
   /** All target resolution, validation, writes and log replacement share one
    * transaction. Publication uses precisely the filtering resolver/predicate. */
-  bulkSeen(request: BulkSeenRequest): SeenMutationResult {
+  bulkSeen(request: BulkSeenRequest, evaluationTime: () => QueryEvaluationTime = () => ({ now: Date.now(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone })): SeenMutationResult {
     if (!isBulkSeenRequest(request)) throw new InvalidSeenTargetError('Invalid seen intent');
     return transaction(this.db, () => {
       const item = this.readItems().find(item => item.id === request.itemId);
@@ -397,7 +403,7 @@ export class ReaderRepository {
         const owned = new Set(current.map(comment => comment.id));
         if (target.ids.some(id => !owned.has(id))) throw new InvalidSeenTargetError('Unowned matching identity');
       } else if (target.kind === 'publication') {
-        const resolved = resolvePublication({ kind: 'custom', from: target.from, to: target.to }, { now: Date.now(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+        const resolved = resolveBulkPublication(target, evaluationTime());
         if (!resolved.ok || !resolved.bounds) throw new InvalidSeenTargetError('Invalid publication range');
         ids = new Set(current.filter(comment => publicationMatches(ownPublicationInstant(comment.publishedAt), resolved.bounds)).map(comment => comment.id));
       } else ids = new Set(current.map(comment => comment.id));

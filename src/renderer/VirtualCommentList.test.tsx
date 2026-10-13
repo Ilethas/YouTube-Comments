@@ -43,6 +43,22 @@ function mount(comments: readonly Comment[], restrictive = false, suppliedItem?:
     async refresh(nextComments: readonly Comment[], nextItem: ContentItem) { current = nextComments; item = nextItem; update(); await session.apply(current, true, item); } };
 }
 
+it('row gestures include unmounted descendants with frozen applied views and live unseen/NEW ruler evidence', () => {
+  const data = generateDiscussion({ count: 10000, roots: 1, seenRatio: 0, matchIndexes: [0], newIndexes: [9999] });
+  const reader = mount(data.comments, true, data.item), frozen = reader.session.state.result;
+  const root = required(document.getElementById('comment-generated-0'));
+  expect(document.getElementById('comment-generated-9999')).toBeNull(); expect(reader.rows().length).toBeLessThan(30);
+  fireEvent.click(required(root.querySelector('.comment-text')), { shiftKey: true, ctrlKey: true });
+  expect(reader.onToggle).toHaveBeenCalledExactlyOnceWith(data.item.id, 'generated-0', true);
+  expect(reader.current().every(comment => comment.seen)).toBe(true);
+  expect(reader.session.state.result).toBe(frozen); expect(reader.session.state.seenStale).toBe(true);
+  const ruler = required(reader.panel.querySelector<HTMLElement>('.discussion-ruler'));
+  expect(ruler.dataset.unseenCount).toBe('0'); expect(ruler.dataset.newCount).toBe('1');
+  fireEvent.click(required(root.querySelector('.comment-text')), { shiftKey: true });
+  expect(reader.current()[0].seen).toBe(false); expect(reader.current().slice(1).every(comment => comment.seen)).toBe(true);
+  expect(reader.session.state.result).toBe(frozen); expect(reader.rows().length).toBeLessThan(30);
+});
+
 it('distant date/NEW matches retain bounded complete-tree DOM, navigation and independent context NEW ruler lane', async () => {
   const data = generateDiscussion({ count: 10000, roots: 1, newIndexes: [5000, 9999] });
   const comments = data.comments.map((comment, index) => ({ ...comment,

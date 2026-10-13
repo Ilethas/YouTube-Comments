@@ -1,5 +1,21 @@
 # Localization and theming
 
+## Usability labels and evidence (ADR 0015)
+
+[ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) adds English/Polish source-button labels and compact failure text,
+textual tested/untested/unavailable helper status with detected/tested versions
+and an untested-format warning. Warning styling uses semantic theme tokens and
+an icon plus text, never icon/color alone. Settings is titled Shortcuts and gestures
+/ Skróty i gesty, including Shift+Click comment, Ctrl+Shift+Click comment and
+Ctrl+Click checkbox. Seen labels retain native keyboard focus and visible outline.
+
+Bulk-only optional native time inputs expose localized From/To date/time labels,
+validation and timed confirmation text. Minute values remain HH:mm data; locale
+does not choose the timezone. Conversion uses the current system IANA zone and
+Temporal; explicit repeated/skipped times fail with localized validation.
+Date-only query UI and its calendar semantics remain unchanged.
+
+
 English and Polish UI localization and System/Light/Dark appearance are implemented for the synthetic reader, with live switching and System as default. Preferences now persist in main-owned SQLite through acknowledged typed IPC writes. [ADR 0001](decisions/0001-synthetic-reader-foundation.md) selects typed dictionaries, named interpolation, Intl formatting, host-timezone display, semantic tokens, and native CSS color-scheme following. [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) selects main-side first-run detection using the first supported `app.getPreferredSystemLanguages()` base with English fallback; an explicit stored selection overrides detection. Browser-language detection remains a provisional loading/error presentation choice. Fixture reference time stays fixed and labeled only on demo items; real items format relative time against current render time. Timezone controls, a separate follow-system-language option, and production relative-time cadence remain open. [UI and navigation](UI_AND_NAVIGATION.md) describes the reader and [architecture](ARCHITECTURE.md) describes the boundary.
 
 [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) moves the

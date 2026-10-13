@@ -48,21 +48,25 @@ npm.cmd start
 
 [ADR 0014](decisions/0014-main-owned-helper-settings.md) implements startup environment
 > saved profile helper selection > safe direct PATH > HELPER_UNAVAILABLE. Invalid
-higher-priority paths and incompatible versions fail closed. Windows requires an
-absolute regular .exe and the unchanged exact version probe: yt-dlp 2026.08.19 or
-post-archiver 0.4.0. Settings uses a main-owned native picker; saved selections take
+higher-priority paths and invalid helper identity fail closed. Windows requires an
+absolute regular .exe and bounded helper-specific identity probing.
+[ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) makes
+yt-dlp 2026.08.19 and post-archiver 0.4.0 tested confidence signals; credible other
+versions are allowed with a textual warning. Validated output remains the safety
+boundary. Settings uses a main-owned native picker; saved selections take
 effect for later acquisition/Refresh without restart. Use automatic detection clears
 only the saved selection. Environment-controlled helpers disable Browse/reset.
 Development and production naturally have independent schema-7 configuration.
 
 Helpers remain user-installed, not bundled/downloaded/updated. No Python runtime
-is managed. Desktop executable selection does not establish release-ready helper
+is managed. This usability milestone changes neither bundling nor Forge
+finalization. Desktop executable selection does not establish release-ready helper
 distribution; artifacts, licensing, integrity, update ownership and completed
 installer verification remain open.
 
 Before committing to helper bundling, decide and document:
 
-- Supported versions and how compatibility is detected.
+- Distribution artifacts and the process for updating tested-version confidence after fixture/live validation; runtime identity/output validation is already required by ADR 0015.
 - Artifacts and any runtime dependencies for the supported Windows versions/architectures; assess Linux/macOS separately if later added.
 - Installation locations and resolver precedence, with clear behavior when no usable helper is available.
 - Applicable redistribution licenses, notices, signing, and artifact integrity checks.
@@ -94,7 +98,7 @@ The following is a release checklist to establish during implementation, not a c
 | Deterministic domain, adapter, and persistence suites pass. | Packages must preserve the product's state and merge invariants. |
 | Packaged app starts on supported Windows targets and can reopen a prior test profile. | Development execution does not prove packaged paths, dependencies, or migrations work. |
 | Fresh acquisition and refresh work through the selected helper strategy in an isolated test profile. | Detect missing binaries/runtime dependencies and invocation differences without touching real user data. |
-| Missing, incompatible, failed, and partial helper outcomes are understandable and preserve stored data. | Acquisition can fail independently of the local reader. |
+| Invalid/unavailable helpers, untested warnings, failed output and partial outcomes are understandable and preserve stored data. | Acquisition can fail independently of the local reader. |
 | Security boundary and safe rendering are verified in the built artifact. | Process/database access and untrusted remote text must stay within their intended boundaries. |
 | English/Polish, locale formatting, System as the first-run default, all appearance modes, and restart persistence work. | Localization and theming are product requirements, including offline installed usage. |
 | Backup/restore and supported upgrade paths succeed against disposable database fixtures. | A distributable update must account for valuable existing data. |

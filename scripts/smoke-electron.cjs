@@ -9,6 +9,7 @@ const entry = path.join(__dirname, '../.vite/build/main.js');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const dateEvaluationNow = Date.parse('2026-10-07T12:00:00Z');
 const helperChoices = [], helperExecutions = [];
+const browserDestinations = [];
 
 // A real Chromium paint check: jsdom cannot verify hover/pseudo-element layering.
 async function verifyTabHover(window) {
@@ -102,7 +103,7 @@ async function verifyWindow(window, nativeTheme) {
     }
     if (phase === 'environment') {
       assert.equal((await status('yt-dlp')).mode, 'environment');
-      assert.equal((await status('yt-dlp')).state, 'ready');
+      assert.equal((await status('yt-dlp')).state, 'tested');
       assert.equal((await status('post-archiver')).state, 'invalid-path');
       for (const kind of ['yt-dlp','post-archiver']) for (const operation of ['chooseHelper','clearHelper'])
         assert.deepEqual(await js(`window.reader.${operation}({kind:${JSON.stringify(kind)}})`), {ok:false,error:{code:'FORBIDDEN'}});
@@ -114,7 +115,7 @@ async function verifyWindow(window, nativeTheme) {
     for (const kind of ['yt-dlp','post-archiver']) {
       const initial = await status(kind);
       assert.equal(initial.mode, phase === 'read' ? 'configured' : 'PATH');
-      assert.equal(initial.state, 'ready');
+      assert.equal(initial.state, phase === 'read' ? 'untested' : 'tested');
       assert.equal(initial.path, path.join(helpers, `${phase === 'read' ? 'chosen-' : ''}${kind}.exe`));
       if (phase === 'write') {
         for (const choice of [undefined, path.join(helpers,'missing.exe'), path.join(helpers,'incompatible.exe'), path.join(helpers,`chosen-${kind}.exe`)]) {
@@ -122,8 +123,8 @@ async function verifyWindow(window, nativeTheme) {
           const result = await js(`window.reader.chooseHelper({kind:${JSON.stringify(kind)}})`);
           if (choice === undefined) assert.deepEqual(result, {ok:true,value:null});
           else if (choice.endsWith('missing.exe')) assert.deepEqual(result, {ok:false,error:{code:'HELPER_UNAVAILABLE'}});
-          else if (choice.endsWith('incompatible.exe')) assert.deepEqual(result, {ok:false,error:{code:'HELPER_INCOMPATIBLE'}});
-          else { assert.equal(result.value.mode,'configured'); assert.equal(result.value.path,choice); }
+          else if (choice.endsWith('incompatible.exe')) assert.deepEqual(result, {ok:false,error:{code:'HELPER_UNAVAILABLE'}});
+          else { assert.equal(result.value.mode,'configured'); assert.equal(result.value.path,choice); assert.equal(result.value.state,'untested'); }
           if (!choice || !choice.includes('chosen-')) assert.equal((await status(kind)).path,initial.path);
         }
       } else if (phase === 'read') {
@@ -156,7 +157,7 @@ async function verifyWindow(window, nativeTheme) {
       selects[0].value=${JSON.stringify(String(seen))}; selects[0].dispatchEvent(new Event('change',{bubbles:true}));
       selects[1].value=${JSON.stringify(scope)}; selects[1].dispatchEvent(new Event('change',{bubbles:true}));})()`);
     await pause(20);
-    for (const [index, date] of Object.values(dates).entries()) await js(`(() => {const input=document.querySelector('[role=tabpanel]:not([hidden]) .bulk-fields').querySelectorAll('input')[${index}];
+    for (const [key, date] of Object.entries(dates)) await js(`(() => {const input=document.querySelector('[role=tabpanel]:not([hidden]) .bulk-fields [name="bulk-${key}"]');
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(date)}); input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .bulk-fields button').click()");
     await waitFor("document.querySelector('dialog[open]') !== null", 'bulk confirmation');
@@ -231,7 +232,9 @@ async function verifyWindow(window, nativeTheme) {
     key('W', ['control']); await active('library'); // closing Settings chooses right
     key('F1'); await waitFor("document.activeElement.id === 'keyboard-shortcuts' && !document.querySelector('.tabs button:disabled')", 'F1 reopens singleton');
     const rows = await js("Array.from(document.querySelectorAll('#panel-settings tr[data-shortcut-id]'),row=>({id:row.dataset.shortcutId,keys:row.querySelector('td').textContent}))");
-    assert.equal(rows.length, 19); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
+    assert.equal(rows.length, 21); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
+    assert.equal(rows.find(row => row.id === 'comment-toggle-row').keys, 'Shift+Click');
+    assert.equal(rows.find(row => row.id === 'comment-subtree-row').keys, 'Ctrl+Shift+Click');
     assert.equal(rows.find(row => row.id === 'previous-tab').keys, 'Ctrl+Shift+Tab');
     const hints = await js("({apply:document.querySelector('#panel-video-demo .query-controls button[type=submit]').title,next:document.querySelector('#panel-video-demo .query-navigation button:nth-child(2)').title,add:document.querySelector('[aria-controls=acquisition-form]').title,seen:document.querySelector('.seen-control').title,tab:document.querySelector('[role=tab]').title})");
     assert.match(hints.apply, /Ctrl\+Enter/); assert.match(hints.next, /F3/); assert.match(hints.add, /Ctrl\+L/);
@@ -265,7 +268,7 @@ async function verifyWindow(window, nativeTheme) {
   await waitFor("document.querySelectorAll('input[type=checkbox]').length >= 24", 'bootstrap');
   await verifyHelperSettings();
   if (phase === 'environment') return;
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'chooseHelper', 'clearHelper', 'closeTab', 'getHelperStatus', 'moveTab', 'openLibrary', 'openSettings', 'openStoredItem', 'refresh', 'removeLibraryItem', 'toggleSeen', 'undoSeen', 'updatePreferences']);
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'chooseHelper', 'clearHelper', 'closeTab', 'getHelperStatus', 'moveTab', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   assert.deepEqual(await js("window.reader.acquire({url:'https://www.youtube.com/watch?v=abcdefghijk',executable:'evil'})"),
     { ok: false, error: { code: 'INVALID_REQUEST' } });
   assert.deepEqual(await js("window.reader.refresh({itemId:'video-demo',url:'https://example.com'})"),
@@ -337,6 +340,10 @@ async function verifyWindow(window, nativeTheme) {
     const video = state.items.find(item => item.sourceId === 'VidDemo_001');
     assert.ok(video);
     assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), `panel-${video.id}`);
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .source-button').click()");
+    await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .source-button').disabled", 'source browser intent');
+    assert.deepEqual(browserDestinations, ['https://www.youtube.com/watch?v=VidDemo_001']);
+    assert.deepEqual(await js(`window.reader.openSource({itemId:${JSON.stringify(video.id)},url:'javascript:alert(1)'})`), {ok:false,error:{code:'INVALID_REQUEST'}});
     assert.equal(state.comments[video.id].length, 3);
     assert.ok(state.comments[video.id].every(comment => !comment.seen));
     assert.equal(state.items.find(item => item.id === video.id).latestAcceptedDiscoveryId, video.baselineDiscoveryId);
@@ -460,6 +467,9 @@ async function verifyWindow(window, nativeTheme) {
     const post = state.items.find(item => item.sourceId === 'UgkDemoPost_0123456789');
     assert.ok(post);
     assert.equal(state.comments[post.id].length, 4);
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .source-button').click()");
+    await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .source-button').disabled", 'post browser intent');
+    assert.equal(browserDestinations.at(-1), 'https://www.youtube.com/post/UgkDemoPost_0123456789');
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
     await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').disabled", 'Community refresh');
     state = await snapshot();
@@ -546,6 +556,23 @@ async function verifyWindow(window, nativeTheme) {
     const dated = await bulkUi('between', true, { from:'2000-01-01', to:'2099-12-31' });
     assert.equal(dated.comments[video.id].filter(comment=>comment.seen).length,dated.comments[video.id].filter(comment=>comment.publishedAt).length);
     assert.deepEqual((await undoUi()).comments,dateBefore.comments);
+    // A real unfinished native clock must not fall back to date-only targeting.
+    await js("(() => {const scope=document.querySelectorAll('[role=tabpanel]:not([hidden]) .bulk-fields select')[1];scope.value='after';scope.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    window.showInactive(); contents.focus();
+    await js("(() => {const input=document.querySelector('[role=tabpanel]:not([hidden]) [name=bulk-fromTime]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'14:30');input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();})()");
+    contents.sendInputEvent({type:'keyDown',keyCode:'Backspace'}); contents.sendInputEvent({type:'keyUp',keyCode:'Backspace'});
+    await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) [name=bulk-fromTime]').validity.badInput",'native partial clock has badInput');
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .bulk-fields button').click()");
+    await waitFor("!!document.querySelector('[role=tabpanel]:not([hidden]) .bulk-area [role=alert]') && !document.querySelector('dialog')",'invalid native clock blocks confirmation');
+    assert.deepEqual(await snapshot(),dateBefore,'Incomplete native clock never mutates seen');
+    await js("(() => {const input=document.querySelector('[role=tabpanel]:not([hidden]) [name=bulk-fromTime]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'');input.dispatchEvent(new Event('input',{bubbles:true}));})()");
+    window.hide();
+    for (const [scope, boundaries] of [['after',{from:'2000-01-01',fromTime:'14:30'}], ['before',{to:'2099-12-31',toTime:'18:45'}],
+      ['between',{from:'2000-01-01',fromTime:'14:30',to:'2099-12-31',toTime:'18:45'}]]) {
+      const timed = await bulkUi(scope,true,boundaries);
+      assert.equal(timed.comments[video.id].filter(comment=>comment.seen).length,timed.comments[video.id].filter(comment=>comment.publishedAt).length);
+      assert.deepEqual((await undoUi()).comments,dateBefore.comments);
+    }
     await draftQuery(''); await applyQuery();
     // Restore starting live state using ordinary acknowledged clicks.
     for (const row of bulkOriginal.comments[video.id]) if ((await snapshot()).comments[video.id].find(comment=>comment.id===row.id).seen !== row.seen) {
@@ -561,6 +588,33 @@ async function verifyWindow(window, nativeTheme) {
     await js("document.getElementById('comment-v2').querySelector('input').dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}))");
     await waitFor("document.getElementById('comment-v2').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'mixed subtree assignment');
     assert.deepEqual((await undoUi()).comments,mixed.comments,'Undo restores mixed subtree');
+    await js("document.querySelector('#comment-v2 .comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true,ctrlKey:true}))");
+    await waitFor("document.getElementById('comment-v2').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'row subtree assignment');
+    assert.deepEqual((await undoUi()).comments,mixed.comments,'Row subtree reuses durable recovery');
+    await js("document.querySelector('#comment-v2 .comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}))");
+    await waitFor("document.getElementById('comment-v2').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'row single assignment');
+    assert.equal((await snapshot()).comments['video-demo'].find(comment=>comment.id==='v2').seen,true);
+    await js("document.querySelector('#comment-v2 .comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}))");
+    await waitFor("!document.getElementById('comment-v2').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'row restore');
+    const selectionBefore = await snapshot();
+    assert.equal(await js("(() => {const text=document.querySelector('#comment-v2 .comment-text'),range=document.createRange();range.selectNodeContents(text);getSelection().removeAllRanges();getSelection().addRange(range);return !getSelection().isCollapsed;})()"),true,'Smoke has an active text selection');
+    await js("document.querySelector('#comment-v2 .comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true,ctrlKey:true}))");
+    await pause(30); assert.deepEqual(await snapshot(),selectionBefore,'Selected text prevents seen gesture');
+    await js('getSelection().removeAllRanges()');
+    // Real Chromium mouse selection and Shift extension, beyond DOM range tests.
+    window.showInactive();
+    await js("document.querySelector('#comment-v2 .comment-text').scrollIntoView({block:'center'})");
+    const selectionPoint = await js("(() => {const r=document.querySelector('#comment-v2 .comment-text').getBoundingClientRect();return {x:Math.round(r.left+5),y:Math.round(r.top+7)};})()");
+    contents.sendInputEvent({type:'mouseDown',...selectionPoint,button:'left',clickCount:1});
+    contents.sendInputEvent({type:'mouseMove',x:selectionPoint.x+80,y:selectionPoint.y});
+    contents.sendInputEvent({type:'mouseUp',x:selectionPoint.x+80,y:selectionPoint.y,button:'left',clickCount:1});
+    await waitFor('!getSelection().isCollapsed','native mouse text selection');
+    contents.sendInputEvent({type:'mouseDown',x:selectionPoint.x+130,y:selectionPoint.y,button:'left',clickCount:1,modifiers:['shift']});
+    contents.sendInputEvent({type:'mouseUp',x:selectionPoint.x+130,y:selectionPoint.y,button:'left',clickCount:1,modifiers:['shift']});
+    await pause(50); assert.deepEqual(await snapshot(),selectionBefore,'Native Shift selection extension never marks seen');
+    await js('getSelection().removeAllRanges()'); window.hide();
+    const hit = await js("(() => {const label=document.querySelector('#comment-v2 .seen-control'),r=label.getBoundingClientRect();label.querySelector('input').focus();return {width:r.width,height:r.height,focused:document.activeElement===label.querySelector('input'),outline:getComputedStyle(label).outlineWidth};})()");
+    assert.ok(hit.width>=32 && hit.height>=32); assert.equal(hit.focused,true); assert.equal(hit.outline,'2px');
     await js("document.getElementById('comment-v3').querySelector('input').click()");
     await waitFor("!document.getElementById('comment-v3').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'restore demo');
     await js(`document.getElementById('tab-discussion:${video.id}').click()`);
@@ -647,7 +701,9 @@ if (process.versions.electron && process.type === 'browser') {
     const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
     setTimeout(() => {
       let code = 0;
-      if (args.includes('--version')) child.stdout.emit('data', Buffer.from(path.basename(file) === 'incompatible.exe' ? 'unsupported' : path.basename(file).includes('yt-dlp') ? '2026.08.19\n' : 'post-archiver 0.4.0\n'));
+      if (args.includes('--version')) child.stdout.emit('data', Buffer.from(path.basename(file) === 'incompatible.exe' ? 'unsupported' : path.basename(file).includes('yt-dlp')
+        ? path.basename(file).startsWith('chosen-') ? '2026.10.07\n' : '2026.08.19\n'
+        : path.basename(file).startsWith('chosen-') ? 'post-archiver 0.4.1\n' : 'post-archiver 0.4.0\n'));
       else if (path.basename(file).includes('yt-dlp')) {
         const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/main/extractors/__fixtures__/yt-nested-a.json'), 'utf8')).raw;
         raw.comments[1].timestamp = dateEvaluationNow / 1000 - 23 * 3600;
@@ -673,7 +729,8 @@ if (process.versions.electron && process.type === 'browser') {
     }, args.includes('--version') ? 0 : 150);
     return child;
   };
-  const { app, nativeTheme, dialog } = require('electron');
+  const { app, nativeTheme, dialog, shell } = require('electron');
+  shell.openExternal = async url => { browserDestinations.push(url); };
   // Test-only main native-dialog seam; the renderer never supplies selected paths.
   dialog.showOpenDialog = async (parent, options) => {
     assert.equal(parent.constructor.name, 'BrowserWindow');

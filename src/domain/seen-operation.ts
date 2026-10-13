@@ -1,10 +1,10 @@
 import type { Comment } from './discussion';
-import type { LocalDate } from './publication-filter';
+import type { BulkPublicationCriteria } from './publication-filter';
 
 /** Intent scopes: only matching needs frozen IDs from the last applied view. */
 export type BulkSeenTarget = { readonly kind: 'all' }
   | { readonly kind: 'matching'; readonly ids: readonly string[] }
-  | { readonly kind: 'publication'; readonly from?: LocalDate; readonly to?: LocalDate };
+  | ({ readonly kind: 'publication' } & BulkPublicationCriteria);
 /** Main resolves and validates this discussion-scoped assignment transactionally. */
 export interface BulkSeenRequest { readonly itemId: string; readonly seen: boolean; readonly target: BulkSeenTarget }
 /** Safe presentation metadata; revisions and recovery entries remain main-only. */

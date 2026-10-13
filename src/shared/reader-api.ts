@@ -5,7 +5,7 @@ import type { BulkSeenRequest, SeenMutationResult, SeenUndoResult, SeenUndoDescr
 import type { HelperRequest, HelperStatus } from './helper-settings';
 
 export type ErrorCode = 'INVALID_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA'
-  | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'HELPER_INCOMPATIBLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE' | 'NOT_REMOVABLE';
+  | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE' | 'NOT_REMOVABLE' | 'SOURCE_OPEN_FAILED' | 'NOT_OPENABLE';
 /** Stable codes cross IPC; raw privileged diagnostics never reach the renderer. */
 export type Result<T> = { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: { readonly code: ErrorCode } };
@@ -39,6 +39,7 @@ export interface AcquisitionResult {
 
 /** Intent-only capabilities. No generic invoke, SQL, executable input or Node handles. */
 export interface ReaderApi {
+  openSource(request: RefreshRequest): Promise<Result<null>>;
   getHelperStatus(request: HelperRequest): Promise<Result<HelperStatus>>;
   chooseHelper(request: HelperRequest): Promise<Result<HelperStatus | null>>;
   clearHelper(request: HelperRequest): Promise<Result<HelperStatus>>;
@@ -59,6 +60,7 @@ export interface ReaderApi {
 }
 
 export const readerChannels = {
+  openSource: 'reader:open-source',
   getHelperStatus: 'reader:helper-status', chooseHelper: 'reader:choose-helper', clearHelper: 'reader:clear-helper',
   bootstrap: 'reader:bootstrap', toggleSeen: 'reader:toggle-seen', updatePreferences: 'reader:preferences',
   bulkSeen: 'reader:bulk-seen', undoSeen: 'reader:undo-seen',
@@ -90,9 +92,11 @@ export function isBulkSeenRequest(value: unknown): value is BulkSeenRequest {
     && target.ids.length <= 100000 && target.ids.every(identifier) && new Set(target.ids).size === target.ids.length;
   if (target === null || typeof target !== 'object' || Array.isArray(target)) return false;
   const date = target as Record<string, unknown>;
-  return Object.hasOwn(date, 'kind') && date.kind === 'publication' && Object.keys(date).every(key => ['kind', 'from', 'to'].includes(key))
+  return Object.hasOwn(date, 'kind') && date.kind === 'publication' && Object.keys(date).every(key => ['kind', 'from', 'to', 'fromTime', 'toTime'].includes(key))
     && (Object.hasOwn(date, 'from') || Object.hasOwn(date, 'to'))
-    && ['from', 'to'].every(key => !Object.hasOwn(date, key) || typeof date[key] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date[key] as string));
+    && ['from', 'to'].every(key => !Object.hasOwn(date, key) || typeof date[key] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date[key] as string))
+    && ['from', 'to'].every(key => !Object.hasOwn(date, `${key}Time`) || Object.hasOwn(date, key)
+      && typeof date[`${key}Time`] === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(date[`${key}Time`] as string));
 }
 /** Validate untrusted serialized payloads at main, including unexpected fields. */
 export function isToggleSeenRequest(value: unknown): value is ToggleSeenRequest {

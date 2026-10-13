@@ -1,5 +1,32 @@
 # UI and navigation
 
+## Source access and deliberate marking (ADR 0015)
+
+Each real discussion heading has a compact external-link icon button labeled
+“Open on YouTube” / “Otwórz w YouTube”. The title stays selectable. Only the
+application item ID crosses IPC; main reconstructs and validates its canonical
+YouTube video/post destination before opening the browser. Failure produces a
+compact localized header alert, without changing stored content/workspace.
+Synthetic demos omit the action.
+
+Seen labels offer at least 36 px width/height with compact visible checkbox and
+visible focus. Shift+Click comment toggles one; Ctrl+Shift+Click comment applies
+the resulting state to its stored descendants. Controls and selected text are
+excluded; plain/right/Alt/Meta clicks are not mutations. Ctrl+Click checkbox
+retains existing behavior. See [Seen state](SEEN_STATE.md).
+
+Publication bulk scopes show a date and optional native minute time per boundary.
+Blank time retains calendar-day semantics; upper time includes the whole entered
+minute. Confirmation includes times and preview count. Repeated/nonexistent DST
+times reject locally and authoritatively in main with no write. Query date UI,
+applied views, live ruler and durable Undo retain their prior contracts.
+
+Settings helper entries show detected/tested versions and textual tested,
+untested or unavailable/invalid status. Untested versions warn but are selectable,
+persisted and usable through ordinary validated extraction. [ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) records the
+privileged intent and compatibility boundaries.
+
+
 The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements bounded variable-height rendering and unmounted-target reveal. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable latest-accepted post-baseline NEW. [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date/latest-discovery filtering; bulk actions and durable safe Undo are implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md). Counts cover all stored comments; synthetic examples remain isolated. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
 
 Windows is the initial target platform. Other platform support is a later possibility; see [packaging](PACKAGING.md).
@@ -9,7 +36,7 @@ Windows is the initial target platform. Other platform support is a later possib
 Each discussion has closed-by-default Bulk actions details. Action is explicitly
 Mark seen / Mark unseen. Scope is All comments, Current APPLIED matches with count,
 Published on/after, Published on/before, or Published between. Only publication
-scopes show date inputs. Unrestricted views disable matching scope. All/date
+scopes show date and optional time inputs. Unrestricted views disable matching scope. All/date
 resolve all stored comments; matching captures exactly applied active IDs, never
 context, raw-only hits or mounted rows. Calendar semantics reuse ADR 0012.
 
@@ -36,7 +63,7 @@ reverts Apply, criteria, Refresh or navigation. Recovery has no expiry; only a l
 successful qualifying same-discussion operation replaces it, or Undo/removal consumes
 it. See [Seen state](SEEN_STATE.md) and [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md).
 
-## Keyboard shortcuts and discoverability
+## Shortcuts and gestures discoverability
 
 Current bindings target Windows; future platform mappings may differ. The renderer
 owns one metadata registry (`src/renderer/shortcuts.ts`) with stable IDs, key tokens,
@@ -44,7 +71,7 @@ localized descriptions, categories and contextual scopes. Its formatter supplies
 Settings key labels and control hints. Handler callbacks remain with the relevant
 view; no configurable bindings or shortcut preferences are stored.
 
-Settings contains the complete localized Keyboard shortcuts reference, including
+Settings contains the complete localized Shortcuts and gestures reference, including
 existing focused-tab navigation, seen gestures, form submission and cancellation.
 Apply, match navigation, discussion search, Library filter, Add/Open, active tab
 close, seen help and tab reorder help expose compact registry-derived hints.
@@ -62,6 +89,8 @@ Background close controls omit Ctrl+W because that command closes the active tab
 | Alt+Left / Alt+Right | Reorder only the focused workspace tab. |
 | Left / Right / Home / End | Existing activation/focus navigation on workspace tabs. |
 | Ctrl+Z | Undo latest recoverable multi-comment seen change in the active discussion, outside editable controls and confirmation dialogs; unavailable recovery leaves the key unconsumed. |
+| Shift+Click comment | Toggle only that comment, outside interactive targets/text selection. |
+| Ctrl+Shift+Click comment | Apply the clicked resulting state to all stored descendants, with the same exclusions. |
 | Ctrl+Click | Seen checkbox applies its resulting state to the comment and all descendants. |
 | Enter | Existing natural URL submission or discussion query form Apply. |
 | Escape | Drag cancellation, URL form hiding and removal/bulk dialog cancellation unless its write is pending. |

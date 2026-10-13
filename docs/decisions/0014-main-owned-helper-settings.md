@@ -1,6 +1,9 @@
 # ADR 0014 - Main-owned external helper Settings
 
-Date: 2026-10-08. Status: accepted.
+Date: 2026-10-08. Status: accepted; exact-version permission policy superseded
+by [ADR 0015](0015-safe-usability-intents-and-helper-confidence.md) on 2026-10-14.
+The text below records the original decision. Native selection, schema 7,
+precedence, executable validation and lifecycle remain accepted.
 
 ## Context
 

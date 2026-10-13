@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ErrorCode, ReaderApi, Result } from '../shared/reader-api';
-import { helperKinds, requiredHelperVersions } from '../shared/helper-settings';
+import { helperKinds, testedHelperVersions } from '../shared/helper-settings';
 import type { HelperKind, HelperStatus } from '../shared/helper-settings';
 import { translator } from './i18n';
 import type { Locale } from './i18n';
@@ -37,21 +37,21 @@ function HelperTool({ kind, api, locale, active }: { kind: HelperKind; api: Read
   }, [active, api, kind]);
   const environment = status?.mode === 'environment';
   const modeKey = status?.mode === 'environment' ? 'helperEnvironment' : status?.mode === 'configured' ? 'helperCustom' : 'helperAutomatic';
-  const stateKey = !status ? 'helperUnchecked' : status.state === 'ready' ? 'helperReady' : status.state === 'incompatible'
-    ? 'helperStatusIncompatible' : status.state === 'invalid-path' ? 'helperInvalidPath' : 'helperStatusUnavailable';
+  const stateKey = !status ? 'helperUnchecked' : status.state === 'tested' ? 'helperTested' : status.state === 'untested'
+    ? 'helperUntested' : status.state === 'invalid-path' ? 'helperInvalidPath' : 'helperStatusUnavailable';
   const name = kind === 'yt-dlp' ? 'yt-dlp' : 'post-archiver';
-  return <article className="helper-tool" aria-label={name} aria-busy={pending}>
+  return <article className={`helper-tool ${status?.state === 'untested' ? 'helper-warning' : ''}`} aria-label={name} aria-busy={pending}>
     <div className="helper-heading"><h3>{name}</h3><span>{t(modeKey)}</span><strong role="status">{t(pending ? 'helperChecking' : stateKey)}</strong></div>
     {status?.path !== undefined && <p className="helper-path" title={status.path}>{status.path || t('helperEmptyPath')}</p>}
-    <p className="helper-version">{t('helperRequiredVersion', { version: requiredHelperVersions[kind] })}
+    <p className="helper-version">{t('helperTestedVersion', { version: testedHelperVersions[kind] })}
       {status?.version && <> · {t('helperDetectedVersion', { version: status.version })}</>}</p>
+    {status?.state === 'untested' && <p className="reader-help helper-warning-text"><span aria-hidden="true">⚠ </span>{t('helperUntestedHelp')}</p>}
     {environment && <p className="reader-help">{t('helperEnvironmentHelp')}</p>}
     <div className="helper-actions">
       <button disabled={pending || !status || environment} onClick={() => { void run(() => api.chooseHelper({ kind })); }}>{t('helperBrowse')}</button>
       <button disabled={pending || status?.mode !== 'configured'} onClick={() => { void run(() => api.clearHelper({ kind })); }}>{t('helperAutomaticAction')}</button>
       <button disabled={pending} onClick={() => { void run(() => api.getHelperStatus({ kind })); }}>{t('helperRecheck')}</button>
     </div>
-    {error && <p role="alert">{t(error === 'HELPER_INCOMPATIBLE' ? 'helperSelectionIncompatible'
-      : error === 'HELPER_UNAVAILABLE' ? 'helperSelectionUnavailable' : 'helperSettingsFailed')}</p>}
+    {error && <p role="alert">{t(error === 'HELPER_UNAVAILABLE' ? 'helperSelectionUnavailable' : 'helperSettingsFailed')}</p>}
   </article>;
 }

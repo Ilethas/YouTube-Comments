@@ -22,15 +22,43 @@ function extractor(execute: ExecuteProcess) { return createLiveExtractor({ execu
 function videoProcess(payload: Record<string, unknown>) {
   return vi.fn<ExecuteProcess>(async request => outcome(request.arguments.includes('--version') ? '2026.08.19\n' : JSON.stringify(payload)));
 }
+it.each([false, true])('untested helper post=%s runs normal invocation and rejects malformed structure without changing stored snapshot', async community => {
+  const payload = await raw(community ? 'community-thread-a' : 'yt-nested-a');
+  let malformed = false;
+  const execute = vi.fn<ExecuteProcess>(async request => {
+    if (request.arguments.includes('--version')) return outcome(community ? 'post-archiver 0.4.1' : '2026.10.07');
+    const output = JSON.stringify(malformed ? community ? { channel_id: 'x', posts: [null] } : { id: 'VidDemo_001', comments: {} } : payload);
+    if (community) { const directory = request.arguments[request.arguments.indexOf('--output') + 1]; await writeFile(path.join(directory, 'posts_unknown_20261003_120000.json'), output); return outcome('summary'); }
+    return outcome(output);
+  });
+  const service = new ReaderService(() => repository, ['en'], vi.fn(), extractor(execute));
+  const first = await service.dispatch('acquire', [{ url: community ? postUrl : videoUrl }]); if (!first.ok) throw new Error('Expected untested acquisition');
+  expect(first.value.summary.coverage).toBe(community ? 'partial' : 'unknown');
+  expect(repository.history().at(-1)?.provenance.evidence).toContain('untested-helper-version');
+  const itemId = first.value.summary.itemId;
+  service.dispatch('bulkSeen', [{ itemId, seen: true, target: { kind: 'all' } }]); const before = repository.bootstrap(['en']);
+  malformed = true;
+  expect(await service.dispatch('refresh', [{ itemId }])).toEqual({ ok: false, error: { code: 'ACQUISITION_FAILED' } });
+  expect(repository.bootstrap(['en'])).toEqual(before);
+  expect(repository.history().at(-1)?.outcome).toBe('failed');
+});
+it.each(['failed', 'timeout', 'nonzero'] as const)('failed %s identity probe blocks invocation as an invalid/unavailable helper', async status => {
+  const execute = vi.fn<ExecuteProcess>(async () => status === 'nonzero' ? outcome('2026.08.19', 1) : { ...outcome(), status });
+  const result = await extractor(execute)({ sourceKind: 'youtube-video', sourceId: 'VidDemo_001', url: videoUrl }, new AbortController().signal);
+  expect(result.error).toBe('HELPER_UNAVAILABLE'); expect(execute).toHaveBeenCalledTimes(1);
+});
 
-it('explicit override still undergoes the same exact probe and cannot bypass an incompatible version', async () => {
+it('explicit override still undergoes the same identity probe and allows an untested version', async () => {
   const selected = path.join(directory, 'selected.exe');
   await writeFile(selected, 'test placeholder');
-  const execute = vi.fn<ExecuteProcess>(async () => outcome('2026.09.01'));
+  const payload = await raw('yt-nested-a');
+  const execute = vi.fn<ExecuteProcess>(async request => outcome(request.arguments.includes('--version') ? '2026.10.07' : JSON.stringify(payload)));
   const extract = createLiveExtractor({ execute, resolve: createHelperResolver({ YOUTUBE_COMMENTS_YTDLP_EXE: selected }, 'win32') });
   const result = await extract({ sourceKind: 'youtube-video', sourceId: 'VidDemo_001', url: videoUrl }, new AbortController().signal);
-  expect(result.error).toBe('HELPER_INCOMPATIBLE');
-  expect(execute).toHaveBeenCalledTimes(1);
+  expect(result.error).toBeUndefined();
+  expect(result.extraction.coverage.kind).toBe('unknown');
+  expect(result.extraction.provenance.evidence).toContain('untested-helper-version');
+  expect(execute).toHaveBeenCalledTimes(2);
   expect(execute.mock.calls[0][0]).toMatchObject({ executable: selected, arguments: ['--ignore-config', '--no-plugin-dirs', '--version'] });
 });
 
@@ -89,27 +117,27 @@ it('single lock rejects overlap while seen and preferences still succeed, readin
   expect(result.value.state.preferences.locale).toBe('pl');
 });
 
-it.each(['missing', 'incompatible', 'unverified', 'nonzero', 'timeout', 'malformed', 'mismatch'] as const)('failed %s preserves the stored discussion and records only structured failure', async scenario => {
+it.each(['missing', 'untested-malformed', 'unverified', 'nonzero', 'timeout', 'malformed', 'mismatch'] as const)('failed %s preserves the stored discussion and records only structured failure', async scenario => {
   const payload = await raw('yt-nested-a');
   const firstService = new ReaderService(() => repository, ['en'], vi.fn(), extractor(videoProcess(payload)));
   const first = await firstService.dispatch('acquire', [{ url: videoUrl }]);
   if (!first.ok) throw new Error('Expected success');
   const before = repository.bootstrap(['en']);
   const execute = vi.fn<ExecuteProcess>(async request => {
-    if (request.arguments.includes('--version')) return outcome(scenario === 'incompatible' ? '2026.09.01' : scenario === 'unverified' ? 'a guess' : '2026.08.19');
+    if (request.arguments.includes('--version')) return outcome(scenario === 'untested-malformed' ? '2026.09.01' : scenario === 'unverified' ? 'a guess' : '2026.08.19');
     if (scenario === 'timeout') return { ...outcome(), status: 'timeout', stderr: 'private C:/path secret' };
     if (scenario === 'mismatch') return outcome(JSON.stringify({ ...payload, id: 'Another_001' }));
-    return { ...outcome(scenario === 'malformed' ? '{' : JSON.stringify(payload), scenario === 'nonzero' ? 1 : 0), stderr: 'private C:/path secret' };
+    return { ...outcome(['malformed', 'untested-malformed'].includes(scenario) ? '{' : JSON.stringify(payload), scenario === 'nonzero' ? 1 : 0), stderr: 'private C:/path secret' };
   });
   const extract = createLiveExtractor({ execute, resolve: async () => scenario === 'missing' ? undefined : 'trusted.exe' });
   const service = new ReaderService(() => repository, ['en'], vi.fn(), extract);
   const result = await service.dispatch('refresh', [{ itemId: first.value.summary.itemId }]);
-  expect(result).toEqual({ ok: false, error: { code: scenario === 'missing' ? 'HELPER_UNAVAILABLE' : ['incompatible', 'unverified'].includes(scenario) ? 'HELPER_INCOMPATIBLE' : 'ACQUISITION_FAILED' } });
+  expect(result).toEqual({ ok: false, error: { code: ['missing', 'unverified'].includes(scenario) ? 'HELPER_UNAVAILABLE' : 'ACQUISITION_FAILED' } });
   expect(repository.bootstrap(['en'])).toEqual(before);
   const history = repository.history();
   expect(history.at(-1)?.outcome).toBe('failed');
   expect(JSON.stringify(history)).not.toContain('private');
-  if (['missing', 'incompatible', 'unverified'].includes(scenario)) expect(execute.mock.calls.length).toBe(scenario === 'missing' ? 0 : 1);
+  if (['missing', 'unverified'].includes(scenario)) expect(execute.mock.calls.length).toBe(scenario === 'missing' ? 0 : 1);
 });
 
 it.each(['success', 'nonzero', 'timeout', 'missing', 'ambiguous', 'unexpected', 'malformed', 'throw'] as const)('Community %s uses anonymous workspace and cleans it', async scenario => {
@@ -149,10 +177,10 @@ it.each(['success', 'nonzero', 'timeout', 'missing', 'ambiguous', 'unexpected', 
 });
 
 it('verifies the selected Community executable conservatively before trusting output', async () => {
-  for (const stdout of ['post-archiver 0.5.0', '0.4.0', 'post-archiver 0.4.0 extra']) {
+  for (const stdout of ['other-helper 0.5.0', '0.4.0', 'post-archiver 0.4.0 extra']) {
     const execute = vi.fn<ExecuteProcess>(async () => outcome(stdout));
     const result = await extractor(execute)({ sourceKind: 'youtube-community-post', sourceId: 'UgkDemoPost_0123456789', url: postUrl }, new AbortController().signal);
-    expect(result.error).toBe('HELPER_INCOMPATIBLE');
+    expect(result.error).toBe('HELPER_UNAVAILABLE');
     expect(execute).toHaveBeenCalledTimes(1);
     expect(execute.mock.calls[0][0].arguments).toEqual(['--version']);
   }

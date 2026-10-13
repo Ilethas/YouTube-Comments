@@ -287,10 +287,10 @@ describe('shared observation boundary and fixture provenance', () => {
     for (const id of ['yt-nested-a', 'community-thread-a']) { const result = normalize(id); check(result.item); check(result.collection); }
   });
 
-  it.each([normalizeYtDlp, normalizeCommunityArchive])('reports parse failure, explicit unusable runs and incompatible version without observations', adapter => {
+  it.each([normalizeYtDlp, normalizeCommunityArchive])('reports parse failure, explicit unusable runs and wrong backend without observations', adapter => {
     const context = fixture(adapter === normalizeYtDlp ? 'yt-nested-a' : 'community-thread-a').context;
     expect(adapter('{', context).issues[0].code).toBe('invalid-json');
     expect(adapter('{}', { ...context, failure: 'process-failed' }).coverage).toEqual({ kind: 'failed', reason: 'process-failed' });
-    expect(adapter('{}', { provenance: { ...context.provenance, version: 'unsupported' } }).coverage).toEqual({ kind: 'failed', reason: 'unsupported-backend-version' });
+    expect(adapter('{}', { provenance: { ...context.provenance, backend: 'unsupported' } }).coverage).toEqual({ kind: 'failed', reason: 'unsupported-backend' });
   });
 });

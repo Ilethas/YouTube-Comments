@@ -1,5 +1,17 @@
 # Architecture
 
+## Narrow source and clock intents (ADR 0015)
+
+[ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) adds an identity-only openSource capability: main reads stored identity,
+verifies kind/source kind and reconstructs/validates a supported canonical HTTPS
+YouTube destination before invoking Electron shell.openExternal. No renderer URL
+capability exists. Optional bulk clock minutes remain semantic local strings;
+main resolves the final publication target inside its transaction. Query workers
+still receive numeric bounds and no Temporal dependency. Helper versions now
+express tested confidence, while helper identity and unchanged runtime JSON
+validation guard acquisition. Row gestures reuse the existing seen intent.
+
+
 Status: target architecture, with proposed organization explicitly identified. [Map](README.md) · [Requirements](PRODUCT_REQUIREMENTS.md) · [Owner's walkthrough](HOW_IT_WORKS.md) · [Decisions](decisions/README.md)
 
 ## Current scaffold
@@ -40,7 +52,7 @@ path/status evidence crosses preload (ADR 0014). See [Extractors](EXTRACTORS.md)
 
 `acquisition-target.ts` owns supported URL validation/canonicalization;
 `helper-process.ts` owns environment/saved/PATH resolution, strict executable validation and no-shell asynchronous spawning;
-`live-extraction.ts` probes pinned versions, builds trusted commands, owns anonymous
+`live-extraction.ts` probes helper identity and tested-version confidence, builds trusted commands, owns anonymous
 Community temporary config/output, enforces deadlines and normalizes before writes.
 `acquisition-service.ts` coordinates the temporary single-live-operation lock,
 stored-identity refresh, repository ingestion and compact acknowledgment.
@@ -120,7 +132,7 @@ flowchart TB
 
 The privilege boundary is renderer -> typed preload/contextBridge API -> privileged application backend owned by the Electron main side -> persistence/extractors. The renderer never directly owns or accesses SQLite and receives no generic Node, filesystem, SQL, shell, or process-launch capability. The main-side backend may later delegate database work to an internal worker if justified; that is an implementation decision within the same privilege boundary. Extractor processes are invoked only by Electron main. Backend output is untrusted data, not executable UI content.
 
-Implemented IPC maintains context isolation and disabled renderer Node integration, validates exact payload shapes/arity and allowed senders, and exposes bootstrap, manual seen changes, preferences, acquire({url}), refresh({itemId}), openStoredItem({itemId}), openLibrary(), openSettings(), activateTab({tabId}), closeTab({tabId}), moveTab({tabId,toIndex}) , removeLibraryItem({itemId}), getHelperStatus({kind}), chooseHelper({kind}) and clearHelper({kind}). Only the owning window's top-level expected document is accepted. TypeScript does not replace runtime validation. Stable error codes support localized failure context; broader request-ID/diagnostic policy remains future work.
+Implemented IPC maintains context isolation and disabled renderer Node integration, validates exact payload shapes/arity and allowed senders, and exposes bootstrap, manual seen changes, preferences, acquire({url}), refresh({itemId}), openSource({itemId}), openStoredItem({itemId}), openLibrary(), openSettings(), activateTab({tabId}), closeTab({tabId}), moveTab({tabId,toIndex}) , removeLibraryItem({itemId}), getHelperStatus({kind}), chooseHelper({kind}) and clearHelper({kind}). Only the owning window's top-level expected document is accepted. TypeScript does not replace runtime validation. Stable error codes support localized failure context; broader request-ID/diagnostic policy remains future work.
 
 The bridge should express intent such as opening an item, querying comments, setting seen state for a validated scope, refreshing, or persisting tab preferences. These are conceptual operations, not finalized method signatures. Main resolves and validates identities, scope, executable selection, and arguments. Do not expose a generic `execute(command)`, `query(sql)`, or unrestricted IPC forwarding API. Permalink opening and copy actions also use appropriately constrained application capabilities. Detailed sandbox/CSP/navigation policy and API contracts must be finalized with the relevant implementation increment.
 
@@ -255,7 +267,7 @@ intents: get/recheck status, choose executable and clear saved selection. Main o
 the parented native picker, validation/probe and schema-7 helper_settings writes;
 renderer input has no path, arguments or shell fields. Configuration remains outside
 ReaderState/Preferences and discussion removal. Environment > saved setting > safe
-PATH is fail-closed for configured sources. Exact probes are shared with live
+PATH is fail-closed for configured sources. Helper identity/confidence probes are shared with live
 extraction; the resolver reads current saved settings for every later acquisition.
 Settings checks lazily once when first viewed, with explicit Recheck and acknowledged
 Choose/reset status; ordinary Reader/bootstrap renders launch no probes. Configuration

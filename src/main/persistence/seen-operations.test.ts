@@ -8,7 +8,7 @@ import { migrateDatabase, migrations } from './migrations';
 import { normalizeYtDlp } from '../extractors/yt-dlp';
 import { queryComments, defaultQuery } from '../../domain/discussion-query';
 import { evaluateTestQuery } from '../../fixtures/query-testing';
-import { resolvePublication } from '../../domain/publication-filter';
+import { resolvePublication, resolveBulkPublication } from '../../domain/publication-filter';
 import { ownPublicationInstant, publicationMatches } from '../../domain/publication-predicate';
 import type { BulkSeenRequest } from '../../domain/seen-operation';
 import { required } from '../../renderer/testing/required';
@@ -32,6 +32,33 @@ const state = () => repository.bootstrap(['en']);
 const rows = () => state().comments['video-demo'];
 const bulk = (seen: boolean, itemId = 'video-demo') => repository.bulkSeen({ itemId, seen, target: { kind: 'all' } });
 function reopen() { repository.close(); repository = ReaderRepository.open(file); }
+
+it.each(['Europe/Warsaw', 'Asia/Kolkata'])('bulk date/time preview and transaction agree under injected %s; Undo and evidence stay intact', timeZone => {
+  const instants = ['2026-10-09T12:29:59Z', '2026-10-09T12:30:00Z', '2026-10-09T12:30:47Z', '2026-10-09T12:31:00Z', null, '2026-10-09'];
+  raw(db => {
+    const update = db.prepare('UPDATE comments SET published_at=? WHERE id=?');
+    rows().slice(0, instants.length).forEach((comment, index) => update.run(instants[index], comment.id));
+  });
+  const evaluation = () => ({ now: 0, timeZone }), clock = timeZone === 'Europe/Warsaw' ? '14:30' : '18:00';
+  const target = { kind: 'publication' as const, from: '2026-10-09', fromTime: clock, to: '2026-10-09', toTime: clock };
+  const resolved = resolveBulkPublication(target, evaluation()); if (!resolved.ok) throw new Error('resolution failed');
+  const before = rows(), ids = before.filter(comment => publicationMatches(ownPublicationInstant(comment.publishedAt), resolved.bounds)).map(comment => comment.id);
+  expect(ids).toEqual([before[1].id, before[2].id]);
+  const result = repository.bulkSeen({ itemId: 'video-demo', seen: true, target }, evaluation);
+  expect(result.targetCount).toBe(ids.length); expect(result.comments).toEqual(before.map(comment => ids.includes(comment.id) ? { ...comment, seen: true } : comment));
+  expect(repository.undoSeen('video-demo').restored).toBe(result.changedCount); expect(rows()).toEqual(before);
+});
+it.each([
+  { from: '2026-03-29', fromTime: '02:30' }, { to: '2026-10-25', toTime: '02:30' },
+  { fromTime: '14:30' }, { from: '2026-10-09', fromTime: '14:32', to: '2026-10-09', toTime: '14:30' },
+  { from: '2026-10-09', fromTime: '14:30:00' },
+])('invalid clock/DST bulk %j changes no row, revision or recovery', target => {
+  bulk(true); const before = state(), recovery = raw(db => db.prepare('SELECT * FROM seen_operation_entries').all());
+  const revisions = raw(db => db.prepare('SELECT * FROM comment_state').all());
+  expect(() => repository.bulkSeen({ itemId: 'video-demo', seen: false, target: { kind: 'publication', ...target } }, () => ({ now: 0, timeZone: 'Europe/Warsaw' }))).toThrow(InvalidSeenTargetError);
+  expect(state()).toEqual(before); expect(raw(db => db.prepare('SELECT * FROM seen_operation_entries').all())).toEqual(recovery);
+  expect(raw(db => db.prepare('SELECT * FROM comment_state').all())).toEqual(revisions);
+});
 
 it('schema 5 migration preserves states, initializes revisions and rolls back/retries safely', () => {
   const before = state();

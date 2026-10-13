@@ -1,5 +1,5 @@
 import type { HelperKind, HelperStatus } from '../shared/helper-settings';
-import { requiredHelperVersions } from '../shared/helper-settings';
+import { testedHelperVersions } from '../shared/helper-settings';
 import type { Result } from '../shared/reader-api';
 import { createHelperResolution, executeProcess, helperOverrideVariables, isHelperExecutable } from './helper-process';
 import type { ExecuteProcess, ResolveHelper } from './helper-process';
@@ -43,12 +43,11 @@ export class HelperSettingsService {
   }
 
   private async inspect(kind: HelperKind, mode: HelperStatus['mode'], file?: string, executable?: string): Promise<HelperStatus> {
-    const base = { kind, mode, path: file, requiredVersion: requiredHelperVersions[kind] };
+    const base = { kind, mode, path: file, testedVersion: testedHelperVersions[kind] };
     if (!executable) return { ...base, state: mode === 'configured' || mode === 'environment' ? 'invalid-path' : 'unavailable' };
     try {
       const probe = await probeHelper(kind, executable, this.execute, this.controller.signal);
-      return { ...base, version: probe.version, state: probe.compatible ? 'ready'
-        : probe.outcome.status === 'exited' && probe.outcome.exitCode === 0 ? 'incompatible' : 'unavailable' };
+      return { ...base, version: probe.version, state: probe.version ? probe.tested ? 'tested' : 'untested' : 'unavailable' };
     } catch { return { ...base, state: 'unavailable' }; }
   }
 
@@ -67,8 +66,8 @@ export class HelperSettingsService {
       if (file === undefined) return { ok: true, value: null };
       const executable = await isHelperExecutable(file, this.platform) ? file : undefined;
       const status = await this.inspect(kind, 'configured', file, executable);
-      if (status.state !== 'ready' || this.controller.signal.aborted) return { ok: false,
-        error: { code: status.state === 'incompatible' ? 'HELPER_INCOMPATIBLE' : 'HELPER_UNAVAILABLE' } };
+      if (!['tested', 'untested'].includes(status.state) || this.controller.signal.aborted) return { ok: false,
+        error: { code: 'HELPER_UNAVAILABLE' } };
       this.store.setHelperSelection(kind, file);
       return { ok: true, value: status };
     });

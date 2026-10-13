@@ -58,7 +58,7 @@ function attachments<T>(value: unknown, location: string, issues: NormalizationI
 export function normalizeCommunityArchive(json: string, context: CaptureContext): NormalizedExtraction {
   const issues: NormalizationIssue[] = [];
   if (context.failure) return failed(context, issues, context.failure);
-  if (context.provenance.backend !== 'post-archiver-improved' || context.provenance.version !== '0.4.0') return failed(context, issues, 'unsupported-backend-version');
+  if (context.provenance.backend !== 'post-archiver-improved') return failed(context, issues, 'unsupported-backend');
   const raw = decode(json, issues);
   if (!object(raw) || !identity(raw.channel_id) || !Array.isArray(raw.posts) || raw.posts.length !== 1) {
     issues.push({ code: 'invalid-structure', severity: 'error', location: '$' });

@@ -11,7 +11,7 @@ Pure backend adapters, a source-independent observation contract, sanitized fixt
 
 Channel-wide Community Post browsing, authenticated access, and member-only content are later possibilities, not requirements for the initial implementation. Posting, replying, likes, subscriptions, and account integration are outside the [product scope](PRODUCT_REQUIREMENTS.md).
 
-The investigated contracts are yt-dlp **2026.08.19** and post-archiver-improved **0.4.0**, executable `post-archiver` (upstream sadadYes/post-archiver-improved v0.4.0). The parsers intentionally accept these versions only. Neither ordinarily proves complete coverage. Future helper versions require fixture validation rather than assumed compatibility.
+The investigated contracts are yt-dlp **2026.08.19** and post-archiver-improved **0.4.0**, executable `post-archiver` (upstream sadadYes/post-archiver-improved v0.4.0). These are tested confidence signals, not an execution allowlist ([ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md)). Identified credible other versions run with an untested warning; validated runtime output is the safety boundary. Backend identity and all required structure/field checks remain. Neither version alone proves completeness or changes coverage.
 
 ## Implemented pure boundary
 
@@ -39,7 +39,7 @@ Resolve `yt-dlp.exe` / `post-archiver.exe` from absolute PATH directories on
 Windows; `.bat` wrappers are excluded because no shell is allowed. Probe the
 selected executable every run with isolated yt-dlp `--version`, or Community
 `--version` verified in installed 0.4.0 `cli.py` and by executable output.
-Exact 2026.08.19 / `post-archiver 0.4.0` responses are required.
+yt-dlp must report a real `YYYY.MM.DD` date; Community must report named `post-archiver major.minor.patch`. Tested equality yields tested status; credible other versions yield untested status and are allowed. Malformed/wrong/failed probes block acquisition. The probe remains bounded to ten seconds/4096 stdout bytes.
 
 If a development shell finds only a batch wrapper, configure the exact
 `YOUTUBE_COMMENTS_YTDLP_EXE` or `YOUTUBE_COMMENTS_POST_ARCHIVER_EXE` startup override
@@ -114,7 +114,7 @@ The adapter does not determine whether a comment is unseen or visually NEW. The 
 
 ## Failure, partial output, and cancellation
 
-Process failure, malformed output, unsupported output versions, cancellation, and interrupted acquisition must be represented explicitly. Previously valid stored content must survive these outcomes. A zero exit status alone is not sufficient evidence that every comment was returned.
+Process failure, malformed output, structurally unsupported output, cancellation, and interrupted acquisition must be represented explicitly. Previously valid stored content must survive these outcomes. A zero exit status alone is not sufficient evidence that every comment was returned.
 
 Do not stream partially parsed records directly into stored data. Valid partial/unknown observations are accepted as observational input for a later non-destructive transactional merge; missing records have no deletion meaning and unknown fields cannot clear existing values. Ordinary successful output stays unknown even if counts match. Known truncation/limits require specific capture/runner evidence outside JSON; current adapters never emit complete. Failed refreshes must not publish success. ADR 0004 implements conflict skipping, accepted partial/unknown baselines and durable history. Minimal reporting/view UI now exists in ADR 0005; richer diagnostics and filtering remain open. See [refresh and merge](REFRESH_AND_MERGE.md).
 
@@ -127,17 +127,17 @@ Resolution is authoritative startup `YOUTUBE_COMMENTS_YTDLP_EXE` /
 `YOUTUBE_COMMENTS_POST_ARCHIVER_EXE` > current saved profile selection > safe direct
 PATH > `HELPER_UNAVAILABLE`. Unset variables allow saved settings/PATH; explicitly
 set invalid or empty overrides fail closed and disable editing/reset for that
-helper. Overrides are never persisted. Broken or incompatible saved selections
+helper. Overrides are never persisted. Broken or invalid saved selections
 also fail closed without PATH fallback; Use automatic detection clears only that
 saved selection and immediately checks PATH.
 
 Main owns a window-parented native single-file picker, absolute/regular executable
-validation and the same exact bounded version probe before saving. Windows requires
+validation and the same bounded helper-specific identity probe before saving. Windows requires
 .exe; .bat/.cmd, relative/missing/directory paths and shell execution remain excluded.
-Wrong versions/invalid files retain the prior selection; cancel is a clean no-op.
+Wrong helper identity/invalid files retain the prior selection; valid untested choices persist; cancel is a clean no-op.
 Schema 7 stores machine paths separately from discussion data/preferences. Both
 helpers have narrow localized Settings status with source, display path, recognized
-version and required version. Status checks run lazily on first Settings activation
+version and tested version, with textual tested/untested/unavailable status. Untested helpers show a compact warning that extraction may fail if the output format changed; stored data remains protected. Status checks run lazily on first Settings activation
 and explicitly on Recheck; Choose/reset return resulting status. They do not run
 on ordinary Reader renders. Later acquisition/Refresh reads the current saved
 selection and probes every time, without requiring restart. An in-flight operation
@@ -145,7 +145,7 @@ retains its already resolved executable. No renderer path input, process argumen
 raw output, generic filesystem or executable launcher is exposed.
 
 Helpers are still user-installed. Bundling/download/update, Python environment
-management, artifact licensing/integrity and expanded compatibility remain open.
+management, artifact licensing/integrity and distribution remain open. Untested versions contribute `untested-helper-version` provenance only; they do not downgrade coverage or weaken normalization. CLI failures, malformed JSON or invalid required structure fail through the ordinary preserving path.
 
 Author thumbnails normalize as explicit avatar evidence only for usable HTTPS URLs.
 Community empty-string defaults are lossy unknowns; neither absence nor invalid
@@ -179,7 +179,7 @@ only and removes its temporary archive. See [Testing](TESTING.md) for live outco
 
 Windows is the initial development and packaging target. During development, a resolver may locate helpers through `PATH`. The design must also permit app-local or bundled helpers later and leave room for future Linux/macOS support without requiring those platforms initially. Keep helper resolution separate from backend invocation and normalization so packaging can change without rewriting domain logic.
 
-ADR 0005 pins exact live versions and ordered absolute PATH lookup, rejects Windows batch wrappers, and defines stable failures with no extra application retries. Windows distribution artifacts/architectures, runtime dependencies, future bundled precedence and update ownership remain unresolved. Future Linux/macOS artifacts need their own decisions if those platforms are added. A helper found on `PATH` is not proof that it is a supported or compatible version. Product-facing diagnostics should explain a missing or incompatible helper without requiring renderer access to process execution.
+ADR 0005 established tested command/output contracts and ordered absolute PATH lookup. [ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) supersedes its exact-version gate while retaining rejection of Windows batch wrappers, bounded no-shell execution and stable failures with no extra application retries. Windows distribution artifacts/architectures, runtime dependencies, future bundled precedence and update ownership remain unresolved. Future Linux/macOS artifacts need their own decisions if those platforms are added. A helper found on `PATH` is not proof that it is a supported or compatible version. Product-facing diagnostics distinguish an unavailable/invalid executable, an untested version warning, and actual extraction failure without requiring renderer access to process execution.
 
 Bundling requires checking the actual redistribution licenses and obligations for selected artifacts and their dependencies. This document does not assume that the application's own license settles helper redistribution. Distribution, signing, integrity, and update choices belong in [Packaging](PACKAGING.md) and, when decided, small [ADRs](decisions/README.md).
 

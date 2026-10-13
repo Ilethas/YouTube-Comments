@@ -24,11 +24,21 @@ if (process.versions.electron && process.type === 'browser') {
         assert.equal(result.ok, true);
         return result.value;
       };
+      async function openSource(itemId) {
+        if (process.env.YOUTUBE_COMMENTS_LIVE_OPEN_SOURCE !== '1') return;
+        const before = await snapshot();
+        await js("document.querySelector('[role=tabpanel]:not([hidden]) .source-button').click()");
+        await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .source-button').disabled", 'live browser opening');
+        assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .source-action [role=alert]')===null"),true);
+        assert.deepEqual(await snapshot(),before,'External browser opening is read-only');
+        console.log(JSON.stringify({ liveBrowserOpened: true, itemId }));
+      }
       async function waitFor(code, label, attempts = 200) {
         for (let i = 0; i < attempts; i++) { if (await js(code)) return; await pause(50); }
         throw new Error(`Timed out: ${label}`);
       }
       async function acquire(url) {
+        const started = Date.now();
         await js("document.querySelector('[aria-controls=acquisition-form]').click()");
         await js(`(() => { const input = document.querySelector('#source-url');
           Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(url)});
@@ -37,6 +47,7 @@ if (process.versions.electron && process.type === 'browser') {
         await js("document.querySelector('.acquisition-bar button').click()");
         await waitFor("document.querySelector('#source-url') === null || document.querySelector('[role=alert]')", 'live acquisition', 4000);
         assert.equal(await js("document.querySelector('[role=alert]') === null"), true, 'Live acquisition failed');
+        console.log(JSON.stringify({ liveAcquisitionMs: Date.now()-started, source: url.includes('/post/') ? 'Community' : 'video' }));
         return snapshot();
       }
       try {
@@ -45,12 +56,14 @@ if (process.versions.electron && process.type === 'browser') {
         if (phase === 'write') {
           state = await acquire(process.env.YOUTUBE_COMMENTS_LIVE_VIDEO_URL);
           const videoId = state.workspace.tabs.find(tab => tab.id === state.workspace.activeTabId).itemId;
+          await openSource(videoId);
           assert.ok(state.comments[videoId].length > 0);
           const y = await js("document.querySelector('[role=tabpanel]:not([hidden]) .comment').getBoundingClientRect().top");
-          assert.ok(y < 360, 'Comments start too low in the viewport');
+          console.log(JSON.stringify({ firstCommentY: y, viewportHeight: window.getContentSize()[1] }));
+          assert.ok(y >= 0 && y < window.getContentSize()[1]-100, 'First comment has useful visible space below the current reader controls');
           await waitFor("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) .avatar img')).some(img => img.complete && img.naturalWidth > 0)", 'real avatar load');
           const avatars = state.comments[videoId].filter(comment => comment.author?.avatarUrl).length;
-          await js("document.querySelector('[role=tabpanel]:not([hidden]) input[type=checkbox]').click()");
+          await js("document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input').click()");
           await waitFor("!document.querySelector('input[type=checkbox]:disabled')", 'seen save');
           state = await snapshot();
           const seenId = state.comments[videoId].find(comment => comment.seen).id;
@@ -59,9 +72,11 @@ if (process.versions.electron && process.type === 'browser') {
           await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .description-block button').getAttribute('aria-expanded') === 'true'", 'description expand');
           await js("document.querySelector('[role=tabpanel]:not([hidden]) .description-block button').click()");
           await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .description-block button').getAttribute('aria-expanded') === 'false'", 'description collapse');
+          const refreshStarted = Date.now();
           await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
           await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').disabled && !document.querySelector('.acquisition-status')", 'live refresh', 4000);
           assert.equal(await js("document.querySelector('[role=alert]') === null"), true);
+          console.log(JSON.stringify({ liveVideoRefreshMs: Date.now()-refreshStarted }));
           state = await snapshot();
           assert.equal(state.workspace.activeTabId, 'discussion:' + videoId);
           assert.equal(state.comments[videoId].find(comment => comment.id === seenId).seen, true);
@@ -84,9 +99,10 @@ if (process.versions.electron && process.type === 'browser') {
           if (process.env.YOUTUBE_COMMENTS_LIVE_POST_URL) {
             state = await acquire(process.env.YOUTUBE_COMMENTS_LIVE_POST_URL);
             postId = state.workspace.tabs.find(tab => tab.id === state.workspace.activeTabId).itemId;
+            await openSource(postId);
             assert.ok(state.comments[postId].length > 0);
             await waitFor("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) .avatar img')).some(img => img.complete && img.naturalWidth > 0)", 'Community avatar load');
-            await js("document.querySelector('[role=tabpanel]:not([hidden]) input[type=checkbox]').click()");
+            await js("document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input').click()");
             await waitFor("!document.querySelector('input[type=checkbox]:disabled')", 'Community seen save');
             state = await snapshot();
             const postSeenId = state.comments[postId].find(comment => comment.seen).id;

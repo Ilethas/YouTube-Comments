@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
@@ -64,7 +64,7 @@ app.on('ready', () => {
       if (mode === 'development') repository.initializeDemo();
       return repository;
     } catch (error) { repository.close(); throw error; }
-  }, app.getPreferredSystemLanguages(), console.error, undefined, { choose: createHelperPicker(() => mainWindow) });
+  }, app.getPreferredSystemLanguages(), console.error, undefined, { choose: createHelperPicker(() => mainWindow) }, url => shell.openExternal(url));
   registerReaderIpc(service, () => mainWindow, documentUrl);
   createWindow();
 });

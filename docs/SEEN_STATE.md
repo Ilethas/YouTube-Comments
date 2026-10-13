@@ -1,5 +1,35 @@
 # Seen state
 
+## Explicit row gestures and bulk local minutes (ADR 0015)
+
+[ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) adds Shift+primary click on the non-interactive comment surface to toggle
+one comment and Ctrl+Shift+primary click to assign its resulting state to all
+stored descendants, including unmounted rows. Plain/right/middle clicks and
+Alt/Meta variants do nothing. Inputs, checkbox labels, buttons, links, selects,
+textareas, editable/role/tabbable controls and explicitly marked interactive
+descendants are excluded. Non-collapsed text selection intersecting the comment
+at pointer down or click suppresses mutation. The enlarged checkbox label owns
+its click to retain Ctrl and cancel forwarding; input/Space remain native and
+never trigger twice. Ordinary row toggles preserve prior recovery; subtree
+changes replace it only with >1 actual changed comments, exactly ADR 0013.
+
+Publication bulk targets optionally carry strict HH:mm fromTime/toTime with
+their dates. Times are session-only command criteria; no query time UI is added.
+The shared Temporal resolver uses the current system IANA zone in main's mutation
+transaction. From minute is inclusive; To is exclusive one minute after its
+uniquely resolved instant, including seconds throughout that minute. Blank time
+retains inclusive day-start From / exclusive next-day-start To. Same minute is
+valid; malformed dates/times, time without date and From beyond the effective
+To endpoint fail without writes. Explicit DST repeated/skipped minutes reject
+with localized validation; date-only midnight rules remain ADR 0012. Estimated
+own instants qualify; missing/label-only evidence does not. Preview and commit
+share resolveBulkPublication/ownPublicationInstant/publicationMatches; main
+owns final target evaluation. Confirmation includes supplied times.
+
+All gestures and bulk/Undo keep applied IDs/membership/order and NEW fixed,
+update live unseen/ruler/navigation, and offer Apply for stale seen criteria.
+
+
 Seen/unseen is a durable, manual property of each individual comment. It is the reader's record of processing a contribution, not evidence that the application displayed it. Ordinary and Ctrl+click behavior now persists in main-owned SQLite through the typed bridge. The service reads the current target state, resolves the pure domain action, and commits all subtree changes in one transaction. The UI waits for acknowledgment and reports failure while retaining its last acknowledged state. Viewing, scrolling, tabs, language, and appearance do not mark comments seen. Reopen and late-write rollback tests cover these invariants. Refresh preserves seen state; ADR 0008 implements stable filtered views, and ADR 0011 implements live unseen ruler markers and durable NEW. Bulk operations and durable safe Undo are implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md). See [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [product requirements](PRODUCT_REQUIREMENTS.md), and the [domain model](DOMAIN_MODEL.md).
 
 [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) uses neutral
@@ -96,7 +126,7 @@ Support explicitly setting seen or unseen for:
 
 Date operations never implicitly modify an ancestor or descendant because a related comment matches. A subtree operation and a publication-date operation are different commands, even when invoked from the same discussion.
 
-The application must make the active-discussion scope clear before execution. Initial bulk actions do not imply application-wide changes. When seen edits make the displayed evaluation stale, “current matching filter set” still means the last applied active-filter matching IDs; the action does not first recompute from current persisted state. A raw search match satisfies only the search predicate and may fail another active filter, while a contextual comment is present only to complete a conversation. Neither is a matching-only bulk target unless it belongs to the applied active-filter matching set. Publication-date inclusivity, current-system-zone interpretation and missing/estimated evidence are settled in ADR 0012. Date bulk reuses `resolvePublication`, `ownPublicationInstant` and `publicationMatches`, without a second date model; see [filtering and search](FILTERING_AND_SEARCH.md).
+The application must make the active-discussion scope clear before execution. Initial bulk actions do not imply application-wide changes. When seen edits make the displayed evaluation stale, “current matching filter set” still means the last applied active-filter matching IDs; the action does not first recompute from current persisted state. A raw search match satisfies only the search predicate and may fail another active filter, while a contextual comment is present only to complete a conversation. Neither is a matching-only bulk target unless it belongs to the applied active-filter matching set. Publication-date inclusivity, current-system-zone interpretation and missing/estimated evidence are settled in ADR 0012. Date bulk uses `resolveBulkPublication`, sharing `resolvePublication` calendar foundations, plus `ownPublicationInstant` and `publicationMatches`, without a second date model; see [filtering and search](FILTERING_AND_SEARCH.md).
 
 ADR 0013 resolves Q-09: one durable undoable multi-comment operation per discussion, retained without expiry through restart, close/reopen, Apply and Refresh. A successful multi-target bulk command with changes replaces it; a Ctrl+click replaces it only with more than one actually changed comment. A single-target edit, no-op or failure preserves it. Recovery records only changed IDs and written revisions; the prior state is the opposite of the uniformly assigned value. Undo restores only rows still owned by that revision and assigned value, increments restored revisions and consumes recovery transactionally. Later edits, including away-and-back changes, are skipped. Fully stale recovery succeeds with restored=0/skipped=N. No redo or ordinary-checkbox Undo exists. Discussion removal deletes recovery.
 

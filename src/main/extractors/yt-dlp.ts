@@ -20,7 +20,7 @@ function publication(raw: Record<string, unknown>, location: string, issues: Nor
 export function normalizeYtDlp(json: string, context: CaptureContext): NormalizedExtraction {
   const issues: NormalizationIssue[] = [];
   if (context.failure) return failed(context, issues, context.failure);
-  if (context.provenance.backend !== 'yt-dlp' || context.provenance.version !== '2026.08.19') return failed(context, issues, 'unsupported-backend-version');
+  if (context.provenance.backend !== 'yt-dlp') return failed(context, issues, 'unsupported-backend');
   const raw = decode(json, issues);
   if (!object(raw) || !identity(raw.id) || (raw._type !== undefined && raw._type !== 'video') || (raw.comments !== undefined && raw.comments !== null && !Array.isArray(raw.comments))) {
     issues.push({ code: 'invalid-structure', severity: 'error', location: '$' });
