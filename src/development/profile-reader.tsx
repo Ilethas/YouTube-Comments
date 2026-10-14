@@ -14,12 +14,17 @@ import { required } from '../renderer/testing/required';
 import type { Locale } from '../renderer/i18n';
 import type { SeenUndoDescriptor } from '../domain/seen-operation';
 import type { SeenFeedback } from '../renderer/BulkSeenControls';
+import type { DiscussionSort } from '../renderer/discussion-sort';
+import { dateTestComment, dateTestItem } from '../fixtures/date-discussion';
 import '../index.css';
 
 const root = createRoot(required(document.getElementById('root')));
 let comments: readonly Comment[] = [], item: ContentItem, session: DiscussionViewSession;
 let locale: Locale = 'en';
 let undo: SeenUndoDescriptor | null = null, feedback: SeenFeedback | undefined;
+interface EvaluationGeometryProbe { rows?: ReadonlyMap<string | undefined, number> }
+let evaluationGeometryProbe: EvaluationGeometryProbe | undefined;
+const mountedTops = () => new Map([...document.querySelectorAll<HTMLElement>('.virtual-comment')].map(row => [row.dataset.commentId, row.getBoundingClientRect().top]));
 const offlineBulk = async () => false; // Profiling injects acknowledgments below, never main commands.
 const paint = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 function render() {
@@ -40,17 +45,28 @@ const stats = () => {
     exactSelectedMounted: !!article, exactSelectedVisible: !!rect && rect.bottom > viewport.top && rect.top < viewport.bottom };
 };
 const profile = {
-  async load(options: GeneratedDiscussionOptions | { item: ContentItem; comments: readonly Comment[] }) {
+  async load(options: (GeneratedDiscussionOptions & { sortingEvidence?: boolean }) | { item: ContentItem; comments: readonly Comment[] }) {
     session?.dispose(); flushSync(() => root.render(null));
     const data = 'count' in options ? generateDiscussion(options) : options;
-    comments = data.comments; item = data.item;
+    comments = 'sortingEvidence' in options && options.sortingEvidence ? data.comments.map((comment, index) => ({ ...comment,
+      publishedAt: new Date(Date.parse('2025-01-01T00:00:00Z') + index * 1000).toISOString() })) : data.comments;
+    item = data.item;
     undo = null; feedback = undefined;
     const start = performance.now();
     const result = unrestrictedView(queryComments(comments));
     const identityViewMs = performance.now() - start, beginProjection = performance.now();
     projectReaderRows(comments, result);
     const projectionMs = performance.now() - beginProjection;
-    session = new DiscussionViewSession(comments, createQueryExecutor());
+    const executor = createQueryExecutor();
+    session = new DiscussionViewSession(comments, {
+      async evaluate(rows, query) {
+        const outcome = await executor.evaluate(rows, query);
+        // Refresh's contract captures at completion, after pending status reflow.
+        if (evaluationGeometryProbe) evaluationGeometryProbe.rows = mountedTops();
+        return outcome;
+      },
+      dispose: () => executor.dispose(),
+    });
     const begin = performance.now(); render(); await paint();
     return { count: comments.length, identityViewMs, projectionMs, renderPaintMs: performance.now() - begin, ...stats(), visible: result.visibleCommentIds.length };
   },
@@ -84,6 +100,58 @@ const profile = {
     const ms = performance.now() - start;
     for (let i = 0; i < 10 && !stats().exactSelectedVisible; i++) await paint();
     return { ms, settledMs: performance.now() - start, selected: session.state.selected, ...stats() };
+  },
+  async sort(mode: DiscussionSort) {
+    const before = new Map([...document.querySelectorAll<HTMLElement>('.virtual-comment')].map(row => [row.dataset.commentId, row.getBoundingClientRect().top]));
+    const selected = session.state.selected, result = session.state.result, original = comments, start = performance.now();
+    // Exercise the actual accessible select, including React event dispatch.
+    const control = required(document.querySelector<HTMLSelectElement>('.discussion-sort select'));
+    const setter = required(Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set);
+    flushSync(() => { setter.call(control, mode); control.dispatchEvent(new Event('change', { bubbles: true })); });
+    const request = session.state.scrollRequest;
+    for (let i = 0; i < 8; i++) await paint();
+    const anchor = request?.id ? document.getElementById(`comment-${request.id}`)?.closest('.virtual-comment') : undefined;
+    const anchorDelta = request?.id && anchor ? anchor.getBoundingClientRect().top - required(before.get(request.id)) : 0;
+    if (Math.abs(anchorDelta) > 2) throw new Error(`Sort anchor moved by ${anchorDelta}px`);
+    if (session.state.result !== result || comments !== original || session.state.selected !== selected) throw new Error('Sort changed membership, comments or selection');
+    return { mode: session.state.sort, ms: performance.now() - start, anchorId: request?.id, anchorDelta, first: session.presentation(comments).orderedIds[0], ...stats() };
+  },
+  async sortingSemantics() {
+    const old = dateTestComment('old', '2025-01-01T00:00:00Z', { likeCount: 0 });
+    const reply = dateTestComment('recent-reply', '2026-10-01T00:00:00Z', { parentId: 'old', likeCount: 999 });
+    const newest = dateTestComment('new', '2026-09-20T00:00:00Z', { likeCount: 10 });
+    await profile.load({ item: dateTestItem, comments: [old, reply, newest, dateTestComment('unknown')] });
+    const expected = { original: ['old', 'recent-reply', 'new', 'unknown'], newest: ['new', 'old', 'recent-reply', 'unknown'],
+      oldest: ['old', 'recent-reply', 'new', 'unknown'], 'most-liked': ['new', 'old', 'recent-reply', 'unknown'], 'latest-activity': ['old', 'recent-reply', 'new', 'unknown'] };
+    for (const mode of Object.keys(expected) as DiscussionSort[]) {
+      await profile.sort(mode);
+      if (JSON.stringify(session.presentation(comments).orderedIds) !== JSON.stringify(expected[mode])) throw new Error(`Wrong ${mode} presentation`);
+    }
+    await profile.apply('needle');
+    if (session.state.sort !== 'latest-activity') throw new Error('Apply reset sorting');
+    await profile.apply('', true);
+    if (session.state.sort !== 'latest-activity') throw new Error('Refresh reset sorting');
+    await profile.toggle();
+    if (session.presentation(comments).orderedIds[0] !== 'old') throw new Error('Seen reordered');
+    return { modes: 5, retainedOnApplyRefresh: true, seenIndependent: true };
+  },
+  async refreshSortingMetadata() {
+    const first = session.presentation(comments).orderedIds[0], mode = session.state.sort;
+    comments = comments.map((comment, index) => ({ ...comment,
+      publishedAt: new Date(Date.parse('2025-01-01T00:00:00Z') + (comments.length - index) * 1000).toISOString() }));
+    // Like the app, commit live metadata before worker evaluation is promoted.
+    const probe: EvaluationGeometryProbe = {};
+    evaluationGeometryProbe = probe;
+    try { render(); await session.apply(comments, true, item); }
+    finally { evaluationGeometryProbe = undefined; }
+    for (let i = 0; i < 8; i++) await paint();
+    const request = session.state.scrollRequest;
+    const anchor = request?.id ? document.getElementById(`comment-${request.id}`)?.closest('.virtual-comment') : undefined;
+    if (!anchor || !request?.id) throw new Error('Refresh lost its visible anchor');
+    const anchorDelta = anchor.getBoundingClientRect().top - required(probe.rows?.get(request.id));
+    if (Math.abs(anchorDelta) > 2 || session.state.sort !== mode || session.presentation(comments).orderedIds[0] === first)
+      throw new Error(`Refresh sort rekey/anchor regression: ${JSON.stringify({ anchorDelta, mode, actualMode: session.state.sort, first, after: session.presentation(comments).orderedIds[0], anchorId: request.id })}`);
+    return { mode, anchorDelta, error: session.state.error, ...stats() };
   },
   async rulerNavigate(category: 'unseen' | 'match' | 'new' = 'new') {
     const ruler = required(document.querySelector<HTMLElement>('.discussion-ruler'));

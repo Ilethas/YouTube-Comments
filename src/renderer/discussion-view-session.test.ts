@@ -7,8 +7,89 @@ import { initialComments } from '../fixtures/discussions';
 import { generateDiscussion } from '../development/large-discussions';
 import { required } from './testing/required';
 import { dateTestComment, dateTestItem } from '../fixtures/date-discussion';
+import { navigateDiscussion } from './discussion-navigation';
 const rows = initialComments['video-demo'];
 const executor = () => ({ evaluate: vi.fn(async (comments: readonly QueryComment[], query: ResolvedDiscussionQuery): Promise<QueryOutcome> => evaluateDiscussionQuery(comments, query)), dispose: vi.fn() });
+
+it('sort immediately preserves query/result/selection/seen state, captures anchor and never evaluates the worker', () => {
+  const engine = executor(), session = new DiscussionViewSession(rows, engine);
+  session.select(rows[0].id);
+  session.edit({ ...session.state.draft, text: 'unapplied' });
+  const before = session.state;
+  const detach = session.attachReader(() => ({ id: rows[1].id, offset: 31 }));
+  session.setSort('newest');
+  expect(engine.evaluate).not.toHaveBeenCalled();
+  for (const key of ['result', 'draft', 'applied', 'selected', 'seenStale', 'pending'] as const) expect(session.state[key]).toBe(before[key]);
+  expect(session.state.scrollRequest).toMatchObject({ kind: 'sort', id: rows[1].id, offset: 31 });
+  const request = session.state.scrollRequest;
+  session.setSort('newest'); expect(session.state.scrollRequest).toBe(request);
+  detach(); session.setSort('oldest');
+  expect(session.state.scrollRequest).toMatchObject({ kind: 'sort', id: undefined, offset: 0 });
+  session.attachReader(() => ({ id: 'not-displayed', offset: 31 })); session.setSort('original');
+  expect(session.state.scrollRequest).toMatchObject({ id: undefined, offset: 0 });
+});
+
+it('Apply retains sort and reveals the first sorted match; Refresh retains sort and recomputes committed root/activity keys', async () => {
+  const comments = [dateTestComment('old', '2025-01-01T00:00:00Z'), dateTestComment('new', '2026-01-01T00:00:00Z')];
+  const session = new DiscussionViewSession(comments, executor());
+  session.setSort('latest-activity'); session.edit({ ...session.state.draft, text: 'needle' });
+  await session.apply(comments);
+  expect(session.state.sort).toBe('latest-activity'); expect(session.state.scrollRequest?.id).toBe('new');
+  const committed = [...comments, dateTestComment('recent-reply', '2026-10-01T00:00:00Z', { parentId: 'old' })];
+  session.attachReader(() => ({ id: 'new', offset: 19 }));
+  await session.apply(committed, true);
+  expect(session.state.sort).toBe('latest-activity');
+  expect(session.presentation(committed).orderedIds).toEqual(['old', 'recent-reply', 'new']);
+  expect(session.state.scrollRequest).toMatchObject({ kind: 'refresh', id: 'new', offset: 19 });
+  session.setSort('most-liked');
+  const liked = committed.map(row => ({ ...row, likeCount: row.id === 'new' ? 50 : 0 }));
+  await session.apply(liked, true);
+  expect(session.presentation(liked).orderedIds).toEqual(['new', 'old', 'recent-reply']);
+});
+
+it('failed reevaluation retains mode/order/request; seen and NEW-only changes never change sort order', async () => {
+  const comments = [dateTestComment('a', '2025-01-01T00:00:00Z'), dateTestComment('b', '2026-01-01T00:00:00Z')];
+  const engine = executor(), session = new DiscussionViewSession(comments, engine);
+  session.setSort('newest'); const before = session.state, order = session.presentation(comments).orderedIds;
+  engine.evaluate.mockResolvedValueOnce({ ok: false, error: 'QUERY_FAILED' }); await session.apply(comments, true);
+  expect(session.state.sort).toBe('newest'); expect(session.state.result).toBe(before.result); expect(session.state.scrollRequest).toBe(before.scrollRequest);
+  const changed = comments.map(row => ({ ...row, seen: !row.seen, discovery: { ...row.discovery, firstDiscoveryId: 'latest' } }));
+  session.seenChanged();
+  expect(session.presentation(changed).orderedIds).toEqual(order);
+});
+
+it('live metadata joins retain accepted presentation until successful evaluation, preserving failed-query order', async () => {
+  const comments = [dateTestComment('a', '2025-01-01T00:00:00Z'), dateTestComment('b', '2026-01-01T00:00:00Z')];
+  const engine = executor(), session = new DiscussionViewSession(comments, engine);
+  session.setSort('newest');
+  expect(session.presentation(comments).orderedIds).toEqual(['b', 'a']);
+  const changed = [dateTestComment('a', '2026-10-01T00:00:00Z'), comments[1]];
+  expect(session.presentation(changed).orderedIds).toEqual(['b', 'a']);
+  expect(session.presentation(changed).rows[1].comment.publishedAt).toBe('2026-10-01T00:00:00Z');
+  engine.evaluate.mockResolvedValueOnce({ ok: false, error: 'QUERY_FAILED' }); await session.apply(changed, true);
+  expect(session.presentation(changed).orderedIds).toEqual(['b', 'a']);
+  await session.apply(changed, true);
+  expect(session.presentation(changed).orderedIds).toEqual(['a', 'b']);
+});
+
+it('match/unseen navigation follows sorted preorder, wraps and resolves from context without changing frozen membership', async () => {
+  const comments = [dateTestComment('a', '2025-01-01T00:00:00Z'), dateTestComment('context', undefined, { parentId: 'a', text: 'context' }),
+    dateTestComment('b', '2026-01-01T00:00:00Z'), dateTestComment('c', '2026-10-01T00:00:00Z')];
+  const session = new DiscussionViewSession(comments, executor());
+  session.edit({ ...session.state.draft, text: 'needle' }); await session.apply(comments);
+  const frozen = session.state.result;
+  session.setSort('newest');
+  expect(session.presentation(comments).orderedMatchIds).toEqual(['c', 'b', 'a']);
+  navigateDiscussion(session, comments, 'match', 1); expect(session.state.selected).toBe('c');
+  navigateDiscussion(session, comments, 'match', -1); expect(session.state.selected).toBe('a');
+  navigateDiscussion(session, comments, 'match', 1); expect(session.state.selected).toBe('c');
+  session.select('context'); navigateDiscussion(session, comments, 'match', -1); expect(session.state.selected).toBe('a');
+  session.select('context'); navigateDiscussion(session, comments, 'match', 1); expect(session.state.selected).toBe('c');
+  session.select('a'); navigateDiscussion(session, comments, 'unseen', 1); expect(session.state.selected).toBe('context');
+  navigateDiscussion(session, comments, 'unseen', 1); expect(session.state.selected).toBe('c');
+  navigateDiscussion(session, comments, 'unseen', -1); expect(session.state.selected).toBe('context');
+  expect(session.state.result).toBe(frozen); expect(frozen.activeMatchIds).toEqual(['a', 'b', 'c']);
+});
 
 it('applied unseen IDs/counts remain frozen after save, second Apply recomputes, failed drafts retain result', async () => {
   const engine = executor(), session = new DiscussionViewSession(rows, engine, vi.fn());

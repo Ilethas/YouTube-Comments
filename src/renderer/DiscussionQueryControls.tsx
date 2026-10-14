@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { sameQuery } from '../domain/discussion-query';
 import type { DiscussionQuery, SearchField } from '../domain/discussion-query';
 import type { PublicationCriteria } from '../domain/publication-filter';
@@ -5,13 +6,21 @@ import type { DiscussionViewState } from './discussion-view-session';
 import { countLabel, translator } from './i18n';
 import type { Locale } from './i18n';
 import { shortcutHint } from './shortcuts';
+import { discussionSorts } from './discussion-sort';
+import type { DiscussionSort } from './discussion-sort';
+import type { ReaderPresentation } from './discussion-presentation';
 
-export function DiscussionQueryControls({ state, locale, edit, apply, navigate, unseenCount }: {
+const sortLabels = { original: 'sortOriginal', newest: 'sortNewest', oldest: 'sortOldest', 'most-liked': 'sortMostLiked', 'latest-activity': 'sortLatestActivity' } as const;
+const sortHelp = { original: 'sortOriginalHelp', newest: 'sortPublicationHelp', oldest: 'sortPublicationHelp', 'most-liked': 'sortLikesHelp', 'latest-activity': 'sortActivityHelp' } as const;
+
+export function DiscussionQueryControls({ state, presentation, sort, locale, edit, apply, navigate, unseenCount }: {
   state: DiscussionViewState; locale: Locale; edit: (query: DiscussionQuery) => void; apply: () => void;
+  presentation: ReaderPresentation; sort: (sort: DiscussionSort) => void;
   navigate: (kind: 'match' | 'unseen', direction: 1 | -1) => void; unseenCount: number;
 }) {
   const t = translator(locale), draft = state.draft;
-  const position = state.selected ? state.result.orderedMatchIds.indexOf(state.selected) + 1 : 0;
+  const sortHelpId = useId();
+  const position = state.selected ? presentation.orderedMatchIds.indexOf(state.selected) + 1 : 0;
   const custom = draft.publication.kind === 'custom' ? draft.publication : undefined;
   const customDisabled = draft.publication.kind !== 'all' && !custom;
   const invalidRange = !!(custom?.from && custom.to && custom.from > custom.to);
@@ -61,6 +70,14 @@ export function DiscussionQueryControls({ state, locale, edit, apply, navigate, 
         onClick={() => edit({ ...draft, mode: draft.mode === 'regex' ? 'text' : 'regex' })}>.*</button>
       <button type="submit" title={shortcutHint(locale, 'apply-view')}>{t('applyView')}</button>
     </form>
+    <div className="discussion-sort">
+      <label>{t('sortConversations')}<select value={state.sort} onChange={event => sort(event.target.value as DiscussionSort)}
+        title={t(sortHelp[state.sort])} aria-describedby={!presentation.mostLikedAvailable ? sortHelpId : undefined}>
+        {discussionSorts.map(mode => <option key={mode} value={mode} disabled={mode === 'most-liked' && !presentation.mostLikedAvailable}
+          title={t(mode === 'most-liked' && !presentation.mostLikedAvailable ? 'sortLikesUnavailable' : sortHelp[mode])}>{t(sortLabels[mode])}</option>)}
+      </select></label>
+      {!presentation.mostLikedAvailable && <small id={sortHelpId}>{t('sortLikesUnavailable')}</small>}
+    </div>
     <div className="query-status" aria-live="polite">
       {state.result.restrictive && <span className="applied-counts">{t('appliedCounts', { comments: countLabel(locale, 'matchingComments', state.result.matchCount), threads: countLabel(locale, 'containingThreads', state.result.threadCount) })}</span>}
       {publicationActive && <span>{t('appliedPublication', { range: appliedPublication.kind === 'custom'
@@ -73,9 +90,9 @@ export function DiscussionQueryControls({ state, locale, edit, apply, navigate, 
     </div>
     {(invalidRange || (state.error && state.error !== 'QUERY_CANCELLED')) && <p className="query-error" role="alert">{t(invalidRange ? 'queryInvalidDateRange' : errorKey)}</p>}
     <div className="query-navigation" role="group" aria-label={t('discussionNavigation')}>
-      <button title={shortcutHint(locale, 'previous-match')} disabled={!state.result.orderedMatchIds.length} onClick={() => navigate('match', -1)}>{t('previousMatch')}</button>
-      <button title={shortcutHint(locale, 'next-match')} disabled={!state.result.orderedMatchIds.length} onClick={() => navigate('match', 1)}>{t('nextMatch')}</button>
-      <span aria-label={t('matchPosition')}>{new Intl.NumberFormat(locale).format(position)} / {new Intl.NumberFormat(locale).format(state.result.orderedMatchIds.length)}</span>
+      <button title={shortcutHint(locale, 'previous-match')} disabled={!presentation.orderedMatchIds.length} onClick={() => navigate('match', -1)}>{t('previousMatch')}</button>
+      <button title={shortcutHint(locale, 'next-match')} disabled={!presentation.orderedMatchIds.length} onClick={() => navigate('match', 1)}>{t('nextMatch')}</button>
+      <span aria-label={t('matchPosition')}>{new Intl.NumberFormat(locale).format(position)} / {new Intl.NumberFormat(locale).format(presentation.orderedMatchIds.length)}</span>
       <button disabled={!unseenCount} onClick={() => navigate('unseen', -1)}>{t('previousUnseen')}</button>
       <button disabled={!unseenCount} onClick={() => navigate('unseen', 1)}>{t('nextUnseen')}</button>
     </div>

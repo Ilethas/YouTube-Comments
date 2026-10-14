@@ -5,7 +5,7 @@ import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
 import type { Comment } from '../domain/discussion';
 import type { DiscussionViewResult } from '../domain/discussion-query';
 import { CommentArticle, commentTargetId } from './CommentTree';
-import { estimateReaderHeight, projectReaderRows, readerIndent, readerRailX } from './discussion-presentation';
+import { estimateReaderHeight, readerIndent, readerRailX } from './discussion-presentation';
 import type { ReaderRow } from './discussion-presentation';
 import type { DiscussionViewSession, ReaderScrollAnchor, ReaderScrollRequest } from './discussion-view-session';
 import type { Locale } from './i18n';
@@ -56,11 +56,12 @@ export function ReaderRails({ row }: { row: ReaderRow }) {
 export const VirtualCommentList = memo(function VirtualCommentList({ itemId, comments, result, selected, scrollRequest, session,
   locale, disabled, now, onToggle, overscan = readerOverscan, newIds = noNewIds }: Props) {
   const list = useRef<HTMLOListElement>(null);
+  const sort = session.state.sort;
   const presentation = useMemo(() => {
     recordRenderWork('forest', itemId);
     recordRenderWork('tree', itemId);
-    return projectReaderRows(comments, result);
-  }, [comments, result, itemId]);
+    return session.presentation(comments);
+  }, [comments, result, sort, session, itemId]);
   const { rows, indexById } = presentation;
   const [geometry, setGeometry] = useState({ width: 1000, margin: 0, after: 0, top: 0, left: 0, height: 600 });
   const [focusedId, setFocusedId] = useState<string>();
@@ -98,11 +99,18 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
     },
   });
   const captureAnchor = useCallback((): ReaderScrollAnchor | undefined => {
-    const panel = getScrollElement();
-    if (!panel) return;
-    if (panel.scrollTop < geometry.margin) return { offset: panel.scrollTop };
-    const item = virtualizer.getVirtualItemForOffset(panel.scrollTop);
-    return item && rows[item.index] ? { id: rows[item.index].id, offset: panel.scrollTop - item.start } : undefined;
+    const panel = getScrollElement(), element = list.current;
+    if (!panel || !element) return;
+    // Query status/header reflow can precede ResizeObserver. Translate the known
+    // list origin into cached virtual coordinates before resolving identity;
+    // never discover targets by scanning mounted rows.
+    const rect = element.getBoundingClientRect();
+    const margin = rect.width > 0 && panel.clientHeight > 0
+      ? rect.top - panel.getBoundingClientRect().top + panel.scrollTop : geometry.margin;
+    if (panel.scrollTop < margin) return { offset: panel.scrollTop };
+    const shift = margin - geometry.margin;
+    const item = virtualizer.getVirtualItemForOffset(panel.scrollTop - shift);
+    return item && rows[item.index] ? { id: rows[item.index].id, offset: panel.scrollTop - item.start - shift } : undefined;
   }, [getScrollElement, geometry.margin, virtualizer, rows]);
   const capture = useRef(captureAnchor); capture.current = captureAnchor;
   useLayoutEffect(() => session.attachReader(() => capture.current()), [session]);

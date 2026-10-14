@@ -337,9 +337,13 @@ it('refresh failure preserves acquired comments and reports invalid helper', asy
   api.refresh = vi.fn<ReaderApi['refresh']>(async () => ({ ok: false, error: { code: 'HELPER_UNAVAILABLE' } }));
   await showReader();
   await userEvent.click(screen.getByRole('tab', { name: /Acquired video/ }));
+  fireEvent.change(currentView().getByLabelText('Sort'), { target: { value: 'newest' } });
+  const order = [...screen.getByRole('tabpanel').querySelectorAll('.virtual-comment')].map(row => row.getAttribute('data-comment-id'));
   await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   expect((await screen.findByRole('alert')).textContent).toContain('unavailable or invalid');
   expect(screen.getByText('Acquired comment')).toBeTruthy();
+  expect((currentView().getByLabelText('Sort') as HTMLSelectElement).value).toBe('newest');
+  expect([...screen.getByRole('tabpanel').querySelectorAll('.virtual-comment')].map(row => row.getAttribute('data-comment-id'))).toEqual(order);
 });
 it('overlapping acknowledgments preserve newer seen edits and newly acquired membership', async () => {
   const value = acquired();
@@ -784,21 +788,26 @@ it('seen saves retain applied matches/counts and pending view until second Apply
 });
 it('seen All edits do not report a stale view and independent drafts/applied results survive tab switch/reopen', async () => {
   await showReader();
+  fireEvent.change(currentView().getByLabelText('Sort'), { target: { value: 'newest' } });
   await userEvent.click(checkboxes()[0]);
   expect(currentView().queryByText('Seen changes saved · Apply to update this view')).toBeNull();
   fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'desk' } });
   await userEvent.click(screen.getByRole('button', { name: 'Apply' })); const video = appliedRows();
   fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'video draft' } });
   await userEvent.click(screen.getByRole('tab', { name: /Community Post/ }));
+  expect((currentView().getByLabelText('Sort') as HTMLSelectElement).value).toBe('original');
+  fireEvent.change(currentView().getByLabelText('Sort'), { target: { value: 'latest-activity' } });
   expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe(''); expect(appliedRows()).toEqual([]);
   fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'post draft' } });
   await userEvent.click(screen.getByRole('tab', { name: /A quieter desk/ }));
+  expect((currentView().getByLabelText('Sort') as HTMLSelectElement).value).toBe('newest');
   expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe('video draft'); expect(appliedRows()).toEqual(video);
   await userEvent.click(screen.getByRole('button', { name: /Close tab: A quieter desk/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Library' }));
   const entry = currentView().getByText(items[0].kind === 'video' ? items[0].title : '').closest('li');
   if (!entry) throw new Error('Missing Library entry');
   await userEvent.click(within(entry).getByRole('button', { name: 'Open' }));
+  expect((currentView().getByLabelText('Sort') as HTMLSelectElement).value).toBe('newest');
   expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe('video draft'); expect(appliedRows()).toEqual(video);
 });
 it('match/F3/Shift+F3 and live unseen navigation select/reveal application IDs without saving', async () => {
@@ -814,6 +823,45 @@ it('match/F3/Shift+F3 and live unseen navigation select/reveal application IDs w
   await userEvent.click(screen.getByRole('button', { name: 'Next unseen' })); expect(selected()).toBe(matches[0]);
   await userEvent.click(screen.getByRole('button', { name: 'Previous unseen' })); expect(selected()).toBe(matches.at(-1));
   expect(reveal).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' }); expect(api.toggleSeen).not.toHaveBeenCalled();
+});
+
+it('F3/unseen wrapping and match position follow sorted trees while drafts, counts and worker calls stay unchanged', async () => {
+  const comments = [dateTestComment('a', '2025-01-01T00:00:00Z'), dateTestComment('b', '2026-01-01T00:00:00Z'), dateTestComment('c', '2026-10-01T00:00:00Z')];
+  state = { ...state, items: [dateTestItem], comments: { [dateTestItem.id]: comments },
+    workspace: { tabs: [discussionTab(dateTestItem.id)], activeTabId: discussionTab(dateTestItem.id).id, revision: 0 } };
+  await showReader();
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'needle' } });
+  await userEvent.click(currentView().getByRole('button', { name: 'Apply' }));
+  const selected = () => screen.getByRole('tabpanel').querySelector('[data-selected=true]')?.id;
+  fireEvent.keyDown(document, { key: 'F3', shiftKey: true }); expect(selected()).toBe('comment-c');
+  expect(currentView().getByLabelText('Applied match position').textContent).toBe('3 / 3');
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'draft' } });
+  fireEvent.change(currentView().getByLabelText('Sort'), { target: { value: 'newest' } });
+  expect(selected()).toBe('comment-c');
+  expect(currentView().getByLabelText('Applied match position').textContent).toBe('1 / 3');
+  expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe('draft');
+  fireEvent.keyDown(document, { key: 'F3' }); expect(selected()).toBe('comment-b');
+  fireEvent.keyDown(document, { key: 'F3', shiftKey: true }); expect(selected()).toBe('comment-c');
+  await userEvent.click(currentView().getByRole('button', { name: 'Previous unseen' })); expect(selected()).toBe('comment-a');
+  await userEvent.click(currentView().getByRole('button', { name: 'Next unseen' })); expect(selected()).toBe('comment-c');
+  expect(api.toggleSeen).not.toHaveBeenCalled();
+});
+
+it('current matching bulk sends exactly the frozen Original match IDs after sorting changes display order', async () => {
+  const comments = [dateTestComment('a', '2025-01-01T00:00:00Z'), dateTestComment('context', undefined, { parentId: 'a', text: 'context' }),
+    dateTestComment('b', '2026-01-01T00:00:00Z')];
+  state = { ...state, items: [dateTestItem], comments: { [dateTestItem.id]: comments },
+    workspace: { tabs: [discussionTab(dateTestItem.id)], activeTabId: discussionTab(dateTestItem.id).id, revision: 0 } };
+  await showReader();
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'needle' } });
+  await userEvent.click(currentView().getByRole('button', { name: 'Apply' }));
+  fireEvent.change(currentView().getByLabelText('Sort'), { target: { value: 'newest' } });
+  expect(appliedRows()).toEqual(['comment-b', 'comment-a']);
+  fireEvent.click(currentView().getByText('Bulk actions', { selector: 'summary' }));
+  fireEvent.change(currentView().getByLabelText('Scope'), { target: { value: 'matching' } });
+  await userEvent.click(currentView().getByRole('button', { name: 'Continue' }));
+  await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Continue' }));
+  expect(api.bulkSeen).toHaveBeenCalledWith({ itemId: dateTestItem.id, seen: true, target: { kind: 'matching', ids: ['a', 'b'] } });
 });
 it('Refresh re-evaluates last applied criteria, retains draft and includes new committed matching comments', async () => {
   state = acquired().state;

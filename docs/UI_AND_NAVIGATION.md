@@ -203,7 +203,39 @@ A tab may show an unseen-comment count. If provided, define whether it counts th
 
 ## The comment reader
 
-The discussion uses Reddit-like neutral ancestry rails and elbows while supporting desktop reading. Keep replies visually attached to their conversations. Sorting primarily reorders top-level threads; it must not scatter replies into unrelated positions.
+The discussion uses Reddit-like neutral ancestry rails and elbows while supporting desktop reading. Keep replies visually attached to their conversations. Sorting reorders complete display-root trees only; replies always retain their relative preorder.
+
+### Whole-conversation sorting (ADR 0016)
+
+The compact accessible Sort select applies immediately, independently of query
+Apply. English options are Original order, Newest first, Oldest first, Most liked,
+and Latest activity; Polish uses Kolejność pierwotna, Od najnowszych, Od najstarszych,
+Najwięcej polubień, and Ostatnia aktywność. Titles explain each key.
+
+Original is the default stored/display order, not a promise of current YouTube
+ranking. Newest/Oldest use only the display root's own usable publication time.
+Most liked uses only its projected available likes; known zero precedes unknown.
+Latest activity uses the newest usable publication time anywhere in the complete
+tree. Estimated/coarse instants participate just as in date filtering. Unknown
+keys follow known keys, and all ties retain Original order. Missing metadata is
+never zero or a discovery/Refresh timestamp. Most liked is disabled with accessible
+localized explanation when no displayed root has known likes; a retained selection
+then effectively uses Original without forgetting the chosen mode.
+
+Sort is independent per discussion, survives close/reopen in one Reader lifetime,
+and clears on Library removal. Restart uses Original; persistent view restoration
+remains Q-10. Changing mode captures the virtual anchor ID/offset and restores that
+same comment at approximately the same viewport position, retaining selection.
+No valid anchor means start. It never jumps to a match or marks seen.
+
+Match/F3/Shift+F3 and live-unseen navigation, context-neighbor resolution, wrapping,
+and match X/N all follow sorted display preorder. Frozen match membership/counts
+and matching bulk targets do not change. Ruler categories retain their identities
+while their geometry and targets follow the sorted rows. Apply retains mode and
+reveals the first sorted restrictive match. Successful Refresh retains mode,
+recomputes committed metadata keys, and preserves the existing Refresh anchor.
+Seen/NEW changes alone never reorder; draft edits do not alter displayed trees.
+See [ADR 0016](decisions/0016-whole-conversation-sorting.md).
 
 The design should accommodate an avatar, author/display name/handle, comment text, relative publication time, exact timestamp on hover or in details, like count, pinned status, uploader/creator indication, nested replies, a seen checkbox, and permalink/copy actions. Some source fields may be absent. Their absence must not be displayed as a fabricated value, and the initial exact field layout remains a UI decision.
 
@@ -302,7 +334,7 @@ Navigating to a comment must never change its seen state. Selecting a match must
 
 [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements an 18px ruler just inside the active discussion scrollbar. It represents only the applied displayed virtual sequence: live unseen (including context), restrictive applied active-filter matches, and durable NEW. Unrestricted identity candidates create no match markers. Raw-only SEARCH HIT context has no match marker. Initial-baseline comments have no NEW marker.
 
-Pure markers contain application ID, virtual presentation index and all applicable categories. Row centers use full measured/estimated scroll geometry, including header/query offset and column bottom/footer. Resize/remeasurement refines positions without mounting target comments. Short 3px bands retain category counts and ordered targets; unseen/match/NEW each occupy a 6px lane. One SVG with three paths keeps marker DOM constant even at 50k. Future collapse/sort mapping remains separate work.
+Pure markers contain application ID, virtual presentation index and all applicable categories. Row centers use full measured/estimated scroll geometry, including header/query offset and column bottom/footer. Resize/remeasurement refines positions without mounting target comments. Short 3px bands retain category counts and ordered targets; unseen/match/NEW each occupy a 6px lane. One SVG with three paths keeps marker DOM constant even at 50k. ADR 0016 supplies sorted presentation indexes; future collapse mapping remains separate work.
 
 Pointer lane selects category; the closest row center within the clicked band wins, with preorder breaking ties. Selection uses the existing session application-ID/index reveal path. The single labeled keyboard stop supports Up/Down bands, Home/End endpoints, Left/Right categories and Enter/Space activation at band center. Empty lanes do nothing. Hover/focus shows localized compact category counts, never comment contents. Existing match/unseen navigation remains available; all ruler actions leave seen untouched.
 
@@ -341,7 +373,7 @@ and captures the current visible identity/offset at evaluation completion, using
 retained selection then start only if that anchor disappears. Header scroll is
 preserved. Failed queries retain the current view/scroll. None of this is durable
 scroll restoration across restart. SQLite query/index/clone/memory scaling,
-collapse and sorting remain separate targets. Bulk recovery is implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md). ADR 0011 adds the ruler and durable NEW.
+and collapse remain separate targets. ADR 0016 implements whole-conversation sorting, including sorted first-match Apply and virtual anchor retention. Bulk recovery is implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md). ADR 0011 adds the ruler and durable NEW.
 
 Assume thousands or tens of thousands of comments. Virtualize the large comment view while keeping the complete result model available to filtering, counts, bulk actions, and navigation. Do not render the entire dataset merely to enable search or overview-ruler positioning.
 

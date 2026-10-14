@@ -138,6 +138,24 @@ The bridge should express intent such as opening an item, querying comments, set
 
 ## Current query execution boundary
 
+[ADR 0016](decisions/0016-whole-conversation-sorting.md) adds a pure renderer
+presentation stage: stored comments -> immutable applied query/filter result ->
+complete containing trees -> sorted display-root spans -> flat ReaderRows ->
+virtualizer/navigation/ruler. Query `visibleCommentIds` remains Original preorder.
+Session-only `DiscussionSort` chooses root publication (Newest/Oldest), projected
+root likes (Most liked), whole-tree publication maximum (Latest activity), or
+Original. Keys are prepared once per root in a linear displayed-comment pass;
+comparators never walk subtrees. Unknowns are last and Original breaks ties.
+The existing comment-ID join indexes supplied comments; Q-21 bootstrap costs stay
+unchanged. Session caching shares rows/order/like availability between controls,
+navigation and reader, and the ruler consumes those rows' actual sorted indexes.
+Live-content joins retain accepted order until an explicit sort change or new
+applied result, preventing committed Refresh metadata from moving trees before
+anchor capture at worker completion; seen-only joins do not recompute keys.
+Immediate sorting captures/restores the virtual anchor ID/offset, preserves
+selection and never calls workers, IPC or persistence. Apply/Refresh retain mode;
+seen/NEW do not supply sort keys. Persistent restoration remains Q-10.
+
 [ADR 0008](decisions/0008-active-discussion-applied-queries.md) adds pure
 DiscussionQuery/DiscussionViewResult semantics and a dedicated renderer Web Worker.
 The existing full-discussion bootstrap is unchanged. A narrow application-owned
@@ -240,7 +258,7 @@ extends that isolation with bounded, measured flat comment rendering.
 
 Thousands to tens of thousands of comments are an expected workload, not an exceptional case. Virtualize the comment view, including variable-height content and expanded replies. Build traversal/navigation and overview marker information from the data model. Whole-tree inclusion in a query does not require mounting that whole tree as HTML simultaneously.
 
-Persisted IDs should support scroll anchors and selection so recomputing or rendering rows does not confuse a comment's identity with its row index. Keep replies attached to their parents when sorting top-level threads. The overview/navigation ruler is a required target feature, using data for at least unseen, search-match, and subsequent-discovery markers; ADR 0011 selects measured/estimated height geometry, three category lanes and pixel-band aggregation. Future collapsed/sorted presentation remains open. Main orchestration and renderer interaction must remain responsive while extraction, normalization, search, or SQLite work occurs. Batching and internal database workers can be evaluated within the main-owned backend without giving the renderer privileged access.
+Persisted IDs should support scroll anchors and selection so recomputing or rendering rows does not confuse a comment's identity with its row index. Keep replies attached to their parents when sorting top-level threads. The overview/navigation ruler is a required target feature, using data for at least unseen, search-match, and subsequent-discovery markers; ADR 0011 selects measured/estimated height geometry, three category lanes and pixel-band aggregation. ADR 0016 maps sorted presentation to navigation and ruler; future collapse remains open. Main orchestration and renderer interaction must remain responsive while extraction, normalization, search, or SQLite work occurs. Batching and internal database workers can be evaluated within the main-owned backend without giving the renderer privileged access.
 
 Regex execution needs a responsiveness strategy as well as syntax validation; pathological valid patterns must not freeze the application. ADR 0008 selects ECMAScript u/iu in a cancellable dedicated worker, a 1000 ms whole-query deadline, and localized errors preserving prior results. Large-data budgets and measurements remain open. Benchmark fixtures should exercise large deep/wide trees, long comments, broad and selective filters, and navigation to unmounted results. Specific latency budgets and libraries are not fixed. See [Filtering](FILTERING_AND_SEARCH.md) and [Testing](TESTING.md).
 

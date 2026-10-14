@@ -1,5 +1,87 @@
 # Testing strategy
 
+## Whole-conversation sorting (2026-10-14)
+
+[ADR 0016](decisions/0016-whole-conversation-sorting.md) resolves Q-08 with five
+immediate session-only modes. **563 offline tests across 44 files pass**. Typecheck
+and lint pass without warnings. Renderer and Forge main/preload/renderer/worker
+bundles build successfully. Forge still exits at finalization without a completed
+executable; no packaging fix or release readiness is claimed. The existing Vite
+CJS deprecation and occasional Electron shutdown GPU diagnostic remain non-failing.
+
+Pure tests verify exact Original preorder, root-only Newest/Oldest publication,
+root-only Most liked (known zero, descendant likes ignored), tree-wide Latest
+activity, usable coarse/estimated instants, unknown-last in both directions and
+Original ties. Complete filtered trees retain parent-before-child, reply order,
+root/depth, roles, ancestry and sibling metadata. Deep chains, broad trees,
+Community containment and unresolved/cyclic safe roots preserve source evidence.
+Temporary SQLite tests use normalized Community fixtures to prove rejected/lossy
+backend counts remain unknown through reader projection; all-unknown roots disable
+Most liked and effectively use Original without forgetting the selected mode.
+
+Session/component tests cover immediate no-worker sorting, independent discussions,
+close/reopen, removal/reset and a fresh Reader lifetime; retained mode on Apply and
+successful/failed Refresh; rekeying committed publication/likes/new replies; seen
+and NEW independence; draft/result/count stability; sorted next/previous match,
+F3/Shift+F3, unseen wrapping/context resolution and X/N; and exact frozen matching
+bulk payloads after display order changes. Ruler category identities remain fixed
+while sorted positions/targets change. Pointer/keyboard reveal reaches unmounted
+targets. An all-unknown retained Most liked selection has localized accessible
+explanation in both languages.
+
+Deterministic 10k/50k checks use the actual virtualizer and controlled geometry,
+including anchor identity/offset restoration, bounded mounted rows/ruler DOM,
+distant navigation and correct rails. Property-read counters verify exactly one
+publication read per displayed comment and one like read per root during key
+preparation, including a 50k-deep chain; no wall-clock CI budget is used. Live seen
+joins reuse accepted ordering. A metadata-changing Refresh retains the old order
+until successful query promotion, so it cannot move the reading context ahead of
+anchor capture. Tests also cover capture after header reflow but before a
+ResizeObserver notification, using the known list origin rather than row scanning.
+Hidden panels retain their positive cached geometry instead of display-none zeros.
+
+`node scripts/profile-discussions.cjs --50k` passes in offline Electron/Chromium
+with generated disposable data and actual select/worker/layout/scroll paths.
+Flat, shallow/broad and mixed trees at both sizes each mounted **19 rows** after
+sorting and metadata-changing Refresh; the ruler retained **four descendant DOM
+elements / three category paths**, with 277 occupied pixel bands in this viewport.
+Sort-anchor drift was at most **0.703125 px**; Refresh-anchor drift relative to
+the documented worker-completion capture point was at most **0.375 px**. Pending
+status can reflow the header; capture uses the actual current list origin even
+before the cached margin updates. A 10k chain probe reached its distant target
+with 13 mounted rows. Selective Apply and Refresh worker evaluation succeeded at
+50k; all five small semantic mode checks passed. These are local observations,
+not supported-hardware or memory budgets. Full bootstrap/query/storage/memory
+scaling remains Q-21.
+
+The built-entry `npm.cmd run test:electron` passes all four disposable-profile
+phases, on Electron 44.4.5 / Node 24.21.0 / SQLite 3.53.4. Added checks prove sort
+does not mutate the persisted snapshot, survives successful Refresh and same-session
+close/reopen, and resets to Original after a real process restart. Existing public
+fixture acquisition/Refresh, failed-refresh preservation, security, helper,
+seen/Undo, NEW and workspace durability checks remain passing.
+
+Scripted/visual walkthrough coverage uses disposable generated data and saved
+extractor fixtures, not live YouTube or valuable profiles:
+
+| Requested check | Evidence |
+| --- | --- |
+| Original, Newest, Oldest, old root plus recent reply, known root likes | Five-mode Chromium semantic checks plus pure expected-order tests. |
+| Community unknown likes and containment | Normalized fixtures through temporary SQLite and pure safe-root projection tests. |
+| Search/filter, seen, Apply, successful/failed Refresh | Session/component suites, actual worker harness and built-entry smoke. |
+| F3/unseen, X/N, ruler, distant reveal | Component/actual virtualizer checks, real Chromium ruler and built-entry navigation. |
+| Mid-discussion sort and Refresh anchors, 10k/50k bounds | Controlled-layout tests and measured Chromium observations above. |
+| English/light and Polish/dark | Captured generated reader layouts visually inspected, including compact localized Sort control and neutral rails. |
+
+This is scripted interaction plus agent visual review; no human physical-input
+or fresh live-network walkthrough is claimed. To reproduce, run the normal suite,
+typecheck/lint, renderer build, the profile harness, Forge bundles, then built-entry
+smoke. **Run the profile harness and Forge sequentially**: Forge clears `.vite`
+and can remove an in-flight harness's worker assets. Q-10 retains persistent
+sort/filter/scroll/selection restoration; collapse, acquisition progress/cancel,
+Refresh optimization, backup/export and release/helper distribution remain outside
+this milestone.
+
 ## Source links, helper confidence, bulk minutes and marking ergonomics (2026-10-13–14)
 
 [ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md)

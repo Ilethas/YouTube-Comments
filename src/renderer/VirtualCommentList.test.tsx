@@ -279,3 +279,93 @@ it('small discussions retain at most the constant complete-reading ceiling', () 
   expect(required(article.querySelector('input')).getAttribute('aria-label')).toContain('Mark');
   expect(required(article.querySelector('time')).getAttribute('aria-label')).toBeTruthy();
 });
+
+it.each([10000, 50000])('%i sorted trees retain anchor identity/offset, bounded rows and ruler, and distant reveal in sorted order', async count => {
+  const data = generateDiscussion({ count, shape: 'shallow', roots: count / 20, seenRatio: 0, newIndexes: [0] });
+  const comments = data.comments.map((row, index) => ({ ...row, publishedAt: new Date(Date.parse('2025-01-01T00:00:00Z') + index * 1000).toISOString() }));
+  const reader = mount(comments, false, data.item);
+  reader.scroll(100000);
+  const anchor = required(reader.rows().find(row => row.getBoundingClientRect().top <= 0 && row.getBoundingClientRect().bottom > 0));
+  const id = anchor.dataset.commentId, top = anchor.getBoundingClientRect().top;
+  act(() => reader.session.select(required(id))); // selection remains independent of the later anchor
+  act(() => reader.panel.focus()); reader.scroll(100000);
+  fireEvent.change(reader.getByLabelText('Sort'), { target: { value: 'newest' } });
+  await waitFor(() => expect(reader.rows().find(row => row.dataset.commentId === id)?.getBoundingClientRect().top).toBeCloseTo(top, 4));
+  expect(reader.session.state.selected).toBe(id);
+  expect(reader.rows().length).toBeLessThan(30); expect(reader.engine.evaluate).not.toHaveBeenCalled();
+  const presentation = reader.session.presentation(reader.current());
+  expect(presentation.rows[0].id).toBe(`generated-${count - 20}`);
+  expect(presentation.rows[1].parentId).toBe(`generated-${count - 20}`);
+  expect(presentation.rows[1].depth).toBe(1);
+  const ruler = required(reader.panel.querySelector<HTMLElement>('.discussion-ruler'));
+  expect(ruler.querySelectorAll('*').length).toBeLessThan(10); expect(ruler.dataset.newCount).toBe('1');
+  // Original first root is now in the last tree, unmounted at the retained anchor.
+  expect(document.getElementById('comment-generated-0')).toBeNull();
+  const y = Number(/M13,([\d.]+)/.exec(ruler.querySelector('.ruler-new')?.getAttribute('d') ?? '')?.[1]) + 1.5;
+  vi.spyOn(ruler, 'getBoundingClientRect').mockReturnValue({ top: 2, left: 980, width: 18, height: 596 } as DOMRect);
+  fireEvent.click(ruler, { clientX: 994, clientY: y + 2 });
+  await waitFor(() => expect(document.activeElement?.id).toBe('comment-generated-0'));
+  expect(reader.rows().length).toBeLessThan(30);
+  act(() => reader.session.select(required(presentation.orderedIds.at(-1))));
+  act(() => navigateDiscussion(reader.session, reader.current(), 'unseen', 1));
+  await waitFor(() => expect(document.activeElement?.id).toBe(`comment-generated-${count - 20}`));
+  expect(reader.onToggle).not.toHaveBeenCalled();
+});
+
+it('Most liked disables accessibly for unknown display roots, retains selected mode after Apply, and localizes help', async () => {
+  const data = generateDiscussion({ count: 4, shape: 'flat' });
+  const reader = mount(data.comments);
+  fireEvent.change(reader.getByLabelText('Sort'), { target: { value: 'most-liked' } });
+  const unknown = data.comments.map(row => ({ ...row, likeCount: undefined }));
+  await act(() => reader.refresh(unknown, data.item));
+  expect((reader.getByRole('option', { name: 'Most liked' }) as HTMLOptionElement).disabled).toBe(true);
+  expect((reader.getByLabelText('Sort') as HTMLSelectElement).value).toBe('most-liked');
+  expect(reader.session.presentation(unknown).orderedIds).toEqual(reader.session.state.result.visibleCommentIds);
+  expect(reader.getByText('Like counts are unavailable for these conversations.').id).toBe(reader.getByLabelText('Sort').getAttribute('aria-describedby'));
+  reader.setLocale('pl');
+  expect(reader.getByLabelText('Sortowanie')).toBeTruthy();
+  expect(reader.getByText('Liczby polubień są niedostępne dla tych rozmów.')).toBeTruthy();
+});
+
+it('Refresh metadata cannot reorder ahead of anchor capture; promotion rekeys trees and retains the scrolled identity', async () => {
+  const data = generateDiscussion({ count: 10000, shape: 'shallow', roots: 500 });
+  const comments = data.comments.map((row, index) => ({ ...row, likeCount: index }));
+  const reader = mount(comments, false, data.item);
+  fireEvent.change(reader.getByLabelText('Sort'), { target: { value: 'most-liked' } });
+  reader.scroll(100000);
+  const anchor = required(reader.rows().find(row => row.getBoundingClientRect().top <= 0 && row.getBoundingClientRect().bottom > 0));
+  const id = anchor.dataset.commentId, top = anchor.getBoundingClientRect().top;
+  const before = reader.session.presentation(reader.current()).orderedIds;
+  const updated = comments.map(row => ({ ...row, likeCount: 10000 - (row.likeCount ?? 0) }));
+  // mount.refresh deliberately renders committed props before starting evaluation,
+  // reproducing the application's main acknowledgment -> worker promotion path.
+  await act(() => reader.refresh(updated, data.item));
+  expect(reader.session.presentation(updated).orderedIds).not.toEqual(before);
+  await waitFor(() => expect(reader.rows().find(row => row.dataset.commentId === id)?.getBoundingClientRect().top).toBeCloseTo(top, 4));
+  expect(reader.session.state.sort).toBe('most-liked'); expect(reader.rows().length).toBeLessThan(30);
+});
+
+it('sort anchor capture accounts for header reflow before ResizeObserver delivers the changed list origin', async () => {
+  const data = generateDiscussion({ count: 10000, shape: 'flat' });
+  const comments = data.comments.map((row, index) => ({ ...row, likeCount: index }));
+  const reader = mount(comments);
+  reader.scroll(100000);
+  layout.setMargin(296, false);
+  const anchor = required(reader.rows().find(row => row.getBoundingClientRect().top <= 0 && row.getBoundingClientRect().bottom > 0));
+  const id = anchor.dataset.commentId, top = anchor.getBoundingClientRect().top;
+  fireEvent.change(reader.getByLabelText('Sort'), { target: { value: 'most-liked' } });
+  act(() => layout.notify());
+  await waitFor(() => expect(reader.rows().find(row => row.dataset.commentId === id)?.getBoundingClientRect().top).toBeCloseTo(top, 4));
+  expect(reader.session.state.scrollRequest?.id).toBe(id);
+});
+
+it('hidden readers retain cached anchor geometry rather than display-none zero rectangles during Refresh', async () => {
+  const reader = mount(generateDiscussion({ count: 10000, shape: 'flat' }).comments);
+  reader.scroll(100000);
+  const anchor = required(reader.rows().find(row => row.getBoundingClientRect().top <= 0 && row.getBoundingClientRect().bottom > 0));
+  const id = anchor.dataset.commentId, offset = -anchor.getBoundingClientRect().top;
+  const list = required(reader.panel.querySelector<HTMLElement>('.virtual-reader'));
+  vi.spyOn(list, 'getBoundingClientRect').mockReturnValue({ top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 } as DOMRect);
+  await act(() => reader.session.apply(reader.current(), true));
+  expect(reader.session.state.scrollRequest).toMatchObject({ kind: 'refresh', id, offset });
+});

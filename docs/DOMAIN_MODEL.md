@@ -149,7 +149,7 @@ Counts distinguish matching comments from containing threads. Navigation targets
 
 - Observation source scope and adapter canonical URL rules are selected in ADR 0003; database uniqueness/internal IDs are selected in ADR 0004; ADR 0005 selects the narrow live URL parser; broader source forms remain open.
 - Publication precision/labels are durably stored; date-query semantics remain open.
-- Missing/cyclic relationship truth is retained with safe display fallback, and ambiguous identities are skipped (ADR 0004). Thread sorting and future user-facing diagnostics remain open.
+- Missing/cyclic relationship truth is retained with safe display fallback, and ambiguous identities are skipped (ADR 0004). ADR 0016 resolves whole-conversation sorting over that display structure; future user-facing diagnostics remain open.
 - ADR 0011 settles NEW lifetime from the latest accepted post-baseline attempt in explicit durable insertion order, independent of seen/publication. Any future discovery-filter window UI remains open.
 - ADR 0008 selects session draft/applied snapshots, explicit Apply/error preservation, badges and saved-seen indications. Persistent result/filter/selection restoration, scroll reconciliation after refresh and broader inactive-tab notifications remain open.
 - Choose the exact representation of undoable changes and their retention.
@@ -161,3 +161,28 @@ Record consequential choices in [decision records](decisions/README.md). See [da
 `ContentItem.latestAcceptedDiscoveryId` is a main-derived read projection from accepted history ordered by schema-5 `attempt_order`. `isNewDiscovery(item, comment)` requires that attempt to differ from baseline and equal the comment's existing first-discovery identity. There is no per-comment NEW state. Partial/unknown acceptance replaces the cohort; failure does not.
 
 Renderer `RulerMarker` joins displayed virtual preorder/index, live seen, restrictive applied matches and durable NEW IDs. Pixel buckets retain ordered targets and independent category counts. Geometry comes from the full virtualizer cache rather than mounted-row discovery. It is presentation data, not domain state, and does not broaden query membership or mutation scope.
+
+## Whole-conversation presentation order (ADR 0016)
+
+`DiscussionSort` is source-independent presentation state, not Comment evidence or
+query criteria. `sortDiscussionTrees` reads frozen applied display-root spans and
+current projected metadata; it never rewrites Comment, relationships or immutable
+`DiscussionViewResult`. Original retains the existing stable root/preorder;
+Newest/Oldest compare only own root publication, Most liked only projected root
+likes, and Latest activity the maximum usable publication across the whole tree.
+All unknowns sort last, including ascending Oldest; all ties retain Original.
+ADR 0012's usable estimated/coarse instants participate without label parsing.
+Community unknown likes remain unknown; an all-unknown view makes Most liked
+unavailable/effectively Original. Safe unresolved/cyclic roots each get a key.
+
+One key record per displayed root and a linear metadata pass bound sorting to
+O(N + T log T); replies keep exact preorder. ReaderPresentation carries the sorted
+IDs, applied match order, index map, depth/root/sibling/shared ancestry metadata
+and like availability. Navigation/position/ruler consume this order while bulk
+uses frozen membership. Session caching shares the projection across consumers.
+Live-content joins retain accepted order until a new applied result or explicit
+sort change, so Refresh captures the old reading context before rekeying and
+seen-only changes do not recompute sort keys.
+Mode and anchor/selection are transient per discussion, retained on close/reopen
+and cleared on removal. Restart restoration remains Q-10; no durable model/schema
+or extractor authority changes are introduced.

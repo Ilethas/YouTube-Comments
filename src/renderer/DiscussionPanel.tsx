@@ -48,6 +48,7 @@ function VideoDescription({ id, text, locale }: { id: string; text: string; loca
 export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onOpenSource, onToggle, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
   recordRenderWork('panel', item.id);
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const presentation = session.presentation(comments);
   const t = translator(locale);
   const now = useMemo(() => demo(item.id) ? demoNow : Date.now(), [item]);
   const newIds = useMemo(() => readerNewCommentIds(item, comments), [item, comments]);
@@ -76,7 +77,7 @@ export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, s
             <p className="reader-help">{seenHelp(locale)}</p>
             {onBulk && onUndo && onBulkModal && <BulkSeenControls itemId={item.id} title={item.kind === 'video' ? item.title : item.author?.displayName ?? t('unknownAuthor')} comments={comments} result={view.result} locale={locale} disabled={saving}
               undo={undo} feedback={feedback} execute={onBulk} recover={onUndo} modalChanged={onBulkModal} />}
-            <DiscussionQueryControls state={view} locale={locale} edit={draft => session.edit(draft)}
+            <DiscussionQueryControls state={view} presentation={presentation} sort={sort => session.setSort(sort)} locale={locale} edit={draft => session.edit(draft)}
               apply={() => { void session.apply(comments, false, item); }} navigate={(kind, direction) => navigateDiscussion(session, comments, kind, direction)}
               unseenCount={visibleUnseenIds(view.result, comments).length} />
             {view.result.restrictive && !view.result.matchCount && <p className="reader-help">{t('noDiscussionMatches')}</p>}

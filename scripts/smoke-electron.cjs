@@ -89,6 +89,13 @@ async function verifyWindow(window, nativeTheme) {
     // Normalize absent optional values for the serialized restart checkpoint.
     return JSON.parse(JSON.stringify(result.value));
   }
+  const currentSort = () => js("document.querySelector('[role=tabpanel]:not([hidden]) .discussion-sort select').value");
+  async function selectSort(mode) {
+    await js(`(() => {const input=document.querySelector('[role=tabpanel]:not([hidden]) .discussion-sort select');
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(input,${JSON.stringify(mode)});
+      input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden]) .discussion-sort select').value===${JSON.stringify(mode)}`, 'sort selected');
+  }
   async function verifyHelperSettings() {
     const helpers = path.join(root, 'helpers');
     const status = async kind => {
@@ -411,10 +418,15 @@ async function verifyWindow(window, nativeTheme) {
     const recoveryBeforeRefresh = await bulkUi('all', false);
     assert.ok(recoveryBeforeRefresh.seenUndo[video.id]);
     // The applied rolling criteria resolve against this fresh clock on Refresh.
+    const beforeSort = await snapshot();
+    await selectSort('latest-activity');
+    assert.deepEqual(await snapshot(), beforeSort, 'Sort never persists or changes content/seen/NEW/query ownership');
     await js(`Date.now = () => ${dateEvaluationNow + 3600000}; void 0`);
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
     await waitFor("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) .comment-text')).some(row=>row.textContent.includes('New smoke comment'))", 'refresh applied query');
     assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-search input').value"), 'unapplied draft');
+    assert.equal(await currentSort(), 'latest-activity', 'Refresh retains session sorting');
+    await selectSort('original');
     assert.ok((await visibleMatches()).length > 0);
     const afterRefreshUndo = await undoUi();
     for (const row of beforeRefreshSeen.comments[video.id]) assert.equal(afterRefreshUndo.comments[video.id].find(comment=>comment.id===row.id).seen,row.seen);
@@ -475,6 +487,11 @@ async function verifyWindow(window, nativeTheme) {
     state = await snapshot();
     assert.equal(state.items.length, 4);
     const priorComments = state.comments;
+    await js(`document.getElementById('tab-discussion:${video.id}').click()`);
+    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-${video.id}'`, 'video sort before close');
+    await selectSort('newest');
+    await js(`document.getElementById('tab-discussion:${post.id}').click()`);
+    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-${post.id}'`, 'post before background close');
     await js(`document.getElementById('tab-discussion:${video.id}').nextElementSibling.click()`);
     await waitFor(`document.getElementById('tab-discussion:${video.id}') === null`, 'close background video');
     assert.equal((await snapshot()).workspace.activeTabId, 'discussion:' + post.id);
@@ -482,6 +499,8 @@ async function verifyWindow(window, nativeTheme) {
     await waitFor("document.querySelector('#panel-library:not([hidden])') !== null", 'Library tab');
     await js("Array.from(document.querySelectorAll('.library-entry')).find(row => row.textContent.includes('Invented workshop')).querySelector('button').click()");
     await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-${video.id}'`, 'Library reopen video');
+    assert.equal(await currentSort(), 'newest', 'Close/reopen retains sorting in one Reader lifetime');
+    await selectSort('original');
     await js(`document.getElementById('tab-discussion:${post.id}').nextElementSibling.click()`);
     await waitFor(`document.getElementById('tab-discussion:${post.id}') === null`, 'close Community workspace view');
     state = await snapshot();
@@ -627,10 +646,12 @@ async function verifyWindow(window, nativeTheme) {
     assert.ok(restartOperation.seenUndo[video.id].changedCount > 1);
     fs.writeFileSync(path.join(root,'seen-before.json'),JSON.stringify(bulkOriginal));
     state = await snapshot();
+    await selectSort('latest-activity');
     fs.writeFileSync(checkpoint, JSON.stringify(state));
   } else {
     const saved = JSON.parse(fs.readFileSync(checkpoint, 'utf8'));
     assert.deepEqual(original, saved);
+    assert.equal(await currentSort(), 'original', 'Restart does not persist session sorting');
     assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), `panel-${saved.workspace.tabs.find(tab => tab.id === saved.workspace.activeTabId).itemId}`);
     assert.equal(await js("document.querySelectorAll('[role=tab]').length"), saved.workspace.tabs.length);
     await waitFor("document.querySelectorAll('[role=tabpanel]:not([hidden]) .new-badge').length === 1", 'Real seen NEW survives process restart');

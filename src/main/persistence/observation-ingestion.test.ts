@@ -14,7 +14,8 @@ import type { CaptureContext } from '../extractors/normalization';
 import type { CommentObservation, ContentObservation, NormalizedExtraction, ObservationCoverage } from '../../domain/extraction-observation';
 import { buildCommentTree, walkComments, isNewDiscovery } from '../../domain/discussion';
 import { initialComments, items } from '../../fixtures/discussions';
-import { defaultQuery, queryComments } from '../../domain/discussion-query';
+import { defaultQuery, queryComments, unrestrictedView } from '../../domain/discussion-query';
+import { projectReaderRows } from '../../renderer/discussion-presentation';
 
 type Usable = NormalizedExtraction & { item: ContentObservation; collection: { status: 'present'; comments: readonly CommentObservation[] }; coverage: Exclude<ObservationCoverage, {kind: 'failed'}> };
 function fixture(id = 'yt-nested-a'): Usable {
@@ -42,6 +43,40 @@ function raw() { const db = new DatabaseSync(databasePath); db.exec('PRAGMA fore
 function state() { return repository.bootstrap(['en']); }
 function comments() { return Object.values(state().comments)[0]; }
 function later() { at = '2026-10-02T09:00:00.000Z'; }
+
+it('lossy Community backend zero likes remain unknown through projection, disabling Most liked', () => {
+  repository.ingest(fixture('community-lossy'));
+  const stored = comments(), result = unrestrictedView(queryComments(stored));
+  const presentation = projectReaderRows(stored, result, 'most-liked');
+  expect(stored.every(row => row.likeCount === undefined)).toBe(true);
+  expect(presentation.mostLikedAvailable).toBe(false);
+  expect(presentation.orderedIds).toEqual(result.visibleCommentIds);
+});
+
+it('sorting respects Community adapter like authority through SQLite and keeps containment and safe roots unchanged', () => {
+  const input = fixture('community-thread-a');
+  // These backend values are rejected/lossy by the adapter; never read raw counts in sorting.
+  const candidates = input.collection.comments;
+  const root = candidates[0];
+  repository.ingest(batch(input, [root,
+    { ...candidates[1], sourceId: 'unknown-root', relationship: { kind: 'top-level' }, likeCount: unknown('unreliable') },
+    { ...root, sourceId: 'zero-root', relationship: { kind: 'top-level' }, likeCount: unknown('lossy-default') },
+    { ...candidates[1], sourceId: 'missing', relationship: { kind: 'direct-parent', parentSourceId: 'absent' } },
+    { ...root, sourceId: 'cycle-a', relationship: { kind: 'direct-parent', parentSourceId: 'cycle-b' } },
+    { ...root, sourceId: 'cycle-b', relationship: { kind: 'direct-parent', parentSourceId: 'cycle-a' } },
+    ...candidates.slice(1)]));
+  const stored = comments(), snapshot = JSON.stringify(stored), result = unrestrictedView(queryComments(stored));
+  const presentation = projectReaderRows(stored, result, 'most-liked');
+  const expected = stored.filter(row => row.parentId === null && row.likeCount !== undefined)
+    .sort((a, b) => (b.likeCount ?? 0) - (a.likeCount ?? 0)).map(row => row.id);
+  expect(presentation.rows.filter(row => row.parentId === null).slice(0, expected.length).map(row => row.id)).toEqual(expected);
+  expect(stored.find(row => row.source.commentId === 'zero-root')?.likeCount).toBeUndefined();
+  expect(stored.find(row => row.source.commentId === 'unknown-root')?.likeCount).toBeUndefined();
+  expect(stored.filter(row => row.relationshipStatus === 'cyclic')).toHaveLength(2);
+  expect(stored.find(row => row.source.commentId === 'missing')?.parentId).toBeNull();
+  expect(stored.filter(row => row.relationship?.kind === 'thread-containment').every(row => row.directParentId === null)).toBe(true);
+  expect(JSON.stringify(comments())).toBe(snapshot);
+});
 
 const newCohort = () => {
   const snapshot = state(), item = snapshot.items[0];

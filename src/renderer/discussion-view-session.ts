@@ -5,9 +5,13 @@ import type { Comment, ContentItem } from '../domain/discussion';
 import type { QueryEvaluationTime } from '../domain/publication-filter';
 import { systemQueryEvaluationTime } from './query-evaluation-time';
 import type { QueryExecutor } from './query-worker-client';
+import type { DiscussionSort } from './discussion-sort';
+import { projectReaderRows } from './discussion-presentation';
+import type { ReaderPresentation } from './discussion-presentation';
 
 /** Transient singleton-discussion state; durable comments are owned by main. */
 export interface DiscussionViewState {
+  readonly sort: DiscussionSort;
   readonly draft: DiscussionQuery;
   readonly applied: DiscussionQuery;
   readonly result: DiscussionViewResult;
@@ -20,7 +24,7 @@ export interface DiscussionViewState {
 /** Session-only presentation intent. An anchor offset is relative to the row top. */
 export interface ReaderScrollRequest {
   readonly revision: number;
-  readonly kind: 'navigate' | 'apply' | 'refresh';
+  readonly kind: 'navigate' | 'apply' | 'refresh' | 'sort';
   readonly id?: string;
   readonly offset?: number;
 }
@@ -45,6 +49,29 @@ export class DiscussionViewSession {
   private disposed = false;
   private scrollRevision = 0;
   private captureAnchor?: () => ReaderScrollAnchor | undefined;
+  private presentationCache?: { comments: readonly Comment[]; result: DiscussionViewResult; sort: DiscussionSort; value: ReaderPresentation };
+  /** Share one projection across controls, navigation, reader and ruler. Draft,
+   * selection and pending-state notifications reuse the same immutable value. */
+  presentation(comments: readonly Comment[]): ReaderPresentation {
+    const { result, sort } = this.state, cached = this.presentationCache;
+    if (cached?.comments === comments && cached.result === result && cached.sort === sort) return cached.value;
+    // Committed Refresh metadata reaches React before worker completion. Keep the
+    // accepted order until that result is promoted so capture still sees the same
+    // reading context; incidental seen acknowledgments also need no key rebuild.
+    const retained = cached?.result === result && cached.sort === sort ? cached.value : undefined;
+    const value = projectReaderRows(comments, result, sort, retained);
+    this.presentationCache = { comments, result, sort, value };
+    return value;
+  }
+  /** Capture identity before explicit reorder; retain selection without navigating
+   * to a match. No attached/valid anchor means discussion start. */
+  setSort(sort: DiscussionSort): void {
+    if (this.state.sort === sort) return;
+    const anchor = this.captureAnchor?.();
+    const kept = anchor?.id !== undefined && this.state.result.visibleCommentIds.includes(anchor.id) ? anchor : undefined;
+    this.state = { ...this.state, sort, scrollRequest: { revision: ++this.scrollRevision, kind: 'sort', id: kept?.id, offset: kept?.offset ?? 0 } };
+    this.changed();
+  }
   /** The mounted reader reports its data-resolved visible anchor, never DOM targets. */
   attachReader(capture: () => ReaderScrollAnchor | undefined): () => void {
     this.captureAnchor = capture;
@@ -52,7 +79,7 @@ export class DiscussionViewSession {
   }
   constructor(comments: readonly Comment[], private readonly executor: QueryExecutor, private readonly onChanged: () => void = () => undefined,
     private readonly evaluationTime: () => QueryEvaluationTime = systemQueryEvaluationTime) {
-    this.state = { draft: defaultQuery, applied: defaultQuery, result: unrestrictedView(queryComments(comments)), pending: false, seenStale: false };
+    this.state = { sort: 'original', draft: defaultQuery, applied: defaultQuery, result: unrestrictedView(queryComments(comments)), pending: false, seenStale: false };
   }
   edit(draft: DiscussionQuery): void { this.state = { ...this.state, draft }; this.changed(); }
   select(selected: string): void {
@@ -79,11 +106,13 @@ export class DiscussionViewSession {
       const visible = new Set(outcome.result.visibleCommentIds);
       const selected = this.state.selected && visible.has(this.state.selected) ? this.state.selected : undefined;
       const keptAnchor = anchor && (anchor.id === undefined || visible.has(anchor.id)) ? anchor : undefined;
+      const presentation = projectReaderRows(comments, outcome.result, this.state.sort);
+      this.presentationCache = { comments, result: outcome.result, sort: this.state.sort, value: presentation };
       this.state = { ...this.state, applied: criteria, result: outcome.result, pending: false, error: undefined,
         seenStale: criteria.seen !== 'all' && seenRevision !== this.seenRevision,
         selected,
         scrollRequest: { revision: ++this.scrollRevision, kind: refresh ? 'refresh' : 'apply',
-          id: refresh ? keptAnchor ? keptAnchor.id : selected : outcome.result.restrictive ? outcome.result.orderedMatchIds[0] : undefined,
+          id: refresh ? keptAnchor ? keptAnchor.id : selected : outcome.result.restrictive ? presentation.orderedMatchIds[0] : undefined,
           offset: keptAnchor?.offset } };
     } else this.state = { ...this.state, pending: false, error: outcome.error };
     this.changed();

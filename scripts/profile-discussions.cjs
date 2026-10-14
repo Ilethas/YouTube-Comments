@@ -20,18 +20,27 @@ if (process.argv.includes('--child')) {
       window.webContents.debugger.attach('1.3');
       for (const count of [1000, 10000, ...(process.argv.includes('--50k') ? [50000] : [])]) {
         for (const shape of ['flat', 'shallow', 'mixed']) {
-          const initial = await js(`profile.load({count:${count},shape:'${shape}',newIndexes:[${count - 1}]})`);
+          const initial = await js(`profile.load({count:${count},shape:'${shape}',newIndexes:[${count - 1}],sortingEvidence:true})`);
           initial.heapUsedMB = Math.round((await window.webContents.debugger.sendCommand('Runtime.getHeapUsage')).usedSize / 1024 / 1024);
           const seenAcknowledgments = await js('profile.bulkAcknowledgment()');
           assert.ok(seenAcknowledgments.bulk.rows < 100 && seenAcknowledgments.undo.rows < 100, 'Bulk/Undo keep row mounting bounded');
           const toggle = await js('profile.toggle()'), switchPanel = await js('profile.switch()');
           const scroll = await js('profile.scroll(.75)');
+          const sorting = await js("profile.sort('newest')");
+          assert.ok(sorting.rows < 100 && sorting.rulerNodes < 10, 'Sorting keeps virtualized rows and ruler bounded');
+          assert.ok(Math.abs(sorting.anchorDelta) < 2, 'Sorting retains the visible anchor offset');
+          const sortingRefresh = await js('profile.refreshSortingMetadata()');
+          assert.equal(sortingRefresh.error, undefined);
+          assert.ok(sortingRefresh.rows < 100);
           const rulerNavigation = await js('profile.rulerNavigate()');
           const navigation = await js('profile.navigate()');
           const apply = await js('profile.apply()');
           const filteredNavigation = await js('profile.navigate()');
           const refresh = await js("profile.apply('',true)");
-          report({ count, shape, initial, seenAcknowledgments, toggle, switchPanel, scroll, rulerNavigation, navigation, apply, filteredNavigation, refresh });
+          assert.equal(apply.error, undefined, 'Selective Apply succeeds through the actual query worker');
+          assert.equal(refresh.error, undefined, 'Refresh reevaluation succeeds through the actual query worker');
+          assert.equal(apply.matches, 1);
+          report({ count, shape, initial, seenAcknowledgments, toggle, switchPanel, scroll, sorting, sortingRefresh, rulerNavigation, navigation, apply, filteredNavigation, refresh });
           assert.equal(rulerNavigation.selected, `generated-${count - 1}`);
           assert.equal(rulerNavigation.exactSelectedVisible, true, 'Ruler reveals distant unmounted NEW target');
           assert.ok(initial.rulerNodes < 10 && initial.rulerBuckets <= 300, 'Ruler DOM/pixel bands stay bounded');
@@ -40,6 +49,7 @@ if (process.argv.includes('--child')) {
           assert.ok(initial.rows < 100, 'Large DOM remains bounded in this viewport');
         }
       }
+      report({ sortingSemantics: await js('profile.sortingSemantics()') });
       const deep = await js("profile.load({count:10000,shape:'chain',roots:100,maxDepth:60,textLength:100})");
       const navigation = await js('profile.navigate()');
       assert.equal(navigation.exactSelectedVisible, true);

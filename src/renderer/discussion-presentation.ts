@@ -1,5 +1,7 @@
 import type { Comment } from '../domain/discussion';
 import type { DiscussionViewResult } from '../domain/discussion-query';
+import { sortDiscussionTrees } from './discussion-sort';
+import type { DiscussionSort } from './discussion-sort';
 
 /** Shared linked ancestry keeps projection linear even for very deep chains.
  * `continues` means this ancestor has a following sibling, not source parent truth. */
@@ -26,13 +28,22 @@ export interface ReaderRow {
 export interface ReaderPresentation {
   readonly rows: readonly ReaderRow[];
   readonly indexById: ReadonlyMap<string, number>;
+  readonly orderedIds: readonly string[];
+  readonly orderedMatchIds: readonly string[];
+  readonly mostLikedAvailable: boolean;
 }
 /** Project the applied complete-tree preorder, using its frozen parents even after
- * a failed Refresh evaluation. Live seen never changes membership or role. */
-export function projectReaderRows(comments: readonly Comment[], result: DiscussionViewResult): ReaderPresentation {
+ * a failed Refresh evaluation. Live seen never changes membership or role.
+ * A retained order joins live content without moving rows before Refresh captures
+ * its anchor. New applied results and explicit sort changes compute fresh keys. */
+export function projectReaderRows(comments: readonly Comment[], result: DiscussionViewResult, sort: DiscussionSort = 'original',
+  retainedOrder?: Pick<ReaderPresentation, 'orderedIds' | 'mostLikedAvailable'>): ReaderPresentation {
   const byId = new Map(comments.map(comment => [comment.id, comment]));
+  const { ids: order, mostLikedAvailable } = retainedOrder
+    ? { ids: retainedOrder.orderedIds, mostLikedAvailable: retainedOrder.mostLikedAvailable }
+    : sortDiscussionTrees(result, byId, sort);
   const lastChild = new Map<string | null, string>(), firstChild = new Map<string | null, string>(), parents = new Set<string>();
-  for (const id of result.visibleCommentIds) {
+  for (const id of order) {
     if (!byId.has(id)) continue;
     const parent = result.visibleParentIds[id];
     lastChild.set(parent, id);
@@ -42,7 +53,7 @@ export function projectReaderRows(comments: readonly Comment[], result: Discussi
   const active = new Set(result.activeMatchIds), raw = new Set(result.rawSearchMatchIds);
   const rows: ReaderRow[] = [], indexById = new Map<string, number>();
   const paths = new Map<string, ReaderAncestor>();
-  for (const id of result.visibleCommentIds) {
+  for (const id of order) {
     const comment = byId.get(id);
     if (!comment) continue;
     const parentId = result.visibleParentIds[id], ancestor = parentId === null ? null : paths.get(parentId);
@@ -56,7 +67,8 @@ export function projectReaderRows(comments: readonly Comment[], result: Discussi
       role: !result.restrictive ? 'normal' : active.has(id) ? 'match' : 'context', rawHit: raw.has(id) });
     paths.set(id, { id, depth, continues: !lastSibling, parent: ancestor ?? null });
   }
-  return { rows, indexById };
+  const orderedIds = rows.map(row => row.id);
+  return { rows, indexById, orderedIds, orderedMatchIds: orderedIds.filter(id => active.has(id)), mostLikedAvailable };
 }
 /** Original 22/10/3px compaction with an upper gutter budget for pathological depth.
  * Exact depth and linked ancestry remain available, independently of pixel compaction. */
