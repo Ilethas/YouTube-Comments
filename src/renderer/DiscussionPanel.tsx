@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState, useSyncExternalStore } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { Comment, ContentItem } from '../domain/discussion';
 import { visibleUnseenIds } from '../domain/discussion-query';
 import { demoNow, readerNewCommentIds } from '../shared/demo-presentation';
@@ -54,6 +54,8 @@ export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, s
   const newIds = useMemo(() => readerNewCommentIds(item, comments), [item, comments]);
   const time = item.publishedAt ? publicationTime(item.publishedAt, locale, now) : undefined;
   const toggle = useCallback((id: string, subtree: boolean) => onToggle(item.id, id, subtree), [onToggle, item.id]);
+  useEffect(() => { void session.restore(comments, item); }, [session, comments, item]);
+  if (view.restoring) return <div className="reading-column" role="status" aria-busy="true"><p>{t('viewRestoring')}</p></div>;
   return (
         <div className="reading-column">
           <header className={`item-header ${item.kind}`}>
@@ -72,6 +74,8 @@ export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, s
             </div>
           </header>
           <section aria-label={t('discussion')}>
+            {view.restoreFailed && <p className="query-error" role="alert">{t('viewRestoreFailed')}</p>}
+            {view.saveFailed && <p className="query-error" role="alert">{t('viewSaveFailed')}</p>}
             <div className="discussion-heading"><h2>{countLabel(locale, 'comments', comments.length)}</h2>
               <span>{countLabel(locale, 'unseenCount', comments.filter(comment => !comment.seen).length)}</span></div>
             <p className="reader-help">{seenHelp(locale)}</p>

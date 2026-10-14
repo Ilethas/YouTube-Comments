@@ -2,10 +2,14 @@ import { useEffect, useRef, useMemo } from 'react';
 import type { Comment, ContentItem } from '../domain/discussion';
 import { DiscussionViewSession } from './discussion-view-session';
 import { createQueryExecutor } from './query-executor';
+import type { ReaderApi, ReaderState } from '../shared/reader-api';
 
 /** Registry survives tab close/reopen; explicit Library removal disposes its worker/state. */
-export function useDiscussionViews() {
+export function useDiscussionViews(options?: { readonly saved: ReaderState['discussionViews']; readonly save: ReaderApi['saveDiscussionView'] }) {
   const sessions = useRef(new Map<string, DiscussionViewSession>());
+  // Bootstrap intent is considered once per new session, never on acknowledgments.
+  const initial = useRef(options);
+  const removed = useRef(new Set<string>());
   const lifecycle = useRef(0);
   useEffect(() => {
     const mounted = ++lifecycle.current;
@@ -13,7 +17,7 @@ export function useDiscussionViews() {
     // Defer disposal one microtask so that probe does not invalidate live sessions.
     return () => queueMicrotask(() => {
       if (lifecycle.current !== mounted) return;
-      for (const session of sessions.current.values()) session.dispose();
+      for (const session of sessions.current.values()) void session.flush().finally(() => session.dispose());
       sessions.current.clear();
     });
   }, []);
@@ -21,13 +25,19 @@ export function useDiscussionViews() {
     get(id: string, comments: readonly Comment[]) {
       let session = sessions.current.get(id);
       if (!session) {
-        session = new DiscussionViewSession(comments, createQueryExecutor());
+        const configuration = initial.current;
+        session = new DiscussionViewSession(comments, createQueryExecutor(), undefined, undefined, {
+          saved: removed.current.has(id) ? undefined : configuration?.saved[id],
+          save: configuration ? intent => configuration.save({ itemId: id, ...intent }) : undefined,
+        });
         sessions.current.set(id, session);
       }
       return session;
     },
-    remove(id: string) { sessions.current.get(id)?.dispose(); sessions.current.delete(id); },
-    refresh(id: string, comments: readonly Comment[], item?: ContentItem) { const session = sessions.current.get(id); if (session) void session.apply(comments, true, item); },
+    has(id: string) { return sessions.current.has(id); },
+    flush(id: string) { return sessions.current.get(id)?.flush() ?? Promise.resolve(); },
+    remove(id: string) { removed.current.add(id); sessions.current.get(id)?.dispose(); sessions.current.delete(id); },
+    refresh(id: string, comments: readonly Comment[], item?: ContentItem) { const session = sessions.current.get(id); if (session) void session.refresh(comments, item); },
     seenChanged(id: string) { sessions.current.get(id)?.seenChanged(); },
   }), []);
 }

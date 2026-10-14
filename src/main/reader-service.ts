@@ -2,7 +2,8 @@ import { isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshReq
 import type { AcquisitionResult, ReaderOperation, ReaderState, Result } from '../shared/reader-api';
 import type { SeenMutationResult, SeenUndoResult } from '../domain/seen-operation';
 import type { Preferences } from '../shared/preferences';
-import { ReaderRepository, MissingCommentError, NotRemovableError, InvalidSeenTargetError } from './persistence/reader-repository';
+import { ReaderRepository, MissingCommentError, NotRemovableError, InvalidSeenTargetError, InvalidDiscussionViewError } from './persistence/reader-repository';
+import { isSaveDiscussionViewRequest } from '../domain/discussion-view';
 import { UnsupportedSchemaError } from './persistence/migrations';
 import { AcquisitionService } from './acquisition-service';
 import { createLiveExtractor } from './live-extraction';
@@ -55,8 +56,9 @@ export class ReaderService {
   dispatch(operation: 'getHelperStatus' | 'clearHelper', args: readonly unknown[]): Promise<Result<HelperStatus>>;
   dispatch(operation: 'chooseHelper', args: readonly unknown[]): Promise<Result<HelperStatus | null>>;
   dispatch(operation: 'openSource', args: readonly unknown[]): Promise<Result<null>>;
-  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState> | Promise<Result<AcquisitionResult | HelperStatus | null>>;
-  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState> | Promise<Result<AcquisitionResult | HelperStatus | null>> {
+  dispatch(operation: 'saveDiscussionView', args: readonly unknown[]): Result<null>;
+  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState | null> | Promise<Result<AcquisitionResult | HelperStatus | null>>;
+  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState | null> | Promise<Result<AcquisitionResult | HelperStatus | null>> {
     if (operation === 'openSource') return this.openSource(args);
     if (operation === 'getHelperStatus' || operation === 'chooseHelper' || operation === 'clearHelper') {
       if (args.length !== 1 || !isHelperRequest(args[0])) return Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
@@ -75,6 +77,7 @@ export class ReaderService {
         : isRefreshRequest(args[0]) ? this.acquisition.refresh(args[0].itemId) : Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
     }
     if ((['bootstrap', 'openLibrary', 'openSettings'].includes(operation) && args.length !== 0)
+      || (operation === 'saveDiscussionView' && (args.length !== 1 || !isSaveDiscussionViewRequest(args[0])))
       || (operation === 'toggleSeen' && (args.length !== 1 || !isToggleSeenRequest(args[0])))
       || (operation === 'bulkSeen' && (args.length !== 1 || !isBulkSeenRequest(args[0])))
       || (['openStoredItem', 'removeLibraryItem', 'undoSeen'].includes(operation) && (args.length !== 1 || !isRefreshRequest(args[0])))
@@ -86,8 +89,9 @@ export class ReaderService {
     if (operation === 'bootstrap' && !this.repository && this.failure === 'STORAGE_UNAVAILABLE') this.initializeStorage();
     if (!this.repository) return { ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } };
     try {
-      let value: ReaderState | SeenMutationResult | Preferences | WorkspaceState;
+      let value: ReaderState | SeenMutationResult | Preferences | WorkspaceState | null;
       if (operation === 'bootstrap') value = this.repository.bootstrap(this.languages);
+      else if (operation === 'saveDiscussionView' && isSaveDiscussionViewRequest(args[0])) value = this.repository.saveDiscussionView(args[0]);
       else if (operation === 'toggleSeen' && isToggleSeenRequest(args[0])) value = this.repository.toggleSeen(args[0]);
       else if (operation === 'bulkSeen' && isBulkSeenRequest(args[0])) value = this.repository.bulkSeen(args[0]);
       else if (operation === 'undoSeen' && isRefreshRequest(args[0])) value = this.repository.undoSeen(args[0].itemId);
@@ -106,7 +110,7 @@ export class ReaderService {
       return { ok: true, value };
     } catch (error) {
       this.diagnose(error);
-      return { ok: false, error: { code: error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError || error instanceof InvalidSeenTargetError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
+      return { ok: false, error: { code: error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError || error instanceof InvalidSeenTargetError || error instanceof InvalidDiscussionViewError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
     }
   }
   private async openSource(args: readonly unknown[]): Promise<Result<null>> {

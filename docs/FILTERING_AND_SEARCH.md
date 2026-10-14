@@ -1,6 +1,6 @@
 # Filtering and search
 
-Active-discussion content/author/direct-parent-author search, All/Unseen/Seen, stable session applied results and navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements presentation virtualization without changing query semantics. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable NEW. [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date and latest-refresh discovery filters. [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md) implements bulk actions and durable safe Undo. [ADR 0016](decisions/0016-whole-conversation-sorting.md) implements whole-conversation sorting as immediate session presentation state. The [product requirements](PRODUCT_REQUIREMENTS.md) establish the scope, [seen state](SEEN_STATE.md) defines local user state, and [UI and navigation](UI_AND_NAVIGATION.md) explains how results are read. Unresolved choices are also tracked in the [decision register](decisions/README.md).
+Active-discussion content/author/direct-parent-author search, All/Unseen/Seen, stable session applied results and navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements presentation virtualization without changing query semantics. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable NEW. [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date and latest-refresh discovery filters. [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md) implements bulk actions and durable safe Undo. [ADR 0016](decisions/0016-whole-conversation-sorting.md) implements whole-conversation sorting as immediate presentation state. ADR 0017 persists its preference and separate draft/applied semantic criteria, reconstructing results at restart. The [product requirements](PRODUCT_REQUIREMENTS.md) establish the scope, [seen state](SEEN_STATE.md) defines local user state, and [UI and navigation](UI_AND_NAVIGATION.md) explains how results are read. Unresolved choices are also tracked in the [decision register](decisions/README.md).
 
 ## Implemented bulk target boundary (ADR 0013)
 
@@ -155,7 +155,7 @@ Persist a manual seen edit immediately, while retaining the displayed result mem
 
 Keep that applied result alongside live seen state. A comment can therefore have a checked seen checkbox while remaining an active-filter match from the last applied **Unseen only** query. MATCH/CONTEXT and raw-only SEARCH HIT badges are distinct from live unseen tint/checkbox and neutral rails. A saved-seen Apply indication appears only when applied seen is not All; draft difference is a separate indication. Such indicators must not replace the applied matching set/count with a fresh query or imply that saving the checkbox is deferred.
 
-An **Apply changes / Update view** action recomputes the result using already-persisted state. It is not a save button and does not fetch remote data. Ctrl+Enter applies while a discussion is active; Enter in the search form also applies. Controls edit draft only, and success promotes the captured criteria/result. Each discussion has independent session state retained across close/reopen and cleared on Library removal; restart resets it.
+An **Apply changes / Update view** action recomputes the result using already-persisted state. It is not a save button and does not fetch remote data. Ctrl+Enter applies while a discussion is active; Enter in the search form also applies. Controls edit draft only, and success promotes the captured criteria/result. Each discussion retains independent draft/applied intent across close/reopen and restart (ADR 0017); Library removal clears it. Restart freshly resolves/evaluates applied criteria against current durable data, preserving draft controls and clearing seenStale on success. Relative presets use fresh now/current system zone; derived IDs and numeric bounds are not saved.
 
 This stability guarantee concerns incidental changes caused by seen edits. Search/filter controls wait for explicit Apply. Sorting is an immediate intentional presentation reorder and never invokes the query worker or changes draft/applied criteria. A successful explicit **Refresh** automatically recomputes the active view after its remote data has been merged, using last applied criteria and preserving draft and sort; successful evaluation clears the saved-seen stale condition unless a newer seen save occurred during evaluation. Failed reevaluation retains the old result and surfaces an error. Remote refresh remains a separate operation described in [refresh and merge](REFRESH_AND_MERGE.md). Failed refreshes retain the prior result. Accepted partial/unknown refreshes reevaluate applied criteria while honestly reporting limited coverage; they replace the NEW cohort.
 
@@ -187,6 +187,23 @@ Use this data for counts and bulk target selection. [ADR 0016](decisions/0016-wh
 ADR 0008 selects the bounded renderer worker/in-memory evaluator for the existing full bootstrap architecture. SQLite query planning, indexes, FTS and larger-data batching remain future decisions. Ordinary substring and regex requirements still apply if an index is introduced; token-based full-text search must not silently replace substring semantics. See [database planning](DATABASE.md) and [architecture](ARCHITECTURE.md).
 
 ## Verification
+
+Restart is a **fresh applied-query reconstruction boundary** (ADR 0017), not
+restoration of frozen matching IDs. Applied `camera`/Unseen with draft `microphone`
+rebuilds `camera`/Unseen using current durable data while controls show `microphone`.
+A failed Apply retains durable applied criteria and saves eligible draft edits.
+If an in-session Unseen match A is marked seen and quit happens before Apply,
+restart reflects durable seen=true: A ceases to match, though its containing tree
+may still display it as context. Successful reconstruction starts seenStale false.
+Today/Last 24 hours/Last 7 days resolve with restart now/current system zone; custom
+calendar dates remain semantic. Sort is restored before match navigation/ruler and
+first-match anchor fallback. No worker/result IDs or previous numeric bounds persist.
+
+Invalid presentation rows default independently. Valid criteria that fail restore
+resolution/worker evaluation show a localized message, a safe unrestricted result,
+and saved applied criteria as draft for retry (replacing the separately saved draft
+in that fallback session). Original durable applied intent remains until successful
+explicit Apply/Refresh. Other discussions remain usable.
 
 The deterministic suite must exercise whole-tree context, sibling inclusion, raw-search/active-filter/context distinctions, counts independent of collapsed/rendered rows, AND on one comment, initial search fields and modes, regex validation, combined filters, publication-date boundaries, and stable displayed membership/order after seen edits. It must verify active-discussion scope, last-applied matching targets/counts until recomputation, automatic active-view recomputation after a successful explicit Refresh, matching-only bulk actions excluding context comments, and sorting that preserves conversations. Concrete test strategy belongs in [testing](TESTING.md).
 

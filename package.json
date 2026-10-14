@@ -13,7 +13,7 @@
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "vitest run",
-    "test:electron": "node scripts/smoke-electron.cjs",
+    "test:electron": "node scripts/smoke-electron.cjs && node scripts/smoke-view-restoration.cjs",
     "typecheck": "tsc --noEmit",
     "build:renderer": "vite build --config vite.renderer.config.ts --outDir .vite/renderer-preview"
   },

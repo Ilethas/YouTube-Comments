@@ -9,6 +9,7 @@ import { shortcutHint } from './shortcuts';
 import { discussionSorts } from './discussion-sort';
 import type { DiscussionSort } from './discussion-sort';
 import type { ReaderPresentation } from './discussion-presentation';
+import { maxQueryTextLength } from '../domain/discussion-view';
 
 const sortLabels = { original: 'sortOriginal', newest: 'sortNewest', oldest: 'sortOldest', 'most-liked': 'sortMostLiked', 'latest-activity': 'sortLatestActivity' } as const;
 const sortHelp = { original: 'sortOriginalHelp', newest: 'sortPublicationHelp', oldest: 'sortPublicationHelp', 'most-liked': 'sortLikesHelp', 'latest-activity': 'sortActivityHelp' } as const;
@@ -33,7 +34,7 @@ export function DiscussionQueryControls({ state, presentation, sort, locale, edi
     : state.error === 'QUERY_TOO_EXPENSIVE' ? 'queryTooExpensive' : 'queryFailed';
   return <div className="discussion-query">
     <form className="query-controls" onSubmit={event => { event.preventDefault(); apply(); }}>
-      <label className="query-search">{t('searchDiscussion')}<input type="search" value={draft.text} spellCheck={false} title={shortcutHint(locale, 'focus-search', t('searchDiscussion'))}
+      <label className="query-search">{t('searchDiscussion')}<input type="search" value={draft.text} maxLength={maxQueryTextLength} spellCheck={false} title={shortcutHint(locale, 'focus-search', t('searchDiscussion'))}
         onChange={event => edit({ ...draft, text: event.target.value })} /></label>
       <details className="query-fields"><summary>{t('searchFields')}</summary>
         <fieldset><legend>{t('searchFields')}</legend>{(['content', 'author', 'replied-to-author'] as const).map((field: SearchField) =>

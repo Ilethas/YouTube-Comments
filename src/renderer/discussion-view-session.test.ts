@@ -167,7 +167,8 @@ it('Refresh captures current visible identity at completion and preserves header
   anchor = { offset: 35 }; await session.apply(rows, true);
   expect(session.state.scrollRequest?.id).toBeUndefined(); expect(session.state.scrollRequest?.offset).toBe(35);
   detach(); await session.apply(rows, true);
-  expect(session.state.scrollRequest?.id).toBe(rows[0].id);
+  // A closed reader retains its useful header/top anchor, independently of selection.
+  expect(session.state.scrollRequest).toMatchObject({ id: undefined, offset: 0 });
 });
 
 it('captures one clock for all rows, freezes rolling membership, and Refresh moves applied bounds without promoting drafts', async () => {

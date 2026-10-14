@@ -45,12 +45,15 @@ export function App({ api = window.reader }: { api?: ReaderApi }) {
 }
 
 function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderApi }) {
-  const views = useDiscussionViews();
+  const views = useDiscussionViews({ saved: initialState.discussionViews, save: request => api.saveDiscussionView(request) });
   const [items, setItems] = useState(initialState.items);
   const [locale, setLocale] = useState<Locale>(initialState.preferences.locale);
   const [appearance, setAppearance] = useState<Appearance>(initialState.preferences.appearance);
   const [workspace, setWorkspace] = useState(initialState.workspace);
   const activeId = workspace.activeTabId;
+  const activeDiscussion = useRef<string>();
+  const activeTab = workspace.tabs.find(tab => tab.id === activeId);
+  activeDiscussion.current = activeTab?.kind === 'discussion' ? activeTab.itemId : undefined;
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const workspaceBusy = useRef(false);
   const [showAcquisition, setShowAcquisition] = useState(false);
@@ -81,6 +84,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   const acknowledgedSeen = useRef(new Map<string, boolean>());
   const acquire = useCallback(async function acquire(action: () => Promise<Result<AcquisitionResult>>, refresh = false) {
     if (acquisitionBusy.current) return;
+    if (activeDiscussion.current) void views.flush(activeDiscussion.current);
     acquisitionBusy.current = true;
     acknowledgedSeen.current.clear();
     acknowledgedUndo.current.clear();
@@ -110,6 +114,8 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   }
   async function workspaceAction(action: () => Promise<Result<WorkspaceState>>, focusId?: string) {
     if (workspaceBusy.current) return;
+    const leaving = workspace.tabs.find(tab => tab.id === activeId);
+    if (leaving?.kind === 'discussion') void views.flush(leaving.itemId);
     workspaceBusy.current = true; setWorkspaceSaving(true); setSaveError(false);
     try {
       const result = await action();
@@ -125,6 +131,11 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   }
   function activate(tabId: string, focus = false) {
     void workspaceAction(() => api.activateTab({ tabId }), focus ? tabId : undefined);
+  }
+  function close(tabId: string) {
+    const tab = workspace.tabs.find(tab => tab.id === tabId);
+    if (tab?.kind === 'discussion') void views.flush(tab.itemId);
+    void workspaceAction(() => api.closeTab({ tabId }), '@active');
   }
   async function removeItem() {
     if (!removing || removalBusy.current) return;
@@ -240,7 +251,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
         activate(next.id, true);
       } else if (command === 'close-tab') {
         if (!tab) return;
-        void workspaceAction(() => api.closeTab({ tabId: tab.id }), '@active');
+        close(tab.id);
       } else if (command === 'focus-search') {
         const panel = document.getElementById(tab?.kind === 'discussion' ? `panel-${tab.itemId}` : 'panel-library');
         const input = panel?.querySelector<HTMLInputElement>('input[type=search]');
@@ -291,7 +302,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
         return item ? itemLabel(item) : t('itemNotFound');
       }}
       icon={tab => tab.kind === 'discussion' ? items.find(item => item.id === tab.itemId)?.kind ?? 'video' : tab.kind}
-      activate={activate} close={tabId => { void workspaceAction(() => api.closeTab({ tabId }), '@active'); }}
+      activate={activate} close={close}
       move={(tabId, toIndex) => { void workspaceAction(() => api.moveTab({ tabId, toIndex })); }} />
     {saveError && <div className="save-error" role="alert">{t('saveError')}</div>}
     {!workspace.tabs.length && <main className="empty-workspace"><h1>{t('emptyWorkspace')}</h1><p>{t(items.length ? 'reopenHelp' : 'empty')}</p>
@@ -346,10 +357,10 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       cancel={() => setRemoving(undefined)} remove={() => { void removeItem(); }} />}
     {openItems.map(item => <main key={item.id} id={`panel-${item.id}`} role="tabpanel" aria-labelledby={`tab-${discussionTab(item.id).id}`}
       className="reader-panel" hidden={activeId !== discussionTab(item.id).id} tabIndex={0}>
-      <DiscussionPanel item={item} comments={comments[item.id]} session={views.get(item.id, comments[item.id])}
+      {(activeId === discussionTab(item.id).id || views.has(item.id)) && <DiscussionPanel item={item} comments={comments[item.id]} session={views.get(item.id, comments[item.id])}
         locale={locale} saving={saving && savingItemId === item.id} refreshDisabled={!!acquiring}
         coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onToggle={toggleComment}
-        undo={seenUndo[item.id]} feedback={seenFeedback[item.id]} onBulk={bulkSeen} onUndo={undoSeen} onBulkModal={setBulkModalOpen} />
+        undo={seenUndo[item.id]} feedback={seenFeedback[item.id]} onBulk={bulkSeen} onUndo={undoSeen} onBulkModal={setBulkModalOpen} />}
     </main>)}
   </div>;
 }

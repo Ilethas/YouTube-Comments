@@ -2,7 +2,7 @@ import type { DiscussionQuery, QueryErrorCode, ResolvedDiscussionQuery } from '.
 import { resolvePublication } from './publication-filter';
 import type { QueryEvaluationTime } from './publication-filter';
 
-/** Semantic dates remain in the session. Resolve once before dispatch; worker
+/** Semantic dates remain in view intent. Resolve once before dispatch; worker
  * imports never include the timezone resolver or Temporal runtime. */
 export function resolveDiscussionQuery(query: DiscussionQuery, time: QueryEvaluationTime):
   { readonly ok: true; readonly query: ResolvedDiscussionQuery } | { readonly ok: false; readonly error: QueryErrorCode } {

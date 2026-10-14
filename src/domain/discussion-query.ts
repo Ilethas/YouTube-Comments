@@ -18,7 +18,8 @@ export interface DiscussionQuery {
   readonly discovery: 'all' | 'new';
 }
 export const defaultQuery: DiscussionQuery = { text: '', fields: ['content'], mode: 'text', caseSensitive: false, seen: 'all', publication: { kind: 'all' }, discovery: 'all' };
-/** Semantic dates remain in the session. Only resolved numeric bounds cross the worker boundary. */
+/** Durable intent retains semantic dates. Only freshly resolved numeric bounds
+ * cross the worker boundary; bounds never belong to saved discussion views. */
 export interface ResolvedDiscussionQuery extends Omit<DiscussionQuery, 'publication'> { readonly publicationBounds: PublicationBounds | undefined }
 /** Immutable evaluation snapshot. Live seen state must never redefine these IDs. */
 export interface DiscussionViewResult {

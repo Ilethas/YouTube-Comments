@@ -9,7 +9,7 @@ import { initialComments, items } from '../fixtures/discussions';
 import { toggleSeen } from '../domain/discussion';
 import type { AcquisitionResult, ReaderApi, ReaderState, Result } from '../shared/reader-api';
 import { closeWorkspaceTab, discussionTab, openWorkspaceTab, moveWorkspaceTab } from '../domain/workspace';
-import { evaluateDiscussionQuery } from '../domain/discussion-query';
+import { defaultQuery, evaluateDiscussionQuery } from '../domain/discussion-query';
 import { createQueryExecutor } from './query-executor';
 import type { QueryExecutor } from './query-worker-client';
 import { StrictMode } from 'react';
@@ -27,13 +27,14 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() { /* jsdom has no layout. */ } unobserve() { /* Test only. */ } disconnect() { /* Test only. */ } });
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: function(this: HTMLElement, options: ScrollToOptions) { this.scrollTop = options.top ?? 0; } });
   vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate: async (comments, query) => evaluateDiscussionQuery(comments, query), dispose: vi.fn() } as QueryExecutor as ReturnType<typeof createQueryExecutor>));
-  state = { seenUndo: {}, items, comments: initialComments, preferences: { locale: 'en', appearance: 'system' },
+  state = { discussionViews: {}, seenUndo: {}, items, comments: initialComments, preferences: { locale: 'en', appearance: 'system' },
     workspace: { tabs: items.map(item => discussionTab(item.id)), activeTabId: discussionTab(items[0].id).id, revision: 0 } };
   const open: ReaderApi['openStoredItem'] = async ({ itemId }) => {
     state = { ...state, workspace: openWorkspaceTab(state.workspace, discussionTab(itemId)) };
     return { ok: true as const, value: state.workspace };
   };
   api = {
+    saveDiscussionView: vi.fn(async request => { state = { ...state, discussionViews: { ...state.discussionViews, [request.itemId]: request } }; return { ok: true as const, value: null }; }),
     openSource: vi.fn(async () => ({ ok: true as const, value: null })),
     getHelperStatus: vi.fn(async ({ kind }) => ({ ok: true as const, value: { kind, mode: 'unavailable' as const, state: 'unavailable' as const, testedVersion: kind === 'yt-dlp' ? '2026.08.19' : '0.4.0' } })),
     chooseHelper: vi.fn(async () => ({ ok: true as const, value: null })),
@@ -89,6 +90,58 @@ afterEach(() => { cleanup(); delete window.__readerWork; vi.restoreAllMocks(); }
 const checkboxes = () => within(screen.getByRole('tabpanel')).getAllByRole<HTMLInputElement>('checkbox').filter(input => input.closest('.seen-control'));
 const checked = () => checkboxes().map(input => input.checked);
 
+it('Library startup does not create/evaluate/render hidden discussions; first activation reconstructs once with independent draft/applied/sort/selection', async () => {
+  state = { ...state, workspace: openWorkspaceTab(state.workspace, { id: 'library', kind: 'library' }), discussionViews: {
+    'video-demo': { draft: { ...defaultQuery, text: 'microphone' }, applied: { ...defaultQuery, seen: 'unseen' }, sort: 'oldest', anchor: { commentId: null, offset: 0 }, selected: 'v2' },
+    'post-demo': { draft: defaultQuery, applied: defaultQuery, sort: 'latest-activity', anchor: { commentId: null, offset: 0 }, selected: 'p1' },
+  } };
+  window.__readerWork = {}; await showReader();
+  expect(createQueryExecutor).not.toHaveBeenCalled(); expect(document.querySelectorAll('article.comment')).toHaveLength(0);
+  expect(work()).toEqual({});
+  fireEvent.click(document.getElementById('tab-discussion:video-demo') as HTMLElement);
+  await screen.findByRole('searchbox', { name: 'Search this discussion' });
+  expect(screen.getByRole<HTMLInputElement>('searchbox').value).toBe('microphone');
+  expect(screen.getByText('Draft criteria · Apply to update')).toBeTruthy();
+  expect(within(screen.getByRole('tabpanel')).getByLabelText<HTMLSelectElement>('Sort').value).toBe('oldest');
+  expect(createQueryExecutor).toHaveBeenCalledTimes(1); expect(work()['panel:post-demo'] ?? 0).toBe(0);
+  expect(api.toggleSeen).not.toHaveBeenCalled();
+  fireEvent.click(document.getElementById('tab-discussion:post-demo') as HTMLElement);
+  await waitFor(() => expect(within(screen.getByRole('tabpanel')).getByLabelText<HTMLSelectElement>('Sort').value).toBe('latest-activity'));
+  expect(createQueryExecutor).toHaveBeenCalledTimes(2);
+  fireEvent.click(document.getElementById('tab-discussion:video-demo') as HTMLElement);
+  await waitFor(() => expect(screen.getByRole<HTMLInputElement>('searchbox').value).toBe('microphone'));
+  expect(createQueryExecutor).toHaveBeenCalledTimes(2);
+});
+
+it('active saved view shows localized restoration status until the worker finishes, without unrestricted rows or browser focus transfer', async () => {
+  let finish!: (outcome: ReturnType<typeof evaluateDiscussionQuery>) => void;
+  const evaluate = vi.fn<QueryExecutor['evaluate']>();
+  // Keep the production session promise pending while testing the first paint.
+  evaluate.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  vi.mocked(createQueryExecutor).mockReturnValue({ evaluate, dispose: vi.fn() } as ReturnType<typeof createQueryExecutor>);
+  state = { ...state, discussionViews: { 'video-demo': { draft: defaultQuery, applied: defaultQuery, sort: 'newest', anchor: { commentId: 'v2', offset: 12 }, selected: 'v2' } } };
+  await showReader(); expect(screen.getByText('Restoring saved discussion view…')).toBeTruthy();
+  expect(document.querySelectorAll('article.comment')).toHaveLength(0);
+  const [rows, query] = evaluate.mock.calls[0]; const focus = document.activeElement;
+  await act(async () => finish(evaluateDiscussionQuery(rows, query)));
+  expect(document.getElementById('comment-v2')?.dataset.selected).toBe('true');
+  expect(document.activeElement).toBe(focus); expect(api.toggleSeen).not.toHaveBeenCalled();
+});
+
+it('a restore timeout affects only that discussion; localized fallback permits retry and other tabs still restore', async () => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  vi.mocked(createQueryExecutor).mockImplementationOnce(() => ({ evaluate: async () => ({ ok: false, error: 'QUERY_TOO_EXPENSIVE' }), dispose: vi.fn() } as ReturnType<typeof createQueryExecutor>));
+  const view = { draft: defaultQuery, applied: { ...defaultQuery, text: 'saved criteria' }, sort: 'newest' as const, anchor: { commentId: null, offset: 0 }, selected: null };
+  state = { ...state, discussionViews: { 'video-demo': view, 'post-demo': { ...view, applied: defaultQuery } } };
+  await showReader(); await screen.findByRole('searchbox');
+  expect(screen.getByRole('alert').textContent).toContain('saved view could not be restored');
+  expect(screen.getByRole<HTMLInputElement>('searchbox').value).toBe('saved criteria'); expect(checkboxes()).toHaveLength(initialComments['video-demo'].length);
+  fireEvent.click(document.getElementById('tab-discussion:post-demo') as HTMLElement);
+  await waitFor(() => expect(screen.getByRole('tabpanel').querySelector('.query-controls')).not.toBeNull());
+  expect(within(screen.getByRole('tabpanel')).queryByRole('alert')).toBeNull();
+  expect(checkboxes()).toHaveLength(initialComments['post-demo'].length);
+});
+
 function threeDiscussions() {
   const third = { ...items[0], id: 'third-discussion', sourceId: 'third' };
   const rows = initialComments[items[0].id].map(row => ({ ...row, id: `third-${row.id}`, itemId: third.id,
@@ -104,6 +157,12 @@ function expectUnrelatedIdle() {
 it('Library/Settings/discussion activation and pending workspace saves never rebuild or render mounted discussions', async () => {
   threeDiscussions(); window.__readerWork = {};
   await showReader();
+  expect(work()['forest:third-discussion'] ?? 0).toBe(0);
+  // First activation mounts lazily; subsequent switches retain mounted isolation.
+  for (const id of ['post-demo', 'third-discussion', 'video-demo']) {
+    fireEvent.click(document.getElementById(`tab-${discussionTab(id).id}`) as HTMLElement);
+    await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-${id}`));
+  }
   expect(work()['forest:third-discussion']).toBeGreaterThan(0);
   const panel = document.getElementById('panel-video-demo');
   if (!panel) throw new Error('Missing panel');
@@ -135,6 +194,10 @@ it('activation retains ADR 0009 isolation with a 10k hidden discussion and bound
   const generated = generateDiscussion({ count: 10000 }).comments.map(row => ({ ...row, itemId: 'third-discussion' }));
   state = { ...state, comments: { ...state.comments, 'third-discussion': generated } };
   await showReader();
+  for (const id of ['post-demo', 'third-discussion', 'video-demo']) {
+    fireEvent.click(document.getElementById(`tab-${discussionTab(id).id}`) as HTMLElement);
+    await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-${id}`));
+  }
   const large = document.getElementById('panel-third-discussion');
   expect(large?.querySelectorAll('article').length).toBeLessThan(30);
   window.__readerWork = {};
@@ -285,7 +348,7 @@ it('failed preferences keep saved language/appearance and rejected transport is 
 function acquired(): AcquisitionResult {
   const item = { ...items[0], id: 'acquired-video', removable: true, sourceId: 'abcdefghijk', title: 'Acquired video' };
   const comment = { ...initialComments['video-demo'][0], id: 'acquired-comment', itemId: item.id, parentId: null, seen: false, text: 'Acquired comment' };
-  return { state: { seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system' },
+  return { state: { discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system' },
     workspace: { tabs: [...items, item].map(item => discussionTab(item.id)), activeTabId: discussionTab(item.id).id, revision: 1 } },
     summary: { itemId: item.id, coverage: 'unknown', inserted: 1, updated: 0, warnings: 0 } };
 }

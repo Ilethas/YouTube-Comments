@@ -3,6 +3,7 @@ import type { Appearance, Locale, Preferences } from './preferences';
 import type { WorkspaceState } from '../domain/workspace';
 import type { BulkSeenRequest, SeenMutationResult, SeenUndoResult, SeenUndoDescriptor } from '../domain/seen-operation';
 import type { HelperRequest, HelperStatus } from './helper-settings';
+import type { DiscussionViewIntent, SaveDiscussionViewRequest } from '../domain/discussion-view';
 
 export type ErrorCode = 'INVALID_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA'
   | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE' | 'NOT_REMOVABLE' | 'SOURCE_OPEN_FAILED' | 'NOT_OPENABLE';
@@ -18,6 +19,7 @@ export interface ReaderState {
   readonly preferences: Preferences;
   readonly workspace: WorkspaceState;
   readonly seenUndo: Readonly<Record<string, SeenUndoDescriptor | null>>;
+  readonly discussionViews: Readonly<Record<string, DiscussionViewIntent>>;
 }
 export interface ToggleSeenRequest {
   readonly itemId: string;
@@ -39,6 +41,7 @@ export interface AcquisitionResult {
 
 /** Intent-only capabilities. No generic invoke, SQL, executable input or Node handles. */
 export interface ReaderApi {
+  saveDiscussionView(request: SaveDiscussionViewRequest): Promise<Result<null>>;
   openSource(request: RefreshRequest): Promise<Result<null>>;
   getHelperStatus(request: HelperRequest): Promise<Result<HelperStatus>>;
   chooseHelper(request: HelperRequest): Promise<Result<HelperStatus | null>>;
@@ -60,6 +63,7 @@ export interface ReaderApi {
 }
 
 export const readerChannels = {
+  saveDiscussionView: 'reader:save-discussion-view',
   openSource: 'reader:open-source',
   getHelperStatus: 'reader:helper-status', chooseHelper: 'reader:choose-helper', clearHelper: 'reader:clear-helper',
   bootstrap: 'reader:bootstrap', toggleSeen: 'reader:toggle-seen', updatePreferences: 'reader:preferences',

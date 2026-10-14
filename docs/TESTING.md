@@ -1,5 +1,78 @@
 # Testing strategy
 
+## Persistent discussion view restoration (2026-10-14)
+
+[ADR 0017](decisions/0017-persistent-discussion-view-restoration.md) implements
+schema-8 semantic view storage and resolves Q-10 for the current uncollapsed reader.
+**617 offline tests across 47 files pass**. Typecheck and lint pass without warnings.
+Renderer build and Forge main/preload/renderer/worker bundle checks pass. Forge still
+stops at finalization without an `out` artifact despite exit 0; packaging/release
+completion remains outside this milestone. Vite's existing CJS warning and occasional
+Electron shutdown GPU diagnostics remain non-failing.
+
+Temporary SQLite tests cover populated 7→8 preservation of comments/seen/revisions,
+history, workspace/order/active ID, preferences, durable Undo and helper selections;
+transaction rollback/retry; absent defaults; exact bounded JSON/IPC validation;
+same-discussion anchor/selection ownership; distinct draft/applied round trips;
+all five sorts; row-offset/selection; close/restart/Library reopen; independent
+discussions, reacquisition identity and removal cascade; corrupt convenience records
+and failed upserts preserving content and prior acknowledgment.
+
+Session, component and actual-virtualizer tests cover text/selected fields/regex/case,
+seen, custom dates, Today/24h/7d and NEW through the existing evaluator; fresh restart
+clocks/day/zones and no numeric bounds in intent; stale Unseen reconstruction with
+seenStale false; draft/applied divergence and failed Apply; sort/navigation/ruler
+projection; top/header, displayed/hidden/missing anchor and selection fallback;
+selection without focus and sorted F3 continuation; variable heights and row-offset
+clamping; 10k/50k bounded distant mounting; per-view restore failures; debounced typing
+and scroll; serialized/coalesced full-state saves, failed acknowledgment retry and
+flush during promise finalization; close/reopen and detached Refresh anchors;
+Library startup without hidden render/evaluation; later ReaderState copies never
+rehydrating live sessions; and Refresh arriving while initial restore is pending.
+
+`npm run test:electron` passes both built-entry suites in newly created disposable
+profiles: four legacy startup phases plus seven view-restoration phases (seed/write/
+read/Library/reopen/shifted-clock/failure), each using a separate real Electron process.
+The view harness seeds two synthetic 10k/50k discussions with checked relationships/
+history, uses real query worker/control/ruler/navigation paths, quits only after useful
+save acknowledgments and verifies workspace, distinct drafts/results/sorts, anchor
+offsets, selection without focus, sorted F3, stale Unseen changing 10,000→9,999 matches,
+closed-tab restart/reopen, Library startup with zero discussion render work, local
+removal of content/view state, Polish/dark preferences, rolling-date reconstruction
+with an injected clock advanced by two days, corrupt-row fallback and invalid-regex
+restore isolation. Startup clock/zone injection is registered on a blank test page
+before the real application document; the harness verifies the clock explicitly.
+English/light and Polish/dark reading captures were visually inspected at
+`.vite/view-restoration-en-light.png` and `.vite/view-restoration-pl-dark.png`.
+These are automated Chromium runs of the requested manual scenarios; no valuable
+profile, live YouTube access or separate human walkthrough was used.
+
+`node scripts/profile-discussions.cjs --50k` passes with offline generated flat,
+shallow/broad and mixed trees. Observed reconstruction below excludes SQLite/bootstrap
+and uses a newly created session plus the real worker. Paint totals include the
+harness's eight double-animation-frame stabilization passes; they are observations,
+not a hardware budget or CI threshold.
+
+| Comments | Worker reconstruction | Reconstruction + stabilized paint | Mounted rows | Ruler child nodes | Largest anchor drift |
+| --- | --- | --- | --- | --- | --- |
+| 10,000 | 29–30 ms | about 299 ms | 19 | 4 | 0.422 px |
+| 50,000 | 128–138 ms | 466–499 ms | 19 | 4 | 0.422 px |
+
+Real built-application startup was measured separately: a profile containing 60k
+generated comments with the saved 50k view active reached its reconstructed controls
+about **6.865 seconds** after the application document's initial test script. The
+offline suite was running concurrently, so this is a single observational sample,
+not an unloaded startup claim. Full bootstrap/clone/library memory and database/query
+scale remain Q-21. Real restart restored both distant views with 19 rows/four ruler
+nodes; saved offsets of 123.375/52 px were retained. Initial bootstrap and fresh worker
+reconstruction remain separate costs. No paging/FTS/worker/database redesign or
+acquisition performance optimization was introduced.
+
+Only future reply-collapse expansion persistence and optional tab badge details remain
+in Q-10. Backup/export, helper distribution and Windows release/Forge finalization
+remain separate. Historical milestone results below describe their original scopes;
+ADR 0017 supersedes prior session-only/default-on-restart view statements.
+
 ## Whole-conversation sorting (2026-10-14)
 
 [ADR 0016](decisions/0016-whole-conversation-sorting.md) resolves Q-08 with five

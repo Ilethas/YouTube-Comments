@@ -4,6 +4,7 @@ import type { ReaderApi } from '../shared/reader-api';
 /** The transport stays private to preload. Renderer receives intent methods only. */
 export function createReaderBridge(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>): ReaderApi {
   return Object.freeze({
+    saveDiscussionView: request => invoke(readerChannels.saveDiscussionView, request) as ReturnType<ReaderApi['saveDiscussionView']>,
     openSource: request => invoke(readerChannels.openSource, request) as ReturnType<ReaderApi['openSource']>,
     getHelperStatus: request => invoke(readerChannels.getHelperStatus, request) as ReturnType<ReaderApi['getHelperStatus']>,
     chooseHelper: request => invoke(readerChannels.chooseHelper, request) as ReturnType<ReaderApi['chooseHelper']>,

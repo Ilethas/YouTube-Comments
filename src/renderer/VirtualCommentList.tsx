@@ -12,6 +12,7 @@ import type { Locale } from './i18n';
 import { recordRenderWork } from './render-work';
 import { DiscussionRuler } from './DiscussionRuler';
 import { aggregateRulerMarkers, indexRulerMarkers, projectRulerMarkers } from './discussion-ruler';
+import { scrollSaveDelay } from './discussion-view-save-queue';
 
 export const readerOverscan = 6;
 // Small discussions retain their complete accessible reading surface. This ceiling
@@ -114,6 +115,16 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
   }, [getScrollElement, geometry.margin, virtualizer, rows]);
   const capture = useRef(captureAnchor); capture.current = captureAnchor;
   useLayoutEffect(() => session.attachReader(() => capture.current()), [session]);
+  useLayoutEffect(() => {
+    const panel = getScrollElement();
+    if (!panel) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const idle = () => { clearTimeout(timer); timer = setTimeout(() => session.readerSettled(), scrollSaveDelay); };
+    panel.addEventListener('scroll', idle, { passive: true });
+    // Explicit reveal may already be at its destination and emit no scroll event.
+    idle();
+    return () => { clearTimeout(timer); panel.removeEventListener('scroll', idle); };
+  }, [session, getScrollElement, scrollRequest?.revision]);
 
   const pendingAnchor = useRef<ReaderScrollAnchor>();
   const previousWidth = useRef(0);
@@ -154,7 +165,10 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
     const correct = () => {
       const measurement = virtualizer.measurementsCache[index];
       if (!measurement) return;
-      const target = measurement.start + offset;
+      // A refreshed/rewrapped row can be shorter than when its offset was saved.
+      // Keep the identity visible rather than spilling a corrupt/old offset into
+      // a completely different conversation.
+      const target = measurement.start + Math.max(0, Math.min(offset, Math.max(0, measurement.size - 1)));
       virtualizer.scrollToOffset(target, { behavior: 'auto' });
       stable = Math.abs(target - previous) < .5 ? stable + 1 : 0;
       previous = target;

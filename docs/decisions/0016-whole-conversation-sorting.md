@@ -2,6 +2,11 @@
 
 Date: 2026-10-14. Status: accepted. Resolves Q-08; persistence remains Q-10.
 
+The session-only/restart-default state described below is the historical ADR 0016
+milestone. [ADR 0017](0017-persistent-discussion-view-restoration.md) now persists
+and restores its five-mode preference after fresh query reconstruction, resolving
+Q-10 for current uncollapsed reader concepts. The sorting rules remain unchanged.
+
 ## Decision
 
 Sorting moves complete **display-root conversation trees**, including every

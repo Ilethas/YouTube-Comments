@@ -4,6 +4,9 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  viewRestoring: 'Restoring saved discussion view…',
+  viewRestoreFailed: 'The saved view could not be restored. Showing all comments; the saved applied criteria are in the controls for editing and retrying with Apply.',
+  viewSaveFailed: 'Could not save the reading view. Reading is available; the next edit or tab switch will retry.',
   openSource: "Open on YouTube",
   sourceOpenFailed: "Could not open YouTube. Try again.",
   helperUntestedHelp: "This version has not been tested with the reader. Extraction may fail if its output format has changed. Stored data remains protected.",
@@ -111,6 +114,9 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  viewRestoring: 'Przywracanie zapisanego widoku dyskusji…',
+  viewRestoreFailed: 'Nie udało się przywrócić zapisanego widoku. Wyświetlono wszystkie komentarze; zapisane zastosowane kryteria są w kontrolkach, gdzie można je poprawić i ponowić przyciskiem Zastosuj.',
+  viewSaveFailed: 'Nie udało się zapisać widoku. Można nadal czytać; kolejna zmiana lub przełączenie karty ponowi zapis.',
   openSource: "Otwórz w YouTube",
   sourceOpenFailed: "Nie udało się otworzyć YouTube. Spróbuj ponownie.",
   helperUntestedHelp: "Ta wersja nie została przetestowana z czytnikiem. Pobieranie może się nie powieść, jeśli format danych uległ zmianie. Zapisane dane pozostają chronione.",

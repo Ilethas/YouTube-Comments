@@ -90,6 +90,23 @@ const profile = {
     if (session.state.result !== result) throw new Error('Undo recomputed applied membership');
     return { bulk, undo: { ms: performance.now() - undoStart, ...stats() } };
   },
+  async restore() {
+    session.readerSettled();
+    const saved = session.persistentIntent(), before = mountedTops();
+    session.dispose(); flushSync(() => root.render(null));
+    const executor = createQueryExecutor(); let queryMs = 0;
+    const started = performance.now();
+    session = new DiscussionViewSession(comments, {
+      async evaluate(rows, query) { const start = performance.now(); const result = await executor.evaluate(rows, query); queryMs = performance.now() - start; return result; },
+      dispose: () => executor.dispose(),
+    }, undefined, undefined, { saved });
+    render(); await session.restore(comments, item);
+    for (let i = 0; i < 8; i++) await paint();
+    const row = saved.anchor.commentId ? document.getElementById(`comment-${saved.anchor.commentId}`)?.closest('.virtual-comment') : undefined;
+    const anchorDelta = saved.anchor.commentId && row ? row.getBoundingClientRect().top - required(before.get(saved.anchor.commentId)) : 0;
+    if (Math.abs(anchorDelta) > 2 || session.state.sort !== saved.sort || session.state.restoreFailed) throw new Error('Restart reconstruction/anchor regression');
+    return { queryMs, reconstructionPaintMs: performance.now() - started, anchorDelta, sort: saved.sort, ...stats() };
+  },
   async apply(text = 'PROFILE_MATCH', refresh = false) {
     if (!refresh) session.edit({ ...session.state.draft, text });
     const start = performance.now(); await session.apply(comments, refresh, item); await paint();

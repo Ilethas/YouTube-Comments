@@ -12,13 +12,14 @@ import { navigateDiscussion } from './discussion-navigation';
 import { completeReaderLimit, readerOverscan, VirtualCommentList } from './VirtualCommentList';
 import { installReaderLayout } from './testing/reader-layout';
 import { required } from './testing/required';
+import type { DiscussionViewIntent } from '../domain/discussion-view';
 
 let layout: ReturnType<typeof installReaderLayout>;
 beforeEach(() => { layout = installReaderLayout(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); delete window.__readerWork; });
 const executor = () => ({ evaluate: vi.fn(async (rows: Parameters<typeof evaluateDiscussionQuery>[0], query: Parameters<typeof evaluateDiscussionQuery>[1]) => evaluateDiscussionQuery(rows, query)), dispose: vi.fn() });
-function mount(comments: readonly Comment[], restrictive = false, suppliedItem?: ContentItem) {
-  const data = generateDiscussion({ count: 0 }), engine = executor(), session = new DiscussionViewSession(comments, engine);
+function mount(comments: readonly Comment[], restrictive = false, suppliedItem?: ContentItem, saved?: DiscussionViewIntent) {
+  const data = generateDiscussion({ count: 0 }), engine = executor(), session = new DiscussionViewSession(comments, engine, undefined, undefined, { saved });
   if (restrictive) {
     const applied = { ...defaultQuery, text: 'PROFILE_MATCH', seen: 'unseen' as const };
     const outcome = evaluateTestQuery(queryComments(comments), applied);
@@ -42,6 +43,59 @@ function mount(comments: readonly Comment[], restrictive = false, suppliedItem?:
     setLocale(value: 'en' | 'pl') { locale = value; update(); },
     async refresh(nextComments: readonly Comment[], nextItem: ContentItem) { current = nextComments; item = nextItem; update(); await session.apply(current, true, item); } };
 }
+
+it.each([10000, 50000])('%i startup rebuilds a saved view and restores a distant variable-height anchor/selection with bounded DOM and no forced focus', async count => {
+  const data = generateDiscussion({ count, shape: 'shallow', seenRatio: 0 });
+  const id = `generated-${Math.floor(count * .9)}`;
+  const saved: DiscussionViewIntent = { draft: { ...defaultQuery, text: 'unapplied draft' }, applied: { ...defaultQuery, seen: 'unseen' },
+    sort: 'most-liked', anchor: { commentId: id, offset: 31.5 }, selected: id };
+  const before = document.activeElement, reader = mount(data.comments, false, data.item, saved);
+  await waitFor(() => expect(reader.session.state.restoring).toBe(false));
+  const row = () => required(reader.panel.querySelector<HTMLElement>(`[data-comment-id="${id}"]`));
+  await waitFor(() => expect(Math.abs(row().getBoundingClientRect().top + 31.5)).toBeLessThan(2));
+  expect(reader.panel.scrollTop).toBeGreaterThan(100000); expect(reader.rows().length).toBeLessThan(30);
+  expect(reader.engine.evaluate).toHaveBeenCalledTimes(1); expect(reader.session.state.selected).toBe(id);
+  expect(document.activeElement).toBe(before); expect(reader.session.state.sort).toBe('most-liked');
+  expect(reader.session.state.draft.text).toBe('unapplied draft'); expect(reader.session.state.seenStale).toBe(false);
+  act(() => layout.setHeight(id, 340));
+  await waitFor(() => expect(Math.abs(row().getBoundingClientRect().top + 31.5)).toBeLessThan(2));
+  expect(reader.panel.querySelectorAll('.discussion-ruler *').length).toBeLessThan(10);
+  expect(reader.current()).toEqual(data.comments);
+  act(() => navigateDiscussion(reader.session, reader.current(), 'unseen', 1));
+  await waitFor(() => expect(reader.panel.querySelector(`[data-comment-id="${reader.session.state.selected}"]`)).not.toBeNull());
+});
+
+it('settled anchor saves coalesce scrolling and survive close/reopen without replaying obsolete navigation', async () => {
+  vi.useFakeTimers();
+  const data = generateDiscussion({ count: 10000, shape: 'flat' }), save = vi.fn(async () => ({ ok: true as const, value: null }));
+  const session = new DiscussionViewSession(data.comments, executor(), undefined, undefined, { save });
+  const content = () => <main className="reader-panel"><DiscussionPanel item={data.item} comments={data.comments} session={session}
+    locale="en" saving={false} refreshDisabled={false} coverageLimited={false} onRefresh={vi.fn()} onToggle={vi.fn()} /></main>;
+  const rendered = render(content()), panel = required(rendered.container.querySelector('main'));
+  for (let i = 1; i <= 20; i++) act(() => { panel.scrollTop = 100000 + i * 30; fireEvent.scroll(panel); });
+  expect(save).not.toHaveBeenCalled();
+  await act(() => vi.advanceTimersByTimeAsync(299)); expect(save).not.toHaveBeenCalled();
+  await act(() => vi.advanceTimersByTimeAsync(1)); expect(save).toHaveBeenCalledTimes(1);
+  const anchor = session.persistentIntent().anchor; expect(anchor.commentId).not.toBeNull();
+  await act(() => session.flush()); rendered.unmount();
+  const reopened = render(content());
+  expect(session.state.scrollRequest).toMatchObject({ kind: 'restore', id: anchor.commentId, offset: anchor.offset });
+  await act(() => vi.advanceTimersByTimeAsync(100));
+  expect(reopened.container.querySelector(`[data-comment-id="${anchor.commentId}"]`)).not.toBeNull();
+  session.dispose(); vi.useRealTimers();
+});
+
+it('an old large row offset is clamped to the current measured row so its identity stays visible', async () => {
+  const data = generateDiscussion({ count: 1000, shape: 'flat' }), id = 'generated-800';
+  const reader = mount(data.comments, false, data.item, { draft: defaultQuery, applied: defaultQuery, sort: 'original',
+    anchor: { commentId: id, offset: 99999 }, selected: null });
+  await waitFor(() => expect(reader.session.state.restoring).toBe(false));
+  await waitFor(() => {
+    const row = required(reader.panel.querySelector<HTMLElement>(`[data-comment-id="${id}"]`)), rect = row.getBoundingClientRect();
+    expect(rect.bottom).toBeGreaterThan(0); expect(rect.top).toBeLessThan(0);
+  });
+  expect(reader.rows().length).toBeLessThan(30);
+});
 
 it('row gestures include unmounted descendants with frozen applied views and live unseen/NEW ruler evidence', () => {
   const data = generateDiscussion({ count: 10000, roots: 1, seenRatio: 0, matchIndexes: [0], newIndexes: [9999] });

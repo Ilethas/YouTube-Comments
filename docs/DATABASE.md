@@ -1,8 +1,30 @@
 # Database and durable data
 
+## Schema 8 discussion view intent (ADR 0017)
+
+One optional strict `discussion_view_state` row per content item stores bounded
+`draft_query_json`, `applied_query_json`, five-mode `sort`, nullable
+`anchor_comment_id`, finite bounded `anchor_offset`, and nullable
+`selected_comment_id`. Null anchor means header/top with offset zero. Item deletion
+cascades the row; closing/reopening tabs and reacquisition retain it. Same-item
+comment foreign keys and main ownership validation protect anchor/selection.
+No row means existing defaults. Migration 7→8 is additive and transactional,
+creates no synthetic state rows, and preserves content, seen/revisions, history,
+workspace, durable Undo, preferences and separate helper settings.
+
+Exact query validation accepts only current semantic fields, text up to 16,384
+UTF-16 units, unique selected fields, known modes/enums, bounded calendar strings,
+and no resolved bounds/results/regex objects. JSON strings are bounded before
+parsing; per-row invalid state falls back independently with a fixed diagnostic,
+never failing content bootstrap or resetting the database. Offset storage is
+bounded to ±100,000 pixels. Renderer saves through a single narrow typed full-view
+intent; no generic JSON/SQL/key-value bridge is available. Failed upserts retain
+the prior acknowledged state. Detailed reconstruction/scheduling/failure rules are
+in [ADR 0017](decisions/0017-persistent-discussion-view-restoration.md).
+
 ## Usability command extensions (ADR 0015)
 
-[ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) needs no migration; schema remains 7. Publication command targets add
+[ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) needed no migration; its historical baseline was schema 7. ADR 0017 adds schema 8. Publication command targets add
 optional fromTime/toTime HH:mm strings associated with from/to dates. Main resolves
 them with fresh system IANA rules inside the existing seen transaction. Recovery
 still records only changed IDs and revision ownership; calendar criteria/zone
@@ -101,7 +123,7 @@ Closed items remain in Library with their comments, history and local state. Clo
 active selects right, then left, then null; open appends or activates without
 duplicates. Successful Acquire opens in its merge transaction; Refresh does not.
 Revision protects acknowledgment ordering. `content_items.position` remains library
-insertion order. At schema 3 there was no reorder/deletion UI; schema 4 supplies these above. Persisted scroll/filter/expansion remain future work.
+insertion order. At schema 3 there was no reorder/deletion UI; schema 4 supplies these above. ADR 0017 adds persistent scroll/query/sort/selection intent; expansion remains future work.
 
 Avatar evidence uses existing checked `remote_json`, with no avatar column/migration.
 Old authors default absent evidence to unavailable in memory; synthetic-history
@@ -132,7 +154,7 @@ An ordered migration list uses `PRAGMA user_version`: an empty database starts a
 
 Development uses `<Electron appData>/youtube-comments-development/reader.sqlite`; future packaged production uses `<appData>/youtube-comments-production/reader.sqlite`. Tests supply explicit absolute files in newly created temporary directories and clean only directories they own. Missing/relative test paths or profile roots fail. The privileged `YOUTUBE_COMMENTS_DEMO_ROOT` option selects an absolute alternative development root with the same development-directory suffix, including for packaged checks. Empty/relative values never fall back. Main also separates Chromium `userData` using the chosen profile directory. On Windows the normal appData root is `%APPDATA%`; the renderer receives none of these paths.
 
-Development initialization inserts/opens the two synthetic discussions only into a database with zero content items, transactionally. It never resets existing preferences/seen/workspace, including an empty workspace over a nonempty library. Packaged production is not seeded. Tab IDs/order/active selection, preferences and manual state survive restart; full view restoration remains open.
+Development initialization inserts/opens the two synthetic discussions only into a database with zero content items, transactionally. It never resets existing preferences/seen/workspace, including an empty workspace over a nonempty library. Packaged production is not seeded. Tab IDs/order/active selection, preferences and manual state survive restart; the current uncollapsed view intent now restores under ADR 0017.
 
 ## Ownership and access
 
@@ -149,7 +171,7 @@ Do not use localStorage for durable discussions, seen state, tabs or user prefer
 | Local comment state | Seen/unseen for a particular comment | Required for every comment; new comments start unseen; no thread-level seen flag |
 | Discovery/observation information | `publishedAt`, `firstDiscoveredAt`, `lastObservedAt`; first-discovery refresh association | Baseline imports retain discovery history without visual NEW; publication and discovery remain distinct |
 | Refresh attempts | Item, timing, outcome, coverage, diagnostics and useful counts | Committed outcome must agree with committed changes |
-| Tab/view state | Open tab identities/order and per-tab item, scroll, filters, search, sort, reply expansion and selection | Multiple views share comment state but keep their own view preferences |
+| Tab/view state | Open tab identities/order/active ID; separate draft/applied queries, sort, anchor/row offset and selection per discussion | One optional view per stored item; close retains it, removal deletes it. Expansion remains future |
 | Preferences | Explicit language and appearance choice | Persist intent such as System, not just the resolved current theme |
 | Migration metadata | Applied schema versions and runner bookkeeping | Must support ordered, repeatable startup decisions |
 | Reversible changes | Information required by the chosen bulk undo/recovery mechanism | Schema 6 stores one operation per item and changed IDs/written revisions (ADR 0013) |
@@ -228,7 +250,7 @@ The target is thousands to tens of thousands of comments per discussion. Measure
 
 Use temporary SQLite databases for integration tests of migrations, source-key uniqueness, baseline/first discovery, refresh rollback, missing comments, seen-state preservation, multi-comment atomicity, active-discussion scope, last-applied matching targets and restoration of durable preferences/view state. Tests should include populated old-schema fixtures when migrations exist and verified backup/restore behavior when implemented. See [testing](TESTING.md).
 
-Before a storage increment opens or changes durable data, choose the driver/native-module approach, initial schema and identity constraints, timestamp conventions, migration mechanism, connection ownership and isolated development/test paths needed by that increment. Resolve source collision, parent and partial-result policies before the associated ingestion writes. The final backup implementation, export format, raw-diagnostic retention and exact restored-view representation remain open until their dependent work is scoped; they are not universal gates before scaffolding or domain-only work. Data protection and eventual backup/restore remain product requirements throughout. These dependency notes do not define the first implementation milestone. Track choices in [decision records](decisions/README.md); [packaging](PACKAGING.md) must reflect any driver or helper distribution decision.
+Before a storage increment opens or changes durable data, choose the driver/native-module approach, initial schema and identity constraints, timestamp conventions, migration mechanism, connection ownership and isolated development/test paths needed by that increment. Resolve source collision, parent and partial-result policies before the associated ingestion writes. The final backup implementation, export format, raw-diagnostic retention and future collapse expansion representation remain open until their dependent work is scoped; they are not universal gates before scaffolding or domain-only work. Data protection and eventual backup/restore remain product requirements throughout. These dependency notes do not define the first implementation milestone. Track choices in [decision records](decisions/README.md); [packaging](PACKAGING.md) must reflect any driver or helper distribution decision.
 
 ## Profile-local helper configuration (schema 7)
 

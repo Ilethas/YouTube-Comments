@@ -22,6 +22,8 @@ import type { QueryEvaluationTime } from '../../domain/publication-filter';
 import { publicationMatches, ownPublicationInstant } from '../../domain/publication-predicate';
 import { isBulkSeenRequest } from '../../shared/reader-api';
 import type { HelperKind } from '../../shared/helper-settings';
+import { isSaveDiscussionViewRequest } from '../../domain/discussion-view';
+import type { DiscussionViewIntent, SaveDiscussionViewRequest } from '../../domain/discussion-view';
 
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 function optionalText(row: Row, key: string): string | undefined {
@@ -46,6 +48,7 @@ function booleanValue(value?: boolean) { return value === undefined ? null : Num
 export class MissingCommentError extends Error {}
 export class NotRemovableError extends Error {}
 export class InvalidSeenTargetError extends Error {}
+export class InvalidDiscussionViewError extends Error {}
 
 /** Privileged dependency injection, never a renderer capability. */
 export interface IngestionDependencies { readonly now: () => string; readonly newId: () => string }
@@ -84,6 +87,7 @@ export function openReaderDatabase(databasePath: string): DatabaseSync {
 /** Main-side SQLite authority. Remote fixture inserts and local state writes are
  * separate operations; no row type or driver handle is exposed through IPC. */
 export class ReaderRepository {
+  private readonly invalidViewDiagnostics = new Set<string>();
   private constructor(private readonly db: DatabaseSync, private readonly ingestion: IngestionDependencies) {}
 
   /** Requires a resolved absolute path. Failure closes the connection and keeps
@@ -276,7 +280,53 @@ export class ReaderRepository {
     const items = this.readItems();
     return { items, comments: Object.fromEntries(items.map(item => [item.id, this.readComments(item)])),
       seenUndo: Object.fromEntries(items.map(item => [item.id, this.seenUndo(item.id)])),
-      preferences: this.preferences(languages), workspace: this.workspace() };
+      preferences: this.preferences(languages), workspace: this.workspace(), discussionViews: this.discussionViews() };
+  }
+
+  private ownsViewIdentities(request: SaveDiscussionViewRequest): boolean {
+    const owns = this.db.prepare('SELECT 1 FROM comments WHERE item_id=? AND id=?');
+    return [request.anchor.commentId, request.selected].every(id => id === null || !!owns.get(request.itemId, id));
+  }
+
+  /** Validate presentation rows independently: corruption cannot fail content bootstrap.
+   * Diagnostics expose a fixed code once per affected item in this connection. */
+  private discussionViews(): Readonly<Record<string, DiscussionViewIntent>> {
+    const views: [string, DiscussionViewIntent][] = [];
+    for (const row of this.db.prepare('SELECT * FROM discussion_view_state').all()) {
+      try {
+        if (typeof row.draft_query_json !== 'string' || row.draft_query_json.length > 110000
+          || typeof row.applied_query_json !== 'string' || row.applied_query_json.length > 110000) throw new InvalidDiscussionViewError();
+        const request: unknown = { itemId: row.item_id, draft: JSON.parse(row.draft_query_json), applied: JSON.parse(row.applied_query_json),
+          sort: row.sort, anchor: { commentId: row.anchor_comment_id, offset: row.anchor_offset }, selected: row.selected_comment_id };
+        if (!isSaveDiscussionViewRequest(request) || !this.ownsViewIdentities(request)) throw new InvalidDiscussionViewError();
+        const { itemId, ...view } = request;
+        views.push([itemId, view]);
+      } catch {
+        const id = String(row.item_id);
+        if (!this.invalidViewDiagnostics.has(id)) {
+          this.invalidViewDiagnostics.add(id);
+          console.warn('INVALID_DISCUSSION_VIEW_STATE');
+        }
+      }
+    }
+    return Object.fromEntries(views);
+  }
+
+  /** One small atomic full-intent upsert. No result IDs or generic JSON writes.
+   * Closing a tab never deletes this row; deleting its item cascades it. */
+  saveDiscussionView(request: SaveDiscussionViewRequest): null {
+    if (!isSaveDiscussionViewRequest(request)) throw new InvalidDiscussionViewError('Invalid view intent');
+    return transaction(this.db, () => {
+      if (!this.db.prepare('SELECT 1 FROM content_items WHERE id=?').get(request.itemId)) throw new MissingCommentError('Unknown discussion');
+      if (!this.ownsViewIdentities(request)) throw new InvalidDiscussionViewError('Unowned view identity');
+      this.db.prepare(`INSERT INTO discussion_view_state VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(item_id) DO UPDATE SET draft_query_json=excluded.draft_query_json, applied_query_json=excluded.applied_query_json,
+          sort=excluded.sort, anchor_comment_id=excluded.anchor_comment_id, anchor_offset=excluded.anchor_offset,
+          selected_comment_id=excluded.selected_comment_id`).run(request.itemId, JSON.stringify(request.draft), JSON.stringify(request.applied),
+        request.sort, request.anchor.commentId, request.anchor.commentId === null ? 0 : request.anchor.offset, request.selected);
+      this.invalidViewDiagnostics.delete(request.itemId);
+      return null;
+    });
   }
 
   workspace(): WorkspaceState {

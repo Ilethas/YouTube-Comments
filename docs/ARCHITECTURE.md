@@ -1,5 +1,30 @@
 # Architecture
 
+## Persistent view reconstruction (ADR 0017)
+
+SQLite remains main-owned. Validated bootstrap records supply semantic draft/applied
+queries, sort and stable anchor/selected comment identities. A discussion registry
+hydrates each session once from that bootstrap, lazily on first activation. Later
+ReaderState acquisition/Refresh copies cannot overwrite live renderer intent.
+Library/Settings startup does not mount/evaluate hidden discussions. Previously
+visited panels retain isolated memoized rendering and bounded virtualization.
+
+Saved applied queries use the existing resolver and cancellable worker with current
+comments/seen/NEW, fresh now/system IANA zone and the same 1000 ms deadline. Relative
+presets remain semantic. A loading state avoids presenting an unrestricted result
+before reconstruction. Successful evaluation rebuilds complete trees, applies the
+persisted sort, restores displayed selection without DOM focus, and resolves the
+anchor by application ID/index plus row offset. Navigation and ruler share the same
+sorted data projection. No result ID arrays, measurements or geometry persist.
+
+One asynchronous serialized/coalesced queue per discussion writes complete current
+intent through `saveDiscussionView`, with debounce for drafts/scroll and prompt
+Apply/sort/selection saves. Switch/close flush useful anchors. Failed acknowledgments
+stay dirty for retry and show localized feedback while reading remains available.
+Corrupt presentation rows fail independently; worker restoration failure produces an
+unrestricted session with saved applied criteria as draft for retry, retaining the
+original durable applied intent. See [ADR 0017](decisions/0017-persistent-discussion-view-restoration.md).
+
 ## Narrow source and clock intents (ADR 0015)
 
 [ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) adds an identity-only openSource capability: main reads stored identity,
@@ -30,7 +55,7 @@ library data plus a compact ordered workspace DTO. Tab writes return workspace
 only and never mutate discussion/seen/history. Successful Acquire opens within the
 merge transaction; Refresh preserves workspace. A persisted workspace revision
 lets React reject older acknowledgments independently of seen reconciliation.
-Only tab IDs/order/active ID restore; view scroll/filter/expansion remain future.
+ADR 0017 adds validated bootstrap discussion-view intent and main-owned schema-8 upserts. First activation reconstructs saved applied criteria via the existing resolver/worker, then sorts/restores data anchors/selection. Hidden discussions remain unmounted until needed; expansion remains future.
 
 Main owns confirmed local removal transactions; the native renderer dialog is the
 user confirmation surface, not a privileged SQL capability. Synthetic baseline
@@ -142,7 +167,7 @@ The bridge should express intent such as opening an item, querying comments, set
 presentation stage: stored comments -> immutable applied query/filter result ->
 complete containing trees -> sorted display-root spans -> flat ReaderRows ->
 virtualizer/navigation/ruler. Query `visibleCommentIds` remains Original preorder.
-Session-only `DiscussionSort` chooses root publication (Newest/Oldest), projected
+Immediate `DiscussionSort` chooses root publication (Newest/Oldest), projected
 root likes (Most liked), whole-tree publication maximum (Latest activity), or
 Original. Keys are prepared once per root in a linear displayed-comment pass;
 comparators never walk subtrees. Unknowns are last and Original breaks ties.
@@ -153,8 +178,9 @@ Live-content joins retain accepted order until an explicit sort change or new
 applied result, preventing committed Refresh metadata from moving trees before
 anchor capture at worker completion; seen-only joins do not recompute keys.
 Immediate sorting captures/restores the virtual anchor ID/offset, preserves
-selection and never calls workers, IPC or persistence. Apply/Refresh retain mode;
-seen/NEW do not supply sort keys. Persistent restoration remains Q-10.
+selection and never calls the query worker. ADR 0017 coalesces persistence of the
+preference through the full-view save intent. Apply/Refresh retain mode; seen/NEW
+do not supply sort keys. Restart restores the mode after fresh reconstruction.
 
 [ADR 0008](decisions/0008-active-discussion-applied-queries.md) adds pure
 DiscussionQuery/DiscussionViewResult semantics and a dedicated renderer Web Worker.
@@ -205,7 +231,7 @@ One proposed future organization is `src/domain`, `src/main/services`, `src/main
 | Remote observations | Text, author metadata, parent relationships, publication time, likes | Normalized by adapters and persisted; eligible fields may update with newer valid information |
 | Local user state | Each comment's seen flag | SQLite; never overwritten by a remote refresh |
 | Discovery/history | First discovered, last observed, baseline acquisition, refresh outcomes, per-refresh additions | SQLite; independent of user processing state; initial baseline is not visually NEW |
-| View/workspace state | Tabs, predicates, sort, expansion, selection, scroll, applied result membership | Renderer presentation with useful durable preferences in SQLite; exact pending-result restoration policy remains open |
+| View/workspace state | Tabs; separate draft/applied predicates; sort; anchor and selection | SQLite semantic intent (ADR 0017). Result membership, geometry, focus, errors and pending state remain renderer-only; restart reconstructs applied criteria against current data |
 
 This separation prevents a common destructive shortcut: replacing a database row with a raw helper object and accidentally resetting local fields. It also explains why Apply can change a view without saving any checkbox edits: those edits were already saved. See [Seen state](SEEN_STATE.md), [Refresh and merge](REFRESH_AND_MERGE.md), and [Filtering](FILTERING_AND_SEARCH.md).
 
@@ -245,7 +271,7 @@ Neutral row rails derive from data ancestry independently of mounted parents.
 Session scroll intents resolve identity→presentation index→measured mount/reveal.
 Only the exact resolved ID is used for final DOM reveal/focus. Explicit Apply goes
 to the first restrictive match or start; Refresh retains visible identity/offset
-when possible. Mounted tab scroll is still session-only. These changes add no
+when possible. ADR 0017 persists stable application-ID/row-offset anchors across restart. These changes add no
 IPC/schema, SQLite paging, FTS or query-worker semantics. O(N) data work, full
 bootstrap/clone/memory and large-library scaling remain unresolved under Q-21.
 

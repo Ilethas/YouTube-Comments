@@ -161,6 +161,18 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
     kind TEXT PRIMARY KEY NOT NULL CHECK(kind IN ('yt-dlp','post-archiver')),
     executable_path TEXT NOT NULL
   ) STRICT;
+`) }, { version: 8, apply: db => db.exec(`
+  CREATE TABLE discussion_view_state (
+    item_id TEXT PRIMARY KEY NOT NULL REFERENCES content_items(id) ON DELETE CASCADE,
+    draft_query_json TEXT NOT NULL CHECK(length(draft_query_json) <= 110000),
+    applied_query_json TEXT NOT NULL CHECK(length(applied_query_json) <= 110000),
+    sort TEXT NOT NULL CHECK(sort IN ('original','newest','oldest','most-liked','latest-activity')),
+    anchor_comment_id TEXT,
+    anchor_offset REAL NOT NULL CHECK(anchor_offset BETWEEN -100000 AND 100000),
+    selected_comment_id TEXT,
+    FOREIGN KEY(item_id, anchor_comment_id) REFERENCES comments(item_id, id),
+    FOREIGN KEY(item_id, selected_comment_id) REFERENCES comments(item_id, id)
+  ) STRICT;
 `) }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 

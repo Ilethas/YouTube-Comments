@@ -27,7 +27,7 @@ persisted and usable through ordinary validated extraction. [ADR 0015](decisions
 privileged intent and compatibility boundaries.
 
 
-The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. Panels retain scroll only while mounted in the session; persisted scroll and full view restoration remain targets. Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements bounded variable-height rendering and unmounted-target reveal. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable latest-accepted post-baseline NEW. [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date/latest-discovery filtering; bulk actions and durable safe Undo are implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md). Counts cover all stored comments; synthetic examples remain isolated. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
+The reader implements nested comments, explicit manual seen checkboxes, English/Polish preferences, live acquisition/Refresh and the compact persistent tab workspace in [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md). Library, open tab order and active selection are distinct; close never deletes a discussion. [ADR 0017](decisions/0017-persistent-discussion-view-restoration.md) persists independent draft/applied queries, sort, stable comment anchor/offset and selection, with fresh lazy reconstruction at restart. Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements bounded variable-height rendering and unmounted-target reveal. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable latest-accepted post-baseline NEW. [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date/latest-discovery filtering; bulk actions and durable safe Undo are implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md). Counts cover all stored comments; synthetic examples remain isolated. See [requirements](PRODUCT_REQUIREMENTS.md), [the walkthrough](HOW_IT_WORKS.md) and [filtering semantics](FILTERING_AND_SEARCH.md).
 
 Windows is the initial target platform. Other platform support is a later possibility; see [packaging](PACKAGING.md).
 
@@ -156,8 +156,7 @@ termination expose the nested structure. Flat rows retain exact data depth and s
 Unseen uses a subtle row tint plus UNSEEN text and the explicit checkbox. Rails
 never indicate seen state. Compact 32px avatars, bylines and multiline bodies stay.
 
-No persisted scroll, filters, sorting, expansion, selected comment or complete
-workspace restoration is claimed. Query criteria, applied results and selection are independent per-discussion session state, retained on close/reopen and cleared on Library removal. Bulk actions and durable safe Undo are implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md); collapse remains a target; variable-height presentation is implemented in ADR 0010.
+[ADR 0017](decisions/0017-persistent-discussion-view-restoration.md) implements persistent query/sort/anchor/selection intent for the uncollapsed reader. Applied results remain session-only and are rebuilt on restart. Close/reopen retains the live session; Library removal clears session and storage. Expansion remains absent. Bulk actions and durable safe Undo are implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md); collapse remains a target; variable-height presentation is implemented in ADR 0010.
 
 Avatars use only usable HTTPS URLs, anonymous CORS, no-referrer, lazy loading,
 async decoding and fixed dimensions. Empty alt text avoids duplicating the byline;
@@ -183,25 +182,34 @@ save/acquisition responses without overwriting newly merged membership/remote te
 
 Use browser-like tabs for opened YouTube videos, individual Community Posts, Library and Settings. The principal loop is **acquire → persist → refresh → identify what changed → read in context → manually mark processed → search/filter/navigate**. This is a persistent discussion inbox, so reopening the application must restore useful reading state instead of discarding it like a temporary download.
 
-Beyond the implemented item IDs/order/active selection, the target for later
-independent per-tab view restoration includes the following state:
+Workspace IDs/order/active selection and independent discussion view intent now restore. The current and future concepts are:
 
 | State | Purpose |
 | --- | --- |
 | Content item | Identify the video or Community Post being read. |
-| Scroll position | Resume reading near the previous position. |
-| Active filters and search | Preserve the user's current reading task. |
+| Scroll anchor | Stable comment application ID + row-relative offset; null means header/top. |
+| Draft and applied filters/search | Separate semantic intent; freshly reconstruct applied results at restart. |
 | Sorting | Preserve the organization of top-level conversations. |
-| Expanded/collapsed replies | Preserve how much of each conversation is revealed. |
+| Expanded/collapsed replies | Future only; collapse is not implemented and no expansion state is stored. |
 | Selected/navigation comment | Restore the current location for keyboard reading. |
 
-Open item IDs, tab order and active ID now survive restart through SQLite. The additional useful view state in the table above remains a target. Seen belongs to shared comments, not tabs. Opening an already open item activates its single existing tab; reopening a closed item reuses its stored identity/state.
+Open item IDs, tab order and active ID now survive restart through SQLite. ADR 0017 implements every current view concept in the table; expansion and optional badge details remain future scope. Seen belongs to shared comments, not tabs. Opening an already open item activates its single existing tab; reopening a closed item reuses its stored identity/state.
 
-Saving a stable comment anchor with an offset is a candidate for resilient scroll restoration when row heights or data change; the exact storage format and fallback when an anchor is unavailable are undecided. Persisting all ephemeral query result IDs across restart is not required by the current specification. The policy for restoring a view that had pending recomputation must be decided. See [database](DATABASE.md) and [seen state](SEEN_STATE.md).
+Restart is a fresh applied-query reconstruction boundary: current durable comments/seen/NEW are evaluated with the existing resolver/worker and fresh now/system IANA zone. Draft criteria are never promoted silently. A saved Unseen match marked seen before quit may stop matching after restart; seenStale starts false. Result ID arrays and old numeric date bounds are never persisted. After sorting, restore a displayed anchor/row offset, otherwise displayed selection, otherwise first restrictive match in current sorted order, otherwise start. An explicit header anchor restores top. Restore selection only if displayed, without DOM focus. Failed restoration shows a localized message and unrestricted session result, with saved applied criteria as draft for retry; the original durable applied criteria remain until a successful explicit Apply/Refresh. See [database](DATABASE.md) and [seen state](SEEN_STATE.md).
 
 A tab may show an unseen-comment count. If provided, define whether it counts the entire content item or a filter scope, and keep its label clear. This is a derived count of individual comments, not a stored thread-level status. Count scope and interaction with a stable displayed result remain open.
 
 ## The comment reader
+
+ADR 0017 uses one serialized full-view queue per discussion: 400 ms idle for draft
+bursts, 50 ms for successful Apply/sort/selection, and 250 ms scroll idle followed
+by a 50 ms coalesced save. Explicit navigation captures after settling. Tab switch,
+background/active close and acquisition activation flush useful current anchors.
+No synchronous termination IPC or guarantee of the final scroll pixel is added.
+Save failures display localized feedback and retry on the next edit/flush. Stable
+application IDs and row offsets are authoritative; raw scrollTop, result arrays,
+virtual measurements, ruler geometry, transient errors/pending/seenStale, focus,
+hover and open details are never persisted.
 
 The discussion uses Reddit-like neutral ancestry rails and elbows while supporting desktop reading. Keep replies visually attached to their conversations. Sorting reorders complete display-root trees only; replies always retain their relative preorder.
 
@@ -223,8 +231,7 @@ localized explanation when no displayed root has known likes; a retained selecti
 then effectively uses Original without forgetting the chosen mode.
 
 Sort is independent per discussion, survives close/reopen in one Reader lifetime,
-and clears on Library removal. Restart uses Original; persistent view restoration
-remains Q-10. Changing mode captures the virtual anchor ID/offset and restores that
+and clears on Library removal. ADR 0017 restores the saved sort after fresh query reconstruction, including all-unknown Most liked. Changing mode captures the virtual anchor ID/offset and restores that
 same comment at approximately the same viewport position, retaining selection.
 No valid anchor means start. It never jumps to a match or marks seen.
 
@@ -318,7 +325,7 @@ overflow is not consumed. Wheel outside the strip retains normal panel scrolling
 
 Keyboard navigation must support next/previous unseen comments and matches. Next/previous navigation in the filtered reader uses the current applied active-filter matching set. Any separately labeled search-specific navigation must operate within the applicable view and must not confuse raw search hits with active-filter matches. Targets are comment identities in application data, not a query for rendered DOM elements. This lets navigation reach a comment many thousands of rows away or inside a collapsed subtree.
 
-The implementation must be able to identify a target, make its location visible, scroll it into the virtualized viewport, and indicate the active comment. This may require expanding its ancestor path. Current uncollapsed navigation wraps at both ends. Match candidates remain applied IDs; unseen candidates use live seen over displayed membership. From context, next/previous selects the eligible neighbor in preorder. Each row has an application-owned target ID, selection outline and final scrollIntoView call. ADR 0010 fulfills measured virtualized reveal; collapse/expansion and persistent restoration remain open. These choices must not broaden the filtered reader's match navigation beyond its applied matching set.
+The implementation must be able to identify a target, make its location visible, scroll it into the virtualized viewport, and indicate the active comment. This may require expanding its ancestor path. Current uncollapsed navigation wraps at both ends. Match candidates remain applied IDs; unseen candidates use live seen over displayed membership. From context, next/previous selects the eligible neighbor in preorder. Each row has an application-owned target ID, selection outline and final scrollIntoView call. ADR 0010 fulfills measured virtualized reveal; collapse/expansion remains open; ADR 0017 restores selection/anchor without focus. These choices must not broaden the filtered reader's match navigation beyond its applied matching set.
 
 ```mermaid
 flowchart LR
@@ -371,8 +378,7 @@ view, or discussion start for unrestricted/zero matches. Query control focus and
 existing retained selection are preserved. Successful Refresh preserves draft
 and captures the current visible identity/offset at evaluation completion, using
 retained selection then start only if that anchor disappears. Header scroll is
-preserved. Failed queries retain the current view/scroll. None of this is durable
-scroll restoration across restart. SQLite query/index/clone/memory scaling,
+preserved. Failed queries retain the current view/scroll. ADR 0017 extends these data anchors to durable restart restoration. SQLite query/index/clone/memory scaling,
 and collapse remain separate targets. ADR 0016 implements whole-conversation sorting, including sorted first-match Apply and virtual anchor retention. Bulk recovery is implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md). ADR 0011 adds the ruler and durable NEW.
 
 Assume thousands or tens of thousands of comments. Virtualize the large comment view while keeping the complete result model available to filtering, counts, bulk actions, and navigation. Do not render the entire dataset merely to enable search or overview-ruler positioning.

@@ -1,11 +1,12 @@
 import { expect, it, vi } from 'vitest';
 import { createReaderBridge } from './reader-bridge';
 import { readerChannels } from '../shared/reader-api';
+import { defaultQuery } from '../domain/discussion-query';
 
-it('exposes exactly eighteen intent methods without a generic privileged transport', async () => {
+it('exposes exactly nineteen intent methods without a generic privileged transport', async () => {
   const invoke = vi.fn(async () => ({ ok: true, value: {} }));
   const api = createReaderBridge(invoke);
-  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'chooseHelper', 'clearHelper', 'closeTab', 'getHelperStatus', 'moveTab', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'toggleSeen', 'undoSeen', 'updatePreferences']);
+  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'chooseHelper', 'clearHelper', 'closeTab', 'getHelperStatus', 'moveTab', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'saveDiscussionView', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   await api.getHelperStatus({ kind: 'yt-dlp' });
   await api.chooseHelper({ kind: 'post-archiver' });
   await api.clearHelper({ kind: 'yt-dlp' });
@@ -45,4 +46,7 @@ it('exposes exactly eighteen intent methods without a generic privileged transpo
     [readerChannels.bulkSeen, { itemId: 'stored-item', seen: true, target: { kind: 'all' } }],
     [readerChannels.undoSeen, { itemId: 'stored-item' }],
   ]);
+  const intent = { itemId: 'stored-item', draft: defaultQuery, applied: defaultQuery, sort: 'original' as const, anchor: { commentId: null, offset: 0 }, selected: null };
+  await api.saveDiscussionView(intent);
+  expect(invoke).toHaveBeenLastCalledWith(readerChannels.saveDiscussionView, intent);
 });

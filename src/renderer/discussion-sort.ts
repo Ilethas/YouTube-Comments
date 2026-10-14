@@ -2,9 +2,9 @@ import type { Comment } from '../domain/discussion';
 import type { DiscussionViewResult } from '../domain/discussion-query';
 import { ownPublicationInstant } from '../domain/publication-predicate';
 
-/** Immediate, session-only presentation state; never query or source evidence. */
-export type DiscussionSort = 'original' | 'newest' | 'oldest' | 'most-liked' | 'latest-activity';
-export const discussionSorts: readonly DiscussionSort[] = ['original', 'newest', 'oldest', 'most-liked', 'latest-activity'];
+import type { DiscussionSort } from '../domain/discussion-view';
+export type { DiscussionSort } from '../domain/discussion-view';
+export { discussionSorts } from '../domain/discussion-view';
 
 interface ConversationKey {
   readonly start: number;

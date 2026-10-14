@@ -32,6 +32,8 @@ if (process.argv.includes('--child')) {
           const sortingRefresh = await js('profile.refreshSortingMetadata()');
           assert.equal(sortingRefresh.error, undefined);
           assert.ok(sortingRefresh.rows < 100);
+          const restoration = await js('profile.restore()');
+          assert.ok(restoration.rows < 100 && restoration.rulerNodes < 10, 'Restored views remain virtualized');
           const rulerNavigation = await js('profile.rulerNavigate()');
           const navigation = await js('profile.navigate()');
           const apply = await js('profile.apply()');
@@ -40,7 +42,7 @@ if (process.argv.includes('--child')) {
           assert.equal(apply.error, undefined, 'Selective Apply succeeds through the actual query worker');
           assert.equal(refresh.error, undefined, 'Refresh reevaluation succeeds through the actual query worker');
           assert.equal(apply.matches, 1);
-          report({ count, shape, initial, seenAcknowledgments, toggle, switchPanel, scroll, sorting, sortingRefresh, rulerNavigation, navigation, apply, filteredNavigation, refresh });
+          report({ count, shape, initial, seenAcknowledgments, toggle, switchPanel, scroll, sorting, sortingRefresh, restoration, rulerNavigation, navigation, apply, filteredNavigation, refresh });
           assert.equal(rulerNavigation.selected, `generated-${count - 1}`);
           assert.equal(rulerNavigation.exactSelectedVisible, true, 'Ruler reveals distant unmounted NEW target');
           assert.ok(initial.rulerNodes < 10 && initial.rulerBuckets <= 300, 'Ruler DOM/pixel bands stay bounded');
