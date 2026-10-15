@@ -247,7 +247,7 @@ The implemented refresh pipeline stages and validates observations before a shor
 
 The first successful acquisition establishes a recorded baseline: comments receive `firstDiscoveredAt` and unseen defaults without visual NEW markers. Subsequent refresh discoveries are eligible for NEW independently of `publishedAt` and current seen state. Accepted partial/unknown acquisitions establish the first baseline with true coverage retained. ADR 0011 defines NEW as the latest accepted post-baseline first-discovery cohort, retained through restart and replaced by every accepted refresh. Publication filters use `publishedAt`; discovery-based "new since refresh" uses refresh history.
 
-Concurrency must preserve these invariants: a checkbox changed while a helper runs cannot be replaced with an older captured value at commit; stale view results cannot overwrite newer workspace settings; overlapping refreshes cannot produce contradictory histories. Per-item serialization and revision-tagged query results are candidate techniques. ADR 0005 currently serializes live acquisition globally and leaves local writes available during helper awaits. The final scheduling/cancellation strategy and cross-tab view notification behavior remain open. State shared by tabs is still one set of stored comment records.
+Concurrency must preserve these invariants: a checkbox changed while a helper runs cannot be replaced with an older captured value at commit; stale view results cannot overwrite newer workspace settings; overlapping refreshes cannot produce contradictory histories. Per-item serialization and revision-tagged query results are candidate techniques. ADR 0005 currently serializes live acquisition globally and leaves local writes available during helper awaits. ADR 0018 implements explicit pre-save cancellation and typed global progress. Broader scheduling, crash recovery and cross-tab view notification policy remain open. State shared by tabs is still one set of stored comment records.
 
 ## Performance without DOM-dependent logic
 
@@ -318,3 +318,27 @@ Choose/reset status; ordinary Reader/bootstrap renders launch no probes. Configu
 commands serialize separately from the unchanged acquisition lock. Normal quit aborts
 probes and awaits configuration/acquisition work before releasing SQLite. Raw diagnostics
 stay privileged; status paths are plain display evidence, never execution requests.
+
+## Acquisition progress boundary (ADR 0018)
+
+Main retains one global remote operation with an opaque UUID, fresh operation controller
+and AbortSignal.any composition with shutdown. Exact active cancellable-ID matching
+protects newer operations from stale clicks. Validated cancelAcquisition({operationId})
+and getAcquisitionProgress() use existing sender/top-frame/document checks. One narrow
+main-to-renderer channel sends exact safe AcquisitionProgress or ID-scoped settlement;
+preload strips Electron events, validates payloads and returns listener cleanup. Main
+sends only to the owning expected document. There is no generic bus or process control.
+
+The synchronous atomic ingest is the cancellation linearization boundary: Saving and
+cancellable=false are published immediately before it with no await. Earlier accepted
+user cancellation writes only failed user-cancelled target history after child close
+and temp cleanup. Shutdown awaits the same cleanup before closing persistence. Later
+operations get fresh IDs/controllers. Renderer retires completed IDs and handles
+post-commit query reevaluation separately under Updating view without Cancel.
+
+Injected monotonic timings separate target read, helper/probe, preparation, child fetch,
+processing/cleanup, atomic ingest, ReaderState construction and total main duration.
+Electron serialization/transfer is not separately measurable here. Timings are returned
+with successful results and never persisted. Full pre-Refresh bootstrap and post-merge
+bootstrap remain intentionally measured rather than redesigned; Q-21 is independent.
+See [ADR 0018](decisions/0018-acquisition-progress-and-safe-cancellation.md).

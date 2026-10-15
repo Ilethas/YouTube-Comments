@@ -1,3 +1,5 @@
+import { setImmediate } from 'node:timers/promises';
+import type { AcquisitionStage } from '../shared/acquisition';
 import { mkdtemp, mkdir, writeFile, readdir, readFile, lstat, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,15 +14,15 @@ import type { ExecuteProcess, ResolveHelper, ProcessOutcome } from './helper-pro
 import { probeHelper } from './helper-probe';
 
 export type LiveExtraction = { readonly extraction: NormalizedExtraction; readonly error?: ErrorCode };
-export type ExtractLive = (target: AcquisitionTarget, signal: AbortSignal) => Promise<LiveExtraction>;
+export type ExtractLive = (target: AcquisitionTarget, signal: AbortSignal, stage?: (stage: AcquisitionStage) => void) => Promise<LiveExtraction>;
 const maxOutput = 128 * 1024 * 1024;
 
 /** Main-only execution orchestration. Every diagnostic is an application-owned token;
  * raw output, paths and arbitrary stderr never enter attempt history or IPC. */
 export function createLiveExtractor(options: { readonly execute?: ExecuteProcess; readonly resolve?: ResolveHelper;
-  readonly temporaryRoot?: string; readonly deadlineMs?: number } = {}): ExtractLive {
+  readonly temporaryRoot?: string; readonly deadlineMs?: number; readonly clock?: () => number } = {}): ExtractLive {
   const execute = options.execute ?? executeProcess, resolve = options.resolve ?? createHelperResolver();
-  return async (target, signal) => {
+  return async (target, signal, stage = () => undefined) => {
     const community = target.sourceKind === 'youtube-community-post';
     const name = community ? 'post-archiver' : 'yt-dlp';
     const backend = community ? 'post-archiver-improved' : 'yt-dlp';
@@ -29,8 +31,9 @@ export function createLiveExtractor(options: { readonly execute?: ExecuteProcess
     const failure = (error: ErrorCode, reason: string): LiveExtraction => ({ error, extraction: {
       provenance: { backend, version, evidence }, issues: [], coverage: { kind: 'failed', reason },
     } });
-    const started = Date.now();
-    const remaining = () => Math.max(1, (options.deadlineMs ?? 180000) - (Date.now() - started));
+    const clock = options.clock ?? (() => performance.now());
+    const started = clock();
+    const remaining = () => Math.max(1, (options.deadlineMs ?? 180000) - (clock() - started));
     let workspace: string | undefined;
     const processFailure = (outcome: ProcessOutcome) => {
       if (outcome.status === 'exited' && outcome.exitCode === 0) return undefined;
@@ -40,7 +43,9 @@ export function createLiveExtractor(options: { readonly execute?: ExecuteProcess
     let result: LiveExtraction | undefined;
     const attempt = async (): Promise<LiveExtraction> => {
       try {
+        if (signal.aborted) return failure('ACQUISITION_FAILED', 'execution-aborted');
         const executable = await resolve(name);
+        if (signal.aborted) return failure('ACQUISITION_FAILED', 'execution-aborted');
         if (!executable) return failure('HELPER_UNAVAILABLE', 'helper-not-found');
         const probe = await probeHelper(name, executable, execute, signal, Math.min(10000, remaining()));
         if (probe.outcome.status !== 'exited' || probe.outcome.exitCode !== 0) return failure('HELPER_UNAVAILABLE', `probe-${probe.outcome.status}`);
@@ -49,6 +54,7 @@ export function createLiveExtractor(options: { readonly execute?: ExecuteProcess
         evidence.push('executable-version-verified');
         if (!probe.tested) evidence.push('untested-helper-version');
         if (remaining() <= 1 || signal.aborted) return failure('ACQUISITION_FAILED', 'execution-deadline-or-shutdown');
+        stage('preparing');
         let spec;
         let outputDirectory: string | undefined;
         if (community) {
@@ -63,11 +69,15 @@ export function createLiveExtractor(options: { readonly execute?: ExecuteProcess
           evidence.push('application-comment-limit:1000', 'application-reply-limit:1000');
         } else spec = buildYtDlpCommand({ videoUrl: target.url, timeoutSeconds: 15, retries: 2 });
         if (remaining() <= 1 || signal.aborted) return failure('ACQUISITION_FAILED', 'execution-deadline-or-shutdown');
+        stage('fetching');
         const outcome = await execute({ executable, arguments: spec.arguments, environmentAdditions: spec.environmentAdditions,
           cwd: workspace, timeoutMs: remaining(), maxStdoutBytes: maxOutput, signal });
         const executionFailure = processFailure(outcome);
         if (executionFailure) return executionFailure;
         evidence.push('process-exit-zero');
+        stage('processing');
+        await setImmediate();
+        if (signal.aborted) return failure('ACQUISITION_FAILED', 'execution-aborted');
         let raw = outcome.stdout;
         if (outputDirectory) {
           // 0.4.0 overwrites metadata.channel_id with author.id or "unknown" before
@@ -80,6 +90,7 @@ export function createLiveExtractor(options: { readonly execute?: ExecuteProcess
           if (!info.isFile() || info.size > maxOutput) return failure('ACQUISITION_FAILED', 'archive-invalid-or-too-large');
           raw = await readFile(file, 'utf8');
         }
+        if (signal.aborted) return failure('ACQUISITION_FAILED', 'execution-aborted');
         const context = { provenance: { backend, version, evidence },
           ...(community ? { partialEvidence: ['application-comment-and-reply-limits'] }
             : /WARNING:/i.test(outcome.stderr) ? { partialEvidence: ['helper-reported-warning'] } : {}) };

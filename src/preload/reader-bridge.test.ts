@@ -3,10 +3,10 @@ import { createReaderBridge } from './reader-bridge';
 import { readerChannels } from '../shared/reader-api';
 import { defaultQuery } from '../domain/discussion-query';
 
-it('exposes exactly nineteen intent methods without a generic privileged transport', async () => {
+it('exposes only explicit intent and progress methods without a generic privileged transport', async () => {
   const invoke = vi.fn(async () => ({ ok: true, value: {} }));
   const api = createReaderBridge(invoke);
-  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'chooseHelper', 'clearHelper', 'closeTab', 'getHelperStatus', 'moveTab', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'saveDiscussionView', 'toggleSeen', 'undoSeen', 'updatePreferences']);
+  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'chooseHelper', 'clearHelper', 'closeTab', 'getAcquisitionProgress', 'getHelperStatus', 'moveTab', 'onAcquisitionProgress', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'saveDiscussionView', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   await api.getHelperStatus({ kind: 'yt-dlp' });
   await api.chooseHelper({ kind: 'post-archiver' });
   await api.clearHelper({ kind: 'yt-dlp' });
@@ -49,4 +49,20 @@ it('exposes exactly nineteen intent methods without a generic privileged transpo
   const intent = { itemId: 'stored-item', draft: defaultQuery, applied: defaultQuery, sort: 'original' as const, anchor: { commentId: null, offset: 0 }, selected: null };
   await api.saveDiscussionView(intent);
   expect(invoke).toHaveBeenLastCalledWith(readerChannels.saveDiscussionView, intent);
+});
+
+it('progress subscription validates exact payloads and returns transport cleanup', async () => {
+  let receive!: (value: unknown) => void;
+  const unsubscribe = vi.fn(), listener = vi.fn(), invoke = vi.fn(async () => ({ ok: true, value: null }));
+  const api = createReaderBridge(invoke, callback => { receive = callback; return unsubscribe; });
+  const cleanup = api.onAcquisitionProgress(listener);
+  const progress = { operationId: 'opaque-id', kind: 'acquire', sourceKind: 'youtube-video', stage: 'fetching', startedAt: 100, cancellable: true };
+  for (const invalid of [null, {}, { ...progress, executable: 'C:/private.exe' }, { ...progress, stderr: 'secret' },
+    { ...progress, startedAt: NaN }, { ...progress, stage: 'saving' }, { operationId: 'id', settled: true, path: 'private' }]) receive(invalid);
+  expect(listener).not.toHaveBeenCalled();
+  receive(progress); receive({ operationId: 'opaque-id', settled: true });
+  expect(listener.mock.calls).toEqual([[progress], [{ operationId: 'opaque-id', settled: true }]]);
+  cleanup(); expect(unsubscribe).toHaveBeenCalledTimes(1);
+  await api.cancelAcquisition({ operationId: 'opaque-id' }); await api.getAcquisitionProgress();
+  expect(invoke.mock.calls).toEqual([[readerChannels.cancelAcquisition, { operationId: 'opaque-id' }], [readerChannels.getAcquisitionProgress]]);
 });

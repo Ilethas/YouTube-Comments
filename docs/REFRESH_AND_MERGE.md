@@ -44,7 +44,7 @@ second failure-history write after a database rollback.
 
 The clock and ID factory are injected; main defaults to UTC time and UUIDs. Existing
 seen state is neither read into the plan nor written back, so manual edits completed
-during extraction cannot be lost. ADR 0005 selects a temporary global single-live-operation lock and bounded helper retries/deadlines; local seen/preference writes remain available. User cancellation, final scheduling and crash-interrupted attempts remain unresolved.
+during extraction cannot be lost. ADR 0005 selects a temporary global single-live-operation lock and bounded helper retries/deadlines; local seen/preference writes remain available. ADR 0018 implements explicit user cancellation before synchronous accepted merge; broader scheduling and crash-interrupted attempts remain unresolved.
 
 ## Coverage, conflicts and relationships
 
@@ -117,3 +117,25 @@ ordinary tests depend on YouTube or installed helpers. ADR 0008 tests applied-re
 Main projects the accepted attempt with greatest durable `attempt_order` for each item. Schema 5 freezes existing row insertion order and assigns a new ordinal transactionally at attempt insertion; UTC timestamps and UUID lexicographic order do not select latest. The domain compares this attempt to the baseline and each comment's first-discovery attempt. No mutable NEW flag is stored.
 
 Baseline imports are never NEW. Accepted partial/unknown acquisitions, reacquisition, empty/unavailable collections and zero-insert refreshes all replace the cohort. Failed history does not advance it; a database failure rolls back the ordinal/history and merge together. An existing comment updated in the latest attempt is not NEW. Publication age, seen edits, closing/reopening and process restart cannot change eligibility. The current cohort survives until the next accepted post-baseline attempt. No manual dismissal is added.
+
+## Progress, cancellation and timing (ADR 0018)
+
+[ADR 0018](decisions/0018-acquisition-progress-and-safe-cancellation.md) retains the
+single global operation policy and local writes during asynchronous fetch. Every run
+has an opaque ID. Cancellation matches only the current cancellable ID, aborts its
+composed signal and waits for child close and temporary workspace cleanup. Before
+accepted ingest, the service yields a cancellation checkpoint; Saving/cancellable=false
+then linearizes entry to the synchronous atomic transaction with no intervening await.
+Saving completes normally and cannot be partly cancelled.
+
+User cancellation substitutes failed target history with reason `user-cancelled`,
+no observed item/content, and openTab=false. Existing targets associate with their
+item; new targets receive only failed target history. ACQUISITION_CANCELLED is neutral
+feedback. Comments, seen/revisions, durable Undo, latest accepted attempt/NEW, workspace
+and applied/persisted view are unchanged by cancellation. Explicit local user actions
+remain independent. Shutdown awaits cleanup and skips this user-cancelled history.
+
+Accepted results include safe nonpersisted monotonic stage timings, counts and existing
+coverage. Renderer separately awaits last-applied query reevaluation under Updating
+view without Cancel; query errors remain view errors after the remote commit. No
+full-bootstrap or extractor optimization is introduced. See [Testing](TESTING.md).

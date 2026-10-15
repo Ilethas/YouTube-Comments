@@ -1,3 +1,5 @@
+import { isCancelAcquisitionRequest } from '../shared/acquisition';
+import type { AcquisitionNotification, AcquisitionProgress } from '../shared/acquisition';
 import { isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshRequest, isTabRequest, isMoveTabRequest, isBulkSeenRequest, isHelperRequest } from '../shared/reader-api';
 import type { AcquisitionResult, ReaderOperation, ReaderState, Result } from '../shared/reader-api';
 import type { SeenMutationResult, SeenUndoResult } from '../domain/seen-operation';
@@ -26,7 +28,8 @@ export class ReaderService {
     private readonly diagnose: (error: unknown) => void = console.error,
     private readonly extract?: ExtractLive,
     private readonly helperOptions: HelperSettingsOptions = {},
-    private readonly openBrowser?: (url: string) => Promise<void>) {
+    private readonly openBrowser?: (url: string) => Promise<void>,
+    private readonly notifyProgress: (value: AcquisitionNotification) => void = () => undefined) {
     this.initializeStorage();
   }
 
@@ -37,7 +40,7 @@ export class ReaderService {
       this.repository = this.open();
       this.helpers = new HelperSettingsService(this.repository, this.helperOptions);
       this.acquisition = new AcquisitionService(this.repository, this.languages,
-        this.extract ?? createLiveExtractor({ resolve: this.helpers.resolve, execute: this.helperOptions.execute }));
+        this.extract ?? createLiveExtractor({ resolve: this.helpers.resolve, execute: this.helperOptions.execute }), this.notifyProgress);
       this.failure = undefined;
     }
     catch (error) {
@@ -56,9 +59,17 @@ export class ReaderService {
   dispatch(operation: 'getHelperStatus' | 'clearHelper', args: readonly unknown[]): Promise<Result<HelperStatus>>;
   dispatch(operation: 'chooseHelper', args: readonly unknown[]): Promise<Result<HelperStatus | null>>;
   dispatch(operation: 'openSource', args: readonly unknown[]): Promise<Result<null>>;
+  dispatch(operation: 'getAcquisitionProgress', args: readonly unknown[]): Result<AcquisitionProgress | null>;
+  dispatch(operation: 'cancelAcquisition', args: readonly unknown[]): Result<null>;
   dispatch(operation: 'saveDiscussionView', args: readonly unknown[]): Result<null>;
-  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState | null> | Promise<Result<AcquisitionResult | HelperStatus | null>>;
-  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState | null> | Promise<Result<AcquisitionResult | HelperStatus | null>> {
+  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | null> | Promise<Result<AcquisitionResult | HelperStatus | null>>;
+  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | null> | Promise<Result<AcquisitionResult | HelperStatus | null>> {
+    if (operation === 'getAcquisitionProgress') return args.length === 0
+      ? { ok: true, value: this.acquisition?.current() ?? null } : { ok: false, error: { code: 'INVALID_REQUEST' } };
+    if (operation === 'cancelAcquisition') {
+      if (args.length !== 1 || !isCancelAcquisitionRequest(args[0])) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+      return this.acquisition?.cancel(args[0].operationId) ?? { ok: false, error: { code: 'NOT_FOUND' } };
+    }
     if (operation === 'openSource') return this.openSource(args);
     if (operation === 'getHelperStatus' || operation === 'chooseHelper' || operation === 'clearHelper') {
       if (args.length !== 1 || !isHelperRequest(args[0])) return Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });

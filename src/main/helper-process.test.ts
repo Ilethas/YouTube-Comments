@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
+import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -9,6 +10,24 @@ import { createProcessExecutor, createHelperResolver, resolvePathHelper } from '
 
 function child() { return Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() }) as unknown as ChildProcess; }
 const request = { executable: '/trusted/yt-dlp', arguments: ['--', 'https://www.youtube.com/watch?v=abcdefghijk'], environmentAdditions: { PYTHONUTF8: '1' }, timeoutMs: 1000, maxStdoutBytes: 100 };
+it.skipIf(process.platform !== 'win32')('real Windows cancellation terminates a ready parent and its descendant before settling', async () => {
+  const controller = new AbortController();
+  let ready!: (pid: number) => void;
+  const descendant = new Promise<number>(resolve => { ready = resolve; });
+  const source = "const {spawn}=require('node:child_process'); const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true,shell:false}); child.on('spawn',()=>console.log(child.pid)); setInterval(()=>{},1000);";
+  const execute = createProcessExecutor((file, args, options) => {
+    const child = spawn(file, args, options);
+    child.stdout?.once('data', data => ready(Number(String(data).trim())));
+    return child;
+  });
+  const pending = execute({ executable: process.execPath, arguments: ['-e', source], environmentAdditions: {},
+    timeoutMs: 10000, maxStdoutBytes: 1024, signal: controller.signal });
+  const pid = await descendant;
+  expect(Number.isSafeInteger(pid)).toBe(true);
+  controller.abort();
+  expect((await pending).status).toBe('aborted');
+  expect(() => process.kill(pid, 0)).toThrow();
+}, 15000);
 it('spawns exact executable and array with no shell, private environment and separate streams', async () => {
   const process = child(), launch = vi.fn(() => process);
   const previous = globalThis.process.env.PYTHONUTF8;

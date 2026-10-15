@@ -291,7 +291,7 @@ Manual seen changes save immediately. They must not cause the current result mem
 
 The compact search form edits draft only: text, selected fields, All/Unseen/Seen, case and regex toggles, compact Date / discoveries details, and Apply. It does not apply on typing. Invalid/expensive/failed evaluation retains previous results and shows localized feedback. Navigation wraps, never marks seen, and unseen targets update from live seen independently of applied matches. Collapse and future source-refresh shortcuts remain open; ADR 0010 selects virtualized reveal and Apply/Refresh scrolling. The applied matching set/count and matching-only bulk scope are settled as described above. See [stable filtering](FILTERING_AND_SEARCH.md).
 
-Extraction can be long-running or fail. Provide understandable progress, error, and partial-result context without confusing a failure with an empty discussion or losing the last valid local snapshot. Exact progress and cancellation controls are not specified yet; [extractors](EXTRACTORS.md) and [refresh and merge](REFRESH_AND_MERGE.md) own their underlying contracts.
+Extraction can be long-running or fail. Provide understandable progress, error, and partial-result context without confusing a failure with an empty discussion or losing the last valid local snapshot. ADR 0018 implements global coarse progress, elapsed time and explicit pre-save Cancel; [extractors](EXTRACTORS.md) and [refresh and merge](REFRESH_AND_MERGE.md) own their underlying contracts.
 
 ## Date and discovery controls (ADR 0012)
 
@@ -386,3 +386,26 @@ Assume thousands or tens of thousands of comments. Virtualize the large comment 
 ADR 0010 chooses renderer virtualization, measurement and overscan. Query scheduling, IPC pagination/batching, memory and supported-hardware performance budgets remain engineering choices. Stable comment identities must connect storage, rows, selection, and restoration; row indexes alone are not durable identities. Review the [architecture](ARCHITECTURE.md) before choosing library-specific view state.
 
 A small meaningful UI/E2E suite is expected later. Choose a few workflows that cross important boundaries, such as baseline acquisition followed by refresh, saved seen edits followed by a matching bulk action and Apply, or navigation through a virtualized discussion and restored tabs. These are candidates, not an exhaustive UI-test checklist. Keep most state, search, scope, and discovery edge cases in the fast domain/integration suites described in [testing](TESTING.md), with focused UI checks for the ruler, languages, and themes where useful.
+
+## Global acquisition progress (ADR 0018)
+
+A compact surface below the application toolbar survives workspace tab switches.
+English/Polish operation type, coarse stage, elapsed mm:ss and indeterminate progress
+remain separate from comments/coverage. Cancel is explicit and available only before
+Saving; there is no percentage or keyboard cancellation binding. Escape retains its
+existing contextual form/dialog behavior. Add/Open and all Refresh buttons stay disabled
+for the single operation; reading, scrolling, local seen writes, query edits, Settings
+and workspace navigation stay available during fetch.
+
+One validated preload subscription is cleaned up on unmount/StrictMode probes. A
+read-only current-operation snapshot hydrates reload without overtaking newer events.
+Settled operation IDs reject late notifications. Renderer elapsed ticking uses one
+startedAt offset then performance.now, with no main clock events. Only safe source/app
+identity travels in progress; arbitrary input URLs and helper paths are not reflected.
+
+Successful remote commit preserves acknowledged counts, warnings and coverage, then
+shows Updating view without Cancel while the existing session reevaluates last applied
+criteria and restores sort/anchor. Query errors retain their own feedback. Completion
+shows inserted/updated/warnings and total main seconds. User cancellation is neutral:
+"Refresh cancelled. Saved discussion was unchanged." Failure remains the existing
+localized stable error. No stale busy surface remains after settlement.

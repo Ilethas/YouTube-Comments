@@ -1,3 +1,4 @@
+import type { AcquisitionNotification, AcquisitionProgress, AcquisitionTimings } from './acquisition';
 import type { Comment, ContentItem } from '../domain/discussion';
 import type { Appearance, Locale, Preferences } from './preferences';
 import type { WorkspaceState } from '../domain/workspace';
@@ -6,7 +7,7 @@ import type { HelperRequest, HelperStatus } from './helper-settings';
 import type { DiscussionViewIntent, SaveDiscussionViewRequest } from '../domain/discussion-view';
 
 export type ErrorCode = 'INVALID_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA'
-  | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE' | 'NOT_REMOVABLE' | 'SOURCE_OPEN_FAILED' | 'NOT_OPENABLE';
+  | 'ACQUISITION_CANCELLED' | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE' | 'NOT_REMOVABLE' | 'SOURCE_OPEN_FAILED' | 'NOT_OPENABLE';
 /** Stable codes cross IPC; raw privileged diagnostics never reach the renderer. */
 export type Result<T> = { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: { readonly code: ErrorCode } };
@@ -34,6 +35,8 @@ export interface MoveTabRequest extends TabRequest { readonly toIndex: number }
 export interface RefreshRequest { readonly itemId: string }
 /** Compact acknowledgment, without raw output, process details or provenance. */
 export interface AcquisitionResult {
+  readonly operationId: string;
+  readonly timings: AcquisitionTimings;
   readonly state: ReaderState;
   readonly summary: { readonly itemId: string; readonly coverage: 'unknown' | 'partial' | 'complete';
     readonly inserted: number; readonly updated: number; readonly warnings: number };
@@ -41,6 +44,9 @@ export interface AcquisitionResult {
 
 /** Intent-only capabilities. No generic invoke, SQL, executable input or Node handles. */
 export interface ReaderApi {
+  onAcquisitionProgress(listener: (progress: AcquisitionNotification) => void): () => void;
+  getAcquisitionProgress(): Promise<Result<AcquisitionProgress | null>>;
+  cancelAcquisition(request: { readonly operationId: string }): Promise<Result<null>>;
   saveDiscussionView(request: SaveDiscussionViewRequest): Promise<Result<null>>;
   openSource(request: RefreshRequest): Promise<Result<null>>;
   getHelperStatus(request: HelperRequest): Promise<Result<HelperStatus>>;
@@ -63,6 +69,7 @@ export interface ReaderApi {
 }
 
 export const readerChannels = {
+  getAcquisitionProgress: 'reader:acquisition-current', cancelAcquisition: 'reader:cancel-acquisition',
   saveDiscussionView: 'reader:save-discussion-view',
   openSource: 'reader:open-source',
   getHelperStatus: 'reader:helper-status', chooseHelper: 'reader:choose-helper', clearHelper: 'reader:clear-helper',

@@ -229,3 +229,8 @@ time, .muted { color: var(--muted); }
 .source-button { display: grid; place-items: center; min-width: 32px; min-height: 32px; padding: 6px; color: var(--accent); background: transparent; border: 1px solid var(--border); border-radius: 4px; }
 .discussion-sort { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin: 6px 0; font-size: 12px; color: var(--muted); }
 .discussion-sort label { display: flex; align-items: center; gap: 6px; }
+
+.acquisition-status { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+.acquisition-status progress { width: 4rem; height: .5rem; }
+.acquisition-status time { font-variant-numeric: tabular-nums; }
+.acquisition-completion { padding: .3rem .8rem; color: var(--muted); font-size: .85rem; }

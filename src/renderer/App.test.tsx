@@ -8,6 +8,7 @@ function mutation(comments: ReaderState['comments'][string]): SeenMutationResult
 import { initialComments, items } from '../fixtures/discussions';
 import { toggleSeen } from '../domain/discussion';
 import type { AcquisitionResult, ReaderApi, ReaderState, Result } from '../shared/reader-api';
+import type { AcquisitionNotification } from '../shared/acquisition';
 import { closeWorkspaceTab, discussionTab, openWorkspaceTab, moveWorkspaceTab } from '../domain/workspace';
 import { defaultQuery, evaluateDiscussionQuery } from '../domain/discussion-query';
 import { createQueryExecutor } from './query-executor';
@@ -34,6 +35,9 @@ beforeEach(() => {
     return { ok: true as const, value: state.workspace };
   };
   api = {
+    onAcquisitionProgress: vi.fn(() => () => undefined),
+    getAcquisitionProgress: vi.fn(async () => ({ ok: true as const, value: null })),
+    cancelAcquisition: vi.fn(async () => ({ ok: true as const, value: null })),
     saveDiscussionView: vi.fn(async request => { state = { ...state, discussionViews: { ...state.discussionViews, [request.itemId]: request } }; return { ok: true as const, value: null }; }),
     openSource: vi.fn(async () => ({ ok: true as const, value: null })),
     getHelperStatus: vi.fn(async ({ kind }) => ({ ok: true as const, value: { kind, mode: 'unavailable' as const, state: 'unavailable' as const, testedVersion: kind === 'yt-dlp' ? '2026.08.19' : '0.4.0' } })),
@@ -348,7 +352,8 @@ it('failed preferences keep saved language/appearance and rejected transport is 
 function acquired(): AcquisitionResult {
   const item = { ...items[0], id: 'acquired-video', removable: true, sourceId: 'abcdefghijk', title: 'Acquired video' };
   const comment = { ...initialComments['video-demo'][0], id: 'acquired-comment', itemId: item.id, parentId: null, seen: false, text: 'Acquired comment' };
-  return { state: { discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system' },
+  return { operationId: 'fixture-operation', timings: { targetMs: 0, helperMs: 0, preparationMs: 0, fetchMs: 0, processingMs: 0, savingMs: 0, bootstrapMs: 0, totalMs: 0 },
+    state: { discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system' },
     workspace: { tabs: [...items, item].map(item => discussionTab(item.id)), activeTabId: discussionTab(item.id).id, revision: 1 } },
     summary: { itemId: item.id, coverage: 'unknown', inserted: 1, updated: 0, warnings: 0 } };
 }
@@ -1114,4 +1119,52 @@ it('bulk no-op/error retains prior acknowledged checkboxes and durable Undo', as
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Continue' }));
   await within(screen.getByRole('dialog')).findByRole('alert');
   expect(checked()).toEqual(original); expect(currentView().getByRole('button', { name: 'Undo' })).toBeTruthy();
+});
+
+it.each(['en', 'pl'] as const)('global progress remains visible through tab switches; cancellation is neutral in %s', async locale => {
+  state = { ...acquired().state, preferences: { locale, appearance: 'system' } };
+  let listener!: (value: AcquisitionNotification) => void;
+  let finish!: (value: Result<AcquisitionResult>) => void;
+  api.onAcquisitionProgress = callback => { listener = callback; return () => undefined; };
+  const progress = { operationId: 'global-test', kind: 'refresh' as const, sourceKind: 'youtube-video' as const,
+    itemId: 'acquired-video', stage: 'fetching' as const, startedAt: Date.now(), cancellable: true };
+  api.refresh = vi.fn<ReaderApi['refresh']>(() => { listener(progress); return new Promise(resolve => { finish = resolve; }); });
+  api.cancelAcquisition = vi.fn<ReaderApi['cancelAcquisition']>(async request => {
+    expect(request).toEqual({ operationId: 'global-test' });
+    listener({ operationId: 'global-test', settled: true });
+    finish({ ok: false, error: { code: 'ACQUISITION_CANCELLED' } });
+    return { ok: true, value: null };
+  });
+  await showReader();
+  fireEvent.click(screen.getByRole('button', { name: locale === 'en' ? 'Refresh' : 'Od\u015bwie\u017c' }));
+  await screen.findByRole('progressbar');
+  fireEvent.click(checkboxes()[0]); await waitFor(() => expect(api.toggleSeen).toHaveBeenCalled());
+  const settings = document.getElementById('settings-toggle'); if (!settings) throw new Error('Missing Settings');
+  fireEvent.click(settings);
+  await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe('panel-settings'));
+  expect(screen.getByRole('progressbar')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: locale === 'en' ? 'Cancel' : 'Anuluj' }));
+  await waitFor(() => expect(screen.queryByRole('progressbar')).toBeNull());
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByText(locale === 'en' ? 'Refresh cancelled. Saved discussion was unchanged.'
+    : 'Od\u015bwie\u017canie anulowane. Zapisana dyskusja pozosta\u0142a bez zmian.')).toBeTruthy();
+  act(() => listener(progress));
+  expect(screen.queryByRole('progressbar')).toBeNull();
+});
+
+it('committed Refresh shows non-cancellable Updating view until query settlement; query failure remains a view error', async () => {
+  state = acquired().state;
+  let finish!: (value: Awaited<ReturnType<QueryExecutor['evaluate']>>) => void;
+  vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate: () => new Promise(resolve => { finish = resolve; }), dispose: vi.fn() } as QueryExecutor as ReturnType<typeof createQueryExecutor>));
+  api.refresh = vi.fn(async () => ({ ok: true as const, value: acquired() }));
+  await showReader();
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await screen.findByText('Updating view…');
+  expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+  await act(async () => finish({ ok: false, error: 'QUERY_TOO_EXPENSIVE' }));
+  await waitFor(() => expect(screen.queryByText('Updating view…')).toBeNull());
+  expect(screen.queryByText('Refresh cancelled. Saved discussion was unchanged.')).toBeNull();
+  expect(screen.queryByText('The discussion could not be acquired. Stored comments are unchanged. Check the connection and try again.')).toBeNull();
+  expect(api.cancelAcquisition).not.toHaveBeenCalled();
+  expect(document.querySelector('.acquisition-completion')?.textContent).toContain('Inserted: 1');
 });

@@ -9,7 +9,19 @@ const { spawn } = require('node:child_process');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 if (process.versions.electron && process.type === 'browser') {
-  const { app } = require('electron');
+  const { app, ipcMain } = require('electron');
+  // Test-only observation of completed safe acknowledgments, before loading the
+  // production entry. No raw output/content or process capability is logged.
+  const originalHandle = ipcMain.handle.bind(ipcMain);
+  ipcMain.handle = (channel, handler) => originalHandle(channel, async (...args) => {
+    const result = await handler(...args);
+    if (channel === 'reader:acquire' || channel === 'reader:refresh') console.log(JSON.stringify({
+      operation: channel, ok: result.ok, ...(result.ok ? { timings: result.value.timings,
+        inserted: result.value.summary.inserted, updated: result.value.summary.updated, warnings: result.value.summary.warnings }
+        : { code: result.error.code }),
+    }));
+    return result;
+  });
   const root = process.env.YOUTUBE_COMMENTS_DEMO_ROOT;
   const phase = process.env.YOUTUBE_COMMENTS_LIVE_PHASE;
   const checkpoint = path.join(root, 'live-checkpoint.json');
@@ -50,8 +62,34 @@ if (process.versions.electron && process.type === 'browser') {
         console.log(JSON.stringify({ liveAcquisitionMs: Date.now()-started, source: url.includes('/post/') ? 'Community' : 'video' }));
         return snapshot();
       }
+      async function cancelRefresh(itemId, source) {
+        const workspaces = () => fs.readdirSync(os.tmpdir()).filter(name => name.startsWith('youtube-comments-acquisition-'));
+        const previous = new Set(workspaces());
+        await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
+        await waitFor("window.__liveProgress.at(-1)?.stage === 'fetching' && document.querySelector('.acquisition-status button')", 'cancellable fetch', 4000);
+        const operationId = await js('window.__liveProgress.at(-1).operationId');
+        assert.equal(await js("document.querySelector('.acquisition-status progress').hasAttribute('value')"), false);
+        await js("document.querySelector('#settings-toggle').click()");
+        await waitFor("document.querySelector('#panel-settings:not([hidden])')", 'Settings during fetch');
+        assert.equal(await js("document.querySelector('.acquisition-status button') !== null"), true);
+        const before = await snapshot();
+        await js("document.querySelector('.acquisition-status button').click()");
+        await waitFor("!document.querySelector('.acquisition-status')", 'cancel settlement and cleanup', 4000);
+        const after = await snapshot();
+        for (const key of ['items', 'comments', 'seenUndo', 'discussionViews']) assert.deepEqual(after[key], before[key], `Cancelled ${source} preserves ${key}`);
+        assert.equal(await js("document.querySelector('[role=alert]') === null"), true);
+        assert.deepEqual(await js(`window.reader.cancelAcquisition({operationId:${JSON.stringify(operationId)}})`), {ok:false,error:{code:'NOT_FOUND'}});
+        assert.deepEqual(workspaces().filter(name => !previous.has(name)), [], 'No new Community temp workspace remains');
+        await js(`document.getElementById(${JSON.stringify('tab-discussion:' + itemId)}).click()`);
+        await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id === ${JSON.stringify('panel-' + itemId)}`, 'return to cancelled discussion');
+        await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
+        await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').disabled && !document.querySelector('.acquisition-status')", 'successful operation after cancellation', 4000);
+        assert.equal(await js("document.querySelector('[role=alert]') === null"), true);
+        console.log(JSON.stringify({source, cancelledDuringFetch:true, statePreserved:true, nextRefreshSucceeded:true, temporaryCleanup:true}));
+      }
       try {
         await waitFor("document.querySelector('.tabs') !== null", 'bootstrap');
+        await js('window.__liveProgress=[]; window.__liveUnsubscribe=window.reader.onAcquisitionProgress(value=>window.__liveProgress.push(value)); void 0');
         let state = await snapshot();
         if (phase === 'write') {
           state = await acquire(process.env.YOUTUBE_COMMENTS_LIVE_VIDEO_URL);
@@ -81,6 +119,7 @@ if (process.versions.electron && process.type === 'browser') {
           assert.equal(state.workspace.activeTabId, 'discussion:' + videoId);
           assert.equal(state.comments[videoId].find(comment => comment.id === seenId).seen, true);
           assert.equal(state.comments[videoId].find(comment => comment.id === seenId).author?.avatarUrl, avatarBefore);
+          await cancelRefresh(videoId, 'video');
           // Sanitize visible source text before a local layout-only screenshot.
           await js(String.raw`(() => {
             document.querySelector('[role=tabpanel]:not([hidden]) h1').textContent = 'A public discussion — compact reader verification';
@@ -114,6 +153,7 @@ if (process.versions.electron && process.type === 'browser') {
             assert.equal(state.comments[postId].find(comment => comment.id === postSeenId).seen, true);
             console.log(JSON.stringify({ phase, source: 'Community', comments: state.comments[postId].length,
               avatars: state.comments[postId].filter(comment => comment.author?.avatarUrl).length }));
+            await cancelRefresh(postId, 'Community');
           }
           await js(`document.getElementById('tab-discussion:${videoId}').nextElementSibling.click()`);
           await waitFor(`document.getElementById('tab-discussion:${videoId}') === null`, 'close stored video');
@@ -142,6 +182,7 @@ if (process.versions.electron && process.type === 'browser') {
           assert.equal(await js("document.querySelectorAll('.library-entry').length"), state.items.length);
           console.log(JSON.stringify({ phase, restoredTabs: state.workspace.tabs.length, storedItems: state.items.length, seenRestored: true }));
         }
+        await js('window.__liveUnsubscribe()');
         clearTimeout(watchdog); app.quit();
       } catch (error) { console.error(error); clearTimeout(watchdog); app.exit(1); }
     });

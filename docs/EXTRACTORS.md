@@ -66,7 +66,7 @@ Stdout/archive is bounded at 128 MiB and stderr at 64 KiB. Fixed failure tokens,
 exit codes and adapter issues feed existing history; raw stderr, paths and
 payloads do not. Deadline/quit kills the owned process tree on Windows and waits
 for close before cleanup. Normal quit awaits cleanup; abrupt crash recovery,
-distribution, cancellation/progress and history retention remain open.
+distribution and history retention remain open. ADR 0018 implements coarse progress and explicit user cancellation.
 
 ## Boundary and responsibilities
 
@@ -187,4 +187,23 @@ Bundling requires checking the actual redistribution licenses and obligations fo
 
 Adapter tests should use saved representative output fixtures, including unavailable metadata, malformed records, unexpected parent order, and partial output. Tests must prove that backend-specific types stop at the adapter boundary. Normal CI must not require network access or an installed extractor. Optional live checks are a separate suite; see [Testing](TESTING.md).
 
-This pure milestone settles observation types, investigated versions/invocation intent, unknown/partial evidence and fixture provenance in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). ADR 0004 implements normalized ingestion, identity/conflict/relationship policy and baseline/history. ADR 0005 selects development resolution/version checks, owned config/output cleanup, conservative process failure, buffers/deadlines, one-live-operation scheduling and structured diagnostic storage. User cancellation, crash-temp recovery and diagnostic retention duration remain open. Do not silently turn one backend's incidental behavior into a product guarantee.
+This pure milestone settles observation types, investigated versions/invocation intent, unknown/partial evidence and fixture provenance in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). ADR 0004 implements normalized ingestion, identity/conflict/relationship policy and baseline/history. ADR 0005 selects development resolution/version checks, owned config/output cleanup, conservative process failure, buffers/deadlines, one-live-operation scheduling and structured diagnostic storage. ADR 0018 implements user cancellation/progress; crash-temp recovery and diagnostic retention duration remain open. Do not silently turn one backend's incidental behavior into a product guarantee.
+
+## Coarse progress and cancellation instrumentation (ADR 0018)
+
+[ADR 0018](decisions/0018-acquisition-progress-and-safe-cancellation.md) instruments
+checking-helper (resolution plus version probe), preparing (workspace/config/command),
+fetching (owned child) and processing (file reading/normalization/cleanup). Main service
+adds non-cancellable saving and measures result bootstrap separately. No stage asserts
+a known total or percentage. Every acquisition still performs its existing bounded
+identity probe and retains tested/untested policy; stage durations use a monotonic clock.
+
+A fresh per-operation signal is composed with shutdown via AbortSignal.any and reaches
+both probes and extraction. Resolution/preparation/read/normalize checkpoints reject
+cancelled output before merge; asynchronous yields admit pending IPC before parsing and
+before saving. Synchronous normalization is not internally preempted. User cancellation
+reuses the executor's Windows process-tree termination and close-before-cleanup behavior.
+Community cleanup remains awaited in finally. A Cancel acknowledgment is intent only;
+fully settled cancellation waits for the original operation. No raw paths/commands,
+stderr, cookies or process handles enter progress payloads. Detailed safe timings return
+with successful acknowledgments, without SQLite timing records or raw-output retention.

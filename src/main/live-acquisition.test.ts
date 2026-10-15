@@ -197,7 +197,7 @@ it('counts probe time in the overall deadline and refuses output completed after
       now = 101;
       return outcome(JSON.stringify(payload));
     });
-    const extract = createLiveExtractor({ execute, resolve: resolver, deadlineMs: 100 });
+    const extract = createLiveExtractor({ execute, resolve: resolver, deadlineMs: 100, clock: () => now });
     const result = await extract({ sourceKind: 'youtube-video', sourceId: 'VidDemo_001', url: videoUrl }, new AbortController().signal);
     expect(execute.mock.calls[0][0].timeoutMs).toBe(100);
     expect(result).toMatchObject({ error: 'ACQUISITION_FAILED', extraction: { coverage: { kind: 'failed', reason: 'execution-deadline-or-shutdown' } } });

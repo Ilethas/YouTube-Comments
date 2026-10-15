@@ -1,5 +1,90 @@
 # Testing strategy
 
+## Acquisition progress, cancellation and timing (2026-10-15)
+
+[ADR 0018](decisions/0018-acquisition-progress-and-safe-cancellation.md) adds safe
+global operation progress and explicit user cancellation without changing extractor
+commands, coverage policy, schema, helper distribution or persistence design.
+
+Deterministic coverage includes ordered video/Community stages, stable per-run and
+distinct later IDs, exact safe notification/cancel payloads, stale/completed Cancel,
+pre-save race ordering and non-cancellable Saving, failed target-associated cancelled
+history, no item/tab on cancelled initial acquire, real nonempty NEW cohort preservation,
+comments/seen/Undo/persisted-view preservation, active probe/fetch cancellation,
+Community cleanup after child close, shutdown without user-cancelled history, next
+successful operation, injected stage/target/merge/bootstrap timing and no timing sleeps.
+The real Windows process test starts a parent and descendant, waits for readiness,
+cancels through the existing executor, and verifies the descendant no longer exists.
+
+Bridge/component tests cover exact payload rejection and unsubscribe, StrictMode's
+single live subscription, snapshot/event races, completed-ID retirement, local
+monotonic elapsed ticking across a wall-clock change, indeterminate progress without
+a value, Cancel disappearing at Saving/Updating view, global progress through Settings
+navigation with interactive seen writes, EN/PL neutral cancellation, and query failure
+remaining a view error after committed Refresh. Existing helper confidence, seen,
+query, view-restoration and sequential-operation regressions remain covered.
+
+### Anonymous live evidence
+
+Expanded `scripts/verify-live-reader.cjs` uses real Forge-built main/preload/renderer,
+the existing installed direct helpers and an owned disposable profile. It logs only
+safe timings/counts/issue patterns. No raw comment text/helper output is logged or
+retained. A test-only main IPC wrapper observes acknowledged timing summaries; it
+adds no shipped capability. Both public targets remain the same repository fixtures:
+[video IFPKfypw2CQ](https://www.youtube.com/watch?v=IFPKfypw2CQ) and
+[post UgkxLEL8EllifRA8ZLoEkkTXSJaa0s_cWf6n](https://www.youtube.com/post/UgkxLEL8EllifRA8ZLoEkkTXSJaa0s_cWf6n).
+
+Observed durations in milliseconds, rounded to one decimal:
+
+| Operation | Target read | Helper/probe | Prepare | Fetch | Process/cleanup | Merge | Bootstrap | Total main |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Video acquire, 173 comments | 0.6 | 517.1 | 0.2 | 12959.3 | 5.6 | 27.1 | 5.6 | 13515.5 |
+| Video Refresh, 173 observations | 4.7 | 230.3 | 0.1 | 10945.1 | 4.3 | 29.2 | 8.0 | 11221.7 |
+| Video Refresh after cancellation | 3.4 | 264.4 | 0.1 | 9930.3 | 4.4 | 23.9 | 6.7 | 10233.3 |
+| Community acquire, 34 comments | 0.1 | 125.2 | 1.6 | 4443.1 | 12.7 | 6.9 | 6.2 | 4595.9 |
+| Community Refresh, 34 observations | 4.8 | 127.1 | 1.2 | 4187.4 | 14.4 | 7.2 | 6.3 | 4348.3 |
+| Community Refresh after cancellation | 4.0 | 127.8 | 1.1 | 6911.2 | 8.0 | 6.1 | 5.0 | 7063.2 |
+
+Fetch accounts for approximately 96–98% of these samples. These intervals identify
+time inside helper execution, including its network work; they do not isolate network
+from helper internals. Pre-Refresh full repository reads were 3–5 ms; video merge plus
+bootstrap was 31–37 ms; Community 11–14 ms. No version-probe cache, query/persistence
+redesign or extraction optimization is justified by these individual observations.
+The slower final Community sample also demonstrates variability rather than a budget.
+Bootstrap measures ReaderState construction, not Electron's internal serialization.
+Automation's video acquire/Refresh totals were 13.692/11.303 s and Community acquire
+4.687 s; their difference from main includes IPC, rendering/view work and polling, so
+it cannot be attributed precisely to any one of those costs.
+
+For both targets, Acquire and Refresh succeeded, then a Refresh was explicitly
+cancelled during fetching after switching to Settings. Global progress remained
+visible, no percentage was present, and comments/items (including latest accepted
+NEW identity), seen/Undo and persisted views were unchanged at cancellation. Both
+then refreshed successfully. The Community cancellation window was long enough;
+no newly created acquisition workspace remained. Completed IDs returned harmless
+NOT_FOUND. Both cancelled attempts appear as failed history, never accepted empty
+or partial results. Existing coverage/warnings remain: video partial helper-warning
+evidence with zero adapter issues; Community partial configured limits with one
+protocol-relative post-author avatar warning. 173/34 commenter avatars were retained.
+Real restart restored stored items, workspace and seen state. The disposable profile
+and temporary acquisition files were removed. The earlier 12.47/11.94/4.09 s hands-on
+observations remain individual samples, not performance targets.
+
+### Verification
+
+`npm.cmd test`: **638 tests across 49 files pass**, including the actual Windows
+process-tree check. `npm.cmd run typecheck` and `npm.cmd run lint` pass without
+warnings. Renderer build passes (431.47 kB JS / 133.57 kB gzip, separate 2.60 kB
+same-origin query worker). Forge main/preload/renderer/worker bundle checks pass.
+`npm.cmd run test:electron` passes the real built entries, persisted seen/workspace,
+helper Settings, bulk/Undo and seven view-restoration phases/restarts, including
+10k/50k saved-view reconstruction and fallback. Live acquire/Refresh/cancellation/
+restart evidence is above. Sandbox esbuild configuration access and Electron GPU
+startup required the normal broader-access reruns; the final checks passed there.
+Vite's existing CJS deprecation and occasional Electron GPU shutdown messages remain
+non-failing. Forge still exits 0 at Finalizing package without an `out` artifact;
+this milestone only checks its bundles. It does not repair or deliver packaging.
+
 ## Persistent discussion view restoration (2026-10-14)
 
 [ADR 0017](decisions/0017-persistent-discussion-view-restoration.md) implements

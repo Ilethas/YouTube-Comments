@@ -37,7 +37,7 @@ export function useDiscussionViews(options?: { readonly saved: ReaderState['disc
     has(id: string) { return sessions.current.has(id); },
     flush(id: string) { return sessions.current.get(id)?.flush() ?? Promise.resolve(); },
     remove(id: string) { removed.current.add(id); sessions.current.get(id)?.dispose(); sessions.current.delete(id); },
-    refresh(id: string, comments: readonly Comment[], item?: ContentItem) { const session = sessions.current.get(id); if (session) void session.refresh(comments, item); },
+    refresh(id: string, comments: readonly Comment[], item?: ContentItem) { const session = sessions.current.get(id); return session?.refresh(comments, item) ?? Promise.resolve(); },
     seenChanged(id: string) { sessions.current.get(id)?.seenChanged(); },
   }), []);
 }

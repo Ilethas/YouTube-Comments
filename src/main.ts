@@ -1,3 +1,4 @@
+import { acquisitionProgressChannel, isAcquisitionNotification } from './shared/acquisition';
 import { app, BrowserWindow, shell } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -64,7 +65,11 @@ app.on('ready', () => {
       if (mode === 'development') repository.initializeDemo();
       return repository;
     } catch (error) { repository.close(); throw error; }
-  }, app.getPreferredSystemLanguages(), console.error, undefined, { choose: createHelperPicker(() => mainWindow) }, url => shell.openExternal(url));
+  }, app.getPreferredSystemLanguages(), console.error, undefined, { choose: createHelperPicker(() => mainWindow) }, url => shell.openExternal(url), value => {
+    const contents = mainWindow?.webContents;
+    if (contents && !contents.isDestroyed() && contents.mainFrame.url === documentUrl && isAcquisitionNotification(value))
+      contents.send(acquisitionProgressChannel, value);
+  });
   registerReaderIpc(service, () => mainWindow, documentUrl);
   createWindow();
 });

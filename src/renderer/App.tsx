@@ -1,3 +1,6 @@
+import { AcquisitionStatus } from './AcquisitionStatus';
+import { useAcquisitionProgress } from './use-acquisition-progress';
+import type { AcquisitionProgress } from '../shared/acquisition';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AcquisitionResult, ErrorCode, ReaderApi, ReaderState, Result } from '../shared/reader-api';
 import type { Appearance } from '../shared/preferences';
@@ -80,6 +83,10 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   const [acquiring, setAcquiring] = useState<'acquiring' | 'refreshing'>();
   const [acquisitionError, setAcquisitionError] = useState<ErrorCode>();
   const [acquisitionStatus, setAcquisitionStatus] = useState<string>();
+  const progress = useAcquisitionProgress(api);
+  const [updatingView, setUpdatingView] = useState<AcquisitionProgress>();
+  const [completion, setCompletion] = useState<Pick<AcquisitionResult, 'summary' | 'timings'>>();
+  const [cancelledKind, setCancelledKind] = useState<'acquire' | 'refresh'>();
   const acquisitionBusy = useRef(false);
   const acknowledgedSeen = useRef(new Map<string, boolean>());
   const acquire = useCallback(async function acquire(action: () => Promise<Result<AcquisitionResult>>, refresh = false) {
@@ -90,6 +97,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     acknowledgedUndo.current.clear();
     setAcquiring(refresh ? 'refreshing' : 'acquiring');
     setAcquisitionError(undefined);
+    setCancelledKind(undefined); setCompletion(undefined);
     setAcquisitionStatus(undefined);
     try {
       const result = await action();
@@ -101,13 +109,21 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
         setSeenUndo(Object.fromEntries(Object.entries(result.value.state.seenUndo).filter(([id]) => !removedIds.current.has(id))
           .map(([id, undo]) => [id, acknowledgedUndo.current.has(id) ? acknowledgedUndo.current.get(id) ?? null : undo])));
         const refreshedId = result.value.summary.itemId;
-        if (mergedComments[refreshedId]) views.refresh(refreshedId, mergedComments[refreshedId], result.value.state.items.find(item => item.id === refreshedId));
+        if (mergedComments[refreshedId]) {
+          setUpdatingView({ operationId: result.value.operationId, kind: refresh ? 'refresh' : 'acquire',
+            sourceKind: result.value.state.items.find(item => item.id === refreshedId)?.sourceKind === 'youtube-community-post' ? 'youtube-community-post' : 'youtube-video',
+            stage: 'saving', startedAt: Date.now() - result.value.timings.totalMs, cancellable: false });
+          await views.refresh(refreshedId, mergedComments[refreshedId], result.value.state.items.find(item => item.id === refreshedId));
+          setUpdatingView(undefined);
+        }
+        setCompletion({ summary: result.value.summary, timings: result.value.timings });
         acceptWorkspace(result.value.state.workspace);
         if (!refresh) { setUrl(''); setShowAcquisition(false); }
         setAcquisitionStatus(result.value.summary.coverage !== 'complete' ? result.value.summary.itemId : undefined);
-      } else setAcquisitionError(result.error.code);
+      } else if (result.error.code === 'ACQUISITION_CANCELLED') setCancelledKind(refresh ? 'refresh' : 'acquire');
+      else setAcquisitionError(result.error.code);
     } catch { setAcquisitionError('ACQUISITION_FAILED'); }
-    finally { acquisitionBusy.current = false; setAcquiring(undefined); }
+    finally { acquisitionBusy.current = false; setAcquiring(undefined); setUpdatingView(undefined); }
   }, [api, views]);
   function acceptWorkspace(value: WorkspaceState) {
     setWorkspace(current => value.revision >= current.revision ? value : current);
@@ -174,6 +190,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   }, []);
   const openSource = useCallback((itemId: string) => api.openSource({ itemId }), [api]);
   const t = translator(locale);
+  const operationProgress = updatingView ?? progress;
   const openItems = workspace.tabs.flatMap(tab => tab.kind === 'discussion' ? items.find(item => item.id === tab.itemId) ?? [] : []);
   const isOpen = (id: string) => workspace.tabs.some(tab => tab.kind === 'discussion' && tab.itemId === id);
   const itemLabel = (item: ReaderState['items'][number]) => item.kind === 'video' ? item.title
@@ -279,7 +296,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     <header className="app-toolbar">
       <div className="brand"><span className="brand-icon" aria-hidden="true">≡</span><strong>{t('appName')}</strong></div>
       <div className="workspace-actions">
-        <button title={shortcutHint(locale, 'open-url')} aria-expanded={showAcquisition} aria-controls="acquisition-form" onClick={() => { setShowAcquisition(value => !value); }}>{t('acquire')}</button>
+        <button title={shortcutHint(locale, 'open-url')} disabled={!!acquiring || !!progress} aria-expanded={showAcquisition} aria-controls="acquisition-form" onClick={() => { setShowAcquisition(value => !value); }}>{t('acquire')}</button>
         <button id="library-toggle" disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openLibrary()); }}>{t('library')}</button>
         <button id="settings-toggle" title={shortcutHint(locale, 'keyboard-help')} disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openSettings()); }}>{t('settings')}</button>
       </div>
@@ -290,10 +307,15 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       <label htmlFor="source-url">{t('sourceUrl')}</label>
       <input id="source-url" type="text" inputMode="url" value={url} placeholder={t('urlPlaceholder')} autoFocus
         onChange={event => setUrl(event.target.value)} autoComplete="off" spellCheck={false} />
-      <button type="submit" title={shortcutHint(locale, 'submit', t('openUrl'))} disabled={!!acquiring || !url.trim()}>{t('openUrl')}</button>
+      <button type="submit" title={shortcutHint(locale, 'submit', t('openUrl'))} disabled={!!acquiring || !!progress || !url.trim()}>{t('openUrl')}</button>
       <button type="button" title={shortcutHint(locale, 'cancel')} onClick={() => setShowAcquisition(false)}>{t('cancel')}</button>
     </form>}
-    {acquiring && <div className="acquisition-status" role="status">{t(acquiring)}</div>}
+    {operationProgress ? <AcquisitionStatus key={operationProgress.operationId} progress={operationProgress} locale={locale} updating={!!updatingView}
+      cancel={() => api.cancelAcquisition({ operationId: operationProgress.operationId })} />
+      : acquiring && <div className="acquisition-status" role="status">{t(acquiring)}</div>}
+    {cancelledKind && <div className="acquisition-completion" role="status">{t(cancelledKind === 'refresh' ? 'refreshCancelled' : 'acquireCancelled')}</div>}
+    {completion && <div className="acquisition-completion" aria-live="polite">{t('acquisitionSummary', { inserted: completion.summary.inserted, updated: completion.summary.updated, warnings: completion.summary.warnings })}
+      {completion.timings && <> {t('acquisitionCompleted', { seconds: new Intl.NumberFormat(locale, { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(completion.timings.totalMs / 1000) })}</>}</div>}
     {acquisitionError && <div className="save-error" role="alert">{t(errorKey)}</div>}
     <WorkspaceTabs workspace={workspace} locale={locale} disabled={workspaceSaving}
       label={tab => {
@@ -358,7 +380,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     {openItems.map(item => <main key={item.id} id={`panel-${item.id}`} role="tabpanel" aria-labelledby={`tab-${discussionTab(item.id).id}`}
       className="reader-panel" hidden={activeId !== discussionTab(item.id).id} tabIndex={0}>
       {(activeId === discussionTab(item.id).id || views.has(item.id)) && <DiscussionPanel item={item} comments={comments[item.id]} session={views.get(item.id, comments[item.id])}
-        locale={locale} saving={saving && savingItemId === item.id} refreshDisabled={!!acquiring}
+        locale={locale} saving={saving && savingItemId === item.id} refreshDisabled={!!acquiring || !!progress}
         coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onToggle={toggleComment}
         undo={seenUndo[item.id]} feedback={seenFeedback[item.id]} onBulk={bulkSeen} onUndo={undoSeen} onBulkModal={setBulkModalOpen} />}
     </main>)}
