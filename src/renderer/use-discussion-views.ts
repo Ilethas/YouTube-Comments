@@ -36,6 +36,17 @@ export function useDiscussionViews(options?: { readonly saved: ReaderState['disc
     },
     has(id: string) { return sessions.current.has(id); },
     flush(id: string) { return sessions.current.get(id)?.flush() ?? Promise.resolve(); },
+    async flushAll(): Promise<boolean> {
+      const current = [...sessions.current.values()];
+      // Let accepted worker evaluations settle before freezing their semantic
+      // applied intent. The existing executor owns cancellation/deadlines.
+      await Promise.all(current.map(session => new Promise<void>(resolve => {
+        if (!session.state.pending) { resolve(); return; }
+        const unsubscribe = session.subscribe(() => { if (!session.state.pending) { unsubscribe(); resolve(); } });
+      })));
+      await Promise.all(current.map(session => session.flush()));
+      return current.every(session => !session.state.saveFailed);
+    },
     remove(id: string) { removed.current.add(id); sessions.current.get(id)?.dispose(); sessions.current.delete(id); },
     refresh(id: string, comments: readonly Comment[], item?: ContentItem) { const session = sessions.current.get(id); return session?.refresh(comments, item) ?? Promise.resolve(); },
     seenChanged(id: string) { sessions.current.get(id)?.seenChanged(); },

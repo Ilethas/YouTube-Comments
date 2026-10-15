@@ -1,5 +1,48 @@
 # Database and durable data
 
+## Complete backup and full-profile restore (ADR 0019)
+
+Settings creates independently usable complete SQLite snapshots with asynchronous
+`node:sqlite.backup`. Every authoritative table is included: items/comments and
+metadata, source/discovery/refresh history and attempt order, seen/revisions/Undo,
+workspace, preferences, persistent discussion views and helper selections. Chromium
+caches, helper binaries and temporary process files are not authoritative backup
+data. JSON discussion export remains separate and unimplemented.
+
+Main owns native Save/Open dialogs. Backups first use private sibling `.partial`
+files, full validation and flushing, then exclusive publication. Existing files
+remain untouched; choose a new filename. Internal profile destinations and live
+database restore inputs/aliases reject. Destination filesystems must support hard
+links; unsupported filesystems fail safely. No open database file copy is used;
+SQLite backup includes committed WAL state without copying sidecars.
+
+Restore stages the selected standalone snapshot in
+`<profile>/recovery/restore-<UUID>/candidate.sqlite`. It validates recognized schema,
+full SQLite integrity, foreign keys and application invariants. Schemas 1–7 migrate
+only on the copy, followed by revalidation/bootstrap. Current schema is 8. Version
+0/unknown/modified schemas and newer versions reject. The source stays untouched.
+
+Explicit Cancel-first native confirmation precedes child settlement, a verified
+current-data `safety.sqlite`, WAL checkpoint/DELETE transition and connection close.
+Immutable phase files bracket same-volume renames to `previous.sqlite` then the
+absent live path. Startup validates an accepted replacement or restores safety;
+interrupted rollback is repeatable. Failed candidates/sidecars are quarantined.
+Recovery failure reports the profile path and never creates an empty fallback.
+Single-instance ownership prevents competing application writers.
+
+Nothing in `recovery` is pruned, including cancelled staged candidates. Safety is
+separate and never consumed. Ambiguous recovery/missing live data stops startup.
+Development seeds only a genuinely new profile, never a restored empty library.
+Snapshots can contain personal metadata and machine-specific helper paths; restored
+paths retain normal validation/environment precedence. Profile isolation is unchanged.
+
+Before opening a recognized older existing profile, async startup creates a verified
+`recovery/pre-migration-vN-<UUID>.sqlite`. Failure aborts before transactional schema
+changes. This implements the future released-schema safety policy; every released
+migration still needs populated upgrade/failure tests. No downgrade runs.
+See [ADR 0019](decisions/0019-consistent-sqlite-backup-and-safe-restore.md) for exact
+ordering and Windows limits; [TESTING](TESTING.md) records measurements.
+
 ## Schema 8 discussion view intent (ADR 0017)
 
 One optional strict `discussion_view_state` row per content item stores bounded
@@ -35,7 +78,7 @@ workspace/content/history. Helper selections already store paths only; tested
 versus untested is probe evidence, not a new durable configuration field.
 
 
-SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 7 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW. [ADR 0014](decisions/0014-main-owned-helper-settings.md) adds separate profile-local helper selections.
+SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 8 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW. [ADR 0014](decisions/0014-main-owned-helper-settings.md) adds separate profile-local helper selections.
 
 The implementation below is deliberately small. Later sections describe the broader conceptual target and must not be read as implemented tables/features. Read the [domain model](DOMAIN_MODEL.md) for meanings and [architecture](ARCHITECTURE.md) for ownership.
 
@@ -150,11 +193,11 @@ Timestamps use ISO 8601 UTC TEXT (Z suffix, supplied precision retained). Option
 
 One main-owned synchronous connection configures foreign keys ON explicitly, `busy_timeout=5000`, and `synchronous=FULL`; new files use SQLite's default DELETE rollback journal. Multi-comment state writes and demo inserts use `BEGIN IMMEDIATE`/commit/rollback. This is appropriate for the current tiny dataset, not a large-data responsiveness claim. No pooling, WAL transition, or worker design is selected.
 
-An ordered migration list uses `PRAGMA user_version`: an empty database starts at 0 and migration 1 introduces the complete initial schema/preferences. All pending migrations and their version updates share one transaction. A newer version is rejected before any migration; failures close the connection without resetting/deleting/recreating the file. Tests exercise version-0 preservation, populated 1→2 preservation/rollback and failed later migrations over the current schema. Backup-before-migration remains to be selected before a released schema evolves.
+An ordered migration list uses `PRAGMA user_version`: an empty database starts at 0 and migration 1 introduces the complete initial schema/preferences. All pending migrations and their version updates share one transaction. A newer version is rejected before any migration; failures close the connection without resetting/deleting/recreating the file. Tests exercise version-0 preservation, populated 1→2 preservation/rollback and failed later migrations over the current schema. ADR 0019 now creates verified pre-migration snapshots before startup schema changes.
 
 Development uses `<Electron appData>/youtube-comments-development/reader.sqlite`; future packaged production uses `<appData>/youtube-comments-production/reader.sqlite`. Tests supply explicit absolute files in newly created temporary directories and clean only directories they own. Missing/relative test paths or profile roots fail. The privileged `YOUTUBE_COMMENTS_DEMO_ROOT` option selects an absolute alternative development root with the same development-directory suffix, including for packaged checks. Empty/relative values never fall back. Main also separates Chromium `userData` using the chosen profile directory. On Windows the normal appData root is `%APPDATA%`; the renderer receives none of these paths.
 
-Development initialization inserts/opens the two synthetic discussions only into a database with zero content items, transactionally. It never resets existing preferences/seen/workspace, including an empty workspace over a nonempty library. Packaged production is not seeded. Tab IDs/order/active selection, preferences and manual state survive restart; the current uncollapsed view intent now restores under ADR 0017.
+Development startup seeds the two synthetic discussions only for a genuinely new profile, transactionally into a database with zero content items; an existing or restored empty database is never seeded. It never resets existing preferences/seen/workspace, including an empty workspace over a nonempty library. Packaged production is not seeded. Tab IDs/order/active selection, preferences and manual state survive restart; the current uncollapsed view intent now restores under ADR 0017.
 
 ## Ownership and access
 
@@ -226,7 +269,7 @@ Required design outcomes are:
 - Migration tests verify both schema and preserved user data, especially seen state and source identities.
 - Development resets and test helpers cannot target the user's real database.
 
-Choose a backup-before-migration policy, failure/retry behavior and supported upgrade paths before the first released schema evolves. Some operations may require special handling outside a simple migration transaction; that is a reason to design and test recovery, not to assume all migration failures are harmless. Changes with substantial compatibility consequences should receive [ADRs](decisions/README.md).
+ADR 0019 implements verified pre-migration safety before startup schema changes; each released upgrade still requires explicit populated preservation/failure tests. Some operations may require special handling outside a simple migration transaction; that is a reason to design and test recovery, not to assume all migration failures are harmless. Changes with substantial compatibility consequences should receive [ADRs](decisions/README.md).
 
 ## Data locations and environment isolation
 
@@ -238,9 +281,12 @@ No real user database, private extraction or credentials should enter source con
 
 ## Backup, restore and export
 
-Plan a backup/restore workflow from the beginning. A correct backup must be a consistent SQLite snapshot, including any active journaling implications. Copying only the main database file while it is changing is not an acceptable unexamined strategy. Choose an appropriate SQLite backup mechanism or documented closed-database procedure for the selected driver and journaling mode.
+The complete workflow is implemented by ADR 0019 above. Live snapshots use SQLite's
+online backup API; the offline restore protocol accounts for journaling and restart.
 
-Restoring should validate the artifact and schema compatibility before replacing active data, preserve a recoverable copy of the current database, and handle open connections and application restart/reload deliberately. The UI, retention policy, automatic versus manual backup triggers, destination, failure handling, and replacement confirmation are unresolved; this document does not authorize automatic destructive restores.
+Restore requires explicit replacement confirmation after staged validation and a
+verified safety snapshot before any live file replacement. No automatic restore or
+pruning is authorized. Scheduled backups and a future retention UI remain open.
 
 Eventual discussion export serves portability/sharing and is distinct from complete backup. Export format, whether it includes seen state and discovery history, and whether re-import is supported are unresolved. Do not promise export/import round-tripping before specifying those semantics.
 
@@ -250,7 +296,7 @@ The target is thousands to tens of thousands of comments per discussion. Measure
 
 Use temporary SQLite databases for integration tests of migrations, source-key uniqueness, baseline/first discovery, refresh rollback, missing comments, seen-state preservation, multi-comment atomicity, active-discussion scope, last-applied matching targets and restoration of durable preferences/view state. Tests should include populated old-schema fixtures when migrations exist and verified backup/restore behavior when implemented. See [testing](TESTING.md).
 
-Before a storage increment opens or changes durable data, choose the driver/native-module approach, initial schema and identity constraints, timestamp conventions, migration mechanism, connection ownership and isolated development/test paths needed by that increment. Resolve source collision, parent and partial-result policies before the associated ingestion writes. The final backup implementation, export format, raw-diagnostic retention and future collapse expansion representation remain open until their dependent work is scoped; they are not universal gates before scaffolding or domain-only work. Data protection and eventual backup/restore remain product requirements throughout. These dependency notes do not define the first implementation milestone. Track choices in [decision records](decisions/README.md); [packaging](PACKAGING.md) must reflect any driver or helper distribution decision.
+Before a storage increment opens or changes durable data, choose the driver/native-module approach, initial schema and identity constraints, timestamp conventions, migration mechanism, connection ownership and isolated development/test paths needed by that increment. Resolve source collision, parent and partial-result policies before the associated ingestion writes. ADR 0019 implements complete backup/restore; export format, raw-diagnostic retention and future collapse expansion representation remain open until their dependent work is scoped; they are not universal gates before scaffolding or domain-only work. Data protection and eventual backup/restore remain product requirements throughout. These dependency notes do not define the first implementation milestone. Track choices in [decision records](decisions/README.md); [packaging](PACKAGING.md) must reflect any driver or helper distribution decision.
 
 ## Profile-local helper configuration (schema 7)
 

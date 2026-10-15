@@ -35,6 +35,8 @@ beforeEach(() => {
     return { ok: true as const, value: state.workspace };
   };
   api = {
+    createBackup: vi.fn(async () => ({ ok: true as const, value: { status: 'cancelled' as const } })),
+    restoreBackup: vi.fn(async () => ({ ok: true as const, value: { status: 'cancelled' as const } })),
     onAcquisitionProgress: vi.fn(() => () => undefined),
     getAcquisitionProgress: vi.fn(async () => ({ ok: true as const, value: null })),
     cancelAcquisition: vi.fn(async () => ({ ok: true as const, value: null })),
@@ -378,6 +380,30 @@ it('URL Enter submission adds and activates acknowledged discussion, then Refres
   await screen.findByText('Refreshed comment');
   expect(screen.getByRole('tabpanel').id).toBe('panel-acquired-video');
 });
+it.each(['cancelled', 'INVALID_BACKUP', 'restarting', 'RECOVERY_REQUIRED'] as const)(
+  'coordinates acquisition acknowledgments with restore outcome %s', async outcome => {
+    let finishAcquire: (result: Result<AcquisitionResult>) => void = () => { throw new Error('Acquisition not started'); };
+    let finishRestore: (result: Awaited<ReturnType<ReaderApi['restoreBackup']>>) => void = () => { throw new Error('Restore not started'); };
+    api.acquire = vi.fn<ReaderApi['acquire']>(() => new Promise(resolve => { finishAcquire = resolve; }));
+    api.restoreBackup = vi.fn<ReaderApi['restoreBackup']>(() => new Promise(resolve => { finishRestore = resolve; }));
+    await showReader();
+    fireEvent.click(screen.getByRole('button', { name: 'Add / Open' }));
+    fireEvent.change(screen.getByLabelText('YouTube URL'), { target: { value: 'https://youtu.be/abcdefghijk' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Open URL' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    await screen.findByRole('button', { name: 'Restore backup…' });
+    fireEvent.click(screen.getByRole('button', { name: 'Restore backup…' }));
+    await waitFor(() => expect(api.restoreBackup).toHaveBeenCalledOnce());
+    await act(async () => finishAcquire({ ok: true, value: acquired() }));
+    expect(document.getElementById('panel-acquired-video')).toBeNull();
+    await act(async () => finishRestore(outcome === 'cancelled' || outcome === 'restarting'
+      ? { ok: true, value: { status: outcome } } : { ok: false, error: { code: outcome } }));
+    if (outcome === 'cancelled' || outcome === 'INVALID_BACKUP') await screen.findByText('Acquired comment');
+    else {
+      expect(document.getElementById('panel-acquired-video')).toBeNull();
+      expect(screen.getByRole('dialog').hasAttribute('open')).toBe(true);
+    }
+  });
 it('acquisition shows busy but checkboxes remain usable; failure retains visible stored data and is localized', async () => {
   let finish: (result: Result<AcquisitionResult>) => void = () => { throw new Error('Not started'); };
   api.acquire = vi.fn<ReaderApi['acquire']>(() => new Promise(resolve => { finish = resolve; }));

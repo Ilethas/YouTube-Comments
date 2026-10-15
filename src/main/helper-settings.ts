@@ -84,4 +84,6 @@ export class HelperSettingsService {
   }
 
   async shutdown(): Promise<void> { this.controller.abort(); await this.queue; }
+  /** Drain selections already accepted before a snapshot mutation barrier. */
+  settle(): Promise<void> { return this.queue; }
 }

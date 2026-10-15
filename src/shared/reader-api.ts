@@ -5,9 +5,11 @@ import type { WorkspaceState } from '../domain/workspace';
 import type { BulkSeenRequest, SeenMutationResult, SeenUndoResult, SeenUndoDescriptor } from '../domain/seen-operation';
 import type { HelperRequest, HelperStatus } from './helper-settings';
 import type { DiscussionViewIntent, SaveDiscussionViewRequest } from '../domain/discussion-view';
+import type { DataBackupResult } from './data-backup';
 
 export type ErrorCode = 'INVALID_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA'
-  | 'ACQUISITION_CANCELLED' | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE' | 'NOT_REMOVABLE' | 'SOURCE_OPEN_FAILED' | 'NOT_OPENABLE';
+  | 'ACQUISITION_CANCELLED' | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE' | 'NOT_REMOVABLE' | 'SOURCE_OPEN_FAILED' | 'NOT_OPENABLE'
+  | 'INVALID_BACKUP' | 'NEWER_BACKUP' | 'OLDER_BACKUP' | 'DATA_BUSY' | 'DATA_WRITE_FAILED' | 'RESTORE_FAILED' | 'RECOVERY_REQUIRED';
 /** Stable codes cross IPC; raw privileged diagnostics never reach the renderer. */
 export type Result<T> = { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: { readonly code: ErrorCode } };
@@ -44,6 +46,8 @@ export interface AcquisitionResult {
 
 /** Intent-only capabilities. No generic invoke, SQL, executable input or Node handles. */
 export interface ReaderApi {
+  createBackup(): Promise<Result<DataBackupResult>>;
+  restoreBackup(): Promise<Result<DataBackupResult>>;
   onAcquisitionProgress(listener: (progress: AcquisitionNotification) => void): () => void;
   getAcquisitionProgress(): Promise<Result<AcquisitionProgress | null>>;
   cancelAcquisition(request: { readonly operationId: string }): Promise<Result<null>>;
@@ -69,6 +73,7 @@ export interface ReaderApi {
 }
 
 export const readerChannels = {
+  createBackup: 'reader:create-backup', restoreBackup: 'reader:restore-backup',
   getAcquisitionProgress: 'reader:acquisition-current', cancelAcquisition: 'reader:cancel-acquisition',
   saveDiscussionView: 'reader:save-discussion-view',
   openSource: 'reader:open-source',

@@ -1,5 +1,22 @@
 # UI and navigation
 
+## Data and backups (ADR 0019)
+
+Settings has localized Create backup… and Restore backup… actions, complete-profile
+explanation and a personal-metadata/machine-specific-helper-path notice. Backup uses
+a main-owned native Save dialog with a dated SQLite filename. A verified success
+shows its destination. Existing backups are retained; choose a new filename.
+
+Restore uses a native Open dialog and validates an owned staged copy before native
+confirmation: it replaces library, reading states, history and settings, first saves
+a safety snapshot, then restarts. Cancel is initially focused; Escape cancels the
+confirmation. No merge/import behavior is implied. A modal indeterminate operation
+state blocks reader changes while pending view/seen saves settle and data work runs.
+Failures are localized; invalid input never replaces current data. Confirmed restore
+cannot be cancelled during the offline replacement. Fresh startup acknowledges
+successful restore or recovery; old in-memory workspace/view state is discarded.
+See [ADR 0019](decisions/0019-consistent-sqlite-backup-and-safe-restore.md).
+
 ## Source access and deliberate marking (ADR 0015)
 
 Each real discussion heading has a compact external-link icon button labeled

@@ -16,6 +16,21 @@ import type { HelperStatus } from '../shared/helper-settings';
 import { HelperSettingsService } from './helper-settings';
 import type { HelperSettingsOptions } from './helper-settings';
 import { sourceUrl } from './source-url';
+import path from 'node:path';
+import type { DataBackupResult } from '../shared/data-backup';
+import type { DataBackupDialogs } from './data-backup-dialogs';
+import { BackupValidationError } from './persistence/backup-validation';
+import { validateBackupDestination } from './persistence/sqlite-backup';
+import { installRestore, prepareRestore } from './persistence/profile-restore';
+import type { RestoreCheckpoint } from './persistence/profile-restore';
+
+export interface DataBackupOptions {
+  readonly databasePath: string;
+  readonly dialogs: DataBackupDialogs;
+  readonly restart: () => void;
+  readonly checkpoint?: RestoreCheckpoint;
+}
+type ServiceValue = ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | AcquisitionResult | HelperStatus | DataBackupResult | null;
 
 /** Small use-case boundary: validate before touching persistence; failures carry
  * stable codes. Diagnostics are reported only on the privileged side. */
@@ -24,12 +39,16 @@ export class ReaderService {
   private acquisition?: AcquisitionService;
   private helpers?: HelperSettingsService;
   private failure?: 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA';
+  private dataPending?: Promise<Result<DataBackupResult>>;
+  private stopping = false;
+  private restartPending = false;
   constructor(private readonly open: () => ReaderRepository, private readonly languages: readonly string[],
     private readonly diagnose: (error: unknown) => void = console.error,
     private readonly extract?: ExtractLive,
     private readonly helperOptions: HelperSettingsOptions = {},
     private readonly openBrowser?: (url: string) => Promise<void>,
-    private readonly notifyProgress: (value: AcquisitionNotification) => void = () => undefined) {
+    private readonly notifyProgress: (value: AcquisitionNotification) => void = () => undefined,
+    private readonly dataOptions?: DataBackupOptions) {
     this.initializeStorage();
   }
 
@@ -62,8 +81,16 @@ export class ReaderService {
   dispatch(operation: 'getAcquisitionProgress', args: readonly unknown[]): Result<AcquisitionProgress | null>;
   dispatch(operation: 'cancelAcquisition', args: readonly unknown[]): Result<null>;
   dispatch(operation: 'saveDiscussionView', args: readonly unknown[]): Result<null>;
-  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | null> | Promise<Result<AcquisitionResult | HelperStatus | null>>;
-  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | null> | Promise<Result<AcquisitionResult | HelperStatus | null>> {
+  dispatch(operation: 'createBackup' | 'restoreBackup', args: readonly unknown[]): Promise<Result<DataBackupResult>>;
+  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ServiceValue> | Promise<Result<ServiceValue>>;
+  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ServiceValue> | Promise<Result<ServiceValue>> {
+    if (operation === 'createBackup' || operation === 'restoreBackup') {
+      if (args.length !== 0) return Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
+      if (this.dataPending || this.stopping || this.restartPending) return Promise.resolve({ ok: false, error: { code: 'DATA_BUSY' } });
+      this.dataPending = this.runDataOperation(operation).finally(() => { this.dataPending = undefined; });
+      return this.dataPending;
+    }
+    if (this.stopping || this.restartPending || this.dataPending && operation !== 'getAcquisitionProgress') return { ok: false, error: { code: 'DATA_BUSY' } };
     if (operation === 'getAcquisitionProgress') return args.length === 0
       ? { ok: true, value: this.acquisition?.current() ?? null } : { ok: false, error: { code: 'INVALID_REQUEST' } };
     if (operation === 'cancelAcquisition') {
@@ -124,6 +151,55 @@ export class ReaderService {
       return { ok: false, error: { code: error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError || error instanceof InvalidSeenTargetError || error instanceof InvalidDiscussionViewError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
     }
   }
+  private async runDataOperation(operation: 'createBackup' | 'restoreBackup'): Promise<Result<DataBackupResult>> {
+    const options = this.dataOptions, repository = this.repository;
+    if (!options || !repository) return { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } };
+    let closed = false, settled = false;
+    try {
+      const locale = repository.preferences(this.languages).locale;
+      if (operation === 'createBackup') {
+        if (this.acquisition?.current()) return { ok: false, error: { code: 'DATA_BUSY' } };
+        await this.helpers?.settle();
+        if (this.stopping) return { ok: true, value: { status: 'cancelled' } };
+        const destination = await options.dialogs.save(locale);
+        if (!destination || this.stopping) return { ok: true, value: { status: 'cancelled' } };
+        await validateBackupDestination(destination, options.databasePath);
+        await repository.createBackup(destination);
+        return { ok: true, value: { status: 'created', destination } };
+      }
+      const source = await options.dialogs.select(locale);
+      if (!source || this.stopping) return { ok: true, value: { status: 'cancelled' } };
+      const directory = await prepareRestore(source, options.databasePath, options.checkpoint);
+      if (this.stopping || !await options.dialogs.confirm(locale) || this.stopping) return { ok: true, value: { status: 'cancelled' } };
+      // Main has rejected new IPC mutations since this operation began. Accepted
+      // renderer queues were flushed before invocation; now settle all children
+      // and any earlier helper selection before the safety snapshot.
+      settled = true;
+      await Promise.all([this.acquisition?.close(), this.helpers?.shutdown()]);
+      await repository.createBackup(path.join(directory, 'safety.sqlite'));
+      await options.checkpoint?.('safety');
+      repository.prepareOffline(); repository.close(); this.repository = undefined; closed = true;
+      await installRestore(options.databasePath, directory, options.checkpoint);
+      this.restartPending = true;
+      setImmediate(options.restart);
+      return { ok: true, value: { status: 'restarting' } };
+    } catch (error) {
+      this.diagnose(error);
+      if (closed) {
+        // Startup recovers offline before any opener/seed, then acknowledges the
+        // result in a fresh process. Never reuse old renderer or service state.
+        this.restartPending = true; setImmediate(options.restart);
+        return { ok: false, error: { code: 'RECOVERY_REQUIRED' } };
+      }
+      if (settled) {
+        this.helpers = new HelperSettingsService(repository, this.helperOptions);
+        this.acquisition = new AcquisitionService(repository, this.languages,
+          this.extract ?? createLiveExtractor({ resolve: this.helpers.resolve, execute: this.helperOptions.execute }), this.notifyProgress);
+      }
+      return { ok: false, error: { code: error instanceof BackupValidationError ? error.reason
+        : operation === 'createBackup' ? 'DATA_WRITE_FAILED' : 'RESTORE_FAILED' } };
+    }
+  }
   private async openSource(args: readonly unknown[]): Promise<Result<null>> {
     if (args.length !== 1 || !isRefreshRequest(args[0])) return { ok: false, error: { code: 'INVALID_REQUEST' } };
     if (!this.repository) return { ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } };
@@ -144,7 +220,9 @@ export class ReaderService {
   close(): void { void this.acquisition?.close(); void this.helpers?.shutdown(); this.repository?.close(); }
   /** Await child termination and workspace cleanup before releasing the database. */
   async shutdown(): Promise<void> {
+    this.stopping = true;
+    await this.dataPending;
     await Promise.all([this.acquisition?.close(), this.helpers?.shutdown()]);
-    this.repository?.close();
+    this.repository?.close(); this.repository = undefined;
   }
 }

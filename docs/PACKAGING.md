@@ -1,5 +1,28 @@
 # Packaging and distribution
 
+## Profile backup and release migration protection (ADR 0019)
+
+Complete SQLite backup and confirmed full-profile restore are implemented without
+installer/portable/Forge changes. Recovery lives beside each isolated database in
+`recovery/`: verified safety snapshots, previous originals, staged candidates and
+immutable restore phases are retained without pruning. Do not remove this directory
+during install/update/uninstall as an incidental cleanup. Backups exclude binaries
+and Chromium caches and may carry machine-specific helper paths.
+
+Startup now creates a verified recoverable pre-migration snapshot before the known
+transactional chain can modify a recognized older database. Failure aborts startup.
+Every future released schema still needs populated upgrade/crash tests and validator
+compatibility updates. Newer schemas reject; no downgrade runs. Single-instance
+ownership and offline startup recovery precede opening a restored profile.
+
+Windows file-replacement guarantees use absent rename destinations plus preserved
+safety/previous files; Node cannot portably fsync Windows directory metadata. The
+protocol fails closed with ambiguous artifacts/missing live data. Backup destinations
+must support hard links for exclusive publication; unsupported filesystems return an
+error without replacing existing files. Future cross-platform/format portability,
+retention management, uninstall-data policy and released upgrade matrix remain open.
+See [ADR 0019](decisions/0019-consistent-sqlite-backup-and-safe-restore.md).
+
 Windows is the initial development and packaging target. Keep future Linux/macOS support possible, but neither is an initial implementation or release requirement. This document separates that target from the existing scaffold; no release-ready package is established. See [Architecture](ARCHITECTURE.md), [Database](DATABASE.md), and [Extractors](EXTRACTORS.md) for the boundaries packaging must preserve.
 
 ## Current scaffold

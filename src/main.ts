@@ -1,5 +1,6 @@
 import { acquisitionProgressChannel, isAcquisitionNotification } from './shared/acquisition';
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, shell, dialog } from 'electron';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
@@ -8,6 +9,10 @@ import { resolveDatabasePath } from './main/persistence/profile';
 import { ReaderService } from './main/reader-service';
 import { registerReaderIpc } from './main/reader-ipc';
 import { createHelperPicker } from './main/helper-picker';
+import { createDataBackupDialogs } from './main/data-backup-dialogs';
+import { protectBeforeMigration, recoverProfile } from './main/persistence/profile-restore';
+import { backupText } from './shared/data-backup';
+import { initialLocale } from './shared/preferences';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -58,20 +63,35 @@ const createWindow = () => {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.on('ready', () => {
+app.on('ready', async () => {
+  if (!app.requestSingleInstanceLock()) { app.quit(); return; }
+  const text = backupText(initialLocale(app.getPreferredSystemLanguages()));
+  let recovery: Awaited<ReturnType<typeof recoverProfile>>;
+  let profileLocale = initialLocale(app.getPreferredSystemLanguages());
+  const fresh = !existsSync(databasePath);
+  try {
+    recovery = await recoverProfile(databasePath);
+    await protectBeforeMigration(databasePath);
+  } catch (error) {
+    console.error(error);
+    dialog.showErrorBox(text.title, `${text.RECOVERY_REQUIRED}\n${path.dirname(databasePath)}`);
+    app.quit(); return;
+  }
   service = new ReaderService(() => {
     const repository = ReaderRepository.open(databasePath);
     try {
-      if (mode === 'development') repository.initializeDemo();
+      if (mode === 'development' && fresh && !recovery) repository.initializeDemo();
+      profileLocale = repository.preferences(app.getPreferredSystemLanguages()).locale;
       return repository;
     } catch (error) { repository.close(); throw error; }
   }, app.getPreferredSystemLanguages(), console.error, undefined, { choose: createHelperPicker(() => mainWindow) }, url => shell.openExternal(url), value => {
     const contents = mainWindow?.webContents;
     if (contents && !contents.isDestroyed() && contents.mainFrame.url === documentUrl && isAcquisitionNotification(value))
       contents.send(acquisitionProgressChannel, value);
-  });
+  }, { databasePath, dialogs: createDataBackupDialogs(() => mainWindow), restart: () => { app.relaunch(); app.quit(); } });
   registerReaderIpc(service, () => mainWindow, documentUrl);
   createWindow();
+  if (recovery && mainWindow) void dialog.showMessageBox(mainWindow, { type: 'info', message: backupText(profileLocale)[recovery] });
 });
 let shutdownStarted = false;
 app.on('before-quit', event => {

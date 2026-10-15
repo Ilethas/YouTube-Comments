@@ -24,6 +24,8 @@ import { isBulkSeenRequest } from '../../shared/reader-api';
 import type { HelperKind } from '../../shared/helper-settings';
 import { isSaveDiscussionViewRequest } from '../../domain/discussion-view';
 import type { DiscussionViewIntent, SaveDiscussionViewRequest } from '../../domain/discussion-view';
+import { createVerifiedBackup } from './sqlite-backup';
+import type { BackupTimings } from './sqlite-backup';
 
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 function optionalText(row: Row, key: string): string | undefined {
@@ -97,6 +99,20 @@ export class ReaderRepository {
   }
 
   close(): void { this.db.close(); }
+
+  /** All authoritative tables share this connection and SQLite's online snapshot.
+   * The service holds a mutation barrier until verification/publication completes. */
+  async createBackup(destination: string, measured?: (timings: BackupTimings) => void): Promise<void> {
+    const timings = await createVerifiedBackup(this.db, destination); measured?.(timings);
+  }
+
+  /** Quiescent offline transition: explicitly drain WAL if a future mode uses it.
+   * No sidecar is copied to the replacement; failure aborts before installation. */
+  prepareOffline(): void {
+    const checkpoint = this.db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get();
+    if (checkpoint?.busy !== 0) throw new Error('SQLite checkpoint busy');
+    if (String(this.db.prepare('PRAGMA journal_mode=DELETE').get()?.journal_mode).toLowerCase() !== 'delete') throw new Error('Cannot settle SQLite journal');
+  }
 
   /** Machine-specific profile configuration, separate from discussion/preferences DTOs. */
   getHelperSelection(kind: HelperKind): string | undefined {

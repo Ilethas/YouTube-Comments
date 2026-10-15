@@ -20,6 +20,7 @@ import { readerShortcut } from './keyboard-routing';
 import type { BulkSeenRequest, SeenMutationResult } from '../domain/seen-operation';
 import type { SeenFeedback } from './BulkSeenControls';
 import { ExternalTools } from './ExternalTools';
+import { DataBackups } from './DataBackups';
 
 export function App({ api = window.reader }: { api?: ReaderApi }) {
   const [state, setState] = useState<ReaderState>();
@@ -75,6 +76,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const acknowledgedUndo = useRef(new Map<string, SeenMutationResult['undo']>());
   const saveQueue = useRef(Promise.resolve());
+  const lastSaveFailed = useRef(false);
   const [saving, setSaving] = useState(false);
   const [savingItemId, setSavingItemId] = useState<string>();
   const [saveError, setSaveError] = useState(false);
@@ -88,9 +90,11 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   const [completion, setCompletion] = useState<Pick<AcquisitionResult, 'summary' | 'timings'>>();
   const [cancelledKind, setCancelledKind] = useState<'acquire' | 'refresh'>();
   const acquisitionBusy = useRef(false);
+  const dataBusy = useRef(false);
+  const afterData = useRef(new Set<() => void>());
   const acknowledgedSeen = useRef(new Map<string, boolean>());
   const acquire = useCallback(async function acquire(action: () => Promise<Result<AcquisitionResult>>, refresh = false) {
-    if (acquisitionBusy.current) return;
+    if (acquisitionBusy.current || dataBusy.current) return;
     if (activeDiscussion.current) void views.flush(activeDiscussion.current);
     acquisitionBusy.current = true;
     acknowledgedSeen.current.clear();
@@ -101,6 +105,10 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     setAcquisitionStatus(undefined);
     try {
       const result = await action();
+      // A cancelled/failed preflight must still deliver an acquisition accepted
+      // while the native dialog was open. A committed restore never releases
+      // this barrier: the new process owns all subsequent presentation state.
+      while (dataBusy.current) await new Promise<void>(resolve => afterData.current.add(resolve));
       if (result.ok) {
         setItems(result.value.state.items.filter(item => !removedIds.current.has(item.id)));
         const mergedComments = Object.fromEntries(Object.entries(result.value.state.comments).filter(([id]) => !removedIds.current.has(id)).map(([id, rows]) => [id,
@@ -179,9 +187,9 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       busy.current = true; setSaving(true); setSavingItemId(itemId); setSaveError(false);
       try {
         const result = await action();
-        if (result.ok) { accept(result.value); succeeded = true; }
-        else setSaveError(true);
-      } catch { setSaveError(true); }
+        if (result.ok) { accept(result.value); succeeded = true; lastSaveFailed.current = false; }
+        else { setSaveError(true); lastSaveFailed.current = true; }
+      } catch { setSaveError(true); lastSaveFailed.current = true; }
       finally { busy.current = false; setSaving(false); setSavingItemId(undefined); }
     };
     const task = busy.current ? saveQueue.current.then(run) : run();
@@ -258,6 +266,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   }, [workspace, activeId, helpRequest, removing]);
   useEffect(() => {
     function keyboard(event: KeyboardEvent) {
+      if (dataBusy.current) return;
       const tab = workspace.tabs.find(tab => tab.id === activeId);
       const command = readerShortcut(event, { activeKind: tab?.kind, modalOpen: !!removing || bulkModalOpen, workspaceBusy: workspaceBusy.current, undoAvailable: tab?.kind === 'discussion' && !!seenUndo[tab.itemId] });
       if (!command) return;
@@ -371,6 +380,13 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
         </select></label>
       </div>
         <ExternalTools api={api} locale={locale} active={activeId === 'settings'} />
+        <DataBackups api={api} locale={locale} onBusy={value => {
+          dataBusy.current = value;
+          if (!value) { for (const resume of afterData.current) resume(); afterData.current.clear(); }
+        }} prepare={async () => {
+          await saveQueue.current;
+          return !lastSaveFailed.current && await views.flushAll();
+        }} />
         <KeyboardShortcuts locale={locale} />
       </div>
     </main>}

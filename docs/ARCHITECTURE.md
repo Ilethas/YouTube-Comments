@@ -1,5 +1,35 @@
 # Architecture
 
+## Main-owned profile data operations (ADR 0019)
+
+Settings exposes only payload-free `createBackup`/`restoreBackup`; native paths and
+replacement confirmation stay in main. Renderer first freezes interaction and drains
+its seen/preferences FIFO and visited discussion evaluation/view saves. Main holds
+a mutation barrier for the entire native-dialog/data operation, drains earlier helper
+selections and rejects stale IPC. Backup reports busy during acquisition; confirmed
+restore aborts/awaits acquisition/helper cleanup before verified safety creation.
+Shutdown waits for data operations before closing SQLite.
+
+Acquisition acknowledgments that arrive during preflight wait behind the renderer
+barrier. Cancelled/invalid restore or completed backup releases them for ordinary
+reconciliation. Committed restore and offline recovery retain the barrier until
+restart, preventing old ReaderState from being presented over replacement data.
+
+SQLite online backup copies asynchronously in batches, then main verifies and
+exclusively publishes a flushed sibling. Staged restore validation admits exact known
+application schemas and invariants, never arbitrary SQLite files/SQL. Only staged
+older schemas migrate. Full integrity/application verification and probe bootstrap
+remain synchronous during a visible modal stage; see measured limits in TESTING.
+
+Restore checkpoints WAL, selects DELETE and closes all connections before moving
+files. Immutable recovery phases, separate verified safety and closed previous files
+support offline startup acceptance/rollback, including rename/marker gaps and repeated
+crashes. Startup recovery and async pre-migration safety precede all profile openers
+and seeding. Electron relaunch discards old service/renderer state. A single-instance
+lock prevents competing app writers. Recovery failure preserves artifacts and stops
+startup; it cannot initialize an empty fallback. See
+[ADR 0019](decisions/0019-consistent-sqlite-backup-and-safe-restore.md).
+
 ## Persistent view reconstruction (ADR 0017)
 
 SQLite remains main-owned. Validated bootstrap records supply semantic draft/applied

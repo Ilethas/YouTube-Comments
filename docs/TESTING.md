@@ -1,5 +1,120 @@
 # Testing strategy
 
+## Complete SQLite backup and safe profile restore (2026-10-15)
+
+[ADR 0019](decisions/0019-consistent-sqlite-backup-and-safe-restore.md) keeps schema
+8 and adds complete snapshots, staged validation/migration, confirmed offline full
+replacement, retained safety/previous artifacts, startup crash recovery and automatic
+pre-migration snapshots. All destructive checks use newly owned temporary profiles;
+the owner's development/production data is never opened by these tests.
+
+SQLite integration compares every authoritative table across round trips, including
+video/Community adapter fixtures and synthetic content, discovery/failed/accepted
+history and NEW, seen and row revisions, revision-owned partial Undo, tabs/order/
+active state, language/appearance, both helper selections, distinct draft/applied
+queries, sort and anchor/selection. Subsequent Undo and real-item removal still work.
+WAL tests prove committed data appears in standalone snapshots and offline transition
+settles sidecars. Source bytes remain unchanged by backup/invalid restore. Tests cover
+cancelled dialogs/confirmation, existing destinations, write/permission/disk failures,
+verification failure and partial cleanup, internal/live aliases, text/corrupt/wrong-app/
+newer/foreign-key-invalid data, missing state/history, unknown triggers and invalid
+views. All known schemas 1–7 stage/migrate without changing source; populated schema
+7 preservation and verified pre-migration snapshots are covered explicitly.
+
+Failure injection covers preflight, safety failure, intent, both immediate rename
+gaps and their markers, installed/reopened/accepted phases, candidate reopen failure,
+accepted-candidate corruption, missing intent metadata and repeated crashes during
+rollback quarantine/installation. Unrecoverable safety failure leaves previous files
+available and no empty database. Main-service tests cover acquisition settlement,
+pending earlier seen/view commits, stale IPC rejection, operation exclusivity and
+shutdown while dialogs/data work are pending. Renderer tests cover EN/PL explanations,
+destination acknowledgement, localized failures, query/save draining and failed-save
+abort. Native dialog tests assert defaultId=cancelId=0 and exact replacement warning.
+Four renderer races additionally cover an acquisition accepted during cancelled,
+invalid, committed and failed-offline restore: only the first two release the old
+result for reconciliation; the others remain inert until the new process takes over.
+
+### Generated SQLite measurements
+
+Generated 10k and 50k discussions include long Polish/English text, shallow reply
+trees, full normalized metadata and durable bulk Undo for every comment. Separate
+profiles hold approximately 27.8/138.3 MB databases. The following observed samples
+are milliseconds, rounded; they are evidence, not CI latency thresholds:
+
+| Comments | SQLite page copy | Backup incl. verification/publication | Independent full verification | Restore preflight | Safety incl. verification | Offline install/startup acceptance | Fresh open/bootstrap |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 10,000 | 101 | 310 | 192 | 541 | 310 | 1,067 | 124 |
+| 50,000 | 5,961 | 7,787 | 1,608 | 5,576 | 4,451 | 8,857 | 946 |
+
+Other samples showed 50k safety at 4.2 s and backup at 2.9–9.7 s, illustrating local
+filesystem/antivirus/load variability. The ordinary suite runs other workloads in
+parallel. No storage optimization or arbitrary performance pass/fail budget follows
+from these samples. Page copy yields asynchronously; full integrity/application
+verification and bootstrap remain synchronous on main. A 50k full verification can
+delay main IPC for roughly 1.4–2.5 s across these samples. The separate renderer paints an inert
+progress modal; repeated controlled verification/reopen stages account for the longer
+restore interval. Moving verification/bootstrap to an internal worker is future
+responsiveness work, not a Q-21 paging/FTS redesign in this milestone.
+
+### Built-entry disposable-profile verification
+
+`scripts/smoke-backup-restore.cjs` drives the actual Forge main/preload/renderer.
+Only its harness substitutes native dialog responses and Electron relaunch, then
+launches the next real process. No shipped environment/test bridge is added. It
+checks a Cancel-first confirmation, cancelled Save, invalid-source preservation,
+Settings backup/destination feedback, full table restoration after seen/Undo/workspace/
+appearance changes and local removal, restored helper/view intent, and independent
+safety snapshot contents. Test-side saved video/Community adapters seed real-source
+fixtures alongside synthetic content; no live YouTube dependency is introduced.
+
+It also forcibly exits the process immediately after moving the original and after
+installing the candidate, before the following phase marker. Fresh startup recovers
+the exact pre-restore table contents in both cases. Recovery files remain valid.
+The runtime reports Electron 44.4.5 / Node 24.21.0 / SQLite 3.53.4 and exercises the
+actual `node:sqlite.backup` function. The initial small-profile samples completed
+backup, restore and fresh-process verification phases in about 0.36–0.42 s each.
+
+The expanded round trip holds both 10k and 50k discussions plus ordinary fixtures.
+The final measured Settings backup call took **2.41 s**; confirmed restore including
+preflight/safety/offline installation/reopen took **15.07 s**. The restarted process
+reached the actual reader shell in **19.01 s**; an earlier sample was 15.94 s.
+These startup measurements include the existing full bootstrap/IPC/clone path,
+which remains Q-21 work. Whole harness phases take longer because they also compare
+every SQLite row, serialize checkpoints and verify later Undo/removal. Timing logs
+separate operation/readiness milestones from those checks. Metadata assertions avoid
+an additional 60k-comment clone across the executeJavaScript test boundary while
+retaining the complete production main-to-renderer IPC.
+
+Final verification: **698 tests across 53 files pass**; typecheck and lint pass
+without warnings; standalone renderer and Forge main/preload/renderer/worker bundles
+pass. Renderer JS is 437.76 kB / 136.06 kB gzip; the query worker is 2.60 kB. The full
+`test:electron` chain passes existing IPC/helper/bulk/Undo tests, seven view restart
+phases and the backup/restore/crash scenarios. Forge still stops at Finalizing
+package with exit 0 and no completed `out` artifact; no packaging repair was made.
+Vite's existing CJS warning and occasional non-failing Chromium GPU shutdown messages
+remain. Restricted sandbox configuration/GPU startup required broader-access reruns.
+
+Intermediate runs exposed the closed backup-dialog DOM regression and acquisition
+acknowledgment race; both have regression tests and fixes. Real filesystem tests now
+use 30 s hang guards after observed Windows I/O stalls exceeded Vitest's 5 s default;
+there are no latency assertions. One parallel run also returned pre-commit
+`RESTORE_FAILED` in the acquisition/restore test. Its privileged cause was not captured
+in that run; focused and subsequent full reruns with diagnostic assertions passed.
+The failure path did not replace current data. This intermittent result is retained
+as a verification limitation rather than attributed to an unverified cause.
+
+Native dialog interaction is automated with main-side response stubs; this is not a
+claim of a separate hands-on native Windows dialog session. The full disposable
+scenario and table/safety checks are automated and repeatable. No valuable profile
+was used. OS power loss itself is not simulated; phase loss and actual process exits
+exercise the conservative protocol. Node cannot portably fsync Windows directory
+metadata, so ambiguous artifacts fail closed rather than creating an empty profile.
+
+Pre-migration protection is implemented; each future released upgrade still needs
+its own compatibility/failure matrix. Retention management, future format/platform
+portability and export remain open. Installer/portable packaging, signing, helper
+distribution and the existing Forge finalization problem are unchanged release work.
+
 ## Acquisition progress, cancellation and timing (2026-10-15)
 
 [ADR 0018](decisions/0018-acquisition-progress-and-safe-cancellation.md) adds safe
