@@ -45,8 +45,11 @@ export function DataBackups({ api, locale, prepare, onBusy }: {
       <button disabled={pending} onClick={() => void run('restoreBackup')}>{t.restore}</button></div>
     {message && !pending && <p role={failed ? 'alert' : 'status'}>{message}</p>}
     {pending && <dialog ref={dialog} className="removal-dialog" aria-labelledby="data-operation-title" onCancel={event => event.preventDefault()}>
-      <h2 id="data-operation-title">{t.title}</h2><p role="status">{pending && message ? message : t.running}</p>
-      <progress aria-label={t.running} />
+      <h2 id="data-operation-title">{t.title}</h2>
+      <p className="data-operation-status" role="status">
+        <span className="acquisition-spinner" aria-hidden="true" />
+        <span>{pending && message ? message : t.running}</span>
+      </p>
     </dialog>}
   </section>;
 }

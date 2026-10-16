@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DataBackups } from './DataBackups';
 import type { ReaderApi } from '../shared/reader-api';
@@ -11,6 +11,34 @@ beforeEach(() => {
   HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
 });
 afterEach(cleanup);
+it.each([
+  ['en', 'createBackup'], ['en', 'restoreBackup'], ['pl', 'createBackup'], ['pl', 'restoreBackup'],
+] as const)('announces %s pending %s beside a decorative spinner and releases the modal on cancellation', async (locale, operation) => {
+  const t = backupText(locale), onBusy = vi.fn();
+  let finish!: () => void;
+  const intent = vi.fn(() => new Promise(resolve => { finish = () => resolve({ ok: true, value: { status: 'cancelled' } }); }));
+  const api = { [operation]: intent } as unknown as ReaderApi;
+  render(<DataBackups api={api} locale={locale} prepare={async () => true} onBusy={onBusy} />);
+  const trigger = screen.getByRole('button', { name: operation === 'createBackup' ? t.create : t.restore });
+  trigger.focus();
+  await userEvent.click(trigger);
+  const dialog = screen.getByRole('dialog', { name: t.title }), status = within(dialog).getByRole('status');
+  expect(status.textContent).toBe(t.running);
+  expect(status.querySelector('.acquisition-spinner')?.getAttribute('aria-hidden')).toBe('true');
+  expect(within(dialog).queryByRole('progressbar')).toBeNull();
+  for (const button of screen.getAllByRole('button')) expect(button.hasAttribute('disabled')).toBe(true);
+  const cancel = new Event('cancel', { cancelable: true });
+  dialog.dispatchEvent(cancel);
+  expect(cancel.defaultPrevented).toBe(true);
+  expect(dialog.hasAttribute('open')).toBe(true);
+  expect(onBusy).toHaveBeenLastCalledWith(true);
+  finish();
+  await screen.findByText(t.cancelled);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(trigger.hasAttribute('disabled')).toBe(false);
+  expect(document.activeElement).toBe(trigger);
+  expect(onBusy).toHaveBeenLastCalledWith(false);
+});
 it.each(['en', 'pl'] as const)('shows %s explanations, flushes before intent, acknowledges destination and localizes failure', async locale => {
   const t = backupText(locale), prepare = vi.fn(async () => true), onBusy = vi.fn();
   const api = { createBackup: vi.fn(async () => ({ ok: true, value: { status: 'created', destination: 'D:\\backup.sqlite' } })),
@@ -33,5 +61,6 @@ it('blocks snapshot when pending writes fail and keeps the operation modal throu
   prepare.mockResolvedValueOnce(true);
   await userEvent.click(screen.getByRole('button', { name: backupText('en').create }));
   await waitFor(() => expect(screen.getByRole('dialog').hasAttribute('open')).toBe(true));
+  expect(within(screen.getByRole('dialog')).getByRole('status').textContent).toBe(backupText('en').restarting);
   expect(screen.getByRole('button', { name: backupText('en').create }).hasAttribute('disabled')).toBe(true);
 });

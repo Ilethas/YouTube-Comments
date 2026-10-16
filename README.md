@@ -35,7 +35,9 @@ folder, then run `youtube-comments.exe`. Keep the adjacent files and folders;
 they include the Electron runtime. You do not need Node.js or npm to run it.
 You do need the external tools below to acquire or refresh discussions.
 
-There is no published release download linked here. A local build produces:
+Check the [GitHub Releases](https://github.com/Ilethas/YouTube-Comments/releases)
+page for downloadable Windows builds. You can also build the application yourself;
+the generated ZIP is located at:
 
 ```text
 out/make/zip/win32/x64/youtube-comments-win32-x64-1.0.0.zip
