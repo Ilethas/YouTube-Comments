@@ -122,6 +122,11 @@ Record useful diagnostics without presenting raw backend terminology as the only
 
 ## Finding and distributing helpers
 
+The owner has chosen separate user installation for both helpers: no bundled
+yt-dlp, post-archiver or Python, and no automatic helper installer/updater. See
+the [Windows setup example and troubleshooting](../README.md#external-tools).
+Historical ADRs discussing possible bundling do not imply planned delivery.
+
 [ADR 0014](decisions/0014-main-owned-helper-settings.md) adds desktop configuration.
 Resolution is authoritative startup `YOUTUBE_COMMENTS_YTDLP_EXE` /
 `YOUTUBE_COMMENTS_POST_ARCHIVER_EXE` > current saved profile selection > safe direct
@@ -144,8 +149,8 @@ selection and probes every time, without requiring restart. An in-flight operati
 retains its already resolved executable. No renderer path input, process arguments,
 raw output, generic filesystem or executable launcher is exposed.
 
-Helpers are still user-installed. Bundling/download/update, Python environment
-management, artifact licensing/integrity and distribution remain open. Untested versions contribute `untested-helper-version` provenance only; they do not downgrade coverage or weaken normalization. CLI failures, malformed JSON or invalid required structure fail through the ordinary preserving path.
+Helpers remain user-installed, including their runtime dependencies. The app does
+not manage Python environments or helper distribution. Untested versions contribute `untested-helper-version` provenance only; they do not downgrade coverage or weaken normalization. CLI failures, malformed JSON or invalid required structure fail through the ordinary preserving path.
 
 Author thumbnails normalize as explicit avatar evidence only for usable HTTPS URLs.
 Community empty-string defaults are lossy unknowns; neither absence nor invalid

@@ -1,0 +1,12 @@
+{
+  "source": "Actual Electron window loading the Forge-built main/preload/renderer",
+  "electron": "44.4.5",
+  "viewportWidth": 1360,
+  "data": "Invented demo discussions in an owned disposable SQLite profile; offline geometric avatars",
+  "files": [
+    "reader-light.png",
+    "search-dark.png",
+    "collapse-selection-light.png",
+    "library-light.png"
+  ]
+}

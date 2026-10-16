@@ -1,4 +1,4 @@
-// Original, replaceable geometric discussion glyph. No external branding assets.
+// Original overlapping conversation bubbles. No external branding assets.
 // PNG-compressed 32-bit ICO frames, supersampled for small Windows shell sizes.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -16,13 +16,36 @@ function chunk(type, data) {
   length.writeUInt32BE(data.length); crc.writeUInt32BE(crc32(Buffer.concat([name, data])));
   return Buffer.concat([length, name, data, crc]);
 }
+// One geometry list supplies both SVG and raster output, so the two cannot drift.
+const shapes = [
+  { fill: '#36b6ab', rect: [34, 36, 60, 46, 13] },
+  { fill: '#36b6ab', polygon: [[72, 75], [88, 75], [88, 94]] },
+  // A pale rim separates the silhouettes against both light and dark surfaces.
+  { fill: '#f4f7fb', rect: [6, 6, 76, 61, 17] },
+  { fill: '#f4f7fb', polygon: [[17, 53], [44, 62], [17, 84]] },
+  { fill: '#243e57', rect: [10, 10, 68, 53, 13] },
+  { fill: '#243e57', polygon: [[21, 51], [43, 59], [21, 76]] },
+  { fill: '#f4f7fb', rect: [24, 26, 40, 7, 3.5] },
+  { fill: '#f4f7fb', rect: [24, 41, 28, 7, 3.5] },
+];
+function contains(shape, x, y) {
+  if (shape.rect) {
+    const [left, top, width, height, radius] = shape.rect;
+    return x >= left && x <= left + width && y >= top && y <= top + height
+      && Math.hypot(Math.max(left + radius - x, 0, x - left - width + radius),
+        Math.max(top + radius - y, 0, y - top - height + radius)) <= radius;
+  }
+  let inside = false;
+  const points = shape.polygon;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [xi, yi] = points[i], [xj, yj] = points[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
 function pixel(x, y) {
-  const inside = x >= 12 && x <= 88 && y >= 12 && y <= 76
-    && Math.hypot(Math.max(24 - x, 0, x - 76), Math.max(24 - y, 0, y - 64)) <= 12;
-  const tail = y >= 68 && y <= 91 && x >= 24 && x <= 48 - (y - 68);
-  if (!inside && !tail) return [0, 0, 0, 0];
-  if (x >= 29 && x <= 71 && ((y >= 31 && y <= 37) || (y >= 49 && y <= 55))) return [244, 247, 251, 255];
-  return [65, 86, 115, 255];
+  const shape = shapes.findLast(shape => contains(shape, x, y));
+  return shape ? [...Buffer.from(shape.fill.slice(1), 'hex'), 255] : [0, 0, 0, 0];
 }
 function png(size) {
   const data = Buffer.alloc((size * 4 + 1) * size);
@@ -50,4 +73,16 @@ sizes.forEach((size, index) => {
 });
 const directory = path.resolve(__dirname, '../assets'); fs.mkdirSync(directory, { recursive: true });
 fs.writeFileSync(path.join(directory, 'application.ico'), Buffer.concat([header, ...frames]));
-fs.writeFileSync(path.join(directory, 'application.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="#415673" d="M24 12h52a12 12 0 0 1 12 12v40a12 12 0 0 1-12 12H40L24 91V76a12 12 0 0 1-12-12V24a12 12 0 0 1 12-12Z"/><path fill="#f4f7fb" d="M29 31h42v6H29zM29 49h42v6H29z"/></svg>\n');
+const svg = shapes.map(shape => {
+  if (shape.rect) {
+    const [x, y, width, height, radius] = shape.rect;
+    return `  <rect fill="${shape.fill}" x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}"/>`;
+  }
+  return `  <polygon fill="${shape.fill}" points="${shape.polygon.map(point => point.join(',')).join(' ')}"/>`;
+}).join('\n');
+fs.writeFileSync(path.join(directory, 'application.svg'), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n${svg}\n</svg>\n`);
+if (process.argv.includes('--preview')) {
+  const preview = path.resolve(__dirname, '../.packaging-diagnostics/icons');
+  fs.mkdirSync(preview, { recursive: true });
+  sizes.forEach((size, index) => fs.writeFileSync(path.join(preview, `${size}.png`), frames[index]));
+}

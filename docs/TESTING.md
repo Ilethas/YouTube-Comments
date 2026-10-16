@@ -1,5 +1,82 @@
 # Testing strategy
 
+## README screenshots and application icon (2026-10-16)
+
+The public-facing README uses plain setup/use instructions and actual Electron
+screenshots. No reader behavior, database schema or application identity changes.
+
+`node scripts/capture-readme.cjs` runs Electron 44.4.5 with the Forge-built
+main/preload/renderer entries after `npm.cmd run package -- --platform=win32 --arch=x64`
+(a verified make also builds those entries). The harness creates its own OS-temp
+SQLite profile using the real repository and normalization code, with invented
+comments, authors, channel identities and HTTPS avatar evidence. An Electron-only
+harness handler serves original geometric demo portraits offline. No live public
+or private library is copied, no remote requests are made, and renderer text is
+not replaced for capture. Helper overrides are explicitly empty; no helper paths
+or Settings/dialog contents are captured. The owned profile is removed afterward.
+No screenshot/test hook is added to application startup.
+
+| File under `docs/screenshots/` | Viewport | Shows |
+| --- | --- | --- |
+| `reader-light.png` | 1360 × 1000 | Nested replies, avatars, evidence-backed creator label, seen/unseen controls, compact toolbar and ruler |
+| `search-dark.png` | 1360 × 880 | Applied `audio` search AND Unseen filter, one matching comment with its conversation context and ruler |
+| `collapse-selection-light.png` | 1360 × 920 | One collapsed branch, three selected comments, separate round selection and square seen controls, explicit bulk actions |
+| `library-light.png` | 1360 × 680 | Four populated demo discussions, stored/unseen counts and open versus closed tabs |
+
+All four final PNGs were opened and inspected for sharp text, complete controls,
+useful framing, neutral rails, avatars and absence of tooltips/debug overlays or
+private data. `capture.json` records provenance and runtime without local paths.
+PNG total is about 339 KiB. The README embeds three views and links the Library.
+
+`node scripts/generate-icon.cjs --preview` deterministically regenerates SVG/ICO
+and ignored individual preview PNGs. The original navy/teal overlapping bubbles
+use a pale separating rim and two broad text strokes. SVG and raster output share
+one geometry list, with no new dependencies. All 16/24/32/48/64/128/256 frames are
+32-bit PNGs; all seven sizes were opened at their actual sizes and inspected.
+Small sizes retain both bubbles and readable contrast.
+
+`node scripts/verify-presentation.cjs` checks local README files and heading
+anchors, all four PNG chunk CRCs/dimensions/decoded scanline lengths and pixel
+variation, plus seven ICO directory entries, PNG CRCs and decoded frames. It
+does not replace visual review. Existing `verify:artifacts` additionally compares
+every embedded application icon frame byte-for-byte in package/Squirrel resources,
+and verifies complete ZIP/NuGet payloads, Setup embedding, RELEASES, ASAR and fuses.
+
+Upstream helper package names, Python requirements and `post-archiver` entry point
+were checked against [yt-dlp PyPI metadata](https://pypi.org/project/yt-dlp/),
+[post-archiver-improved PyPI metadata](https://pypi.org/project/post-archiver-improved/)
+and its [entry-point declaration](https://github.com/sadadYes/post-archiver-improved/blob/main/pyproject.toml).
+No Python/helper installation or download was performed.
+
+Verification on this milestone:
+
+- `npm.cmd test`: **807 tests in 62 files passed** (111.14 seconds).
+- `npm.cmd run typecheck`, `lint` and `build:renderer`: passed.
+- `node scripts/verify-presentation.cjs`: **11 local README links/anchors**, four
+  decoded screenshots and seven complete ICO frames passed. `git diff --check`
+  passed. Regenerating SVG/ICO produced byte-identical files.
+- `npm.cmd run make:zip`: fresh verified x64 package (73 files, 385,897,833 bytes)
+  and ZIP (158,316,304 bytes). `make:squirrel`: Setup 155,704,320 bytes, full NuGet
+  154,998,499 bytes and RELEASES 87 bytes. Combined `verify:artifacts -- --squirrel`
+  passed for package, ZIP and Squirrel, including the replacement icon frames.
+  The 256-pixel image extracted from the packaged EXE was also opened and inspected.
+- `npm.cmd run test:packaged`: passed on the unmodified extracted ZIP EXE with
+  disposable demo and independently isolated production profile environments.
+  Covered startup/restart, preferences, selection/bulk/Undo, query worker, ruler,
+  native backup/restore and actual EXE relaunch, safety snapshot and a second
+  application-folder copy using that same isolated profile. Optional live helper
+  checks were not run. Evidence remains ignored in `.packaging-diagnostics/`.
+
+The restricted sandbox prevented esbuild from reading repository parent directories;
+build/test/capture commands requiring that access ran outside the sandbox. No
+shipped sandbox, fuse, startup or IPC settings were changed. Existing Vite CJS API
+deprecation notices remain non-failing build/test output.
+
+Actual installed shortcut/taskbar/Programs and Features rendering and Squirrel
+install/update/uninstall remain **UNVERIFIED**. Setup is only inspected as bytes;
+the ZIP remains the recommended distribution. No signing, release publication,
+automatic helper management or portable-data mode is added.
+
 ## Comment selection, context menus and exact prefixes (2026-10-16, ADR 0024)
 
 New suites: renderer `comment-selection.test.ts` and `DiscussionActions.test.tsx`,

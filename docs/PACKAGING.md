@@ -55,7 +55,7 @@ The complete-runtime nuspec template preserves Chromium notices and `version`,
 which electron-winstaller's default file list omits. Icon frames and application
 display metadata are checked. Stale artifacts cannot satisfy the fresh-build wrapper.
 
-## Stable identity and temporary icon
+## Stable identity and application icon
 
 | Purpose | Value |
 | --- | --- |
@@ -70,18 +70,21 @@ display metadata are checked. Stale artifacts cannot satisfy the fresh-build wra
 `src/shared/application-identity.json` is shared by main, Forge and validation.
 Packager explicitly fixes folder/EXE names independently of `productName`. Main sets
 the same AppUserModelID as Squirrel's shortcut convention. Keep upgrade identifiers
-stable even when replacing final branding.
+stable when changing the artwork.
 
-`node scripts/generate-icon.cjs` reproduces the original neutral slate discussion
-glyph in `assets/application.svg` and `application.ico`. ICO has 32-bit PNG frames
-at 16/24/32/48/64/128/256 pixels. No YouTube/Google imagery or external asset is used.
+`node scripts/generate-icon.cjs` reproduces the original navy and teal overlapping
+comment bubbles in `assets/application.svg` and `application.ico`. One geometry
+list supplies both vector and raster output; the dependency-free rasterizer uses
+4× supersampling. ICO has 32-bit PNG frames at 16/24/32/48/64/128/256 pixels.
+Add `--preview` to write individual PNG frames under `.packaging-diagnostics/icons/`
+for visual inspection. No YouTube/Google imagery or external asset is used.
 Application, Setup, packaged Squirrel helper and execution stub contain the icon;
 Setup also carries `setupIcon.ico`. Shortcuts/taskbar are intended to use the EXE
 icon; actual installed rendering is unverified. No hosted `iconUrl` is invented:
 Programs and Features may use a generic icon, because this API normally downloads
 its registration icon. Setup's raw embedded bootstrap updater retains the vendor
 icon; the separately packaged helper is branded. The default install animation
-remains. Branding is temporary and replaceable.
+remains. Regenerate the icon before building both distributions after artwork changes.
 
 ## Installer lifecycle and safe testing
 
@@ -197,7 +200,9 @@ main-owned. CDP is an explicit smoke launch argument, not a shipped default.
 ## External helpers
 
 Acquisition requires user-installed **yt-dlp** and/or **post-archiver**, including their
-own runtime dependencies. Nothing is bundled/downloaded/updated. Main retains startup
+own runtime dependencies. The owner's distribution choice is separate installation;
+no helper or Python bundling/download/update is planned. See the
+[Windows helper instructions](../README.md#external-tools). Main retains startup
 environment > saved executable > safe direct PATH > unavailable; invalid configured
 paths fail closed. Shells and `.bat`/`.cmd` wrappers remain excluded. Settings selects
 real EXEs through native dialogs, validates identity, shows tested/untested confidence
@@ -228,8 +233,8 @@ unsupported filesystems fail safely. Node cannot portably fsync Windows director
 metadata. See [database policy](DATABASE.md) and [verification evidence](TESTING.md).
 
 Q-20 now retains genuine isolated installer lifecycle verification, Windows version
-compatibility beyond this host, final branding/registration icon, signing/SmartScreen,
-updates, release hosting/channels, notices/licensing, helper distribution and released
+compatibility beyond this host, installed registration icon, signing/SmartScreen,
+updates, release hosting/channels, notices/licensing and released
 schema upgrades. Uninstall retention policy is settled; actual behavior is unverified.
 Retention management, future format portability/export, portable data, other platforms
 and public publishing remain separate. Unsigned Setup/EXE may trigger SmartScreen;
