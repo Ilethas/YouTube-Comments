@@ -19,9 +19,10 @@ if (process.argv.includes('--child')) {
       window.showInactive();
       window.webContents.debugger.attach('1.3');
       for (const count of [1000, 10000, ...(process.argv.includes('--50k') ? [50000] : [])]) {
-        for (const shape of ['flat', 'shallow', 'mixed']) {
+        for (const shape of ['flat', 'shallow', 'mixed', 'chain']) {
           const initial = await js(`profile.load({count:${count},shape:'${shape}',newIndexes:[${count - 1}],sortingEvidence:true})`);
           initial.heapUsedMB = Math.round((await window.webContents.debugger.sendCommand('Runtime.getHeapUsage')).usedSize / 1024 / 1024);
+          const collapse = await js('profile.collapseCheck()');
           const seenAcknowledgments = await js('profile.bulkAcknowledgment()');
           assert.ok(seenAcknowledgments.bulk.rows < 100 && seenAcknowledgments.undo.rows < 100, 'Bulk/Undo keep row mounting bounded');
           const toggle = await js('profile.toggle()'), switchPanel = await js('profile.switch()');
@@ -42,7 +43,7 @@ if (process.argv.includes('--child')) {
           assert.equal(apply.error, undefined, 'Selective Apply succeeds through the actual query worker');
           assert.equal(refresh.error, undefined, 'Refresh reevaluation succeeds through the actual query worker');
           assert.equal(apply.matches, 1);
-          report({ count, shape, initial, seenAcknowledgments, toggle, switchPanel, scroll, sorting, sortingRefresh, restoration, rulerNavigation, navigation, apply, filteredNavigation, refresh });
+          report({ count, shape, initial, collapse, seenAcknowledgments, toggle, switchPanel, scroll, sorting, sortingRefresh, restoration, rulerNavigation, navigation, apply, filteredNavigation, refresh });
           assert.equal(rulerNavigation.selected, `generated-${count - 1}`);
           assert.equal(rulerNavigation.exactSelectedVisible, true, 'Ruler reveals distant unmounted NEW target');
           assert.ok(initial.rulerNodes < 10 && initial.rulerBuckets <= 300, 'Ruler DOM/pixel bands stay bounded');
@@ -57,6 +58,13 @@ if (process.argv.includes('--child')) {
       assert.equal(navigation.exactSelectedVisible, true);
       report({ deepProbe: { initial: deep, navigation } });
       fs.writeFileSync(path.join(__dirname, '../.vite/performance-deep.png'), (await window.webContents.capturePage()).toPNG());
+      for (const count of [10000, ...(process.argv.includes('--50k') ? [50000] : [])]) {
+        const initial = await js(`profile.load({count:${count},shape:'chain',roots:1,maxDepth:${count},textLength:10,newIndexes:[${count - 1}]})`);
+        const collapse = await js('profile.collapseCheck()');
+        assert.equal(collapse.collapsed.visible, 1);
+        assert.equal(collapse.reveal.visible, count);
+        report({ pathologicalDepth: count, initial, collapse });
+      }
       const semantics = await js('profile.rulerSemanticCheck()');
       assert.equal(semantics.rawHitContext, true);
       report({ rulerSemantics: semantics });

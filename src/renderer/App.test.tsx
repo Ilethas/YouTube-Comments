@@ -29,13 +29,14 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() { /* jsdom has no layout. */ } unobserve() { /* Test only. */ } disconnect() { /* Test only. */ } });
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: function(this: HTMLElement, options: ScrollToOptions) { this.scrollTop = options.top ?? 0; } });
   vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate: async (comments, query) => evaluateDiscussionQuery(comments, query), dispose: vi.fn() } as QueryExecutor as ReturnType<typeof createQueryExecutor>));
-  state = { discussionViews: {}, seenUndo: {}, items, comments: initialComments, preferences: { locale: 'en', appearance: 'system', translationTarget: 'app' },
+  state = { discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items, comments: initialComments, preferences: { locale: 'en', appearance: 'system', translationTarget: 'app' },
     workspace: { tabs: items.map(item => discussionTab(item.id)), activeTabId: discussionTab(items[0].id).id, revision: 0 } };
   const open: ReaderApi['openStoredItem'] = async ({ itemId }) => {
     state = { ...state, workspace: openWorkspaceTab(state.workspace, discussionTab(itemId)) };
     return { ok: true as const, value: state.workspace };
   };
   api = {
+    setDiscussionCollapse: vi.fn(async () => ({ ok: true as const, value: null })),
     openCommentAction: vi.fn(async () => ({ ok: true as const, value: null })),
     createBackup: vi.fn(async () => ({ ok: true as const, value: { status: 'cancelled' as const } })),
     restoreBackup: vi.fn(async () => ({ ok: true as const, value: { status: 'cancelled' as const } })),
@@ -372,7 +373,7 @@ function acquired(): AcquisitionResult {
   const item = { ...items[0], id: 'acquired-video', removable: true, sourceId: 'abcdefghijk', title: 'Acquired video' };
   const comment = { ...initialComments['video-demo'][0], id: 'acquired-comment', itemId: item.id, parentId: null, seen: false, text: 'Acquired comment' };
   return { operationId: 'fixture-operation', timings: { targetMs: 0, helperMs: 0, preparationMs: 0, fetchMs: 0, processingMs: 0, savingMs: 0, bootstrapMs: 0, totalMs: 0 },
-    state: { discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system', translationTarget: 'app' },
+    state: { discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system', translationTarget: 'app' },
     workspace: { tabs: [...items, item].map(item => discussionTab(item.id)), activeTabId: discussionTab(item.id).id, revision: 1 } },
     summary: { itemId: item.id, coverage: 'unknown', inserted: 1, updated: 0, warnings: 0 } };
 }

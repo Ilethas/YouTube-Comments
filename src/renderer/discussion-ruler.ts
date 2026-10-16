@@ -1,4 +1,5 @@
 import type { DiscussionViewResult } from '../domain/discussion-query';
+import type { CollapsedPresentation } from './discussion-collapse';
 import type { ReaderRow } from './discussion-presentation';
 
 export const rulerCategories = ['unseen', 'match', 'new'] as const;
@@ -6,6 +7,8 @@ export type RulerCategory = typeof rulerCategories[number];
 /** Application identities in frozen virtual preorder, independent of DOM mounting. */
 export interface RulerMarker {
   readonly commentId: string;
+  readonly hidden?: boolean;
+  readonly representativeId?: string;
   readonly presentationIndex: number;
   readonly categories: readonly RulerCategory[];
 }
@@ -17,6 +20,7 @@ export interface RulerTargetRange {
   readonly from: number;
   readonly to: number;
   readonly length: number;
+  readonly hiddenLength: number;
 }
 export interface RulerGeometry {
   readonly measurements: readonly RulerMeasurement[];
@@ -33,16 +37,29 @@ export interface RulerBucket {
 }
 export interface RulerMeasurement { readonly start: number; readonly size: number }
 
+const hiddenIndexes = new WeakMap<readonly RulerMarker[], { prefix: number[]; next: number[] }>();
+function hiddenIndex(markers: readonly RulerMarker[]) {
+  let cached = hiddenIndexes.get(markers);
+  if (cached) return cached;
+  const prefix = [0], next = new Array<number>(markers.length + 1);
+  for (const marker of markers) prefix.push(prefix[prefix.length - 1] + Number(!!marker.hidden));
+  next[markers.length] = markers.length;
+  for (let index = markers.length - 1; index >= 0; index--) next[index] = markers[index].hidden ? index : next[index + 1];
+  cached = { prefix, next }; hiddenIndexes.set(markers, cached); return cached;
+}
+
 /** Unrestricted identity candidates are not matches. Raw-only hits never qualify.
  * Rows supply live acknowledged seen and the exact currently displayed membership. */
-export function projectRulerMarkers(rows: readonly ReaderRow[], result: DiscussionViewResult, newIds: ReadonlySet<string>): readonly RulerMarker[] {
+export function projectRulerMarkers(rows: readonly ReaderRow[], result: DiscussionViewResult, newIds: ReadonlySet<string>, displayed?: CollapsedPresentation): readonly RulerMarker[] {
   const matches = new Set(result.restrictive ? result.activeMatchIds : []);
   return rows.flatMap((row, presentationIndex) => {
     const categories: RulerCategory[] = [];
     if (!row.comment.seen) categories.push('unseen');
     if (matches.has(row.id)) categories.push('match');
     if (newIds.has(row.id)) categories.push('new');
-    return categories.length ? [{ commentId: row.id, presentationIndex, categories }] : [];
+    const representativeId = displayed?.representativeById.get(row.id) ?? row.id;
+    return categories.length ? [{ commentId: row.id, presentationIndex: displayed?.indexById.get(representativeId) ?? presentationIndex,
+      categories, ...(representativeId !== row.id ? { hidden: true, representativeId } : {}) }] : [];
   });
 }
 
@@ -85,7 +102,8 @@ export function aggregateRulerMarkers(markers: readonly RulerMarker[] | RulerMar
     let from = 0;
     for (let index = 0; index < count; index++) {
       const to = lowerBound(ordered, geometry, Math.min(rulerHeight, (index + 1) * bandHeight), from);
-      ranges[category].push({ markers: ordered, from, to, length: to - from });
+      const prefix = hiddenIndex(ordered).prefix;
+      ranges[category].push({ markers: ordered, from, to, length: to - from, hiddenLength: prefix[to] - prefix[from] });
       from = to;
     }
   }
@@ -106,11 +124,20 @@ export function rulerTarget(bucket: RulerBucket, category: RulerCategory, coordi
   const before = position > from ? markers[lowerBound(markers, bucket.geometry,
     rulerMarkerCoordinate(markers[position - 1], bucket.geometry), from, position)] : undefined;
   const after = position < to ? markers[position] : undefined;
-  if (!before) return after?.commentId;
-  if (!after) return before.commentId;
+  // When several comments share a collapsed row center, prefer its first hidden
+  // category member. The ancestor's own membership remains counted separately.
+  const target = (marker: RulerMarker | undefined) => {
+    if (!marker) return;
+    const coordinate = rulerMarkerCoordinate(marker, bucket.geometry);
+    const start = lowerBound(markers, bucket.geometry, coordinate, from, to);
+    const hidden = hiddenIndex(markers).next[start];
+    return hidden < to && rulerMarkerCoordinate(markers[hidden], bucket.geometry) === coordinate ? markers[hidden].commentId : marker.commentId;
+  };
+  if (!before) return target(after);
+  if (!after) return target(before);
   const beforeDistance = Math.abs(rulerMarkerCoordinate(before, bucket.geometry) - coordinate);
   const afterDistance = Math.abs(rulerMarkerCoordinate(after, bucket.geometry) - coordinate);
-  return beforeDistance <= afterDistance ? before.commentId : after.commentId;
+  return target(beforeDistance <= afterDistance ? before : after);
 }
 
 /** Three compact SVG paths, never one DOM node per comment or per category hit. */

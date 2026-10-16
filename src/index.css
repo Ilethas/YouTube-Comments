@@ -118,7 +118,7 @@ h1 { font-size: 20px; line-height: 1.3; margin: 5px 0; }
 .item-description { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); line-height: 1.45; margin: 4px 0; }
 .item-description.preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .text-button { background: transparent; color: var(--accent); border: 0; padding: 2px 0; font-size: 12px; }
-.post-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; margin: 6px 0; }
+.post-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; margin: 0; }
 .item-meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 12px; margin-top: 6px; }
 .item-status { font-size: 11px; color: var(--muted); margin-left: auto; }
 .empty-workspace { padding: 40px; color: var(--muted); }
@@ -253,3 +253,8 @@ button > .action-icon { margin-right: 4px; }
 .inline-link:focus-visible, .comment-translate:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 .tab-close > .action-icon { width: 12px; height: 12px; margin: 0; vertical-align: 0; }
+.expansion-controls { display: flex; gap: 6px; flex-wrap: wrap; margin: 0; }
+.expansion-controls button { padding: 4px 7px; font-size: inherit; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border); border-radius: 4px; }
+.reply-toggle { display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px; font: inherit; color: inherit; background: transparent; border: 1px solid transparent; }
+.reply-toggle:hover { text-decoration: underline; }
+.reply-summary { opacity: .8; }

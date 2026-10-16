@@ -176,6 +176,17 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
 `) }, { version: 9, apply: db => db.exec(`
   ALTER TABLE preferences ADD COLUMN translation_target TEXT NOT NULL DEFAULT 'app'
     CHECK(translation_target IN ('app','en','pl','de','fr','es','it','pt','ja','ko','zh-CN'));
+`) }, { version: 10, apply: db => db.exec(`
+  CREATE TABLE discussion_collapse (
+    item_id TEXT PRIMARY KEY NOT NULL REFERENCES content_items(id) ON DELETE CASCADE,
+    default_collapsed INTEGER NOT NULL CHECK(default_collapsed IN (0,1))
+  ) STRICT;
+  CREATE TABLE comment_collapse_overrides (
+    item_id TEXT NOT NULL REFERENCES discussion_collapse(item_id) ON DELETE CASCADE,
+    comment_id TEXT NOT NULL,
+    PRIMARY KEY(item_id, comment_id),
+    FOREIGN KEY(item_id, comment_id) REFERENCES comments(item_id, id) ON DELETE CASCADE
+  ) STRICT;
 `) }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 

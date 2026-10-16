@@ -22,6 +22,8 @@ import type { QueryEvaluationTime } from '../../domain/publication-filter';
 import { publicationMatches, ownPublicationInstant } from '../../domain/publication-predicate';
 import { isBulkSeenRequest } from '../../shared/reader-api';
 import type { HelperKind } from '../../shared/helper-settings';
+import { isSetDiscussionCollapseRequest } from '../../domain/discussion-collapse';
+import type { DiscussionCollapse, SetDiscussionCollapseRequest } from '../../domain/discussion-collapse';
 import { isSaveDiscussionViewRequest } from '../../domain/discussion-view';
 import type { DiscussionViewIntent, SaveDiscussionViewRequest } from '../../domain/discussion-view';
 import { createVerifiedBackup } from './sqlite-backup';
@@ -311,7 +313,52 @@ export class ReaderRepository {
     const items = this.readItems();
     return { items, comments: Object.fromEntries(items.map(item => [item.id, this.readComments(item)])),
       seenUndo: Object.fromEntries(items.map(item => [item.id, this.seenUndo(item.id)])),
-      preferences: this.preferences(languages), workspace: this.workspace(), discussionViews: this.discussionViews() };
+      preferences: this.preferences(languages), workspace: this.workspace(), discussionViews: this.discussionViews(), discussionCollapse: this.discussionCollapse() };
+  }
+
+  /** Invalid presentation state is isolated per discussion; content stays readable. */
+  private discussionCollapse(): Readonly<Record<string, DiscussionCollapse>> {
+    const states = new Map<string, DiscussionCollapse>();
+    for (const row of this.db.prepare('SELECT d.* FROM discussion_collapse d JOIN content_items i ON i.id=d.item_id').all()) {
+      if (typeof row.item_id === 'string' && (row.default_collapsed === 0 || row.default_collapsed === 1))
+        states.set(row.item_id, { defaultCollapsed: row.default_collapsed === 1, overrides: [] });
+    }
+    const overrides = new Map<string, string[]>();
+    for (const row of this.db.prepare(`SELECT o.* FROM comment_collapse_overrides o
+      JOIN comments c ON c.item_id=o.item_id AND c.id=o.comment_id`).all()) {
+      if (typeof row.item_id !== 'string' || typeof row.comment_id !== 'string' || !states.has(row.item_id)) continue;
+      const ids = overrides.get(row.item_id) ?? []; ids.push(row.comment_id); overrides.set(row.item_id, ids);
+    }
+    for (const [id, state] of states) states.set(id, { ...state, overrides: overrides.get(id) ?? [] });
+    return Object.fromEntries(states);
+  }
+
+  /** Constant-space All, sparse opposite-default exceptions, atomic same-item
+   * ownership validation. No comment/seen/query/history records are changed. */
+  setDiscussionCollapse(request: SetDiscussionCollapseRequest): null {
+    if (!isSetDiscussionCollapseRequest(request)) throw new InvalidDiscussionViewError();
+    return transaction(this.db, () => {
+      if (!this.db.prepare('SELECT 1 FROM content_items WHERE id=?').get(request.itemId)) throw new MissingCommentError();
+      if (request.kind === 'comments') {
+        const owns = this.db.prepare('SELECT 1 FROM comments WHERE item_id=? AND id=?');
+        if (request.ids.some(id => !owns.get(request.itemId, id))) throw new InvalidDiscussionViewError();
+      }
+      const existing = this.db.prepare('SELECT default_collapsed FROM discussion_collapse WHERE item_id=?').get(request.itemId);
+      const valid = existing?.default_collapsed === 0 || existing?.default_collapsed === 1;
+      if (existing && !valid) this.db.prepare('DELETE FROM discussion_collapse WHERE item_id=?').run(request.itemId);
+      this.db.prepare('INSERT OR IGNORE INTO discussion_collapse VALUES (?,0)').run(request.itemId);
+      if (request.kind === 'all') {
+        this.db.prepare('DELETE FROM comment_collapse_overrides WHERE item_id=?').run(request.itemId);
+        this.db.prepare('UPDATE discussion_collapse SET default_collapsed=? WHERE item_id=?').run(Number(request.collapsed), request.itemId);
+      } else {
+        const defaultCollapsed = valid && existing.default_collapsed === 1;
+        const statement = request.collapsed === defaultCollapsed
+          ? this.db.prepare('DELETE FROM comment_collapse_overrides WHERE item_id=? AND comment_id=?')
+          : this.db.prepare('INSERT OR IGNORE INTO comment_collapse_overrides VALUES (?,?)');
+        for (const id of request.ids) statement.run(request.itemId, id);
+      }
+      return null;
+    });
   }
 
   private ownsViewIdentities(request: SaveDiscussionViewRequest): boolean {

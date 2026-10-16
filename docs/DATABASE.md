@@ -1,5 +1,22 @@
 # Database and durable data
 
+## Sparse collapse state (schema 10, ADR 0023)
+
+Additive 9 to 10 migration creates strict discussion_collapse(item_id,
+default_collapsed) and comment_collapse_overrides(item_id, comment_id). An override
+means opposite to the default; no row means expanded. All changes one default and
+clears exceptions without enumerating comments. Same-item foreign keys, atomic main
+ownership validation and cascading cleanup protect discussion/comment identity.
+Close/reopen retains rows; Library removal cascades them. Invalid presentation rows
+are ignored independently from content. Exact setDiscussionCollapse IPC is bounded
+to All or 1 to 100,000 unique bounded comment IDs plus a boolean assignment.
+
+Complete online backup includes both tables. Current schema is 10; exact known
+schemas 1 to 10 validate, and schemas 1 to 9 migrate only on staged restore copies.
+Startup pre-migration safety snapshots still precede any schema modification.
+No existing data, profiles or schema-9 view intents change. See [ADR 0023](decisions/0023-persistent-thread-collapse-and-virtual-navigation.md).
+
+
 ## Translation target (schema 9, ADR 0022)
 
 The additive migration adds `preferences.translation_target TEXT NOT NULL DEFAULT
@@ -34,8 +51,8 @@ SQLite backup includes committed WAL state without copying sidecars.
 
 Restore stages the selected standalone snapshot in
 `<profile>/recovery/restore-<UUID>/candidate.sqlite`. It validates recognized schema,
-full SQLite integrity, foreign keys and application invariants. Schemas 1–8 migrate
-only on the copy, followed by revalidation/bootstrap. Current schema is 9. Version
+full SQLite integrity, foreign keys and application invariants. Schemas 1–9 migrate
+only on the copy, followed by revalidation/bootstrap. Current schema is 10. Version
 0/unknown/modified schemas and newer versions reject. The source stays untouched.
 
 Explicit Cancel-first native confirmation precedes child settlement, a verified
@@ -94,7 +111,7 @@ workspace/content/history. Helper selections already store paths only; tested
 versus untested is probe evidence, not a new durable configuration field.
 
 
-SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 9 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW. [ADR 0014](decisions/0014-main-owned-helper-settings.md) adds separate profile-local helper selections.
+SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 10 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW. [ADR 0014](decisions/0014-main-owned-helper-settings.md) adds separate profile-local helper selections.
 
 The implementation below is deliberately small. Later sections describe the broader conceptual target and must not be read as implemented tables/features. Read the [domain model](DOMAIN_MODEL.md) for meanings and [architecture](ARCHITECTURE.md) for ownership.
 
@@ -230,7 +247,7 @@ Do not use localStorage for durable discussions, seen state, tabs or user prefer
 | Local comment state | Seen/unseen for a particular comment | Required for every comment; new comments start unseen; no thread-level seen flag |
 | Discovery/observation information | `publishedAt`, `firstDiscoveredAt`, `lastObservedAt`; first-discovery refresh association | Baseline imports retain discovery history without visual NEW; publication and discovery remain distinct |
 | Refresh attempts | Item, timing, outcome, coverage, diagnostics and useful counts | Committed outcome must agree with committed changes |
-| Tab/view state | Open tab identities/order/active ID; separate draft/applied queries, sort, anchor/row offset and selection per discussion | One optional view per stored item; close retains it, removal deletes it. Expansion remains future |
+| Tab/view state | Open tab identities/order/active ID; separate draft/applied queries, sort, anchor/row offset and selection per discussion | One optional view per stored item; close retains it, removal deletes it. Sparse default/exception expansion is stored separately (ADR 0023) |
 | Preferences | Interface language, appearance and translation target | Persist System/Follow app intent, not only resolved values |
 | Migration metadata | Applied schema versions and runner bookkeeping | Must support ordered, repeatable startup decisions |
 | Reversible changes | Information required by the chosen bulk undo/recovery mechanism | Schema 6 stores one operation per item and changed IDs/written revisions (ADR 0013) |
@@ -312,7 +329,7 @@ The target is thousands to tens of thousands of comments per discussion. Measure
 
 Use temporary SQLite databases for integration tests of migrations, source-key uniqueness, baseline/first discovery, refresh rollback, missing comments, seen-state preservation, multi-comment atomicity, active-discussion scope, last-applied matching targets and restoration of durable preferences/view state. Tests should include populated old-schema fixtures when migrations exist and verified backup/restore behavior when implemented. See [testing](TESTING.md).
 
-Before a storage increment opens or changes durable data, choose the driver/native-module approach, initial schema and identity constraints, timestamp conventions, migration mechanism, connection ownership and isolated development/test paths needed by that increment. Resolve source collision, parent and partial-result policies before the associated ingestion writes. ADR 0019 implements complete backup/restore; export format, raw-diagnostic retention and future collapse expansion representation remain open until their dependent work is scoped; they are not universal gates before scaffolding or domain-only work. Data protection and eventual backup/restore remain product requirements throughout. These dependency notes do not define the first implementation milestone. Track choices in [decision records](decisions/README.md); [packaging](PACKAGING.md) must reflect any driver or helper distribution decision.
+Before a storage increment opens or changes durable data, choose the driver/native-module approach, initial schema and identity constraints, timestamp conventions, migration mechanism, connection ownership and isolated development/test paths needed by that increment. Resolve source collision, parent and partial-result policies before the associated ingestion writes. ADR 0019 implements complete backup/restore; export format, raw-diagnostic retention and retention management remain open until their dependent work is scoped; they are not universal gates before scaffolding or domain-only work. Data protection and eventual backup/restore remain product requirements throughout. These dependency notes do not define the first implementation milestone. Track choices in [decision records](decisions/README.md); [packaging](PACKAGING.md) must reflect any driver or helper distribution decision.
 
 ## Profile-local helper configuration (schema 7)
 

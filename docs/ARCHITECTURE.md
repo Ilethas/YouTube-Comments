@@ -1,5 +1,27 @@
 # Architecture
 
+## Collapse projection and persistence (ADR 0023)
+
+Main-owned schema 10 holds an optional discussion default and sparse opposite-default
+comment exceptions behind exact typed assignment IPC. Renderer hydrates once, applies
+presentation immediately and serializes idempotent writes; backup/close flush the queue.
+Invalid defaults and orphan overrides cannot prevent content bootstrap.
+
+The complete sorted ReaderPresentation remains authoritative for query membership,
+logical navigation, X/N and stored bulk commands. A separate CollapsedPresentation
+uses two iterative O(N) passes over frozen safe display parents, deriving visible
+rows/indexes, ID representatives and descendant/live-unseen/frozen-match summaries.
+TanStack measures only these visible rows. No source hierarchy, recursive traversal,
+per-row ancestor copying, DOM-derived membership or new persistent counters exist.
+
+Explicit target navigation walks ancestors once, assigns only collapsed ancestors
+expanded and persists before the normal virtual reveal/focus pipeline. Hidden
+selection remains logical; scroll anchors resolve to visible hiding ancestors. Ruler
+markers keep original target IDs while using representative row geometry; hidden
+category prefix/next indexes keep geometry aggregation bounded. Exactly three SVG
+paths and one keyboard stop remain. See [ADR 0023](decisions/0023-persistent-thread-collapse-and-virtual-navigation.md); Q-21 is unchanged.
+
+
 ## Reader external actions (ADR 0022)
 
 `openCommentAction` is an exact identity/action intent. Main reads the stored item
@@ -352,7 +374,7 @@ extends that isolation with bounded, measured flat comment rendering.
 
 Thousands to tens of thousands of comments are an expected workload, not an exceptional case. Virtualize the comment view, including variable-height content and expanded replies. Build traversal/navigation and overview marker information from the data model. Whole-tree inclusion in a query does not require mounting that whole tree as HTML simultaneously.
 
-Persisted IDs should support scroll anchors and selection so recomputing or rendering rows does not confuse a comment's identity with its row index. Keep replies attached to their parents when sorting top-level threads. The overview/navigation ruler is a required target feature, using data for at least unseen, search-match, and subsequent-discovery markers; ADR 0011 selects measured/estimated height geometry, three category lanes and pixel-band aggregation. ADR 0016 maps sorted presentation to navigation and ruler; future collapse remains open. Main orchestration and renderer interaction must remain responsive while extraction, normalization, search, or SQLite work occurs. Batching and internal database workers can be evaluated within the main-owned backend without giving the renderer privileged access.
+Persisted IDs should support scroll anchors and selection so recomputing or rendering rows does not confuse a comment's identity with its row index. Keep replies attached to their parents when sorting top-level threads. The overview/navigation ruler is a required target feature, using data for at least unseen, search-match, and subsequent-discovery markers; ADR 0011 selects measured/estimated height geometry, three category lanes and pixel-band aggregation. ADR 0016 maps sorted presentation to navigation and ruler; collapse is implemented in ADR 0023. Main orchestration and renderer interaction must remain responsive while extraction, normalization, search, or SQLite work occurs. Batching and internal database workers can be evaluated within the main-owned backend without giving the renderer privileged access.
 
 Regex execution needs a responsiveness strategy as well as syntax validation; pathological valid patterns must not freeze the application. ADR 0008 selects ECMAScript u/iu in a cancellable dedicated worker, a 1000 ms whole-query deadline, and localized errors preserving prior results. Large-data budgets and measurements remain open. Benchmark fixtures should exercise large deep/wide trees, long comments, broad and selective filters, and navigation to unmounted results. Specific latency budgets and libraries are not fixed. See [Filtering](FILTERING_AND_SEARCH.md) and [Testing](TESTING.md).
 

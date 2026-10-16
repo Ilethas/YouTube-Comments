@@ -1,5 +1,97 @@
 # Testing strategy
 
+## Persistent reply collapse (2026-10-16, ADR 0023)
+
+The current reader starts expanded and keeps complete logical applied trees separate
+from compressed virtual rows. New deterministic tests are in
+`discussion-collapse.test.ts` (projection/session and SQLite), extended
+`VirtualCommentList.test.tsx`, and the existing backup/seen scale suites. Run
+`npm.cmd test`, `typecheck`, `lint`, `build:renderer`, `make:zip`, `test:electron`,
+`test:packaged`, and `node scripts/profile-discussions.cjs --50k`.
+
+| Final verification | Result |
+| --- | --- |
+| Full deterministic suite | 772 tests / 59 files pass, 131.28 s |
+| Final session/virtualizer checks | 94 tests / 4 files pass after the last snapshot assignment guard |
+| Typecheck / lint | Pass, zero lint warnings |
+| Renderer build | Pass; JS 449.47 kB / 139.92 kB gzip, CSS 16.77 kB, worker 2.60 kB |
+| Fresh Forge Windows x64 application + ZIP | Pass; executable/runtime/ASAR/fuse and ZIP byte checks, 22.19 s; ZIP 158,307,041 bytes |
+| Complete test:electron | Pass; IPC/helper/seen/Undo, saved views/restarts, backup/restore/crash recovery, reader actions and collapse |
+| Final helper Refresh + collapse checks | Pass against final bundles; collapsed default retained, exact keyboard NEW reveal and Match 1/2 → 2/2 |
+| Extracted unmodified EXE test:packaged | Pass; schema 10, sparse default/exception bootstrap, native dialogs, full table restore, safety snapshot and actual relaunch |
+| Actual generated Chromium UI | Pass; flat/shallow/mixed/chain 10k/50k and single chains of depth 9,999/49,999 |
+| Visual review | English/light and Polish/dark; compact themed controls beside sorting, descendant/unread/match summary and focus outline |
+
+Coverage includes nested and pathological deep projection, safe unresolved/cyclic
+fallback roots and Community containment, complete context/raw-only hits, all five
+sorts, frozen Unseen matches versus live summaries, Apply/Refresh retention, new
+descendant defaults, full-order next/reverse/unseen navigation, ruler hidden targets,
+selection without hidden DOM focus, stable ID/offset/ancestor restoration and
+variable-height reconciliation. Actual TanStack tests mount bounded rows at 10k/50k.
+The existing one-changed-article seen-render regression still passes.
+
+SQLite tests cover fully expanded defaults, individual/All/Expand All restart,
+per-discussion independence, close/reopen, ownership/arity/extra-key rejection,
+Library cleanup, corrupt default/override isolation and repair, preserving 9→10
+migration/failure, verified schema-9 pre-migration snapshots and unchanged-source
+staged restore. Complete backup/restore/crash tests include both new authoritative
+tables. At 10k/50k, All stores exactly one default and zero exceptions; stored subtree,
+matching bulk and revision-safe Undo execute while everything is collapsed. FIFO
+tests cover rejected writes, retry, disposal and the completion microtask gap.
+
+`scripts/smoke-collapse.cjs` is part of `test:electron`. It creates and removes only
+an owned disposable profile, with a 1,001-comment nested baseline/NEW fixture. It
+checks mouse controls, native Chromium Enter/Space (including the character event),
+F3/reverse, hidden unseen, pointer and keyboard NEW markers, persisted All, restart,
+close/reopen, unchanged seen and Polish/dark. Existing reader-action smoke covers
+native linked-text selection, author/timestamp/translation intents and reduced motion.
+`smoke-electron.cjs` also checks successful helper Refresh retaining collapsed default.
+Backup smoke seeds both a collapsed default and an expanded exception, changes them
+before replacement and compares all tables across snapshot, restore and crash phases.
+
+Native Copy is **UNVERIFIED in this run**: the current Windows clipboard includes
+formats with no Electron MIME representation. The harness declines Copy before any
+overwrite and preserves that clipboard. Native drag/Shift/cross-element selection
+still runs. This is a test-harness environment limit, not an application Copy change.
+Live YouTube extraction and Squirrel installation are not exercised; no installer is
+executed, and genuine installed lifecycle behavior remains UNVERIFIED.
+
+Actual offline Chromium measurements (1280×900, Electron 44.4.5; milliseconds are
+observations, never CI thresholds):
+
+| Comments / shape | All virtual rows | All mounted rows | All + paint ms | Hidden reveal + paint ms | Mixed projection ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 10k flat | 10,000 | 10 | 29.4 | 66.6 | 0.8 |
+| 10k shallow | 500 | 12 | 24.4 | 66.5 | 0.9 |
+| 10k mixed | 500 | 12 | 28.6 | 66.6 | 1.0 |
+| 10k chain forest | 500 | 12 | 19.7 | 66.5 | 0.9 |
+| 50k flat | 50,000 | 10 | 36.7 | 61.2 | 5.9 |
+| 50k shallow | 2,500 | 12 | 30.5 | 66.7 | 5.5 |
+| 50k mixed | 2,500 | 12 | 26.6 | 64.4 | 6.5 |
+| 50k chain forest | 2,500 | 12 | 27.2 | 59.5 | 8.1 |
+| 10k single chain, depth 9,999 | 1 | 1 | 20.6 | 66.5 | 1.4 |
+| 50k single chain, depth 49,999 | 1 | 1 | 45.9 | 83.3 | 9.3 |
+
+Flat comments are all roots, so Collapse All correctly leaves them as virtual rows.
+The first eight expanded initial views mounted 10 rows; distant single-chain reveals
+mounted 16 rows. Ruler membership remains complete with exactly three SVG paths
+(four ruler descendants when no cursor/tooltip), at most 277 occupied bands in this
+viewport, and one band for collapsed single chains. All distant targets were actually
+visible, and sort/Refresh/restart anchors reconciled within 2 px. Mixed projection
+timing runs a fresh data projection; it does not time a cache hit. All/expand/reveal
+timings include rendering/paint. Full ReaderState bootstrap/clone/memory remains Q-21.
+Main-owned SQLite Collapse All took 3.98 ms at 10k and 3.23 ms at 50k in the final
+scale run, with exactly one default and zero exceptions. All existing bulk/Undo
+scale checks passed while descendants were hidden.
+
+Local diagnostic logs are `collapse-tests.log`, `collapse-electron.log`,
+`collapse-profile.log`, `collapse-package.log` and `.packaging-diagnostics/`.
+The UI harness writes disposable captures under `.vite/`; these are regenerated
+verification artifacts, not a README/screenshot overhaul.
+Reviewed collapse captures are also retained in `.packaging-diagnostics/` so Forge
+cleaning its `.vite` directory cannot erase that local evidence. No commit, push or
+publication was performed; HEAD remains `6b44aab`.
+
 ## Reader usability and action icons (2026-10-16, ADR 0022)
 
 The current marking contract supersedes the historical ADR 0015 gesture evidence

@@ -12,6 +12,7 @@ export function createReaderBridge(invoke: (channel: string, ...args: unknown[])
     onAcquisitionProgress: listener => subscribe(value => { if (isAcquisitionNotification(value)) listener(value); }),
     getAcquisitionProgress: () => invoke(readerChannels.getAcquisitionProgress) as ReturnType<ReaderApi['getAcquisitionProgress']>,
     cancelAcquisition: request => invoke(readerChannels.cancelAcquisition, request) as ReturnType<ReaderApi['cancelAcquisition']>,
+    setDiscussionCollapse: request => invoke(readerChannels.setDiscussionCollapse, request) as ReturnType<ReaderApi['setDiscussionCollapse']>,
     saveDiscussionView: request => invoke(readerChannels.saveDiscussionView, request) as ReturnType<ReaderApi['saveDiscussionView']>,
     openSource: request => invoke(readerChannels.openSource, request) as ReturnType<ReaderApi['openSource']>,
     getHelperStatus: request => invoke(readerChannels.getHelperStatus, request) as ReturnType<ReaderApi['getHelperStatus']>,

@@ -5,6 +5,7 @@ import type { AcquisitionResult, ReaderOperation, ReaderState, Result } from '..
 import type { SeenMutationResult, SeenUndoResult } from '../domain/seen-operation';
 import type { Preferences } from '../shared/preferences';
 import { ReaderRepository, MissingCommentError, NotRemovableError, InvalidSeenTargetError, InvalidDiscussionViewError } from './persistence/reader-repository';
+import { isSetDiscussionCollapseRequest } from '../domain/discussion-collapse';
 import { isSaveDiscussionViewRequest } from '../domain/discussion-view';
 import { UnsupportedSchemaError } from './persistence/migrations';
 import { AcquisitionService } from './acquisition-service';
@@ -81,7 +82,7 @@ export class ReaderService {
   dispatch(operation: 'openSource' | 'openCommentAction', args: readonly unknown[]): Promise<Result<null>>;
   dispatch(operation: 'getAcquisitionProgress', args: readonly unknown[]): Result<AcquisitionProgress | null>;
   dispatch(operation: 'cancelAcquisition', args: readonly unknown[]): Result<null>;
-  dispatch(operation: 'saveDiscussionView', args: readonly unknown[]): Result<null>;
+  dispatch(operation: 'saveDiscussionView' | 'setDiscussionCollapse', args: readonly unknown[]): Result<null>;
   dispatch(operation: 'createBackup' | 'restoreBackup', args: readonly unknown[]): Promise<Result<DataBackupResult>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ServiceValue> | Promise<Result<ServiceValue>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ServiceValue> | Promise<Result<ServiceValue>> {
@@ -117,6 +118,7 @@ export class ReaderService {
         : isRefreshRequest(args[0]) ? this.acquisition.refresh(args[0].itemId) : Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
     }
     if ((['bootstrap', 'openLibrary', 'openSettings'].includes(operation) && args.length !== 0)
+      || (operation === 'setDiscussionCollapse' && (args.length !== 1 || !isSetDiscussionCollapseRequest(args[0])))
       || (operation === 'saveDiscussionView' && (args.length !== 1 || !isSaveDiscussionViewRequest(args[0])))
       || (operation === 'toggleSeen' && (args.length !== 1 || !isToggleSeenRequest(args[0])))
       || (operation === 'bulkSeen' && (args.length !== 1 || !isBulkSeenRequest(args[0])))
@@ -131,6 +133,7 @@ export class ReaderService {
     try {
       let value: ReaderState | SeenMutationResult | Preferences | WorkspaceState | null;
       if (operation === 'bootstrap') value = this.repository.bootstrap(this.languages);
+      else if (operation === 'setDiscussionCollapse' && isSetDiscussionCollapseRequest(args[0])) value = this.repository.setDiscussionCollapse(args[0]);
       else if (operation === 'saveDiscussionView' && isSaveDiscussionViewRequest(args[0])) value = this.repository.saveDiscussionView(args[0]);
       else if (operation === 'toggleSeen' && isToggleSeenRequest(args[0])) value = this.repository.toggleSeen(args[0]);
       else if (operation === 'bulkSeen' && isBulkSeenRequest(args[0])) value = this.repository.bulkSeen(args[0]);

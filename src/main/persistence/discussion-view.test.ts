@@ -42,14 +42,14 @@ it('schema 7 → 8 preserves populated content, seen revisions, history, workspa
   repo.close();
   const db = new DatabaseSync(file);
   try {
-    db.exec('ALTER TABLE preferences DROP COLUMN translation_target; DROP TABLE discussion_view_state; PRAGMA user_version=7');
+    db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; ALTER TABLE preferences DROP COLUMN translation_target; DROP TABLE discussion_view_state; PRAGMA user_version=7');
     expect(() => migrateDatabase(db, [...migrations.slice(0, 7), { version: 8, apply: target => {
       migrations[7].apply(target); throw new Error('injected migration failure');
     } }])).toThrow('injected migration failure');
     expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(7);
     expect(db.prepare("SELECT name FROM sqlite_master WHERE name='discussion_view_state'").get()).toBeUndefined();
     migrateDatabase(db); migrateDatabase(db);
-    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(9);
+    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(10);
     expect(db.prepare('SELECT * FROM discussion_view_state').all()).toEqual([]);
     expect(db.prepare('SELECT * FROM comment_state').all()).toEqual(revisions);
   } finally { db.close(); repo = ReaderRepository.open(file); }

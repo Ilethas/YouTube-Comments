@@ -1,5 +1,18 @@
 # Filtering and search
 
+## Collapse is a separate presentation (ADR 0023)
+
+Complete applied results and sorted logical preorder remain intact, including
+context and raw-only SEARCH HIT distinctions. Collapse only filters virtual rows;
+workers, counts, frozen matches, matching bulk and Match X/N never use that subset.
+Live unseen summaries may decrease while frozen applied Unseen match counts stay
+stable until Apply/Refresh. Hidden unseen/match/NEW ruler contributions aggregate
+at the visible hiding ancestor, retaining original target IDs and separate categories.
+Explicit navigation opens only necessary ancestors and persists them without seen
+writes. Apply/Refresh retain sparse collapse preferences, including filtered-out IDs;
+new replies follow the discussion default. See [ADR 0023](decisions/0023-persistent-thread-collapse-and-virtual-navigation.md).
+
+
 Active-discussion content/author/direct-parent-author search, All/Unseen/Seen, stable session applied results and navigation are implemented in [ADR 0008](decisions/0008-active-discussion-applied-queries.md). ADR 0010 implements presentation virtualization without changing query semantics. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements the applied-view ruler and durable NEW. [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date and latest-refresh discovery filters. [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md) implements bulk actions and durable safe Undo. [ADR 0016](decisions/0016-whole-conversation-sorting.md) implements whole-conversation sorting as immediate presentation state. ADR 0017 persists its preference and separate draft/applied semantic criteria, reconstructing results at restart. The [product requirements](PRODUCT_REQUIREMENTS.md) establish the scope, [seen state](SEEN_STATE.md) defines local user state, and [UI and navigation](UI_AND_NAVIGATION.md) explains how results are read. Unresolved choices are also tracked in the [decision register](decisions/README.md).
 
 ## Implemented bulk target boundary (ADR 0013)

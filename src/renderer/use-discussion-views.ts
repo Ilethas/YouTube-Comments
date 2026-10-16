@@ -5,7 +5,7 @@ import { createQueryExecutor } from './query-executor';
 import type { ReaderApi, ReaderState } from '../shared/reader-api';
 
 /** Registry survives tab close/reopen; explicit Library removal disposes its worker/state. */
-export function useDiscussionViews(options?: { readonly saved: ReaderState['discussionViews']; readonly save: ReaderApi['saveDiscussionView'] }) {
+export function useDiscussionViews(options?: { readonly collapse?: ReaderState['discussionCollapse']; readonly saveCollapse?: ReaderApi['setDiscussionCollapse']; readonly saved: ReaderState['discussionViews']; readonly save: ReaderApi['saveDiscussionView'] }) {
   const sessions = useRef(new Map<string, DiscussionViewSession>());
   // Bootstrap intent is considered once per new session, never on acknowledgments.
   const initial = useRef(options);
@@ -25,8 +25,10 @@ export function useDiscussionViews(options?: { readonly saved: ReaderState['disc
     get(id: string, comments: readonly Comment[]) {
       let session = sessions.current.get(id);
       if (!session) {
-        const configuration = initial.current;
+        const configuration = initial.current, saveCollapse = configuration?.saveCollapse;
         session = new DiscussionViewSession(comments, createQueryExecutor(), undefined, undefined, {
+          collapse: removed.current.has(id) ? undefined : configuration?.collapse?.[id],
+          saveCollapse: saveCollapse ? change => saveCollapse({ itemId: id, ...change }) : undefined,
           saved: removed.current.has(id) ? undefined : configuration?.saved[id],
           save: configuration ? intent => configuration.save({ itemId: id, ...intent }) : undefined,
         });
@@ -45,7 +47,7 @@ export function useDiscussionViews(options?: { readonly saved: ReaderState['disc
         const unsubscribe = session.subscribe(() => { if (!session.state.pending) { unsubscribe(); resolve(); } });
       })));
       await Promise.all(current.map(session => session.flush()));
-      return current.every(session => !session.state.saveFailed);
+      return current.every(session => !session.state.saveFailed && !session.state.collapseSaveFailed);
     },
     remove(id: string) { removed.current.add(id); sessions.current.get(id)?.dispose(); sessions.current.delete(id); },
     refresh(id: string, comments: readonly Comment[], item?: ContentItem) { const session = sessions.current.get(id); return session?.refresh(comments, item) ?? Promise.resolve(); },

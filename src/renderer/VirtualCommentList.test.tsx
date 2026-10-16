@@ -12,14 +12,16 @@ import { navigateDiscussion } from './discussion-navigation';
 import { completeReaderLimit, readerOverscan, VirtualCommentList } from './VirtualCommentList';
 import { installReaderLayout } from './testing/reader-layout';
 import { required } from './testing/required';
+import userEvent from '@testing-library/user-event';
+import type { DiscussionCollapse } from '../domain/discussion-collapse';
 import type { DiscussionViewIntent } from '../domain/discussion-view';
 
 let layout: ReturnType<typeof installReaderLayout>;
 beforeEach(() => { layout = installReaderLayout(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); delete window.__readerWork; });
 const executor = () => ({ evaluate: vi.fn(async (rows: Parameters<typeof evaluateDiscussionQuery>[0], query: Parameters<typeof evaluateDiscussionQuery>[1]) => evaluateDiscussionQuery(rows, query)), dispose: vi.fn() });
-function mount(comments: readonly Comment[], restrictive = false, suppliedItem?: ContentItem, saved?: DiscussionViewIntent) {
-  const data = generateDiscussion({ count: 0 }), engine = executor(), session = new DiscussionViewSession(comments, engine, undefined, undefined, { saved });
+function mount(comments: readonly Comment[], restrictive = false, suppliedItem?: ContentItem, saved?: DiscussionViewIntent, collapse?: DiscussionCollapse) {
+  const data = generateDiscussion({ count: 0 }), engine = executor(), session = new DiscussionViewSession(comments, engine, undefined, undefined, { saved, collapse });
   if (restrictive) {
     const applied = { ...defaultQuery, text: 'PROFILE_MATCH', seen: 'unseen' as const };
     const outcome = evaluateTestQuery(queryComments(comments), applied);
@@ -424,4 +426,68 @@ it('hidden readers retain cached anchor geometry rather than display-none zero r
   vi.spyOn(list, 'getBoundingClientRect').mockReturnValue({ top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 } as DOMRect);
   await act(() => reader.session.apply(reader.current(), true));
   expect(reader.session.state.scrollRequest).toMatchObject({ kind: 'refresh', id, offset });
+});
+
+
+it.each([10000, 50000])('%i collapse/reveal compresses actual virtual rows and ruler, keeps all matches/unseen and expands only the target branch', async count => {
+  const data = generateDiscussion({ count, shape: 'mixed', roots: 500, maxDepth: 50, seenRatio: 0, newIndexes: [count - 1] });
+  const reader = mount(data.comments, true, data.item);
+  const result = reader.session.state.result, fullCount = result.visibleCommentIds.length;
+  fireEvent.click(reader.getByRole('button', { name: 'Collapse all' }));
+  expect(Number(reader.panel.querySelector<HTMLElement>('.virtual-reader')?.dataset.rowCount)).toBe(1);
+  expect(reader.session.state.result).toBe(result);
+  const ruler = required(reader.panel.querySelector<HTMLElement>('.discussion-ruler'));
+  expect(ruler.dataset.matchCount).toBe('1'); expect(Number(ruler.dataset.unseenCount)).toBe(fullCount);
+  expect(ruler.dataset.newCount).toBe('1'); expect(ruler.querySelectorAll('svg path')).toHaveLength(3);
+  expect(reader.getByRole('button', { name: 'Expand replies' }).getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(reader.getByRole('button', { name: 'Next match' }));
+  await waitFor(() => expect(reader.panel.querySelector(`[data-comment-id="generated-${count - 1}"]`)).not.toBeNull());
+  expect(reader.session.state.selected).toBe(`generated-${count - 1}`);
+  expect(reader.rows().length).toBeLessThanOrEqual(completeReaderLimit);
+  expect(reader.onToggle).not.toHaveBeenCalled();
+  fireEvent.click(reader.getByRole('button', { name: 'Collapse all' }));
+  expect(reader.session.state.selected).toBe(`generated-${count - 1}`);
+  expect(reader.panel.querySelector('[data-selected=true]')).toBeNull();
+  // The NEW lane holds only the hidden exact target: keyboard activation reveals it.
+  fireEvent.keyDown(ruler, { key: 'ArrowRight' }); fireEvent.keyDown(ruler, { key: 'ArrowRight' });
+  fireEvent.keyDown(ruler, { key: 'Enter' });
+  await waitFor(() => expect(reader.panel.querySelector('[data-selected=true]')).not.toBeNull());
+  fireEvent.click(reader.getByRole('button', { name: 'Expand all' }));
+  expect(reader.session.state.collapse).toEqual({ defaultCollapsed: false, overrides: [] });
+  expect(Number(reader.panel.querySelector<HTMLElement>('.virtual-reader')?.dataset.rowCount)).toBe(fullCount);
+  expect(reader.current()).toEqual(data.comments);
+});
+
+it('mouse and native keyboard reply buttons preserve text, links, seen and selected identity; Polish wording counts all descendants', async () => {
+  const data = generateDiscussion({ count: 12, shape: 'chain', roots: 2, maxDepth: 20 });
+  const reader = mount(data.comments), user = userEvent.setup();
+  const first = required(reader.panel.querySelector<HTMLElement>('[data-comment-id="generated-0"]'));
+  fireEvent.click(required(first.querySelector('.comment-text')));
+  expect(reader.session.state.collapse.overrides).toEqual([]);
+  const button = required(first.querySelector<HTMLButtonElement>('.reply-toggle'));
+  fireEvent.click(button); expect(button.getAttribute('aria-expanded')).toBe('false');
+  expect(button.textContent).toContain('Show replies: 5');
+  button.focus(); await user.keyboard('{Enter}'); expect(button.getAttribute('aria-expanded')).toBe('true');
+  await user.keyboard(' '); expect(button.getAttribute('aria-expanded')).toBe('false');
+  reader.setLocale('pl'); expect(button.textContent).toContain('odpowiedzi: 5');
+  expect(reader.onToggle).not.toHaveBeenCalled();
+  expect(reader.panel.querySelector('[data-comment-id="generated-11"] .reply-toggle')).toBeNull();
+});
+
+it('saved hidden anchor restores its visible ancestor without expanding or focusing hidden selection, then reconciles variable height', async () => {
+  const data = generateDiscussion({ count: 10000, shape: 'chain', roots: 500, maxDepth: 30 });
+  const id = 'generated-8007', root = 'generated-8000';
+  const saved: DiscussionViewIntent = { draft: defaultQuery, applied: defaultQuery, sort: 'original',
+    anchor: { commentId: id, offset: 35 }, selected: id };
+  const focus = document.activeElement;
+  const reader = mount(data.comments, false, data.item, saved, { defaultCollapsed: true, overrides: [] });
+  await waitFor(() => expect(reader.session.state.restoring).toBe(false));
+  await waitFor(() => expect(Math.abs(required(reader.panel.querySelector<HTMLElement>(`[data-comment-id="${root}"]`)).getBoundingClientRect().top)).toBeLessThan(2));
+  expect(reader.session.state.selected).toBe(id); expect(reader.panel.querySelector('[data-selected=true]')).toBeNull();
+  expect(document.activeElement).toBe(focus); expect(reader.session.state.collapse.overrides).toEqual([]);
+  act(() => layout.setHeight(root, 370));
+  await waitFor(() => expect(Math.abs(required(reader.panel.querySelector<HTMLElement>(`[data-comment-id="${root}"]`)).getBoundingClientRect().top)).toBeLessThan(2));
+  fireEvent.click(reader.getByRole('button', { name: 'Expand all' }));
+  await waitFor(() => expect(reader.panel.querySelector(`[data-comment-id="${root}"]`)).not.toBeNull());
+  expect(reader.session.state.selected).toBe(id); expect(reader.onToggle).not.toHaveBeenCalled();
 });

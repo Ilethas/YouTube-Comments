@@ -14,6 +14,7 @@ let current;
 function tables(file) {
   const db = new DatabaseSync(file, { readOnly: true });
   try {
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 10);
     assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     return Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
@@ -142,6 +143,10 @@ function seed(file) {
     const initial=repo.ingest(normalized,undefined,true);
     const later={...baseline,comments:[...baseline.comments,{id:'packaged-new',parent:'root',text:'Packaged worker target Polish zażółć',timestamp:1790856000}]};
     repo.ingest(tools.normalizeYtDlp(JSON.stringify(later),fixture.context),undefined,true);
+    repo.setDiscussionCollapse({itemId:initial.itemId,kind:'all',collapsed:true});
+    const rootComment=repo.bootstrap(['en']).comments[initial.itemId].find(comment=>comment.parentId===null);
+    assert.ok(rootComment);
+    repo.setDiscussionCollapse({itemId:initial.itemId,kind:'comments',ids:[rootComment.id],collapsed:false});
     return initial.itemId;
   } finally {repo.close();}
 }
@@ -172,12 +177,15 @@ async function run() {
   session=await start(executable,environment,profile,'production-fresh');
   assert.equal((await session.invoke('bootstrap')).items.length,0,'Fresh packaged production must not seed demo');
   assert.ok(fs.existsSync(database)); await close(session);
-  report.checks.push('Fresh production schema 9 in independent disposable Windows profile environment; no demo');
+  tables(database); // Check current schema/integrity before adding any fixture.
+  report.checks.push('Fresh production schema 10 in independent disposable Windows profile environment; no demo');
   const itemId=seed(database);
   session=await start(executable,environment,profile,'production-existing');
   let boot=await session.invoke('bootstrap'); assert.equal(boot.items.length,1);
   await session.wait("!!document.querySelector('.comment') && !!document.querySelector('.source-button')");
-  report.checks.push('Existing schema 9, source header, real ASAR renderer/preload and node:sqlite');
+  assert.equal(boot.discussionCollapse[itemId].defaultCollapsed,true);
+  assert.ok(boot.discussionCollapse[itemId].overrides.length>0);
+  report.checks.push('Existing schema 10 with sparse collapse default/exception, source header, real ASAR renderer/preload and node:sqlite');
   const panel='[role=tabpanel]:not([hidden])';
   // UI preferences, kept in React as well as persisted in SQLite.
   await session.js("document.getElementById('settings-toggle').click()");

@@ -1,5 +1,29 @@
 # UI and navigation
 
+## Persistent reply collapse (ADR 0023)
+
+Discussions default fully expanded. Each comment with applied display descendants
+has a native chevron Show/Hide replies button. Its count includes all descendants,
+not the comment itself or only direct children. Collapsed summaries optionally add
+live unread and frozen applied matches. EN/PL labels, tooltips, aria-expanded,
+Enter/Space and existing focus styling apply. Text selection and external actions
+keep their existing behavior. Expand all / Collapse all operate on this discussion,
+clear sparse exceptions, retain query/sort/selection and persist promptly.
+
+F3/Shift+F3, unseen buttons and ruler markers resolve complete sorted data, open
+only required safe display ancestors, persist and reveal the exact target through
+the virtualizer. Match X/N and counts include hidden replies. Manual collapse keeps
+hidden selected identity without trying to focus it. Capture ID/row offset before
+changes; retain a visible anchor or map to the closest visible collapsed ancestor
+at offset zero. Restart and close/reopen use that fallback without forced focus.
+
+The ruler compresses hidden contributions onto that visible ancestor's row center.
+Category tooltips distinguish total contributions and hidden replies; own membership
+is total minus hidden. Pointer/keyboard ties at the same center prefer the first
+hidden category member, retaining all candidates in data. Three SVG paths remain
+constant. See [ADR 0023](decisions/0023-persistent-thread-collapse-and-virtual-navigation.md) for exact policy and persistence/failure semantics.
+
+
 ## Reader actions and selection (ADR 0022)
 
 Normal comment surfaces never mark seen. Drag, Shift extension, cross-element
@@ -203,7 +227,7 @@ termination expose the nested structure. Flat rows retain exact data depth and s
 Unseen uses a subtle row tint plus UNSEEN text and the explicit checkbox. Rails
 never indicate seen state. Compact 32px avatars, bylines and multiline bodies stay.
 
-[ADR 0017](decisions/0017-persistent-discussion-view-restoration.md) implements persistent query/sort/anchor/selection intent for the uncollapsed reader. Applied results remain session-only and are rebuilt on restart. Close/reopen retains the live session; Library removal clears session and storage. Expansion remains absent. Bulk actions and durable safe Undo are implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md); collapse remains a target; variable-height presentation is implemented in ADR 0010.
+[ADR 0017](decisions/0017-persistent-discussion-view-restoration.md) implements persistent query/sort/anchor/selection intent for the uncollapsed reader. Applied results remain session-only and are rebuilt on restart. Close/reopen retains the live session; Library removal clears session and storage. ADR 0023 persists sparse expansion state. Bulk actions and durable safe Undo are implemented in [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md); collapse is implemented in ADR 0023; variable-height presentation is implemented in ADR 0010.
 
 Avatars use only usable HTTPS URLs, anonymous CORS, no-referrer, lazy loading,
 async decoding and fixed dimensions. Empty alt text avoids duplicating the byline;
@@ -323,7 +347,7 @@ While seen edits await view recomputation, the displayed membership and order re
 
 An old comment can remain unseen for months; a just-discovered comment can immediately be marked seen. “New” must not become a synonym for “unseen.” The first successful acquisition establishes the baseline: its comments are unseen and retain `firstDiscoveredAt`, but receive no visual **New** highlighting. Comments discovered by later refreshes are eligible for new indicators. Only discoveries in the latest accepted post-baseline refresh are NEW; accepted partial/unknown and zero-insert refreshes replace the cohort, failures preserve it, and seen/publication/restart do not change it; [refresh and merge](REFRESH_AND_MERGE.md) defines the underlying distinction.
 
-All locally stored comments in a matching top-level conversation are part of the contextual result. Collapsing replies may hide rows from immediate display, but must not erase their membership, counts, or navigation targets. How the UI indicates matches within a collapsed subtree is an open presentation decision.
+All locally stored comments in a matching top-level conversation are part of the contextual result. Collapsing replies may hide rows from immediate display, but must not erase their membership, counts, or navigation targets. ADR 0023 shows frozen applied-match counts in collapsed reply summaries.
 
 ## Separate updating a view from refreshing a source
 
@@ -336,7 +360,7 @@ Manual seen changes save immediately. They must not cause the current result mem
 | Next/previous unseen | Live unseen comments in displayed applied trees, including context. | Accessible buttons; no keyboard binding added. |
 | Next/previous match | Last applied active-filter matching IDs in displayed preorder. | F3 / Shift+F3 and accessible buttons. |
 
-The compact search form edits draft only: text, selected fields, All/Unseen/Seen, case and regex toggles, compact Date / discoveries details, and Apply. It does not apply on typing. Invalid/expensive/failed evaluation retains previous results and shows localized feedback. Navigation wraps, never marks seen, and unseen targets update from live seen independently of applied matches. Collapse and future source-refresh shortcuts remain open; ADR 0010 selects virtualized reveal and Apply/Refresh scrolling. The applied matching set/count and matching-only bulk scope are settled as described above. See [stable filtering](FILTERING_AND_SEARCH.md).
+The compact search form edits draft only: text, selected fields, All/Unseen/Seen, case and regex toggles, compact Date / discoveries details, and Apply. It does not apply on typing. Invalid/expensive/failed evaluation retains previous results and shows localized feedback. Navigation wraps, never marks seen, and unseen targets update from live seen independently of applied matches. Collapse uses native buttons (ADR 0023); future source-refresh shortcuts remain open; ADR 0010 selects virtualized reveal and Apply/Refresh scrolling. The applied matching set/count and matching-only bulk scope are settled as described above. See [stable filtering](FILTERING_AND_SEARCH.md).
 
 Extraction can be long-running or fail. Provide understandable progress, error, and partial-result context without confusing a failure with an empty discussion or losing the last valid local snapshot. ADR 0018 implements global coarse progress, elapsed time and explicit pre-save Cancel; [extractors](EXTRACTORS.md) and [refresh and merge](REFRESH_AND_MERGE.md) own their underlying contracts.
 
@@ -372,7 +396,7 @@ overflow is not consumed. Wheel outside the strip retains normal panel scrolling
 
 Keyboard navigation must support next/previous unseen comments and matches. Next/previous navigation in the filtered reader uses the current applied active-filter matching set. Any separately labeled search-specific navigation must operate within the applicable view and must not confuse raw search hits with active-filter matches. Targets are comment identities in application data, not a query for rendered DOM elements. This lets navigation reach a comment many thousands of rows away or inside a collapsed subtree.
 
-The implementation must be able to identify a target, make its location visible, scroll it into the virtualized viewport, and indicate the active comment. This may require expanding its ancestor path. Current uncollapsed navigation wraps at both ends. Match candidates remain applied IDs; unseen candidates use live seen over displayed membership. From context, next/previous selects the eligible neighbor in preorder. Each row has an application-owned target ID, selection outline and final scrollIntoView call. ADR 0010 fulfills measured virtualized reveal; collapse/expansion remains open; ADR 0017 restores selection/anchor without focus. These choices must not broaden the filtered reader's match navigation beyond its applied matching set.
+The implementation must be able to identify a target, make its location visible, scroll it into the virtualized viewport, and indicate the active comment. This may require expanding its ancestor path. Current uncollapsed navigation wraps at both ends. Match candidates remain applied IDs; unseen candidates use live seen over displayed membership. From context, next/previous selects the eligible neighbor in preorder. Each row has an application-owned target ID, selection outline and final scrollIntoView call. ADR 0010 fulfills measured virtualized reveal; collapse/expansion is implemented in ADR 0023; ADR 0017 restores selection/anchor without focus. These choices must not broaden the filtered reader's match navigation beyond its applied matching set.
 
 ```mermaid
 flowchart LR
@@ -388,7 +412,7 @@ Navigating to a comment must never change its seen state. Selecting a match must
 
 [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) implements an 18px ruler just inside the active discussion scrollbar. It represents only the applied displayed virtual sequence: live unseen (including context), restrictive applied active-filter matches, and durable NEW. Unrestricted identity candidates create no match markers. Raw-only SEARCH HIT context has no match marker. Initial-baseline comments have no NEW marker.
 
-Pure markers contain application ID, virtual presentation index and all applicable categories. Row centers use full measured/estimated scroll geometry, including header/query offset and column bottom/footer. Resize/remeasurement refines positions without mounting target comments. Short 3px bands retain category counts and ordered targets; unseen/match/NEW each occupy a 6px lane. One SVG with three paths keeps marker DOM constant even at 50k. ADR 0016 supplies sorted presentation indexes; future collapse mapping remains separate work.
+Pure markers contain application ID, virtual presentation index and all applicable categories. Row centers use full measured/estimated scroll geometry, including header/query offset and column bottom/footer. Resize/remeasurement refines positions without mounting target comments. Short 3px bands retain category counts and ordered targets; unseen/match/NEW each occupy a 6px lane. One SVG with three paths keeps marker DOM constant even at 50k. ADR 0016 supplies sorted presentation indexes; ADR 0023 supplies compressed collapse mapping.
 
 Pointer lane selects category; the closest row center within the clicked band wins, with preorder breaking ties. Selection uses the existing session application-ID/index reveal path. The single labeled keyboard stop supports Up/Down bands, Home/End endpoints, Left/Right categories and Enter/Space activation at band center. Empty lanes do nothing. Hover/focus shows localized compact category counts, never comment contents. Existing match/unseen navigation remains available; all ruler actions leave seen untouched.
 

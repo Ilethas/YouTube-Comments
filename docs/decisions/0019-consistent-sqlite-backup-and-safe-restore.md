@@ -36,7 +36,7 @@ checks the version, exact known tables/indexes/triggers/constraints, full
 `integrity_check`, foreign keys, required singletons/local state, evidence/source/
 history ownership, positive attempt order, Undo entry counts/revision bounds and
 semantic view intents. Unknown application structures, version 0, corrupt data and
-newer schemas reject. Source SQL is never executed as a migration. Schemas 1–7 are
+newer schemas reject. Source SQL is never executed as a migration. Schemas 1–9 are
 recognized against reference schemas made by the known migration chain; only the
 staged copy migrates, then validates and bootstraps again. There is no downgrade.
 
@@ -110,6 +110,15 @@ startup environment > saved path > safe PATH and fail closed if unavailable.
 No cloud, schedule, compression, encryption, export/import, portable mode, installer,
 helper bundling, format envelope or automatic retention is implemented. Backup
 portability across future schema/SQLite/platform changes remains a release concern.
+
+## Schema 10 recognition (ADR 0023)
+
+Exact reference validation now recognizes schemas 1 to 10, including the strict collapse
+default/exception tables and their same-item cascading foreign keys. Schemas 1 to 9
+migrate only on staged copies. Online snapshots and crash roundtrips include collapse;
+startup preserves verified schema-9 snapshots before additive migration. Invalid or
+modified backups still reject; renderer bootstrap presentation fallback does not
+weaken backup integrity validation.
 
 ## Validation
 

@@ -27,7 +27,7 @@ function requireEmpty(db: DatabaseSync, sql: string): void {
 
 /** Read-only validation uses only application-authored SQL. Unknown tables,
  * indexes, views and triggers are rejected before any staged migration runs.
- * Schemas 1–9 are recognized; only the staged copy may subsequently migrate. */
+ * Schemas 1–10 are recognized; only the staged copy may subsequently migrate. */
 export function validateBackup(file: string): number {
   let db: DatabaseSync | undefined;
   try {

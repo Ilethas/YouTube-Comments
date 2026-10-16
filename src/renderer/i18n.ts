@@ -4,6 +4,12 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  threadExpansion: 'Thread expansion', expandAll: 'Expand all', collapseAll: 'Collapse all',
+  expandReplies: 'Expand replies', collapseReplies: 'Collapse replies', showReplies: 'Show replies: {count}', hideReplies: 'Hide replies: {count}',
+  replyUnseen: '{count} unread', replyMatches: '{count} matches', rulerHidden: 'Hidden replies: {count}',
+  collapseSaveFailed: 'Expansion changes could not be saved. Retry before closing the application.',
+  shortcutCollapse: 'Expand or collapse replies with the focused reply toggle',
+
   approximateTime: 'Approximately {time}',
   openAuthor: 'Open author channel in browser', openComment: 'Open original comment in browser',
   translateBrowser: 'Translate in browser', translationTarget: 'Translation target language',
@@ -125,6 +131,12 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  threadExpansion: 'Rozwijanie wątków', expandAll: 'Rozwiń wszystko', collapseAll: 'Zwiń wszystko',
+  expandReplies: 'Rozwiń odpowiedzi', collapseReplies: 'Zwiń odpowiedzi', showReplies: 'Pokaż odpowiedzi: {count}', hideReplies: 'Ukryj odpowiedzi: {count}',
+  replyUnseen: 'nieprzeczytane: {count}', replyMatches: 'dopasowania: {count}', rulerHidden: 'Ukryte odpowiedzi: {count}',
+  collapseSaveFailed: 'Nie udało się zapisać rozwinięcia. Ponów przed zamknięciem aplikacji.',
+  shortcutCollapse: 'Rozwiń lub zwiń odpowiedzi przyciskiem z fokusem',
+
   approximateTime: 'W przybliżeniu {time}',
   openAuthor: 'Otwórz kanał autora w przeglądarce', openComment: 'Otwórz oryginalny komentarz w przeglądarce',
   translateBrowser: 'Przetłumacz w przeglądarce', translationTarget: 'Docelowy język tłumaczenia',
@@ -248,9 +260,11 @@ const pl: Record<Key, string> & Record<string, string> = {
 /** Compact localized counts; one contribution may occur in several lanes. */
 export function rulerBucketLabel(locale: Locale, bucket: RulerBucket): string {
   const t = translator(locale), number = new Intl.NumberFormat(locale);
-  return [t('rulerUnseen', { count: number.format(bucket.targets.unseen.length) }),
-    t('rulerMatch', { count: number.format(bucket.targets.match.length) }),
-    t('rulerNew', { count: number.format(bucket.targets.new.length) })].join('\n');
+  return ([['unseen', 'rulerUnseen'], ['match', 'rulerMatch'], ['new', 'rulerNew']] as const).map(([category, label]) => {
+    const range = bucket.targets[category];
+    return t(label, { count: number.format(range.length) })
+      + (range.hiddenLength ? ` (${t('rulerHidden', { count: number.format(range.hiddenLength) })})` : '');
+  }).join('\n');
 }
 export const messages: Record<Locale, Record<string, string>> = { en, pl };
 

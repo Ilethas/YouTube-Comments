@@ -51,7 +51,7 @@ export function App({ api = window.reader }: { api?: ReaderApi }) {
 }
 
 function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderApi }) {
-  const views = useDiscussionViews({ saved: initialState.discussionViews, save: request => api.saveDiscussionView(request) });
+  const views = useDiscussionViews({ collapse: initialState.discussionCollapse, saveCollapse: request => api.setDiscussionCollapse(request), saved: initialState.discussionViews, save: request => api.saveDiscussionView(request) });
   const [items, setItems] = useState(initialState.items);
   const [locale, setLocale] = useState<Locale>(initialState.preferences.locale);
   const [appearance, setAppearance] = useState<Appearance>(initialState.preferences.appearance);

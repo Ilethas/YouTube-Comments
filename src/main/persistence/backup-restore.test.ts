@@ -59,6 +59,8 @@ function completeState() {
   repo().toggleSeen({ itemId, commentId: comments[0].id, subtree: false });
   repo().saveDiscussionView({ itemId, draft: { ...defaultQuery, text: 'unsaved draft differs' }, applied: { ...defaultQuery, seen: 'seen' },
     sort: 'latest-activity', anchor: { commentId: comments[1].id, offset: -12.5 }, selected: comments[2].id });
+  repo().setDiscussionCollapse({ itemId, kind: 'all', collapsed: true });
+  repo().setDiscussionCollapse({ itemId, kind: 'comments', ids: [comments[0].id], collapsed: false });
   repo().setHelperSelection('yt-dlp', 'C:\\machine\\yt-dlp.exe');
   repo().setHelperSelection('post-archiver', 'C:\\machine\\post-archiver.exe');
   repo().updatePreferences({ locale: 'pl' }, ['en']); repo().updatePreferences({ appearance: 'dark' }, ['en']);
@@ -70,7 +72,7 @@ function completeState() {
 it('backs up every authoritative table and restores exact data, Undo revisions, NEW, views, workspace and helpers', async () => {
   const item = completeState(), before = rows(file), bytes = readFileSync(file), snapshot = path.join(root, 'snapshot.sqlite');
   await repo().createBackup(snapshot);
-  expect(rows(snapshot)).toEqual(before); expect(readFileSync(file)).toEqual(bytes); expect(validateBackup(snapshot)).toBe(9);
+  expect(rows(snapshot)).toEqual(before); expect(readFileSync(file)).toEqual(bytes); expect(validateBackup(snapshot)).toBe(10);
   repo().updatePreferences({ appearance: 'light' }, ['en']); repo().undoSeen(item); repo().changeWorkspace('closeTab', 'settings');
   const changed = rows(file), directory = await prepareRestore(snapshot, file);
   await repo().createBackup(path.join(directory, 'safety.sqlite')); close();
@@ -147,12 +149,12 @@ it.each(['text', 'corrupted', 'wrong-app', 'newer', 'foreign-key', 'missing-stat
     expect(readFileSync(file)).toEqual(before);
   });
 
-it.each([1, 2, 3, 4, 5, 6, 7, 8])('recognizes schema %i and migrates only its staged copy', async version => {
+it.each([1, 2, 3, 4, 5, 6, 7, 8, 9])('recognizes schema %i and migrates only its staged copy', async version => {
   const source = path.join(root, `old-${version}.sqlite`), db = new DatabaseSync(source);
   migrateDatabase(db, migrations.slice(0, version)); db.close(); const original = readFileSync(source);
   expect(validateBackup(source)).toBe(version);
   const directory = await prepareRestore(source, file);
-  expect(validateBackup(path.join(directory, 'candidate.sqlite'))).toBe(9); expect(readFileSync(source)).toEqual(original);
+  expect(validateBackup(path.join(directory, 'candidate.sqlite'))).toBe(10); expect(readFileSync(source)).toEqual(original);
 });
 
 it.each<RestorePhase>(['intent', 'previous-renamed', 'previous-moved', 'candidate-renamed', 'installed', 'reopened', 'accepted'])(
@@ -200,15 +202,16 @@ it('fails closed when intent metadata disappears after moving the original', asy
   await expect(installRestore(file, directory, at => { if (at === 'previous-moved') throw new Error('crash'); })).rejects.toThrow();
   rmSync(path.join(directory, 'intent'));
   await expect(recoverProfile(file)).rejects.toThrow('metadata missing'); expect(existsSync(file)).toBe(false);
-  expect(validateBackup(path.join(directory, 'previous.sqlite'))).toBe(9);
+  expect(validateBackup(path.join(directory, 'previous.sqlite'))).toBe(10);
 });
 
 it('preserves populated schema-7 data while staging its known migration', async () => {
   const source = path.join(root, 'populated-v7.sqlite'); await repo().createBackup(source);
-  const db = new DatabaseSync(source); db.exec('ALTER TABLE preferences DROP COLUMN translation_target; DROP TABLE discussion_view_state; PRAGMA user_version=7'); db.close();
+  const db = new DatabaseSync(source); db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; ALTER TABLE preferences DROP COLUMN translation_target; DROP TABLE discussion_view_state; PRAGMA user_version=7'); db.close();
   const original = readFileSync(source), before = rows(source);
   const directory = await prepareRestore(source, file), after = rows(path.join(directory, 'candidate.sqlite'));
-  const { discussion_view_state, ...preserved } = after;
+  const { discussion_view_state, discussion_collapse, comment_collapse_overrides, ...preserved } = after;
+  expect(discussion_collapse).toEqual([]); expect(comment_collapse_overrides).toEqual([]);
   expect(discussion_view_state).toEqual([]);
   expect(preserved).toEqual({ ...before, preferences: before.preferences.map(row => ({ ...row, translation_target: 'app' })) });
   expect(readFileSync(source)).toEqual(original);
@@ -217,7 +220,7 @@ it('preserves populated schema-7 data while staging its known migration', async 
 it('protects populated schema 8 before migration and restores schema-8 backups only through an unchanged source and staged upgrade', async () => {
   completeState();
   const source = path.join(root, 'populated-v8.sqlite'); await repo().createBackup(source);
-  const db = new DatabaseSync(source); db.exec('ALTER TABLE preferences DROP COLUMN translation_target; PRAGMA user_version=8'); db.close();
+  const db = new DatabaseSync(source); db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; ALTER TABLE preferences DROP COLUMN translation_target; PRAGMA user_version=8'); db.close();
   const original = readFileSync(source), before = rows(source);
   expect(validateBackup(source)).toBe(8);
   await protectBeforeMigration(source);
@@ -225,8 +228,8 @@ it('protects populated schema 8 before migration and restores schema-8 backups o
   const snapshots = readdirSync(recoveryDirectory(source)).filter(name => name.startsWith('pre-migration-v8-'));
   expect(snapshots).toHaveLength(1); expect(validateBackup(path.join(recoveryDirectory(source), snapshots[0]))).toBe(8);
   const directory = await prepareRestore(source, file), candidate = path.join(directory, 'candidate.sqlite');
-  expect(validateBackup(candidate)).toBe(9); expect(readFileSync(source)).toEqual(original);
-  expect(rows(candidate)).toEqual({ ...before, preferences: before.preferences.map(row => ({ ...row, translation_target: 'app' })) });
+  expect(validateBackup(candidate)).toBe(10); expect(readFileSync(source)).toEqual(original);
+  expect(rows(candidate)).toEqual({ ...before, discussion_collapse: [], comment_collapse_overrides: [], preferences: before.preferences.map(row => ({ ...row, translation_target: 'app' })) });
   await repo().createBackup(path.join(directory, 'safety.sqlite')); close();
   await installRestore(file, directory); expect(await recoverProfile(file)).toBe('restored');
   repository = ReaderRepository.open(file);
@@ -249,7 +252,7 @@ it('preserves a verified pre-migration snapshot before an older profile can migr
   const original = readFileSync(old); await protectBeforeMigration(old); expect(readFileSync(old)).toEqual(original);
   const snapshots = readdirSync(recoveryDirectory(old)).filter(name => name.startsWith('pre-migration-'));
   expect(snapshots).toHaveLength(1); expect(validateBackup(path.join(recoveryDirectory(old), snapshots[0]))).toBe(7);
-  const migrated = ReaderRepository.open(old); migrated.close(); expect(validateBackup(old)).toBe(9);
+  const migrated = ReaderRepository.open(old); migrated.close(); expect(validateBackup(old)).toBe(10);
 });
 
 it.each([10000, 50000])('measures complete backup/verification/preflight/safety/install/reopen for %i generated comments', async count => {

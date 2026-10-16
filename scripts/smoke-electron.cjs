@@ -242,7 +242,7 @@ async function verifyWindow(window, nativeTheme) {
     key('W', ['control']); await active('library'); // closing Settings chooses right
     key('F1'); await waitFor("document.activeElement.id === 'keyboard-shortcuts' && !document.querySelector('.tabs button:disabled')", 'F1 reopens singleton');
     const rows = await js("Array.from(document.querySelectorAll('#panel-settings tr[data-shortcut-id]'),row=>({id:row.dataset.shortcutId,keys:row.querySelector('td').textContent}))");
-    assert.equal(rows.length, 19); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
+    assert.equal(rows.length, 21); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
     assert.equal(rows.some(row => row.id === 'comment-toggle-row'), false);
     assert.equal(rows.some(row => row.id === 'comment-subtree-row'), false);
     assert.equal(rows.find(row => row.id === 'previous-tab').keys, 'Ctrl+Shift+Tab');
@@ -278,7 +278,7 @@ async function verifyWindow(window, nativeTheme) {
   await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .query-controls') !== null", 'bootstrap');
   await verifyHelperSettings();
   if (phase === 'environment') return;
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'moveTab', 'onAcquisitionProgress', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'toggleSeen', 'undoSeen', 'updatePreferences']);
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'moveTab', 'onAcquisitionProgress', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   assert.deepEqual(await js("window.reader.acquire({url:'https://www.youtube.com/watch?v=abcdefghijk',executable:'evil'})"),
     { ok: false, error: { code: 'INVALID_REQUEST' } });
   assert.deepEqual(await js("window.reader.refresh({itemId:'video-demo',url:'https://example.com'})"),
@@ -421,6 +421,8 @@ async function verifyWindow(window, nativeTheme) {
     const beforeRefreshSeen = await snapshot();
     const recoveryBeforeRefresh = await bulkUi('all', false);
     assert.ok(recoveryBeforeRefresh.seenUndo[video.id]);
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .expansion-controls button:nth-child(2)').click()");
+    await waitFor(`window.reader.bootstrap().then(r=>r.value.discussionCollapse[${JSON.stringify(video.id)}]?.defaultCollapsed===true)`, 'collapse persisted before Refresh');
     // The applied rolling criteria resolve against this fresh clock on Refresh.
     const beforeSort = await snapshot();
     await selectSort('latest-activity');
@@ -430,6 +432,10 @@ async function verifyWindow(window, nativeTheme) {
     await waitFor("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) .comment-text')).some(row=>row.textContent.includes('New smoke comment'))", 'refresh applied query');
     assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-search input').value"), 'unapplied draft');
     assert.equal(await currentSort(), 'latest-activity', 'Refresh retains session sorting');
+    const retainedCollapse = (await snapshot()).discussionCollapse[video.id];
+    assert.deepEqual(retainedCollapse, { defaultCollapsed: true, overrides: [] }, 'Successful helper Refresh retains explicit collapsed default');
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) .expansion-controls button:first-child').click()");
+    await waitFor(`window.reader.bootstrap().then(r=>r.value.discussionCollapse[${JSON.stringify(video.id)}]?.defaultCollapsed===false)`, 'expand persisted after Refresh');
     await selectSort('original');
     assert.ok((await visibleMatches()).length > 0);
     const afterRefreshUndo = await undoUi();
@@ -639,9 +645,11 @@ async function verifyWindow(window, nativeTheme) {
     await waitFor("!getSelection().isCollapsed && getSelection().anchorNode!==getSelection().focusNode",'native cross-element selection');
     const selectedText=await js('getSelection().toString()');
     const {clipboard}=require('electron'), restoreClipboard=await require('./snapshot-clipboard.cjs')();
-    try {
-      contents.copy(); await pause(50); assert.equal((await clipboard.readText()).replace(/\r\n/g,'\n'),selectedText.replace(/\r\n/g,'\n'),'Native Copy preserves complete selected text');
-    } finally { await restoreClipboard(); }
+    if (restoreClipboard) {
+      try {
+        contents.copy(); await pause(50); assert.equal((await clipboard.readText()).replace(/\r\n/g,'\n'),selectedText.replace(/\r\n/g,'\n'),'Native Copy preserves complete selected text');
+      } finally { await restoreClipboard(); }
+    } else console.log('Native Copy UNVERIFIED: current Windows clipboard contains formats Electron cannot snapshot; clipboard preserved.');
     assert.deepEqual(await snapshot(),selectionBefore,'Cross-element selection and copy never mark');
     await js('getSelection().removeAllRanges()'); window.hide();
     const hit = await js("(() => {const label=document.querySelector('#comment-v2 .seen-control'),r=label.getBoundingClientRect();label.querySelector('input').focus();return {width:r.width,height:r.height,focused:document.activeElement===label.querySelector('input'),outline:getComputedStyle(label).outlineWidth};})()");
@@ -823,7 +831,7 @@ if (process.versions.electron && process.type === 'browser') {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 9);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 10);
         assert.equal(db.prepare('SELECT count(*) AS count FROM helper_settings').get().count,0);
         assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 7);
         assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 3);

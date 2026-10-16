@@ -1,6 +1,6 @@
 # How it works
 
-This guide is for the technically capable project owner who wants to understand the whole application without having written each subsystem. It describes the **intended system**. Today the repository implements the synthetic reader with main-owned SQLite, durable manual seen state/preferences, migrations, isolated profiles, and a typed preload API. Live acquisition/refresh, compact unified workspace tabs and active-discussion search/seen filtering with stable session applied views/navigation are implemented. ADR 0010 implements bounded variable-height rendering with unmounted-target navigation. ADR 0011 adds the ruler and durable NEW. Dates (ADR 0012), bulk recovery (ADR 0013), sorting (ADR 0016) and persistent uncollapsed view restoration (ADR 0017) are implemented. Reply collapse remains future. Start with the [documentation map](README.md) for status or [product requirements](PRODUCT_REQUIREMENTS.md) for the full contract.
+This guide is for the technically capable project owner who wants to understand the whole application without having written each subsystem. It describes the **intended system**. Today the repository implements the synthetic reader with main-owned SQLite, durable manual seen state/preferences, migrations, isolated profiles, and a typed preload API. Live acquisition/refresh, compact unified workspace tabs and active-discussion search/seen filtering with stable session applied views/navigation are implemented. ADR 0010 implements bounded variable-height rendering with unmounted-target navigation. ADR 0011 adds the ruler and durable NEW. Dates (ADR 0012), bulk recovery (ADR 0013), sorting (ADR 0016) and persistent uncollapsed view restoration (ADR 0017) are implemented. Persistent reply collapse is implemented in ADR 0023. Start with the [documentation map](README.md) for status or [product requirements](PRODUCT_REQUIREMENTS.md) for the full contract.
 
 ## The local library is the center
 
@@ -73,7 +73,7 @@ Initial search must support comment contents, author/display name/handle, direct
 
 Publication-date ranges and useful presets such as Today or Last 24 hours test `publishedAt`; the preset list is not permanently fixed. "New since refresh" instead uses discovery/refresh history. A reply published months ago but discovered after the baseline can be new without passing a recent publication-date filter. The UI must not blur these concepts with a vague "Since last refresh" publication-date preset. Exact timestamps remain discoverable when available.
 
-Next/previous match navigation in the filtered reader follows the currently applied active-filter matching set. Unseen and any search-specific navigation operate within the applicable view, with their remaining details documented separately. The required scrollbar-adjacent overview ruler represents at least unseen comments, search matches, and subsequent-refresh discoveries. Its clickable markers resolve comment identities from data. ADR 0011 uses estimated/measured row heights and three category lanes aggregated into pixel bands. It shows only the current applied view, and its match lane uses restrictive applied matches rather than raw-only hits. Pointer and local keyboard navigation reveal targets through the virtualizer; ADR 0016 reorders its geometry with whole-conversation sorting; future collapse adaptations remain open. Jumping cooperates with virtualization and never marks the target seen. See [UI and navigation](UI_AND_NAVIGATION.md) and [Architecture](ARCHITECTURE.md).
+Next/previous match navigation in the filtered reader follows the currently applied active-filter matching set. Unseen and any search-specific navigation operate within the applicable view, with their remaining details documented separately. The required scrollbar-adjacent overview ruler represents at least unseen comments, search matches, and subsequent-refresh discoveries. Its clickable markers resolve comment identities from data. ADR 0011 uses estimated/measured row heights and three category lanes aggregated into pixel bands. It shows only the current applied view, and its match lane uses restrictive applied matches rather than raw-only hits. Pointer and local keyboard navigation reveal targets through the virtualizer; ADR 0016 reorders its geometry with whole-conversation sorting; ADR 0023 aggregates hidden contributions onto visible collapsed ancestors. Jumping cooperates with virtualization and never marks the target seen. See [UI and navigation](UI_AND_NAVIGATION.md) and [Architecture](ARCHITECTURE.md).
 
 ## Tabs restore your workspace
 
@@ -98,3 +98,18 @@ Translate in browser opens the stored comment in Google Translate only when chos
 Settings explains this Google disclosure and saves Follow application language or an
 explicit target independently of the interface. Long comments offer full Copy for
 manual translation. See ADR 0022 and UI_AND_NAVIGATION for boundaries and shortcuts.
+
+## Hide replies without losing their discussion
+
+Discussions start fully expanded. Use a comment's chevron to hide/show all of its
+replies, or Expand all / Collapse all beside sorting for the current discussion.
+The count means all descendants, including nested replies. Hidden summaries show
+live unread and last-applied matches independently. Your choices persist across
+restart, Library reopen, filters, sorting and Refresh in sparse SQLite records.
+
+Hidden replies still participate in searches, match counts, unseen navigation and
+all existing seen/bulk/Undo actions. F3, unseen navigation and ruler activation open
+only the ancestors needed to reveal the target, and remember that expansion.
+Collapsing a selected reply keeps its logical selection. If your reading anchor is
+hidden, scrolling restores its visible collapsed ancestor. No expansion action
+marks comments seen. See [ADR 0023](decisions/0023-persistent-thread-collapse-and-virtual-navigation.md).

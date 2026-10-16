@@ -9,6 +9,7 @@ import type { GeneratedDiscussionOptions } from './large-discussions';
 import { toggleSeen } from '../domain/discussion';
 import type { Comment, ContentItem } from '../domain/discussion';
 import { queryComments, unrestrictedView } from '../domain/discussion-query';
+import { projectCollapsedRows } from '../renderer/discussion-collapse';
 import { projectReaderRows } from '../renderer/discussion-presentation';
 import { required } from '../renderer/testing/required';
 import type { Locale } from '../renderer/i18n';
@@ -69,6 +70,25 @@ const profile = {
     });
     const begin = performance.now(); render(); await paint();
     return { count: comments.length, identityViewMs, projectionMs, renderPaintMs: performance.now() - begin, ...stats(), visible: result.visibleCommentIds.length };
+  },
+  async collapseCheck() {
+    const result = session.state.result, seen = comments.map(row => row.seen);
+    const rootCount = session.presentation(comments).rows.filter(row => row.parentId === null).length;
+    const start = performance.now();
+    flushSync(() => session.setCollapsed({ kind: 'all', collapsed: true })); await paint();
+    const collapsed = { ms: performance.now() - start, visible: session.displayed(comments).rows.length, ...stats() };
+    if (collapsed.visible !== rootCount || collapsed.rows > 200 || collapsed.rulerNodes >= 10) throw new Error('Collapsed geometry is not bounded');
+    const target = required(session.presentation(comments).orderedIds.at(-1)), revealStart = performance.now();
+    flushSync(() => session.select(target)); await paint(); await paint();
+    const reveal = { ms: performance.now() - revealStart, visible: session.displayed(comments).rows.length, ...stats() };
+    if (!reveal.exactSelectedVisible) throw new Error('Hidden navigation target not visible');
+    const mixedStart = performance.now(); projectCollapsedRows(session.presentation(comments), session.state.collapse);
+    const mixedProjectionMs = performance.now() - mixedStart;
+    const expandStart = performance.now();
+    flushSync(() => session.setCollapsed({ kind: 'all', collapsed: false })); await paint();
+    const expanded = { ms: performance.now() - expandStart, visible: session.displayed(comments).rows.length, ...stats() };
+    if (session.state.result !== result || comments.some((row, index) => row.seen !== seen[index])) throw new Error('Collapse mutated query or seen');
+    return { rootCount, collapsed, reveal, mixedProjectionMs, expanded };
   },
   async toggle() { const id = required(required(document.querySelector<HTMLElement>('.comment-branch')).dataset.commentId);
     const start = performance.now(); toggle(item.id, id, false); await paint(); return { ms: performance.now() - start, ...stats() }; },

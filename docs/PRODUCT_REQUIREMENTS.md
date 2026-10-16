@@ -1,5 +1,16 @@
 # Product requirements
 
+## Persistent expansion milestone (ADR 0023)
+
+The reader now implements fully expanded defaults, individual reply toggles and
+current-discussion Expand all / Collapse all. Sparse SQLite state survives query,
+sort, Refresh, close/reopen and restart. Hidden applied matches/unseen/NEW remain
+logical candidates; navigation opens only required ancestors and ruler geometry
+aggregates onto visible collapsed ancestors. Selection and stable anchor fallback
+remain independent of seen state and browser focus. All existing bulk/Undo scopes
+include their stored/frozen targets regardless of collapsed rows. See [ADR 0023](decisions/0023-persistent-thread-collapse-and-virtual-navigation.md).
+
+
 Status: persistent target specification; the reader includes SQLite/typed-boundary persistence and durable normalized fixture merge/history. [Documentation map](README.md) · [Owner's walkthrough](HOW_IT_WORKS.md) · [Open decisions](decisions/README.md)
 
 ## Purpose and scope
@@ -85,4 +96,4 @@ These scenarios illustrate required behavior and should become tests in the rele
 
 ## Scope of this milestone and future increments
 
-The synthetic React/domain/UI reader demonstrates manual per-comment/subtree seen behavior, nested reading, basic tabs, English/Polish, and System/Light/Dark. The persistence milestone adds main-owned SQLite, schema/migrations, isolated profiles, typed validated IPC, and durable seen state and preferences. The UI holds acknowledged snapshots; restart recovery comes from SQLite. [ADR 0001](decisions/0001-synthetic-reader-foundation.md) and [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) record the choices and limits. [ADR 0004](decisions/0004-durable-observation-merge.md) implements non-destructive normalized fixture merge/history. ADR 0005 implements live public acquisition/refresh and minimal UI through development PATH helpers. ADR 0008 implements active-discussion search/seen filtering, independent session draft/applied results, context and match/unseen navigation. ADR 0010 implements bounded variable-height presentation and unmounted-target navigation. ADR 0011 implements the ruler and durable NEW. Date rules (ADR 0012), bulk recovery/actions (ADR 0013), sorting (ADR 0016) and persistent uncollapsed view restoration (ADR 0017) are implemented. Reply collapse and backup/export remain targets; storage/query/library scalability is still partly open. Library-wide search, channel-wide Community Post browsing, and authenticated/member-only extraction remain future possibilities with unresolved scope. Future increments must satisfy relevant requirements and [tests](TESTING.md), and resolve only decisions needed for their own behavior.
+The synthetic React/domain/UI reader demonstrates manual per-comment/subtree seen behavior, nested reading, basic tabs, English/Polish, and System/Light/Dark. The persistence milestone adds main-owned SQLite, schema/migrations, isolated profiles, typed validated IPC, and durable seen state and preferences. The UI holds acknowledged snapshots; restart recovery comes from SQLite. [ADR 0001](decisions/0001-synthetic-reader-foundation.md) and [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md) record the choices and limits. [ADR 0004](decisions/0004-durable-observation-merge.md) implements non-destructive normalized fixture merge/history. ADR 0005 implements live public acquisition/refresh and minimal UI through development PATH helpers. ADR 0008 implements active-discussion search/seen filtering, independent session draft/applied results, context and match/unseen navigation. ADR 0010 implements bounded variable-height presentation and unmounted-target navigation. ADR 0011 implements the ruler and durable NEW. Date rules (ADR 0012), bulk recovery/actions (ADR 0013), sorting (ADR 0016) and persistent uncollapsed view restoration (ADR 0017) are implemented. Reply collapse (ADR 0023) and backup/restore (ADR 0019) are implemented; export remains future; storage/query/library scalability is still partly open. Library-wide search, channel-wide Community Post browsing, and authenticated/member-only extraction remain future possibilities with unresolved scope. Future increments must satisfy relevant requirements and [tests](TESTING.md), and resolve only decisions needed for their own behavior.

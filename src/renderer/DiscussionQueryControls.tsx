@@ -1,3 +1,4 @@
+import { ActionIcon } from './ActionIcon';
 import { useId } from 'react';
 import { sameQuery } from '../domain/discussion-query';
 import type { DiscussionQuery, SearchField } from '../domain/discussion-query';
@@ -14,7 +15,8 @@ import { maxQueryTextLength } from '../domain/discussion-view';
 const sortLabels = { original: 'sortOriginal', newest: 'sortNewest', oldest: 'sortOldest', 'most-liked': 'sortMostLiked', 'latest-activity': 'sortLatestActivity' } as const;
 const sortHelp = { original: 'sortOriginalHelp', newest: 'sortPublicationHelp', oldest: 'sortPublicationHelp', 'most-liked': 'sortLikesHelp', 'latest-activity': 'sortActivityHelp' } as const;
 
-export function DiscussionQueryControls({ state, presentation, sort, locale, edit, apply, navigate, unseenCount }: {
+export function DiscussionQueryControls({ setCollapsed, state, presentation, sort, locale, edit, apply, navigate, unseenCount }: {
+  setCollapsed?: (collapsed: boolean) => void;
   state: DiscussionViewState; locale: Locale; edit: (query: DiscussionQuery) => void; apply: () => void;
   presentation: ReaderPresentation; sort: (sort: DiscussionSort) => void;
   navigate: (kind: 'match' | 'unseen', direction: 1 | -1) => void; unseenCount: number;
@@ -77,6 +79,10 @@ export function DiscussionQueryControls({ state, presentation, sort, locale, edi
         {discussionSorts.map(mode => <option key={mode} value={mode} disabled={mode === 'most-liked' && !presentation.mostLikedAvailable}
           title={t(mode === 'most-liked' && !presentation.mostLikedAvailable ? 'sortLikesUnavailable' : sortHelp[mode])}>{t(sortLabels[mode])}</option>)}
       </select></label>
+      {setCollapsed && <div className="expansion-controls" role="group" aria-label={t('threadExpansion')}>
+        <button type="button" title={t('expandAll')} onClick={() => setCollapsed(false)}><ActionIcon name="expandAll" />{t('expandAll')}</button>
+        <button type="button" title={t('collapseAll')} onClick={() => setCollapsed(true)}><ActionIcon name="collapseAll" />{t('collapseAll')}</button>
+      </div>}
       {!presentation.mostLikedAvailable && <small id={sortHelpId}>{t('sortLikesUnavailable')}</small>}
     </div>
     <div className="query-status" aria-live="polite">

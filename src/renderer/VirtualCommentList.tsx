@@ -60,12 +60,17 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
   locale, disabled, now, onToggle, onAction, overscan = readerOverscan, newIds = noNewIds }: Props) {
   const list = useRef<HTMLOListElement>(null);
   const sort = session.state.sort;
+  const collapse = session.state.collapse;
   const presentation = useMemo(() => {
     recordRenderWork('forest', itemId);
     recordRenderWork('tree', itemId);
-    return session.presentation(comments);
-  }, [comments, result, sort, session, itemId]);
+    return session.displayed(comments);
+  }, [comments, result, sort, collapse, session, itemId]);
   const { rows, indexById } = presentation;
+  const toggleCollapse = useCallback((id: string) => {
+    const state = session.state.collapse;
+    session.setCollapsed({ kind: 'comments', ids: [id], collapsed: state.defaultCollapsed === state.overrides.includes(id) });
+  }, [session]);
   const [geometry, setGeometry] = useState({ width: 1000, margin: 0, after: 0, top: 0, left: 0, height: 600 });
   const [focusedId, setFocusedId] = useState<string>();
   const getScrollElement = useCallback(() => list.current?.closest<HTMLElement>('.reader-panel') ?? null, []);
@@ -213,10 +218,10 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
     handledRequest.current = scrollRequest.revision;
     const panel = getScrollElement();
     if (!panel) return;
-    const targetId = scrollRequest.id;
+    const targetId = scrollRequest.id === undefined ? undefined : presentation.representativeById.get(scrollRequest.id);
     const index = targetId === undefined ? undefined : indexById.get(targetId);
     if (index === undefined || targetId === undefined) { virtualizer.scrollToOffset(scrollRequest.offset ?? 0); return; }
-    if (scrollRequest.offset !== undefined) return restoreMeasuredAnchor(index, scrollRequest.offset);
+    if (scrollRequest.offset !== undefined) return restoreMeasuredAnchor(index, targetId === scrollRequest.id ? scrollRequest.offset : 0);
     virtualizer.scrollToIndex(index, { align: 'center', behavior: 'auto' });
     // The library reconciles estimated index scrolling as measured rows mount.
     // Final lookup is for this exact already-resolved ID, never target discovery.
@@ -231,11 +236,11 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
     };
     frame = requestAnimationFrame(finish);
     return () => cancelAnimationFrame(frame);
-  }, [scrollRequest, indexById, virtualizer, getScrollElement]);
+  }, [scrollRequest, indexById, presentation, virtualizer, getScrollElement]);
   const items = virtualizer.getVirtualItems();
   const totalSize = virtualizer.getTotalSize();
   const measurements = virtualizer.measurementsCache;
-  const markers = useMemo(() => projectRulerMarkers(rows, result, newIds), [rows, result, newIds]);
+  const markers = useMemo(() => projectRulerMarkers(session.presentation(comments).rows, result, newIds, presentation), [presentation, comments, session, result, newIds]);
   const markerIndex = useMemo(() => indexRulerMarkers(markers), [markers]);
   const contentHeight = Math.max(geometry.height + 4, geometry.margin + totalSize + geometry.after);
   const buckets = useMemo(() => aggregateRulerMarkers(markerIndex, measurements, contentHeight, geometry.height), [markerIndex, measurements, contentHeight, geometry.height]);
@@ -249,8 +254,10 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
       return <li key={row.id} ref={virtualizer.measureElement} data-index={item.index} data-comment-id={row.id} data-depth={row.depth}
         aria-posinset={item.index + 1} aria-setsize={rows.length}
         className="comment-branch virtual-comment" style={{ transform: `translateY(${item.start - geometry.margin}px)`, '--reader-indent': `${readerIndent(row.depth)}px` } as CSSProperties}>
-        <ReaderRails row={row} />
+        <ReaderRails row={presentation.collapsed.has(row.id) ? { ...row, hasChildren: false } : row} />
         <CommentArticle comment={row.comment} role={row.role} rawHit={row.rawHit} hasChildren={row.hasChildren} selected={selected === row.id}
+          descendantCount={presentation.summaries.get(row.id)?.descendants} hiddenUnseen={presentation.collapsed.has(row.id) ? presentation.summaries.get(row.id)?.unseen : 0} hiddenMatches={presentation.collapsed.has(row.id) ? presentation.summaries.get(row.id)?.matches : 0} collapsed={presentation.collapsed.has(row.id)}
+          onCollapse={toggleCollapse}
           locale={locale} now={now} disabled={disabled} onToggle={onToggle} onAction={onAction} isNew={newIds.has(row.id)} />
       </li>;
     })}

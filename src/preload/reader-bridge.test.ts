@@ -6,7 +6,7 @@ import { defaultQuery } from '../domain/discussion-query';
 it('exposes only explicit intent and progress methods without a generic privileged transport', async () => {
   const invoke = vi.fn(async () => ({ ok: true, value: {} }));
   const api = createReaderBridge(invoke);
-  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'moveTab', 'onAcquisitionProgress', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'toggleSeen', 'undoSeen', 'updatePreferences']);
+  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'moveTab', 'onAcquisitionProgress', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   await api.getHelperStatus({ kind: 'yt-dlp' });
   await api.chooseHelper({ kind: 'post-archiver' });
   await api.clearHelper({ kind: 'yt-dlp' });
@@ -49,6 +49,8 @@ it('exposes only explicit intent and progress methods without a generic privileg
     [readerChannels.undoSeen, { itemId: 'stored-item' }],
   ]);
   const intent = { itemId: 'stored-item', draft: defaultQuery, applied: defaultQuery, sort: 'original' as const, anchor: { commentId: null, offset: 0 }, selected: null };
+  await api.setDiscussionCollapse({ itemId: 'stored-item', kind: 'all', collapsed: true });
+  expect(invoke).toHaveBeenLastCalledWith(readerChannels.setDiscussionCollapse, { itemId: 'stored-item', kind: 'all', collapsed: true });
   await api.saveDiscussionView(intent);
   expect(invoke).toHaveBeenLastCalledWith(readerChannels.saveDiscussionView, intent);
   await api.createBackup(); await api.restoreBackup();

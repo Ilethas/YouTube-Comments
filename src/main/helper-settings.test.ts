@@ -133,7 +133,7 @@ it('schema-6 migration preserves all content, state, history, workspace and dura
   const before = repository.bootstrap(['en']), history = repository.history();
   const db = new DatabaseSync(file);
   try {
-    db.exec('ALTER TABLE preferences DROP COLUMN translation_target; DROP TABLE discussion_view_state; DROP TABLE helper_settings; PRAGMA user_version=6;');
+    db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; ALTER TABLE preferences DROP COLUMN translation_target; DROP TABLE discussion_view_state; DROP TABLE helper_settings; PRAGMA user_version=6;');
     const tables = ['content_items', 'comments', 'comment_state', 'extraction_attempts', 'workspace', 'workspace_tabs', 'preferences', 'seen_operations', 'seen_operation_entries'];
     const rows = () => tables.map(table => db.prepare(`SELECT * FROM ${table}`).all());
     const original = rows();

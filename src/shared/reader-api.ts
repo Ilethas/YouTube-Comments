@@ -6,6 +6,7 @@ import type { WorkspaceState } from '../domain/workspace';
 import type { BulkSeenRequest, SeenMutationResult, SeenUndoResult, SeenUndoDescriptor } from '../domain/seen-operation';
 import type { HelperRequest, HelperStatus } from './helper-settings';
 import type { DiscussionViewIntent, SaveDiscussionViewRequest } from '../domain/discussion-view';
+import type { DiscussionCollapse, SetDiscussionCollapseRequest } from '../domain/discussion-collapse';
 import type { DataBackupResult } from './data-backup';
 
 export type ErrorCode = 'INVALID_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA'
@@ -23,6 +24,7 @@ export interface ReaderState {
   readonly preferences: Preferences;
   readonly workspace: WorkspaceState;
   readonly seenUndo: Readonly<Record<string, SeenUndoDescriptor | null>>;
+  readonly discussionCollapse: Readonly<Record<string, DiscussionCollapse>>;
   readonly discussionViews: Readonly<Record<string, DiscussionViewIntent>>;
 }
 export interface ToggleSeenRequest {
@@ -55,6 +57,7 @@ export interface ReaderApi {
   onAcquisitionProgress(listener: (progress: AcquisitionNotification) => void): () => void;
   getAcquisitionProgress(): Promise<Result<AcquisitionProgress | null>>;
   cancelAcquisition(request: { readonly operationId: string }): Promise<Result<null>>;
+  setDiscussionCollapse(request: SetDiscussionCollapseRequest): Promise<Result<null>>;
   saveDiscussionView(request: SaveDiscussionViewRequest): Promise<Result<null>>;
   openSource(request: RefreshRequest): Promise<Result<null>>;
   getHelperStatus(request: HelperRequest): Promise<Result<HelperStatus>>;
@@ -80,6 +83,7 @@ export const readerChannels = {
   openCommentAction: 'reader:comment-action',
   createBackup: 'reader:create-backup', restoreBackup: 'reader:restore-backup',
   getAcquisitionProgress: 'reader:acquisition-current', cancelAcquisition: 'reader:cancel-acquisition',
+  setDiscussionCollapse: 'reader:set-discussion-collapse',
   saveDiscussionView: 'reader:save-discussion-view',
   openSource: 'reader:open-source',
   getHelperStatus: 'reader:helper-status', chooseHelper: 'reader:choose-helper', clearHelper: 'reader:clear-helper',

@@ -151,7 +151,7 @@ Counts distinguish matching comments from containing threads. Navigation targets
 - Publication precision/labels are durably stored; date-query semantics remain open.
 - Missing/cyclic relationship truth is retained with safe display fallback, and ambiguous identities are skipped (ADR 0004). ADR 0016 resolves whole-conversation sorting over that display structure; future user-facing diagnostics remain open.
 - ADR 0011 settles NEW lifetime from the latest accepted post-baseline attempt in explicit durable insertion order, independent of seen/publication. Any future discovery-filter window UI remains open.
-- ADR 0008 selects session draft/applied snapshots, explicit Apply/error preservation, badges and saved-seen indications. ADR 0010 selects Refresh anchor reconciliation; ADR 0017 persists semantic draft/applied queries, sort, stable comment anchor/offset and selection while rebuilding results at restart. Broader inactive-tab notifications and future collapse remain open.
+- ADR 0008 selects session draft/applied snapshots, explicit Apply/error preservation, badges and saved-seen indications. ADR 0010 selects Refresh anchor reconciliation; ADR 0017 persists semantic draft/applied queries, sort, stable comment anchor/offset and selection while rebuilding results at restart. ADR 0023 adds sparse persistent collapse as separate presentation; broader inactive-tab notifications remain open.
 - Choose the exact representation of undoable changes and their retention.
 
 Record consequential choices in [decision records](decisions/README.md). See [database design](DATABASE.md) for proposed storage and [testing](TESTING.md) for executable invariants.

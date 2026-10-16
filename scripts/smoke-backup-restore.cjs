@@ -84,6 +84,8 @@ if (process.versions.electron && process.type === 'browser') {
     if (phase === 'seed') {
       assert.equal(typeof require('node:sqlite').backup, 'function');
       console.log(`Backup runtime: Electron ${process.versions.electron}, Node ${process.versions.node}, SQLite ${process.versions.sqlite}`);
+      await invoke('setDiscussionCollapse', { itemId: 'video-demo', kind: 'all', collapsed: phase === 'seed' });
+      if (phase === 'seed') await invoke('setDiscussionCollapse', { itemId: 'video-demo', kind: 'comments', ids: ['v1'], collapsed: false });
       await invoke('toggleSeen', { itemId: 'video-demo', commentId: 'v1', subtree: false });
       await invoke('bulkSeen', { itemId: 'post-demo', seen: true, target: { kind: 'all' } });
       await invoke('openSettings'); await invoke('moveTab', { tabId: 'settings', toIndex: 0 });
@@ -110,6 +112,8 @@ if (process.versions.electron && process.type === 'browser') {
       console.log(`Backup Settings operation: ${operationMs.toFixed(1)} ms`);
     } else if (phase === 'restore' || crashAt) {
       const original = JSON.parse(fs.readFileSync(checkpoint));
+      await invoke('setDiscussionCollapse', { itemId: 'video-demo', kind: 'all', collapsed: phase === 'seed' });
+      if (phase === 'seed') await invoke('setDiscussionCollapse', { itemId: 'video-demo', kind: 'comments', ids: ['v1'], collapsed: false });
       await invoke('toggleSeen', { itemId: 'video-demo', commentId: 'v1', subtree: false });
       await invoke('undoSeen', { itemId: 'post-demo' }); await invoke('closeTab', { tabId: 'discussion:post-demo' });
       await invoke('updatePreferences', { appearance: 'light' });

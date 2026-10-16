@@ -1,3 +1,8 @@
+import { expandedDiscussion, changeCollapse } from '../domain/discussion-collapse';
+import type { DiscussionCollapse, CollapseChange } from '../domain/discussion-collapse';
+import { projectCollapsedRows, collapsedAncestors } from './discussion-collapse';
+import type { CollapsedPresentation } from './discussion-collapse';
+import { CollapseSaveQueue } from './collapse-save-queue';
 import { defaultQuery, queryComments, unrestrictedView } from '../domain/discussion-query';
 import { resolveDiscussionQuery } from '../domain/discussion-query-resolution';
 import type { DiscussionQuery, DiscussionViewResult, QueryErrorCode } from '../domain/discussion-query';
@@ -15,6 +20,8 @@ import { DiscussionViewSaveQueue, draftSaveDelay, intentSaveDelay } from './disc
 
 /** Live singleton-discussion state; only semantic intent is persisted by main. */
 export interface DiscussionViewState {
+  readonly collapse: DiscussionCollapse;
+  readonly collapseSaveFailed?: boolean;
   readonly sort: DiscussionSort;
   readonly draft: DiscussionQuery;
   readonly applied: DiscussionQuery;
@@ -31,7 +38,7 @@ export interface DiscussionViewState {
 /** Session-only presentation intent. An anchor offset is relative to the row top. */
 export interface ReaderScrollRequest {
   readonly revision: number;
-  readonly kind: 'navigate' | 'apply' | 'refresh' | 'sort' | 'restore';
+  readonly kind: 'navigate' | 'apply' | 'refresh' | 'sort' | 'restore' | 'collapse';
   readonly id?: string;
   readonly offset?: number;
 }
@@ -51,6 +58,7 @@ export class DiscussionViewSession {
     this.onChanged();
     for (const listener of this.listeners) listener();
   }
+  private currentComments: readonly Comment[];
   private generation = 0;
   private seenRevision = 0;
   private disposed = false;
@@ -60,6 +68,8 @@ export class DiscussionViewSession {
   private anchor: DiscussionViewIntent['anchor'] = { commentId: null, offset: 0 };
   private durableApplied: DiscussionQuery = defaultQuery;
   private readonly saveQueue?: DiscussionViewSaveQueue;
+  private readonly collapseQueue?: CollapseSaveQueue;
+  private collapsedCache?: { complete: ReaderPresentation; state: DiscussionCollapse; value: CollapsedPresentation };
   private readonly saved?: DiscussionViewIntent;
   private restoreStarted = false;
   private restoreTask?: Promise<void>;
@@ -67,6 +77,7 @@ export class DiscussionViewSession {
   /** Share one projection across controls, navigation, reader and ruler. Draft,
    * selection and pending-state notifications reuse the same immutable value. */
   presentation(comments: readonly Comment[]): ReaderPresentation {
+    this.currentComments = comments;
     const { result, sort } = this.state, cached = this.presentationCache;
     if (cached?.comments === comments && cached.result === result && cached.sort === sort) return cached.value;
     // Committed Refresh metadata reaches React before worker completion. Keep the
@@ -76,6 +87,35 @@ export class DiscussionViewSession {
     const value = projectReaderRows(comments, result, sort, retained);
     this.presentationCache = { comments, result, sort, value };
     return value;
+  }
+  /** Cached independent visible projection; complete order/counts never shrink. */
+  displayed(comments: readonly Comment[]): CollapsedPresentation {
+    const complete = this.presentation(comments), state = this.state.collapse, cached = this.collapsedCache;
+    if (cached?.complete === complete && cached.state === state) return cached.value;
+    const value = projectCollapsedRows(complete, state);
+    this.collapsedCache = { complete, state, value }; return value;
+  }
+  /** Manual changes retain hidden selection and restore a hidden anchor to its
+   * visible hiding ancestor. Navigation alone opens ancestors of its exact ID. */
+  setCollapsed(change: CollapseChange): void {
+    if (this.state.restoring) return;
+    const anchor = this.captureAnchor?.() ?? { id: this.anchor.commentId ?? undefined, offset: this.anchor.offset };
+    this.state = { ...this.state, collapse: changeCollapse(this.state.collapse, change) };
+    const projected = this.displayed(this.currentComments);
+    const id = anchor.id === undefined ? undefined : projected.representativeById.get(anchor.id);
+    const offset = id === anchor.id ? anchor.offset : 0;
+    this.state = { ...this.state, scrollRequest: { revision: ++this.scrollRevision, kind: 'collapse', id, offset } };
+    this.anchor = boundedAnchor(id, offset);
+    this.collapseQueue?.schedule(change); this.saveQueue?.schedule(intentSaveDelay); this.changed();
+  }
+  private revealAncestors(id: string): void {
+    const complete = this.presentation(this.currentComments);
+    if (!complete) return;
+    const ids = collapsedAncestors(id, complete, this.state.collapse);
+    if (!ids.length) return;
+    const change = { kind: 'comments' as const, ids, collapsed: false };
+    this.state = { ...this.state, collapse: changeCollapse(this.state.collapse, change) };
+    this.collapseQueue?.schedule(change);
   }
   /** Capture identity before explicit reorder; retain selection without navigating
    * to a match. No attached/valid anchor means discussion start. */
@@ -104,13 +144,18 @@ export class DiscussionViewSession {
   }
   constructor(comments: readonly Comment[], private readonly executor: QueryExecutor, private readonly onChanged: () => void = () => undefined,
     private readonly evaluationTime: () => QueryEvaluationTime = systemQueryEvaluationTime,
-    persistence?: { readonly saved?: DiscussionViewIntent; readonly save?: (intent: DiscussionViewIntent) => Promise<Result<null>> }) {
+    persistence?: { readonly collapse?: DiscussionCollapse; readonly saveCollapse?: (change: CollapseChange) => Promise<Result<null>>; readonly saved?: DiscussionViewIntent; readonly save?: (intent: DiscussionViewIntent) => Promise<Result<null>> }) {
+    this.currentComments = comments;
     this.saved = persistence?.saved;
     const saved = this.saved;
     this.anchor = saved?.anchor ?? this.anchor;
     this.durableApplied = saved?.applied ?? defaultQuery;
-    this.state = { sort: saved?.sort ?? 'original', draft: saved?.draft ?? defaultQuery, applied: this.durableApplied,
+    this.state = { collapse: persistence?.collapse ?? expandedDiscussion, sort: saved?.sort ?? 'original', draft: saved?.draft ?? defaultQuery, applied: this.durableApplied,
       result: unrestrictedView(saved ? [] : queryComments(comments)), pending: !!saved, restoring: !!saved, seenStale: false };
+    if (persistence?.saveCollapse) this.collapseQueue = new CollapseSaveQueue(persistence.saveCollapse, failed => {
+      if (!!this.state.collapseSaveFailed === failed) return;
+      this.state = { ...this.state, collapseSaveFailed: failed }; this.changed();
+    });
     const save = persistence?.save;
     if (save) this.saveQueue = new DiscussionViewSaveQueue(() => save(this.persistentIntent()), failed => {
       if (!!this.state.saveFailed === failed) return;
@@ -147,7 +192,7 @@ export class DiscussionViewSession {
   /** Before leaving/closing, capture the useful current data anchor and coalesce. */
   flush(): Promise<void> {
     this.readerSettled();
-    return this.saveQueue?.flush() ?? Promise.resolve();
+    return Promise.all([this.saveQueue?.flush(), this.collapseQueue?.flush()]).then(() => undefined);
   }
   edit(draft: DiscussionQuery): void {
     if (this.state.restoring) return;
@@ -155,6 +200,7 @@ export class DiscussionViewSession {
   }
   select(selected: string): void {
     if (this.state.restoring || !this.state.result.visibleCommentIds.includes(selected)) return;
+    this.revealAncestors(selected);
     this.saveQueue?.schedule(intentSaveDelay);
     this.state = { ...this.state, selected, scrollRequest: { revision: ++this.scrollRevision, kind: 'navigate', id: selected } }; this.changed();
   }
@@ -184,6 +230,7 @@ export class DiscussionViewSession {
       const candidate = restore ? this.saved?.selected : this.state.selected;
       const selected = candidate && visible.has(candidate) ? candidate : undefined;
       const keptAnchor = anchor && (anchor.id === undefined || visible.has(anchor.id)) ? anchor : undefined;
+      this.currentComments = comments;
       const presentation = projectReaderRows(comments, outcome.result, this.state.sort);
       this.presentationCache = { comments, result: outcome.result, sort: this.state.sort, value: presentation };
       const restoredAnchor = restoreIntent ? restorationAnchor(restoreIntent.anchor, selected, presentation, outcome.result.restrictive) : undefined;
@@ -208,7 +255,7 @@ export class DiscussionViewSession {
     } else this.state = { ...this.state, pending: false, error: outcome.error };
     this.changed();
   }
-  dispose(): void { this.disposed = true; this.generation++; this.saveQueue?.dispose(); this.executor.dispose(); }
+  dispose(): void { this.disposed = true; this.generation++; this.saveQueue?.dispose(); this.collapseQueue?.dispose(); this.executor.dispose(); }
 }
 
 /** Restore top explicitly; otherwise use displayed identities in current sorted

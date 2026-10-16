@@ -1,3 +1,4 @@
+import { ActionIcon } from './ActionIcon';
 import { memo } from 'react';
 import type { Comment } from '../domain/discussion';
 import { demoNow } from '../shared/demo-presentation';
@@ -9,6 +10,11 @@ import { CommentAction } from './CommentActions';
 import type { OpenCommentAction } from './CommentActions';
 
 interface Props {
+  descendantCount?: number;
+  hiddenUnseen?: number;
+  hiddenMatches?: number;
+  collapsed?: boolean;
+  onCollapse?: (id: string) => void;
   comment: Comment;
   onAction?: OpenCommentAction;
   locale: Locale;
@@ -26,7 +32,7 @@ interface Props {
 export const commentTargetId = (id: string) => `comment-${encodeURIComponent(id)}`;
 
 /** A single measured reader article; React never recursively constructs replies. */
-export const CommentArticle = memo(function CommentArticle({ comment, locale, disabled, onToggle, onAction, role, rawHit, selected, hasChildren, isNew = false, now = demoNow }: Props) {
+export const CommentArticle = memo(function CommentArticle({ descendantCount = 0, hiddenUnseen = 0, hiddenMatches = 0, collapsed = false, onCollapse, comment, locale, disabled, onToggle, onAction, role, rawHit, selected, hasChildren, isNew = false, now = demoNow }: Props) {
   recordRenderWork('comment', comment.itemId);
   const t = translator(locale);
   const author = comment.author?.displayName ?? comment.author?.handle ?? t('unknownAuthor');
@@ -54,6 +60,13 @@ export const CommentArticle = memo(function CommentArticle({ comment, locale, di
       </div>
       <p className="comment-text">{comment.text}</p>
       <div className="comment-meta">
+        {descendantCount > 0 && onCollapse && <button type="button" className="reply-toggle"
+          aria-expanded={!collapsed} aria-label={t(collapsed ? 'expandReplies' : 'collapseReplies')}
+          title={t(collapsed ? 'expandReplies' : 'collapseReplies')} onClick={() => onCollapse(comment.id)}>
+          <ActionIcon name={collapsed ? 'chevronRight' : 'chevronDown'} />
+          {t(collapsed ? 'showReplies' : 'hideReplies', { count: new Intl.NumberFormat(locale).format(descendantCount) })}
+          {collapsed && <span className="reply-summary">{hiddenUnseen > 0 && ` \u00b7 ${t('replyUnseen', { count: new Intl.NumberFormat(locale).format(hiddenUnseen) })}`}{hiddenMatches > 0 && ` \u00b7 ${t('replyMatches', { count: new Intl.NumberFormat(locale).format(hiddenMatches) })}`}</span>}
+        </button>}
         {role !== 'normal' && <span className={`badge ${role}-badge`}>{t(role === 'match' ? 'activeMatch' : 'contextComment')}</span>}
         {role === 'context' && rawHit && <span className="badge raw-match-badge">{t('rawSearchHit')}</span>}
         {comment.likeCount !== undefined && <span>{t('likes', { count: new Intl.NumberFormat(locale).format(comment.likeCount) })}</span>}
