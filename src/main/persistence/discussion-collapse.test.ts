@@ -1,3 +1,4 @@
+import { downgradeSelectionFixture } from './testing/schema-10';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
@@ -80,7 +81,7 @@ it('schema 9 migrates additively with pre-migration safety; staged old backup mi
   const before = repo.bootstrap(['en']), history = repo.history();
   repo.close();
   const db = new DatabaseSync(file);
-  db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; PRAGMA user_version=9'); db.close();
+  downgradeSelectionFixture(db); db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; PRAGMA user_version=9'); db.close();
   const bytes = readFileSync(file);
   expect(validateBackup(file)).toBe(9);
   await protectBeforeMigration(file);
@@ -88,16 +89,16 @@ it('schema 9 migrates additively with pre-migration safety; staged old backup mi
   expect(validateBackup(path.join(recoveryDirectory(file), snapshots[0]))).toBe(9);
   expect(readFileSync(file)).toEqual(bytes);
   const staged = await prepareRestore(path.join(recoveryDirectory(file), snapshots[0]), file);
-  expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(10);
+  expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(11);
   expect(readFileSync(file)).toEqual(bytes);
   repo = ReaderRepository.open(file);
   expect(repo.bootstrap(['en'])).toEqual(before); expect(repo.history()).toEqual(history);
   expect(state()).toEqual({});
-});
+}, 30000); // Filesystem/AV hang guard, matching the backup suite; not a latency budget.
 
 it('migration failure rolls back only schema 10 and preserves the prior profile', () => {
   raw(db => {
-    db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; PRAGMA user_version=9');
+    downgradeSelectionFixture(db); db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; PRAGMA user_version=9');
     const comments = db.prepare('SELECT * FROM comments').all();
     expect(() => migrateDatabase(db, [...migrations.slice(0, 9), { version: 10, apply: target => { migrations[9].apply(target); throw new Error('injected'); } }])).toThrow('injected');
     expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(9);

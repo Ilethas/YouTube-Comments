@@ -1,5 +1,25 @@
 # Database and durable data
 
+## Selection preferences and Undo metadata (schema 11, ADR 0024)
+
+Current schema is 11. Checked preferences add selection_controls (on-demand default,
+or always) and include_collapsed_in_prefix (boolean, default 1). Selected ID sets,
+visual range anchors and selection-mode flags remain renderer/session-only.
+The existing durable navigation selected_comment_id is a different identity.
+
+seen_operations admits selected and view-prefix kinds. The transactional upgrade
+saves operation/entry rows to temporary tables, drops the referencing child first,
+rebuilds parent/child/index, restores rows and removes staging. Dropping the parent
+first with cascading foreign keys would destroy recovery. Populated operations,
+written revisions and later partial Undo are tested across upgrade and restart.
+Failure rolls back the complete schema/data/version change.
+
+Exact schema validation recognizes 1–11, retaining historical definitions. Startup
+protects older profiles with verified pre-migration snapshots; restore upgrades only
+a staged copy. Both preferences and explicit operation recovery are in full backups.
+No new profile, fallback reset, localStorage or generic SQL IPC exists. See
+[ADR 0024](decisions/0024-comment-selection-context-menus-and-view-prefix-seen.md).
+
 ## Sparse collapse state (schema 10, ADR 0023)
 
 Additive 9 to 10 migration creates strict discussion_collapse(item_id,
@@ -111,7 +131,7 @@ workspace/content/history. Helper selections already store paths only; tested
 versus untested is probe evidence, not a new durable configuration field.
 
 
-SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 10 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW. [ADR 0014](decisions/0014-main-owned-helper-settings.md) adds separate profile-local helper selections.
+SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 11 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW. [ADR 0014](decisions/0014-main-owned-helper-settings.md) adds separate profile-local helper selections.
 
 The implementation below is deliberately small. Later sections describe the broader conceptual target and must not be read as implemented tables/features. Read the [domain model](DOMAIN_MODEL.md) for meanings and [architecture](ARCHITECTURE.md) for ownership.
 

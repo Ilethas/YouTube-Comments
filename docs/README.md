@@ -1,5 +1,11 @@
 # Documentation map
 
+[ADR 0024](decisions/0024-comment-selection-context-menus-and-view-prefix-seen.md)
+adds independent comment multi-selection, accessible context menus, confirmed exact
+view-prefix read/unread assignments, selected thread expansion and schema-11
+preferences/Undo metadata. Native text selection, complete/collapsed projections,
+revision-safe Undo and backup migration safety remain. See [verification](TESTING.md).
+
 [ADR 0023](decisions/0023-persistent-thread-collapse-and-virtual-navigation.md)
 implements persistent per-discussion reply collapse, fully expanded defaults,
 Expand/Collapse all, sparse schema-10 state, hidden match/unseen/ruler navigation

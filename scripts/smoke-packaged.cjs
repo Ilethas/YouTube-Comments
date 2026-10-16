@@ -14,7 +14,7 @@ let current;
 function tables(file) {
   const db = new DatabaseSync(file, { readOnly: true });
   try {
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 10);
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 11);
     assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     return Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
@@ -178,14 +178,14 @@ async function run() {
   assert.equal((await session.invoke('bootstrap')).items.length,0,'Fresh packaged production must not seed demo');
   assert.ok(fs.existsSync(database)); await close(session);
   tables(database); // Check current schema/integrity before adding any fixture.
-  report.checks.push('Fresh production schema 10 in independent disposable Windows profile environment; no demo');
+  report.checks.push('Fresh production schema 11 in independent disposable Windows profile environment; no demo');
   const itemId=seed(database);
   session=await start(executable,environment,profile,'production-existing');
   let boot=await session.invoke('bootstrap'); assert.equal(boot.items.length,1);
   await session.wait("!!document.querySelector('.comment') && !!document.querySelector('.source-button')");
   assert.equal(boot.discussionCollapse[itemId].defaultCollapsed,true);
   assert.ok(boot.discussionCollapse[itemId].overrides.length>0);
-  report.checks.push('Existing schema 10 with sparse collapse default/exception, source header, real ASAR renderer/preload and node:sqlite');
+  report.checks.push('Existing schema 11 with sparse collapse default/exception, source header, real ASAR renderer/preload and node:sqlite');
   const panel='[role=tabpanel]:not([hidden])';
   // UI preferences, kept in React as well as persisted in SQLite.
   await session.js("document.getElementById('settings-toggle').click()");
@@ -201,6 +201,12 @@ async function run() {
   assert.equal((await session.invoke('bootstrap')).preferences.translationTarget,'app');
   await session.js("(()=>{const e=document.querySelectorAll('.preferences select')[2];e.value='de';e.dispatchEvent(new Event('change',{bubbles:true}));})()");
   await session.wait("window.reader.bootstrap().then(r=>r.value.preferences.translationTarget==='de')");
+  assert.equal((await session.invoke('bootstrap')).preferences.selectionControls,'on-demand');
+  assert.equal((await session.invoke('bootstrap')).preferences.includeCollapsedInPrefix,true);
+  await session.js("(()=>{const e=document.querySelectorAll('.preferences select')[3];e.value='always';e.dispatchEvent(new Event('change',{bubbles:true}));})()");
+  await session.wait("window.reader.bootstrap().then(r=>r.value.preferences.selectionControls==='always')");
+  await session.js("document.querySelector('.preferences input[type=checkbox]').click()");
+  await session.wait("window.reader.bootstrap().then(r=>r.value.preferences.includeCollapsedInPrefix===false)");
   // Native Cancel exercises the real picker without selecting a test executable.
   const picker=session.invoke('chooseHelper',{kind:'yt-dlp'}); picker.catch(()=>undefined);
   await pause(700);
@@ -234,6 +240,14 @@ async function run() {
   const saved=tables(database);
   const invalid=await session.js(`window.reader.bulkSeen(${JSON.stringify({itemId,seen:false,target:{kind:'matching',ids:[target.id,'missing']}})})`);
   assert.equal(invalid.ok,false); assert.deepEqual(tables(database),saved);
+  const child=before.find(comment=>comment.parentId===target.id); assert.ok(child);
+  for(const id of [target.id,child.id]) await session.js(`document.getElementById(${JSON.stringify('comment-'+encodeURIComponent(id))}).querySelector('.selection-circle').click()`);
+  await session.js(`Array.from(document.querySelectorAll('${panel} .selection-toolbar button')).find(b=>b.textContent.trim()==='Mark selected unread').click()`);
+  await session.wait("!!document.querySelector('dialog[open]')");
+  await session.js("document.querySelector('dialog[open] .dialog-actions button:last-child').click()");
+  await session.wait(`window.reader.bootstrap().then(r=>r.value.seenUndo[${JSON.stringify(itemId)}]?.kind==='selected')`);
+  await session.wait("!document.querySelector('dialog[open]')");
+  report.checks.push('Persisted selection visibility/include-hidden preferences, explicit round controls and confirmed selected assignment with durable selected Undo');
   await control(session,`${panel} input[type=search]`,'Packaged worker target'); await apply(session);
   await session.wait(`document.querySelector('${panel} .applied-counts')?.textContent.includes('1 matching')`);
   assert.equal(await session.js(`document.querySelectorAll('${panel} .comment[data-view-role=match]').length`),1);
@@ -258,6 +272,7 @@ async function run() {
   await close(session);
   session=await start(executable,environment,profile,'production-restart');
   boot=await session.invoke('bootstrap'); assert.equal(boot.preferences.translationTarget,'de');
+  assert.equal(boot.preferences.selectionControls,'always'); assert.equal(boot.preferences.includeCollapsedInPrefix,false);
   for (const helper of report.helpers.filter(helper=>helper.path)) {
     const status=await session.invoke('getHelperStatus',{kind:helper.kind});
     assert.equal(status.path,helper.path); assert.equal(status.mode,'configured');

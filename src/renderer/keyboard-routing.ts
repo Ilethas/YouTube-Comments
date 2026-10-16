@@ -10,6 +10,7 @@ export function readerShortcut(event: KeyboardEvent, context: {
   activeKind?: WorkspaceTab['kind']; modalOpen: boolean; workspaceBusy: boolean; undoAvailable?: boolean;
 }): ReaderShortcut | undefined {
   if (event.defaultPrevented || event.isComposing || context.modalOpen) return;
+  if (event.target instanceof Element && event.target.closest('[role="menu"]')) return;
   const command = commands.find(id => matchesShortcut(event, id));
   if (!command) return;
   if (command === 'undo-seen' && (context.activeKind !== 'discussion' || !context.undoAvailable

@@ -1,5 +1,23 @@
 # Architecture
 
+## Selection and confirmed explicit targets (ADR 0024)
+
+DiscussionViewSession owns a renderer-only bulk ID set and visual anchor, independent
+of persisted navigation selection. Range/prefix resolve against shared complete and
+collapsed ID-index maps. Selection never enumerates DOM membership. The small menu
+portal manages focus/native ranges and closes on scroll, target/view invalidation
+or tab hiding; a scoped observer avoids tab-activation panel rerenders.
+
+Confirmed item/ID snapshots use the existing bulkSeen channel with explicit reason
+selected or view-prefix. Main validates shape/size/uniqueness and all ownership
+inside an atomic mutation. Existing FIFO acknowledgments and revision-safe Undo
+remain authoritative. Main-only copy-permalink reconstructs a trusted stored video
+link before writing clipboard; the renderer supplies identities only.
+
+Schema 11 persists two validated preferences and new Undo kinds with a preserving
+parent/child rebuild. Startup/staged backup safety and historical schema checks remain.
+See [ADR 0024](decisions/0024-comment-selection-context-menus-and-view-prefix-seen.md).
+
 ## Collapse projection and persistence (ADR 0023)
 
 Main-owned schema 10 holds an optional discussion default and sparse opposite-default

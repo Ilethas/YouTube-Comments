@@ -1,4 +1,5 @@
 import type { OpenCommentAction } from './CommentActions';
+import type { CommentMenuTarget } from './CommentContextMenu';
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -22,6 +23,9 @@ export const completeReaderLimit = 200;
 const noNewIds: ReadonlySet<string> = new Set();
 
 interface Props {
+  showSelection?: boolean;
+  bulkSelected?: ReadonlySet<string>;
+  onContextMenu?: (target: CommentMenuTarget) => void;
   onAction?: OpenCommentAction;
   itemId: string;
   comments: readonly Comment[];
@@ -56,7 +60,7 @@ export function ReaderRails({ row }: { row: ReaderRow }) {
 
 /** Renderer-only geometry over complete application-data membership. Header and
  * query controls share the existing panel scrollbar, outside this measured list. */
-export const VirtualCommentList = memo(function VirtualCommentList({ itemId, comments, result, selected, scrollRequest, session,
+export const VirtualCommentList = memo(function VirtualCommentList({ showSelection = false, bulkSelected = noNewIds, onContextMenu, itemId, comments, result, selected, scrollRequest, session,
   locale, disabled, now, onToggle, onAction, overscan = readerOverscan, newIds = noNewIds }: Props) {
   const list = useRef<HTMLOListElement>(null);
   const sort = session.state.sort;
@@ -71,6 +75,13 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
     const state = session.state.collapse;
     session.setCollapsed({ kind: 'comments', ids: [id], collapsed: state.defaultCollapsed === state.overrides.includes(id) });
   }, [session]);
+  const selectBulk = useCallback((id: string, shift: boolean) => session.toggleBulk(id, shift), [session]);
+  function openMenu(id: string, element: HTMLElement, x: number, y: number) {
+    const origin = element.querySelector<HTMLElement>('article') ?? element;
+    const selection = document.getSelection();
+    onContextMenu?.({ id, origin, x, y, selectionText: selection?.toString() ?? '',
+      selectionRanges: selection ? Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index).cloneRange()) : [] });
+  }
   const [geometry, setGeometry] = useState({ width: 1000, margin: 0, after: 0, top: 0, left: 0, height: 600 });
   const [focusedId, setFocusedId] = useState<string>();
   const getScrollElement = useCallback(() => list.current?.closest<HTMLElement>('.reader-panel') ?? null, []);
@@ -186,10 +197,10 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
   }
 
   // Language can alter wrapped badges/metadata, including cached offscreen rows.
-  const previousLocale = useRef(locale);
+  const previousLayout = useRef({ locale, showSelection });
   useLayoutEffect(() => {
-    if (previousLocale.current === locale) return;
-    previousLocale.current = locale;
+    if (previousLayout.current.locale === locale && previousLayout.current.showSelection === showSelection) return;
+    previousLayout.current = { locale, showSelection };
     const anchor = capture.current();
     virtualizer.measure();
     // Rebuild the estimate coordinate cache before comparing DOM sizes against
@@ -198,7 +209,7 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
     for (const element of virtualizer.elementsCache.values()) virtualizer.measureElement(element);
     const index = anchor?.id === undefined ? undefined : indexById.get(anchor.id);
     if (index !== undefined && anchor) return restoreMeasuredAnchor(index, anchor.offset);
-  }, [locale, virtualizer, indexById]);
+  }, [locale, showSelection, virtualizer, indexById]);
   useLayoutEffect(() => {
     // Clearing the cache does not itself resize a DOM box. Rows whose height
     // stays unchanged during reflow may emit no ResizeObserver entry, so restore
@@ -252,10 +263,22 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
     {items.map(item => {
       const row = rows[item.index];
       return <li key={row.id} ref={virtualizer.measureElement} data-index={item.index} data-comment-id={row.id} data-depth={row.depth}
+        onContextMenu={event => {
+          if (!onContextMenu) return;
+          event.preventDefault(); event.stopPropagation();
+          const rect = event.currentTarget.getBoundingClientRect();
+          openMenu(row.id, event.currentTarget, event.clientX || rect.left + 24, event.clientY || rect.top + 24);
+        }}
+        onKeyDown={event => {
+          if (!onContextMenu || !(event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey)) return;
+          event.preventDefault(); event.stopPropagation();
+          const rect = event.currentTarget.getBoundingClientRect(); openMenu(row.id, event.currentTarget, rect.left + 24, rect.top + 24);
+        }}
         aria-posinset={item.index + 1} aria-setsize={rows.length}
         className="comment-branch virtual-comment" style={{ transform: `translateY(${item.start - geometry.margin}px)`, '--reader-indent': `${readerIndent(row.depth)}px` } as CSSProperties}>
         <ReaderRails row={presentation.collapsed.has(row.id) ? { ...row, hasChildren: false } : row} />
         <CommentArticle comment={row.comment} role={row.role} rawHit={row.rawHit} hasChildren={row.hasChildren} selected={selected === row.id}
+          showSelection={showSelection} bulkSelected={bulkSelected.has(row.id)} onSelect={selectBulk}
           descendantCount={presentation.summaries.get(row.id)?.descendants} hiddenUnseen={presentation.collapsed.has(row.id) ? presentation.summaries.get(row.id)?.unseen : 0} hiddenMatches={presentation.collapsed.has(row.id) ? presentation.summaries.get(row.id)?.matches : 0} collapsed={presentation.collapsed.has(row.id)}
           onCollapse={toggleCollapse}
           locale={locale} now={now} disabled={disabled} onToggle={onToggle} onAction={onAction} isNew={newIds.has(row.id)} />

@@ -33,6 +33,31 @@ function stored(post = false, content = text) {
 function service(open = vi.fn<(url: string) => Promise<void>>(async () => undefined), diagnose = vi.fn()) {
   return { open, diagnose, reader: new ReaderService(() => repository, ['en'], diagnose, undefined, {}, open) };
 }
+it('copies only a main-reconstructed stored video permalink, rejects Community/unowned/extra authority and never opens the browser', async () => {
+  const { item, comment } = stored(), post = stored(true), copy = vi.fn(), open = vi.fn();
+  const reader = new ReaderService(() => repository, ['en'], vi.fn(), undefined, {}, open, undefined, undefined, copy);
+  const before = repository.bootstrap(['en']);
+  const request = { itemId: item.id, commentId: comment.id, action: 'copy-permalink' };
+  expect(await reader.dispatch('openCommentAction', [request])).toEqual({ ok: true, value: null });
+  expect(copy).toHaveBeenCalledExactlyOnceWith(`https://www.youtube.com/watch?v=${item.sourceId}&lc=${sourceComment}`);
+  for (const payload of [{ ...request, url: 'https://evil.test' }, { ...request, text: 'untrusted' }])
+    expect(await reader.dispatch('openCommentAction', [payload])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
+  expect(await reader.dispatch('openCommentAction', [{ ...request, itemId: post.item.id, commentId: post.comment.id }])).toMatchObject({ error: { code: 'NOT_OPENABLE' } });
+  expect(await reader.dispatch('openCommentAction', [{ ...request, itemId: post.item.id }])).toMatchObject({ error: { code: 'NOT_FOUND' } });
+  expect(copy).toHaveBeenCalledTimes(1); expect(open).not.toHaveBeenCalled(); expect(repository.bootstrap(['en'])).toEqual(before);
+});
+it('awaits asynchronous clipboard completion and sanitizes rejected copies', async () => {
+  const { item, comment } = stored(), diagnose = vi.fn();
+  let finish: (() => void) | undefined;
+  const copy = vi.fn(async () => { await new Promise<void>(resolve => { finish = resolve; }); });
+  const reader = new ReaderService(() => repository, ['en'], diagnose, undefined, {}, vi.fn(), undefined, undefined, copy);
+  let settled = false;
+  const pending = reader.dispatch('openCommentAction', [{ itemId: item.id, commentId: comment.id, action: 'copy-permalink' }]).then(result => { settled = true; return result; });
+  await Promise.resolve(); expect(settled).toBe(false); finish?.(); expect(await pending).toEqual({ ok: true, value: null });
+  copy.mockRejectedValueOnce(new Error('sensitive clipboard diagnostics'));
+  expect(await reader.dispatch('openCommentAction', [{ itemId: item.id, commentId: comment.id, action: 'copy-permalink' }])).toMatchObject({ error: { code: 'SOURCE_OPEN_FAILED' } });
+  expect(diagnose).not.toHaveBeenCalled();
+});
 it('constructs canonical channel IDs before conservative handle fallback; remote URLs/names are never identities', () => {
   expect(authorUrl({ sourceId: channel, handle: '@other' })).toBe(`https://www.youtube.com/channel/${channel}`);
   expect(authorUrl({ sourceId: 'bad', handle: '@a.b-1' })).toBe('https://www.youtube.com/@a.b-1');
@@ -69,7 +94,7 @@ it('rejects missing/mismatched identities, synthetic sources and extra renderer 
   expect(open).not.toHaveBeenCalled();
 });
 it.each(translationTargets)('translation target %s encodes full Unicode/newline text with auto detection', translationTarget => {
-  const preferences: Preferences = { locale: 'pl', appearance: 'dark', translationTarget };
+  const preferences: Preferences = { locale: 'pl', appearance: 'dark', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget };
   const url = new URL(translationUrl(text, preferences) ?? '');
   expect(url.origin + url.pathname).toBe('https://translate.google.com/');
   expect(Object.fromEntries(url.searchParams)).toEqual({ sl: 'auto', tl: translationTarget === 'app' ? 'pl' : translationTarget, text, op: 'translate' });
@@ -91,8 +116,8 @@ it('bounds the entire encoded URL without truncation, and suppresses browser err
   const { item, comment } = stored(false, '中'.repeat(2000)), { reader, open, diagnose } = service();
   expect(await reader.dispatch('openCommentAction', [{ itemId: item.id, commentId: comment.id, action: 'translate' }])).toMatchObject({ error: { code: 'TRANSLATION_TOO_LONG' } });
   expect(open).not.toHaveBeenCalled();
-  expect(translationUrl('x'.repeat(translationUrlLimit), { locale: 'en', appearance: 'system', translationTarget: 'app' })).toBeUndefined();
-  const preferences: Preferences = { locale: 'en', appearance: 'system', translationTarget: 'app' };
+  expect(translationUrl('x'.repeat(translationUrlLimit), { locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' })).toBeUndefined();
+  const preferences: Preferences = { locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' };
   expect(translationUrl('x'.repeat(translationTextLimit), preferences)).toBeTruthy();
   expect(translationUrl('x'.repeat(translationTextLimit + 1), preferences)).toBeUndefined();
   open.mockRejectedValueOnce(new Error('https://translate.google.com/?text=private-comment'));

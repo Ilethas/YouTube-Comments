@@ -1,5 +1,22 @@
 # Product requirements
 
+## Comment selection, menus and reading prefixes (ADR 0024)
+
+The reader supports independent per-discussion session bulk selection with explicit
+round controls, additive visual Shift ranges, hidden-selected counts and confirmed
+selected read/unread assignments. Navigation selection remains independent.
+Settings persists control visibility (on-demand default) and prefix inclusion of
+collapsed replies (enabled default).
+
+Accessible comment context menus preserve native text selection and safe external
+actions/copy. Mark everything up to here always confirms the current applied sorted
+inclusive prefix, including context and earlier hidden replies by default; it
+never extends beyond the clicked comment into its later descendants. Visible-only
+mode omits collapsed descendants. Captured IDs, atomic ownership validation and
+revision-safe Undo protect scope through later view/Refresh changes. Group expansion
+assigns selected expandable parent preferences without recursive Expand All.
+See [ADR 0024](decisions/0024-comment-selection-context-menus-and-view-prefix-seen.md).
+
 ## Persistent expansion milestone (ADR 0023)
 
 The reader now implements fully expanded defaults, individual reply toggles and

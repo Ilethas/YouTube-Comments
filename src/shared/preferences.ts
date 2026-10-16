@@ -3,7 +3,12 @@ export type Appearance = 'system' | 'light' | 'dark';
 export type Locale = 'en' | 'pl';
 export const translationTargets = ['app', 'en', 'pl', 'de', 'fr', 'es', 'it', 'pt', 'ja', 'ko', 'zh-CN'] as const;
 export type TranslationTarget = typeof translationTargets[number];
-export interface Preferences { readonly locale: Locale; readonly appearance: Appearance; readonly translationTarget: TranslationTarget }
+export type SelectionControls = 'on-demand' | 'always';
+export interface Preferences {
+  readonly locale: Locale; readonly appearance: Appearance; readonly translationTarget: TranslationTarget;
+  readonly selectionControls: SelectionControls;
+  readonly includeCollapsedInPrefix: boolean;
+}
 /** Resolve the saved semantic choice at activation, so Follow app never goes stale. */
 export function effectiveTranslationTarget(preferences: Preferences): Exclude<TranslationTarget, 'app'> {
   return preferences.translationTarget === 'app' ? preferences.locale : preferences.translationTarget;

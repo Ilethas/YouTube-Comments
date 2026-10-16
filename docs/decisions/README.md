@@ -1,5 +1,13 @@
 # Decisions and open questions
 
+[ADR 0024](0024-comment-selection-context-menus-and-view-prefix-seen.md)
+implements session-only per-discussion bulk selection, explicit visual ranges,
+accessible context menus and confirmed inclusive applied/sorted reading prefixes.
+Schema 11 persists control visibility and include-collapsed-prefix preferences,
+preserving populated revision-owned Undo while adding selected/view-prefix kinds.
+This owner-requested increment supersedes prior milestone exclusions of selection,
+menus and additional scopes; Q-21 and release/helper work remain unchanged.
+
 ADR 0023 resolves persistent reply expansion (Q-10), hidden-target ancestor reveal
 and persisted expansion (Q-11), and compressed three-lane ruler geometry (Q-12).
 Schema 10 stores discussion defaults plus sparse opposite-default comment exceptions;

@@ -1,3 +1,4 @@
+import { downgradeSelectionFixture } from './testing/schema-10';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -97,7 +98,7 @@ it('acquiring a closed existing URL reopens one tab using existing state; Refres
 });
 
 function removeAttemptOrder(db: DatabaseSync) {
-  db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; ALTER TABLE preferences DROP COLUMN translation_target; DROP TABLE discussion_view_state; DROP TABLE helper_settings; DROP TABLE seen_operation_entries; DROP TABLE seen_operations; ALTER TABLE comment_state DROP COLUMN revision;');
+  downgradeSelectionFixture(db); db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; ALTER TABLE preferences DROP COLUMN translation_target; DROP TABLE discussion_view_state; DROP TABLE helper_settings; DROP TABLE seen_operation_entries; DROP TABLE seen_operations; ALTER TABLE comment_state DROP COLUMN revision;');
   db.exec('DROP TRIGGER assign_attempt_order; DROP INDEX latest_accepted_attempt; DROP INDEX extraction_attempt_order; ALTER TABLE extraction_attempts DROP COLUMN attempt_order;');
 }
 
@@ -113,7 +114,7 @@ it('schema 2 migration opens stored items and preserves every existing row inclu
     const before = tables.map(table => db.prepare(`SELECT * FROM ${table}`).all());
     migrateDatabase(db);
     expect(tables.map(table => db.prepare(`SELECT * FROM ${table}`).all())).toMatchObject(before);
-    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(10);
+    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(11);
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   } finally { db.close(); repository = ReaderRepository.open(file); }
   expect(state().workspace).toEqual({ tabs: ['video-demo', 'post-demo'].map(discussionTab), activeTabId: discussionTab('video-demo').id, revision: 0 });

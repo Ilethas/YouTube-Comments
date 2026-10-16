@@ -1,3 +1,4 @@
+import { downgradeSelectionFixture } from './testing/schema-10';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -63,7 +64,7 @@ it.each([
 it('schema 5 migration preserves states, initializes revisions and rolls back/retries safely', () => {
   const before = state();
   raw(db => {
-    db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; ALTER TABLE preferences DROP COLUMN translation_target; DROP TABLE discussion_view_state; DROP TABLE helper_settings; DROP TABLE seen_operation_entries; DROP TABLE seen_operations; ALTER TABLE comment_state DROP COLUMN revision; PRAGMA user_version=5;');
+    downgradeSelectionFixture(db); db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; ALTER TABLE preferences DROP COLUMN translation_target; DROP TABLE discussion_view_state; DROP TABLE helper_settings; DROP TABLE seen_operation_entries; DROP TABLE seen_operations; ALTER TABLE comment_state DROP COLUMN revision; PRAGMA user_version=5;');
     const old = db.prepare('SELECT * FROM comment_state').all();
     expect(() => migrateDatabase(db, [...migrations.slice(0, 5), { version: 6, apply: database => {
       migrations[5].apply(database); throw new Error('migration failure');

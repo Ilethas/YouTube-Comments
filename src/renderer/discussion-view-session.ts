@@ -1,4 +1,5 @@
 import { expandedDiscussion, changeCollapse } from '../domain/discussion-collapse';
+import { toggleBulkSelection } from './comment-selection';
 import type { DiscussionCollapse, CollapseChange } from '../domain/discussion-collapse';
 import { projectCollapsedRows, collapsedAncestors } from './discussion-collapse';
 import type { CollapsedPresentation } from './discussion-collapse';
@@ -20,6 +21,8 @@ import { DiscussionViewSaveQueue, draftSaveDelay, intentSaveDelay } from './disc
 
 /** Live singleton-discussion state; only semantic intent is persisted by main. */
 export interface DiscussionViewState {
+  readonly bulkSelected: ReadonlySet<string>;
+  readonly selectionMode: boolean;
   readonly collapse: DiscussionCollapse;
   readonly collapseSaveFailed?: boolean;
   readonly sort: DiscussionSort;
@@ -59,6 +62,32 @@ export class DiscussionViewSession {
     for (const listener of this.listeners) listener();
   }
   private currentComments: readonly Comment[];
+  private bulkAnchor?: string;
+  /** Session-only bulk identity, independent of durable navigation selection. */
+  setSelectionMode(selectionMode: boolean): void {
+    this.state = { ...this.state, selectionMode, bulkSelected: selectionMode ? this.state.bulkSelected : new Set() };
+    if (!selectionMode) this.bulkAnchor = undefined;
+    this.changed();
+  }
+  clearBulkSelection(): void {
+    this.bulkAnchor = undefined;
+    this.state = { ...this.state, bulkSelected: new Set() }; this.changed();
+  }
+  toggleBulk(id: string, shift: boolean): void {
+    const displayed = this.displayed(this.currentComments);
+    if (!displayed.indexById.has(id)) return;
+    const bulkSelected = toggleBulkSelection(this.state.bulkSelected, id, this.bulkAnchor, shift, displayed);
+    if (!shift || this.bulkAnchor === undefined || !displayed.indexById.has(this.bulkAnchor)) this.bulkAnchor = id;
+    this.state = { ...this.state, selectionMode: true, bulkSelected }; this.changed();
+  }
+  /** Assign only expandable selected IDs; no descendant enumeration or reveal. */
+  collapseSelected(collapsed: boolean): void {
+    const complete = this.presentation(this.currentComments);
+    const ids = [...this.state.bulkSelected].filter(id => {
+      const index = complete.indexById.get(id); return index !== undefined && complete.rows[index].hasChildren;
+    });
+    if (ids.length) this.setCollapsed({ kind: 'comments', ids, collapsed });
+  }
   private generation = 0;
   private seenRevision = 0;
   private disposed = false;
@@ -150,7 +179,7 @@ export class DiscussionViewSession {
     const saved = this.saved;
     this.anchor = saved?.anchor ?? this.anchor;
     this.durableApplied = saved?.applied ?? defaultQuery;
-    this.state = { collapse: persistence?.collapse ?? expandedDiscussion, sort: saved?.sort ?? 'original', draft: saved?.draft ?? defaultQuery, applied: this.durableApplied,
+    this.state = { bulkSelected: new Set(), selectionMode: false, collapse: persistence?.collapse ?? expandedDiscussion, sort: saved?.sort ?? 'original', draft: saved?.draft ?? defaultQuery, applied: this.durableApplied,
       result: unrestrictedView(saved ? [] : queryComments(comments)), pending: !!saved, restoring: !!saved, seenStale: false };
     if (persistence?.saveCollapse) this.collapseQueue = new CollapseSaveQueue(persistence.saveCollapse, failed => {
       if (!!this.state.collapseSaveFailed === failed) return;
@@ -227,6 +256,8 @@ export class DiscussionViewSession {
       const anchor = refresh ? this.captureAnchor?.() ?? (this.readerMountedBefore
         ? { id: this.anchor.commentId ?? undefined, offset: this.anchor.offset } : undefined) : undefined;
       const visible = new Set(outcome.result.visibleCommentIds);
+      const bulkSelected = new Set([...this.state.bulkSelected].filter(id => visible.has(id)));
+      if (this.bulkAnchor && !visible.has(this.bulkAnchor)) this.bulkAnchor = undefined;
       const candidate = restore ? this.saved?.selected : this.state.selected;
       const selected = candidate && visible.has(candidate) ? candidate : undefined;
       const keptAnchor = anchor && (anchor.id === undefined || visible.has(anchor.id)) ? anchor : undefined;
@@ -236,7 +267,7 @@ export class DiscussionViewSession {
       const restoredAnchor = restoreIntent ? restorationAnchor(restoreIntent.anchor, selected, presentation, outcome.result.restrictive) : undefined;
       this.state = { ...this.state, applied: criteria, result: outcome.result, pending: false, error: undefined,
         restoring: false, restoreFailed: false, seenStale: criteria.seen !== 'all' && seenRevision !== this.seenRevision,
-        selected,
+        selected, bulkSelected,
         scrollRequest: { revision: ++this.scrollRevision, kind: restore ? 'restore' : refresh ? 'refresh' : 'apply',
           id: restore ? restoredAnchor?.commentId ?? undefined : refresh ? keptAnchor ? keptAnchor.id : selected : outcome.result.restrictive ? presentation.orderedMatchIds[0] : undefined,
           offset: restore ? restoredAnchor?.offset : keptAnchor?.offset } };

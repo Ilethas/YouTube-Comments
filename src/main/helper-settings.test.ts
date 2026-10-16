@@ -1,3 +1,4 @@
+import { downgradeSelectionFixture } from './persistence/testing/schema-10';
 import { mkdtemp, writeFile, readFile, rm, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -133,14 +134,14 @@ it('schema-6 migration preserves all content, state, history, workspace and dura
   const before = repository.bootstrap(['en']), history = repository.history();
   const db = new DatabaseSync(file);
   try {
-    db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; ALTER TABLE preferences DROP COLUMN translation_target; DROP TABLE discussion_view_state; DROP TABLE helper_settings; PRAGMA user_version=6;');
+    downgradeSelectionFixture(db); db.exec('DROP TABLE comment_collapse_overrides; DROP TABLE discussion_collapse; ALTER TABLE preferences DROP COLUMN translation_target; DROP TABLE discussion_view_state; DROP TABLE helper_settings; PRAGMA user_version=6;');
     const tables = ['content_items', 'comments', 'comment_state', 'extraction_attempts', 'workspace', 'workspace_tabs', 'preferences', 'seen_operations', 'seen_operation_entries'];
     const rows = () => tables.map(table => db.prepare(`SELECT * FROM ${table}`).all());
     const original = rows();
     expect(() => migrateDatabase(db, [...migrations.slice(0, 6), { version: 7, apply: database => { migrations[6].apply(database); throw new Error('injected failure'); } }])).toThrow('injected failure');
     expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(6); expect(rows()).toEqual(original);
     migrateDatabase(db);
-    expect(rows()).toEqual(original.map((table, index) => tables[index] === 'preferences' ? table.map(row => ({ ...row, translation_target: 'app' })) : table));
+    expect(rows()).toEqual(original.map((table, index) => tables[index] === 'preferences' ? table.map(row => ({ ...row, translation_target: 'app', selection_controls: 'on-demand', include_collapsed_in_prefix: 1 })) : table));
     expect(db.prepare('SELECT * FROM helper_settings').all()).toEqual([]);
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   } finally { db.close(); }

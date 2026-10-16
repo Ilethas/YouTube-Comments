@@ -1,5 +1,21 @@
 # Localization and theming
 
+## Selection and menu preferences (ADR 0024)
+
+English/Polish Settings expose selection controls: on-demand default or always,
+and include collapsed replies for prefix marking: enabled by default. Main validates
+and persists both independently of locale/appearance/translation target. IDs are
+never preference data. Counts/positions use Intl; semantic tokens style round
+aria-pressed selection controls separately from square seen checkboxes and F3 focus.
+
+Context menus pair existing outline ActionIcon vocabulary with localized text.
+Explicit read/unread labels, Copy selection versus Copy comment text, hidden counts,
+frozen-snapshot explanations and restrictive-context notices are translated.
+Keyboard focus, disabled states, viewport overflow and forced-colors selection
+remain understandable without decorative colors. Native text selection and Unicode
+clipboard contents stay independent of UI locale. See
+[ADR 0024](decisions/0024-comment-selection-context-menus-and-view-prefix-seen.md).
+
 ## External translation and action presentation (ADR 0022)
 
 Settings persists `translationTarget`: Follow application language (default), English,

@@ -1,5 +1,5 @@
 import { acquisitionProgressChannel, isAcquisitionNotification } from './shared/acquisition';
-import { app, BrowserWindow, shell, dialog } from 'electron';
+import { app, BrowserWindow, shell, dialog, clipboard } from 'electron';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -91,7 +91,7 @@ function startReader() {
       const contents = mainWindow?.webContents;
       if (contents && !contents.isDestroyed() && contents.mainFrame.url === documentUrl && isAcquisitionNotification(value))
         contents.send(acquisitionProgressChannel, value);
-    }, { databasePath, dialogs: createDataBackupDialogs(() => mainWindow), restart: () => { app.relaunch(); app.quit(); } });
+    }, { databasePath, dialogs: createDataBackupDialogs(() => mainWindow), restart: () => { app.relaunch(); app.quit(); } }, text => clipboard.writeText(text));
     registerReaderIpc(service, () => mainWindow, documentUrl);
     createWindow();
     if (recovery && mainWindow) void dialog.showMessageBox(mainWindow, { type: 'info', message: backupText(profileLocale)[recovery] });

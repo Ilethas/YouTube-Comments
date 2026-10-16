@@ -4,7 +4,7 @@ import type { AcquisitionProgress } from '../shared/acquisition';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AcquisitionResult, ErrorCode, ReaderApi, ReaderState, Result } from '../shared/reader-api';
 import { translationTargets } from '../shared/preferences';
-import type { TranslationTarget, Appearance } from '../shared/preferences';
+import type { TranslationTarget, Appearance, SelectionControls } from '../shared/preferences';
 import { countLabel, initialLocale, Locale, translator } from './i18n';
 import { discussionTab } from '../domain/workspace';
 import { WorkspaceTabs } from './WorkspaceTabs';
@@ -56,6 +56,8 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   const [locale, setLocale] = useState<Locale>(initialState.preferences.locale);
   const [appearance, setAppearance] = useState<Appearance>(initialState.preferences.appearance);
   const [translationTarget, setTranslationTarget] = useState<TranslationTarget>(initialState.preferences.translationTarget);
+  const [selectionControls, setSelectionControls] = useState<SelectionControls>(initialState.preferences.selectionControls);
+  const [includeCollapsedInPrefix, setIncludeCollapsedInPrefix] = useState(initialState.preferences.includeCollapsedInPrefix);
   const [workspace, setWorkspace] = useState(initialState.workspace);
   const activeId = workspace.activeTabId;
   const activeDiscussion = useRef<string>();
@@ -388,6 +390,14 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
         }}>
           {translationTargets.map(value => <option key={value} value={value}>{t(({ app: 'targetApp', en: 'targetEn', pl: 'targetPl', de: 'targetDe', fr: 'targetFr', es: 'targetEs', it: 'targetIt', pt: 'targetPt', ja: 'targetJa', ko: 'targetKo', 'zh-CN': 'targetZh' } as const)[value])}</option>)}
         </select></label>
+        <label>{t('selectionControls')}<select value={selectionControls} disabled={saving} onChange={event => {
+          const next = event.target.value as SelectionControls;
+          void save(() => api.updatePreferences({ selectionControls: next }), value => setSelectionControls(value.selectionControls));
+        }}><option value="on-demand">{t('selectionOnDemand')}</option><option value="always">{t('selectionAlways')}</option></select></label>
+        <label><input type="checkbox" checked={includeCollapsedInPrefix} disabled={saving} onChange={event => {
+          const next = event.target.checked;
+          void save(() => api.updatePreferences({ includeCollapsedInPrefix: next }), value => setIncludeCollapsedInPrefix(value.includeCollapsedInPrefix));
+        }} />{t('includeCollapsedInPrefix')}</label>
       </div>
         <p className="reader-help">{t('translationPrivacy')}</p>
         <ExternalTools api={api} locale={locale} active={activeId === 'settings'} />
@@ -407,6 +417,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     {openItems.map(item => <main key={item.id} id={`panel-${item.id}`} role="tabpanel" aria-labelledby={`tab-${discussionTab(item.id).id}`}
       className="reader-panel" hidden={activeId !== discussionTab(item.id).id} tabIndex={0}>
       {(activeId === discussionTab(item.id).id || views.has(item.id)) && <DiscussionPanel item={item} comments={comments[item.id]} session={views.get(item.id, comments[item.id])}
+        selectionControls={selectionControls} includeCollapsedInPrefix={includeCollapsedInPrefix}
         locale={locale} saving={saving && savingItemId === item.id} refreshDisabled={!!acquiring || !!progress}
         coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onAction={openCommentAction} onToggle={toggleComment}
         undo={seenUndo[item.id]} feedback={seenFeedback[item.id]} onBulk={bulkSeen} onUndo={undoSeen} onBulkModal={setBulkModalOpen} />}

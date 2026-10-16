@@ -2,6 +2,7 @@
  * every containing control owns its localized accessible name. */
 const paths = {
   chevronRight: 'm9 5 7 7-7 7', chevronDown: 'm5 9 7 7 7-7',
+  chevronUp: 'm5 15 7-7 7 7', select: 'm3 6 2 2 4-4 M12 6h9 M3 13l2 2 4-4 M12 13h9 M3 20h6 M12 20h9',
   expandAll: 'm5 4 7 7 7-7 M5 13l7 7 7-7', collapseAll: 'm5 11 7-7 7 7 M5 20l7-7 7 7',
   refresh: 'M20 7v5h-5 M4 17v-5h5 M6 7a7 7 0 0 1 12-2l2 2 M4 17l2 2a7 7 0 0 0 12-2',
   cancel: 'm6 6 12 12 M6 18 18 6',

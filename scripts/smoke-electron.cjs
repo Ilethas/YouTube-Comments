@@ -242,7 +242,9 @@ async function verifyWindow(window, nativeTheme) {
     key('W', ['control']); await active('library'); // closing Settings chooses right
     key('F1'); await waitFor("document.activeElement.id === 'keyboard-shortcuts' && !document.querySelector('.tabs button:disabled')", 'F1 reopens singleton');
     const rows = await js("Array.from(document.querySelectorAll('#panel-settings tr[data-shortcut-id]'),row=>({id:row.dataset.shortcutId,keys:row.querySelector('td').textContent}))");
-    assert.equal(rows.length, 21); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
+    assert.equal(rows.length, 24); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
+    assert.equal(rows.find(row => row.id === 'selection-range').keys, 'Shift+Click');
+    assert.equal(rows.find(row => row.id === 'comment-menu').keys, 'Shift+F10');
     assert.equal(rows.some(row => row.id === 'comment-toggle-row'), false);
     assert.equal(rows.some(row => row.id === 'comment-subtree-row'), false);
     assert.equal(rows.find(row => row.id === 'previous-tab').keys, 'Ctrl+Shift+Tab');
@@ -831,7 +833,7 @@ if (process.versions.electron && process.type === 'browser') {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 10);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 11);
         assert.equal(db.prepare('SELECT count(*) AS count FROM helper_settings').get().count,0);
         assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 7);
         assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 3);

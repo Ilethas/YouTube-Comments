@@ -303,10 +303,11 @@ export class ReaderRepository {
   }
 
   preferences(languages: readonly string[]): Preferences {
-    const row = this.db.prepare('SELECT locale, appearance, translation_target FROM preferences WHERE id = 1').get();
+    const row = this.db.prepare('SELECT * FROM preferences WHERE id = 1').get();
     if (!row) throw new Error('Missing preferences');
     return { locale: row.locale === null ? initialLocale(languages) : row.locale as Preferences['locale'],
-      appearance: row.appearance as Preferences['appearance'], translationTarget: row.translation_target as Preferences['translationTarget'] };
+      appearance: row.appearance as Preferences['appearance'], translationTarget: row.translation_target as Preferences['translationTarget'],
+      selectionControls: row.selection_controls as Preferences['selectionControls'], includeCollapsedInPrefix: row.include_collapsed_in_prefix === 1 };
   }
 
   bootstrap(languages: readonly string[]): ReaderState {
@@ -526,7 +527,7 @@ export class ReaderRepository {
       if (!item) throw new MissingCommentError('Unknown discussion');
       const current = this.readComments(item), target = request.target;
       let ids: Set<string>;
-      if (target.kind === 'matching') {
+      if (target.kind === 'matching' || target.kind === 'explicit') {
         ids = new Set(target.ids);
         const owned = new Set(current.map(comment => comment.id));
         if (target.ids.some(id => !owned.has(id))) throw new InvalidSeenTargetError('Unowned matching identity');
@@ -535,7 +536,7 @@ export class ReaderRepository {
         if (!resolved.ok || !resolved.bounds) throw new InvalidSeenTargetError('Invalid publication range');
         ids = new Set(current.filter(comment => publicationMatches(ownPublicationInstant(comment.publishedAt), resolved.bounds)).map(comment => comment.id));
       } else ids = new Set(current.map(comment => comment.id));
-      const result = this.assignSeen(current, ids, request.seen, target.kind);
+      const result = this.assignSeen(current, ids, request.seen, target.kind === 'explicit' ? target.reason : target.kind);
       return { ...result, undo: this.seenUndo(request.itemId) };
     });
   }
@@ -562,7 +563,9 @@ export class ReaderRepository {
     return transaction(this.db, () => {
       if ('locale' in change) this.db.prepare('UPDATE preferences SET locale = ? WHERE id = 1').run(change.locale);
       else if ('appearance' in change) this.db.prepare('UPDATE preferences SET appearance = ? WHERE id = 1').run(change.appearance);
-      else this.db.prepare('UPDATE preferences SET translation_target = ? WHERE id = 1').run(change.translationTarget);
+      else if ('translationTarget' in change) this.db.prepare('UPDATE preferences SET translation_target = ? WHERE id = 1').run(change.translationTarget);
+      else if ('selectionControls' in change) this.db.prepare('UPDATE preferences SET selection_controls = ? WHERE id = 1').run(change.selectionControls);
+      else this.db.prepare('UPDATE preferences SET include_collapsed_in_prefix = ? WHERE id = 1').run(Number(change.includeCollapsedInPrefix));
       return this.preferences(languages);
     });
   }

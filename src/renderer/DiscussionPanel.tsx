@@ -16,9 +16,15 @@ import type { SeenFeedback } from './BulkSeenControls';
 import type { BulkSeenRequest, SeenUndoDescriptor } from '../domain/seen-operation';
 import type { Result } from '../shared/reader-api';
 import { SourceAction } from './SourceAction';
+import { DiscussionActions } from './DiscussionActions';
+import type { CommentMenuTarget } from './CommentContextMenu';
+import type { SelectionControls } from '../shared/preferences';
 
 const demo = (id: string) => id === 'video-demo' || id === 'post-demo';
 interface Props {
+  active?: boolean;
+  selectionControls?: SelectionControls;
+  includeCollapsedInPrefix?: boolean;
   onAction?: OpenCommentAction;
   item: ContentItem;
   comments: readonly Comment[];
@@ -48,9 +54,12 @@ function VideoDescription({ id, text, locale }: { id: string; text: string; loca
 
 /** Mounted content is independent of its workspace visibility wrapper.
  * Session notifications update only this discussion; draft edits reuse the forest. */
-export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onOpenSource, onToggle, onAction, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
+export const DiscussionPanel = memo(function DiscussionPanel({ active = true, selectionControls = 'on-demand', includeCollapsedInPrefix = true, item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onOpenSource, onToggle, onAction, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
   recordRenderWork('panel', item.id);
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const [menu, setMenu] = useState<CommentMenuTarget>();
+  const dismissMenu = useCallback(() => setMenu(undefined), []);
+  useEffect(() => { setMenu(undefined); }, [active, view.result, view.sort, view.collapse, comments]);
   const presentation = session.presentation(comments);
   const t = translator(locale);
   const now = useMemo(() => demo(item.id) ? demoNow : Date.now(), [item]);
@@ -89,7 +98,11 @@ export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, s
               apply={() => { void session.apply(comments, false, item); }} navigate={(kind, direction) => navigateDiscussion(session, comments, kind, direction)}
               unseenCount={visibleUnseenIds(view.result, comments).length} />
             {view.result.restrictive && !view.result.matchCount && <p className="reader-help">{t('noDiscussionMatches')}</p>}
+            <DiscussionActions item={item} comments={comments} session={session} locale={locale} disabled={saving}
+              includeCollapsedInPrefix={includeCollapsedInPrefix} menu={active ? menu : undefined} dismissMenu={dismissMenu}
+              onAction={onAction} execute={onBulk} modalChanged={onBulkModal} />
             <VirtualCommentList itemId={item.id} comments={comments} result={view.result} selected={view.selected} session={session} scrollRequest={view.scrollRequest}
+              showSelection={selectionControls === 'always' || view.selectionMode} bulkSelected={view.bulkSelected} onContextMenu={setMenu}
               locale={locale} disabled={saving} onToggle={toggle} onAction={onAction} now={now} newIds={newIds} />
           </section>
           {demo(item.id) && <footer className="reader-footer"><p>{t('newHelp')}</p><p>{t('clockNote')}: {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(demoNow)}</p></footer>}

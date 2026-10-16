@@ -1,5 +1,35 @@
 # UI and navigation
 
+## Comment selection and menus (ADR 0024)
+
+Bulk selection is a separate session-only ID set per discussion; F3's navigation
+selection and persisted reading identity stay independent. Round buttons toggle
+membership (plain/Ctrl); Shift on a circle adds an inclusive range in current
+visible applied/sorted/collapsed order, including offscreen rows. Body/text Shift
+retains native selection. Sort preserves IDs; collapse keeps hidden selections
+with a hidden count; successful Apply/Refresh removes IDs outside complete membership.
+Clear/Exit are explicit; restart clears the bulk set. Settings defaults circles to
+selection-mode-only; Always show keeps them visible while browsing.
+
+The compact toolbar assigns selected read/unread, expands/collapses selected
+expandable parents, clears or exits. Nested parents receive explicit preferences;
+descendants are not implicitly selected or recursively expanded. Right click,
+Context Menu or Shift+F10 opens comment actions without mutation. Selected-group
+actions appear only for a clicked selected member. Arrows/Home/End, Enter/Space,
+Escape, outside pointer and restored focus are supported. View changes, scroll,
+tab hiding and target detachment close the viewport-clamped menu. Copy selection
+preserves native text ranges; full-comment text copy is separately labeled.
+Links/translation/copy permalink use stored-identity capabilities.
+
+Prefix actions always confirm the exact inclusive reading prefix, with discussion,
+endpoint identity/position, target/changing/hidden counts and context notice.
+Include collapsed replies defaults enabled; disabling chooses visible rows only.
+The endpoint's later descendants are excluded in both modes. Confirmation retains
+its item/ID snapshot through tab/view/Refresh changes; no later IDs are added.
+Cancel has default focus and Escape cancels before a pending write.
+See [ADR 0024](decisions/0024-comment-selection-context-menus-and-view-prefix-seen.md)
+for exact range fallback, snapshot, focus and security policy.
+
 ## Persistent reply collapse (ADR 0023)
 
 Discussions default fully expanded. Each comment with applied display descendants

@@ -1,5 +1,78 @@
 # Testing strategy
 
+## Comment selection, context menus and exact prefixes (2026-10-16, ADR 0024)
+
+New suites: renderer `comment-selection.test.ts` and `DiscussionActions.test.tsx`,
+SQLite `persistence/comment-selection.test.ts`, plus extended live acquisition,
+comment-action, historical migration, backup and seen-scale tests. Run `npm.cmd test`,
+`typecheck`, `lint`, `build:renderer`, `make:zip`, `test:electron` and `test:packaged`.
+`node scripts/smoke-selection.cjs` runs the new built-entry UI/restart workflow alone.
+
+Coverage includes separate bulk/navigation identity; plain/Ctrl toggle and additive
+Shift-circle ranges; current visible order, offscreen ranges, hidden selected counts,
+all five sorts, Apply reconciliation, separate sessions, Clear/Exit and no persistence
+of selected IDs. Native text/body Shift has no marking handler. Menu tests cover
+mouse/keyboard invocation, arrow/Home/End focus, Enter/Space, Escape/outside/scroll/tab
+dismissal, group-versus-clicked targets, captured text ranges/Unicode copying, safe
+identity-only link/translation/copy-permalink and localized full-copy fallback.
+
+Prefix tests cover exact inclusive endpoints (excluding their later descendants),
+earlier hidden replies enabled/disabled, context versus applied matches, draft
+independence, restrictive trees, empty/single cases, captured confirmations through
+view/tab changes and pathological 50k chains. Selected/prefix assignments preserve
+frozen roles/NEW/sort/collapse/draft while live unseen/ruler and Seen-stale update.
+Nested selected expansion assigns parents only. Actual virtualizer tests keep fewer
+than 30 mounted rows for 10k/50k visual ranges and use one group request.
+
+SQLite verifies exact reason/shape/size/duplicate/item ownership, atomic late failure,
+removed discussions, pending Refresh/new discoveries, no-op recovery, boolean read/
+unread assignment and later-owned partial Undo. Schema-10 fixtures contain populated
+recoverable operations and revision entries before the parent/child rebuild; upgrade,
+rollback/retry, pre-migration safety and immutable staged older backup are checked.
+Full restore includes both preferences, explicit Undo and sparse collapse. Existing
+crash-recovery matrices continue covering full authoritative tables. Historical
+fixture downgrading lives only under `persistence/testing`; historical production
+migration definitions remain exact. Filesystem/AV hang guards are not latency budgets.
+
+Native Electron automation uses generated disposable 10k/50k profiles: Space on a
+circle, Shift range to the offscreen end, confirmed selected assignment and Ctrl+Z,
+right-click selected text/Copy selection/Ctrl+C, inclusive prefixes of 21 versus 2
+with 19 earlier hidden replies, selected collapse, restrictive newest context prefix,
+menu viewport bounds/keys/scroll, trusted browser action interception and clipboard
+permalink. It restores the prior clipboard text, checks bounded DOM/three ruler paths,
+captures English/light and Polish/dark, then restarts to verify both preferences and
+empty bulk selection. Browser calls are intercepted; no remote translation is sent.
+The extracted-EXE smoke also exercises both preference controls and a confirmed
+selected assignment, then preserves its Undo/preferences through native backup and
+actual relaunch. No installer is executed.
+
+| Verification | Result |
+| --- | --- |
+| Complete deterministic suite | 807 tests / 62 files pass, 129.85 s |
+| Final App/menu checks after captured preference queue value | 83 tests / 2 files pass; includes live EN/PL copy feedback and hidden/detached menu targets |
+| Typecheck / lint | Pass, zero lint warnings |
+| Independent renderer build | Pass; JS 464.91 kB / 144.33 kB gzip, CSS 18.15 kB, worker 2.60 kB |
+| Final Forge Windows x64 application + ZIP | Pass; 73 runtime files, 385,897,833 bytes, executable/ASAR/fuse and ZIP byte checks; ZIP 158,312,181 bytes; 21.08 s |
+| Complete test:electron | Pass; IPC/helper/seen/Undo, saved views and restarts, complete backup/restore/crash recovery, reader actions, collapse and selection |
+| Native 10k/50k selection/range | Pass; 14 mounted rows at each size after selecting the offscreen range, three ruler paths, one confirmed seen request |
+| Native prefix/context/clipboard/restart | Pass at both sizes; 21 versus 2 targets, restrictive newest context prefix, native Copy/Ctrl+C, saved preferences and empty restarted selection |
+| Extracted unmodified EXE test:packaged | Pass; schema 11, new preference controls, selected Undo, native dialogs, exact all-table restore, verified safety and actual extracted-EXE relaunch |
+| Visual review | English/light and Polish/dark; round selection versus square seen, compact wrapping toolbar, unchanged rails/avatars/text |
+
+The deep range/prefix/collapse calculation measured about 9 ms / 58 ms at 10k/50k
+in the complete run. Explicit SQLite prefix assignment/ack measured about 313 ms /
+3,171 ms, using one transaction; other runs varied with concurrent disk work.
+No hardware latency budget is claimed. Full-bootstrap/clone/memory and synchronous
+main-owned bulk latency remain Q-21. The historical schema-9 snapshot test now uses
+the backup suite's 30 s filesystem/AV hang guard after a concurrent run exceeded
+Vitest's default 5 s; its preservation assertions and the complete rerun pass.
+The existing non-fatal Electron shutdown GPU diagnostic still appears.
+
+Verification uses disposable profiles only. Browser opening is intercepted for menu
+tests; optional real-helper live acquisition was not configured in the packaged
+run. Genuine Squirrel installation remains UNVERIFIED; Setup/install/update/uninstall
+was never executed. No commit, push or publication was made.
+
 ## Persistent reply collapse (2026-10-16, ADR 0023)
 
 The current reader starts expanded and keeps complete logical applied trees separate

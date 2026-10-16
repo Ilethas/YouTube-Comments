@@ -10,6 +10,9 @@ import { CommentAction } from './CommentActions';
 import type { OpenCommentAction } from './CommentActions';
 
 interface Props {
+  bulkSelected?: boolean;
+  showSelection?: boolean;
+  onSelect?: (id: string, shift: boolean) => void;
   descendantCount?: number;
   hiddenUnseen?: number;
   hiddenMatches?: number;
@@ -32,7 +35,7 @@ interface Props {
 export const commentTargetId = (id: string) => `comment-${encodeURIComponent(id)}`;
 
 /** A single measured reader article; React never recursively constructs replies. */
-export const CommentArticle = memo(function CommentArticle({ descendantCount = 0, hiddenUnseen = 0, hiddenMatches = 0, collapsed = false, onCollapse, comment, locale, disabled, onToggle, onAction, role, rawHit, selected, hasChildren, isNew = false, now = demoNow }: Props) {
+export const CommentArticle = memo(function CommentArticle({ bulkSelected = false, showSelection = false, onSelect, descendantCount = 0, hiddenUnseen = 0, hiddenMatches = 0, collapsed = false, onCollapse, comment, locale, disabled, onToggle, onAction, role, rawHit, selected, hasChildren, isNew = false, now = demoNow }: Props) {
   recordRenderWork('comment', comment.itemId);
   const t = translator(locale);
   const author = comment.author?.displayName ?? comment.author?.handle ?? t('unknownAuthor');
@@ -45,8 +48,12 @@ export const CommentArticle = memo(function CommentArticle({ descendantCount = 0
   const timeHelp = time ? approximate ? t('approximateTime', { time: time.exact }) : time.exact : displayedTime;
   const timeContent = time ? <time dateTime={comment.publishedAt} title={timeHelp} aria-label={timeHelp}>{displayedTime}</time>
     : <span className="muted">{comment.publication?.label.status === 'observed' ? comment.publication.label.value : t('unknownTime')}</span>;
-  return <article id={commentTargetId(comment.id)} data-view-role={role} data-selected={selected} tabIndex={-1}
+  return <article id={commentTargetId(comment.id)} data-view-role={role} data-selected={selected} data-bulk-selected={bulkSelected} tabIndex={-1}
     className={`comment ${comment.seen ? 'is-seen' : 'is-unseen'} ${hasChildren ? 'has-replies' : ''}`} aria-label={author}>
+    {showSelection && <button type="button" className="selection-circle" aria-pressed={bulkSelected} disabled={disabled}
+      aria-label={t('selectComment', { author })} title={t('selectComment', { author })}
+      onMouseDown={event => { if (event.shiftKey) event.preventDefault(); }}
+      onClick={event => onSelect?.(comment.id, event.shiftKey)}><span aria-hidden="true">{bulkSelected ? '●' : ''}</span></button>}
     <Avatar url={comment.author?.avatarUrl} author={author} locale={locale} />
     <div className="comment-body">
       <div className="comment-byline">

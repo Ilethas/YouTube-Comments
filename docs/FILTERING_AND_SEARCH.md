@@ -1,5 +1,20 @@
 # Filtering and search
 
+## Selection and prefix scope (ADR 0024)
+
+Successful Apply/Refresh intersects bulk selection with COMPLETE applied membership;
+collapse hides rows without discarding selected IDs. Draft changes never alter
+selection or a confirmation. Visual Shift ranges use only displayed rows in the
+current whole-conversation sort, independently of which rows are mounted.
+
+A view-prefix assignment includes applied context and matches before/at the clicked
+endpoint. This differs deliberately from Current APPLIED matches, which excludes
+context. Earlier collapsed descendants participate by default; the optional visible
+prefix omits them. Excluded trees never participate. Seen assignments retain the
+applied matching set/roles and NEW; live unseen and Seen/Unseen stale feedback update.
+Captured confirmation IDs stay fixed through reevaluation. See
+[ADR 0024](decisions/0024-comment-selection-context-menus-and-view-prefix-seen.md).
+
 ## Collapse is a separate presentation (ADR 0023)
 
 Complete applied results and sorted logical preorder remain intact, including

@@ -50,7 +50,8 @@ export class ReaderService {
     private readonly helperOptions: HelperSettingsOptions = {},
     private readonly openBrowser?: (url: string) => Promise<void>,
     private readonly notifyProgress: (value: AcquisitionNotification) => void = () => undefined,
-    private readonly dataOptions?: DataBackupOptions) {
+    private readonly dataOptions?: DataBackupOptions,
+    private readonly copyText?: (text: string) => void | Promise<void>) {
     this.initializeStorage();
   }
 
@@ -231,12 +232,16 @@ export class ReaderService {
       if (!item) return { ok: false, error: { code: 'NOT_FOUND' } };
       const comment = this.repository.getActionComment(item, commentId);
       if (!comment) return { ok: false, error: { code: 'NOT_FOUND' } };
-      if (!commentActionAvailability(item, comment)[action]) return { ok: false, error: { code: 'NOT_OPENABLE' } };
-      url = action === 'author' ? authorUrl(comment.author) : action === 'permalink' ? commentPermalink(item, comment)
+      if (!commentActionAvailability(item, comment)[action === 'copy-permalink' ? 'permalink' : action]) return { ok: false, error: { code: 'NOT_OPENABLE' } };
+      url = action === 'author' ? authorUrl(comment.author) : action === 'permalink' || action === 'copy-permalink' ? commentPermalink(item, comment)
         : translationUrl(comment.text, this.repository.preferences(this.languages));
       if (!url) return { ok: false, error: { code: action === 'translate' ? 'TRANSLATION_TOO_LONG' : 'NOT_OPENABLE' } };
     } catch { return { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }; }
     try {
+      if (action === 'copy-permalink') {
+        if (!this.copyText) return { ok: false, error: { code: 'SOURCE_OPEN_FAILED' } };
+        await this.copyText(url); return { ok: true, value: null };
+      }
       if (!this.openBrowser) return { ok: false, error: { code: 'SOURCE_OPEN_FAILED' } };
       await this.openBrowser(url);
       return { ok: true, value: null };

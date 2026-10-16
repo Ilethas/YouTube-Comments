@@ -1,5 +1,25 @@
 # Seen state
 
+## Explicit selection and reading-prefix assignments (ADR 0024)
+
+Round selection controls do not mean seen and do not alter the navigation identity.
+Selected read/unread assigns only selected application IDs, without descendants.
+A group of more than one target confirms and uses durable revision-owned Undo.
+
+Mark everything up to here read/unread always confirms. Scope is the current
+COMPLETE applied SORTED preorder through the clicked comment inclusive, including
+context and earlier hidden replies by default. It excludes the clicked comment's
+later descendants. Settings can choose only visible collapsed rows, still including
+offscreen rows. This preference affects no existing subtree, All, publication,
+matching or selected operation.
+
+Preview freezes IDs and item identity alongside counts; tab/filter/sort/Refresh
+changes cannot enlarge or retarget them. Main atomically validates unique owned
+IDs and returns target/changed counts. No-op, failures and single-target assignments
+retain prior recovery. Later manual revisions survive partial Undo. Seen-stale
+Apply, frozen roles/membership, NEW, collapse, sort and query semantics are unchanged.
+See [ADR 0024](decisions/0024-comment-selection-context-menus-and-view-prefix-seen.md).
+
 ## Explicit checkboxes and bulk local minutes (ADRs 0015/0022)
 
 ADR 0022 removes the comment-wide Shift and Ctrl+Shift gestures introduced by

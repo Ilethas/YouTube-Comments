@@ -64,6 +64,12 @@ it.each([10000, 50000])('%i changed comments remain atomic with bounded one-shot
     const subtree = repository.toggleSeen({ itemId: id, commentId: stored[0].id, subtree: true });
     expect(subtree).toMatchObject({ targetCount: count, changedCount: count, undo: { kind: 'subtree', changedCount: count } });
     expect(repository.undoSeen(id)).toMatchObject({ restored: count, skipped: 0 });
+    const explicitStart = performance.now();
+    const explicit = repository.bulkSeen({ itemId: id, seen: true, target: { kind: 'explicit', reason: 'view-prefix', ids: stored.slice(0, -1).map(comment => comment.id) } });
+    const explicitPrefixCommitMs = performance.now() - explicitStart;
+    expect(explicit).toMatchObject({ targetCount: count - 1, changedCount: count - 1, undo: { kind: 'view-prefix' } });
+    expect(explicit.comments.at(-1)?.seen).toBe(false);
+    expect(repository.undoSeen(id)).toMatchObject({ restored: count - 1, skipped: 0 });
     const matching = repository.bulkSeen({ itemId: id, seen: true, target: { kind: 'matching', ids: stored.map(comment => comment.id) } });
     expect(matching).toMatchObject({ targetCount: count, changedCount: count, undo: { kind: 'matching' } });
     expect(repository.undoSeen(id)).toMatchObject({ restored: count, skipped: 0 });
@@ -71,7 +77,7 @@ it.each([10000, 50000])('%i changed comments remain atomic with bounded one-shot
     expect(db.prepare('SELECT default_collapsed FROM discussion_collapse WHERE item_id=?').get(id)?.default_collapsed).toBe(1);
     repository.setDiscussionCollapse({ itemId: id, kind: 'all', collapsed: false });
     expect(db.prepare('SELECT count(*) AS n FROM comment_collapse_overrides').get()?.n).toBe(0);
-    console.log(JSON.stringify({ seenScale: count, collapseAllMs, publicationTargetMs, stateWriteReplayMs, recoveryEntryReplayMs, bulkCommitAckMs, undoCommitAckMs, recoveryGrowthBytes }));
+    console.log(JSON.stringify({ seenScale: count, collapseAllMs, publicationTargetMs, stateWriteReplayMs, recoveryEntryReplayMs, bulkCommitAckMs, explicitPrefixCommitMs, undoCommitAckMs, recoveryGrowthBytes }));
   } finally {
     db?.close(); repository.close();
     rmSync(directory, { recursive: true, force: true });

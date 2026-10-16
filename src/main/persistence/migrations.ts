@@ -187,6 +187,41 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
     PRIMARY KEY(item_id, comment_id),
     FOREIGN KEY(item_id, comment_id) REFERENCES comments(item_id, id) ON DELETE CASCADE
   ) STRICT;
+`) }, { version: 11, apply: db => db.exec(`
+  ALTER TABLE preferences ADD COLUMN selection_controls TEXT NOT NULL DEFAULT 'on-demand'
+    CHECK(selection_controls IN ('on-demand','always'));
+  ALTER TABLE preferences ADD COLUMN include_collapsed_in_prefix INTEGER NOT NULL DEFAULT 1
+    CHECK(include_collapsed_in_prefix IN (0,1));
+  -- Remove the referencing table BEFORE replacing its parent. With foreign keys
+  -- enabled, dropping the parent first would cascade-delete valuable recovery.
+  CREATE TEMP TABLE saved_seen_entries AS SELECT * FROM seen_operation_entries;
+  CREATE TEMP TABLE saved_seen_operations AS SELECT * FROM seen_operations;
+  DROP TABLE seen_operation_entries;
+  DROP TABLE seen_operations;
+  CREATE TABLE seen_operations (
+    id TEXT PRIMARY KEY NOT NULL,
+    item_id TEXT NOT NULL UNIQUE REFERENCES content_items(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('all','matching','publication','subtree','selected','view-prefix')),
+    target_seen INTEGER NOT NULL CHECK(target_seen IN (0,1)),
+    target_count INTEGER NOT NULL CHECK(target_count >= 2),
+    changed_count INTEGER NOT NULL CHECK(changed_count >= 1 AND changed_count <= target_count),
+    UNIQUE(id, item_id)
+  ) STRICT;
+  INSERT INTO seen_operations SELECT * FROM saved_seen_operations;
+  CREATE TABLE seen_operation_entries (
+    operation_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    comment_id TEXT NOT NULL,
+    written_revision INTEGER NOT NULL CHECK(written_revision > 0),
+    PRIMARY KEY(operation_id, comment_id),
+    FOREIGN KEY(operation_id, item_id) REFERENCES seen_operations(id, item_id) ON DELETE CASCADE,
+    FOREIGN KEY(item_id, comment_id) REFERENCES comments(item_id, id) ON DELETE CASCADE
+  ) STRICT;
+  CREATE INDEX seen_entries_comment ON seen_operation_entries(item_id, comment_id);
+  INSERT INTO seen_operation_entries SELECT * FROM saved_seen_entries;
+  DROP TABLE saved_seen_entries;
+  DROP TABLE saved_seen_operations;
 `) }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 

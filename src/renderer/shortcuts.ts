@@ -1,7 +1,7 @@
 import { translator } from './i18n';
 import type { Locale, TranslationKey } from './i18n';
 
-type ShortcutKey = 'Ctrl' | 'Shift' | 'Alt' | 'Tab' | 'W' | 'F' | 'L' | 'Z' | 'Enter' | 'F1' | 'F3' | 'Left' | 'Right' | 'Home' | 'End' | 'Click' | 'Escape' | 'Space';
+type ShortcutKey = 'Ctrl' | 'Shift' | 'Alt' | 'Tab' | 'W' | 'F' | 'L' | 'Z' | 'Enter' | 'F1' | 'F3' | 'F10' | 'ContextMenu' | 'Left' | 'Right' | 'Home' | 'End' | 'Click' | 'Escape' | 'Space';
 interface ShortcutDefinition {
   readonly id: string;
   readonly keys: readonly ShortcutKey[];
@@ -29,6 +29,9 @@ export const shortcuts = [
   { id: 'collapse-enter', keys: ['Enter'], description: 'shortcutCollapse', group: 'shortcutComments' },
   { id: 'collapse-space', keys: ['Space'], description: 'shortcutCollapse', group: 'shortcutComments' },
   { id: 'comment-subtree', keys: ['Ctrl', 'Click'], description: 'shortcutSubtree', group: 'shortcutComments', scope: 'shortcutSeenCheckbox' },
+  { id: 'selection-range', keys: ['Shift', 'Click'], description: 'shortcutSelection', group: 'shortcutComments' },
+  { id: 'comment-menu', keys: ['Shift', 'F10'], description: 'shortcutContextMenu', group: 'shortcutComments' },
+  { id: 'comment-menu-key', keys: ['ContextMenu'], description: 'shortcutContextMenu', group: 'shortcutComments' },
   { id: 'undo-seen', keys: ['Ctrl', 'Z'], description: 'bulkUndoHelp', group: 'shortcutComments', scope: 'bulkUndoScope' },
   { id: 'submit', keys: ['Enter'], description: 'shortcutSubmit', group: 'shortcutAcquisition', scope: 'shortcutSubmitScope' },
   { id: 'keyboard-help', keys: ['F1'], description: 'keyboardShortcuts', group: 'shortcutHelp' },
@@ -44,7 +47,7 @@ export function shortcut(id: ShortcutId): ShortcutDefinition {
 
 const windowsNames: Readonly<Record<ShortcutKey, string>> = {
   Space: 'Space', Ctrl: 'Ctrl', Shift: 'Shift', Alt: 'Alt', Tab: 'Tab', W: 'W', F: 'F', L: 'L', Z: 'Z', Enter: 'Enter',
-  F1: 'F1', F3: 'F3', Left: 'Left', Right: 'Right', Home: 'Home', End: 'End', Click: 'Click', Escape: 'Escape',
+  F1: 'F1', F3: 'F3', F10: 'F10', ContextMenu: 'Context Menu', Left: 'Left', Right: 'Right', Home: 'Home', End: 'End', Click: 'Click', Escape: 'Escape',
 };
 /** Display names are independent of bindings, ready for a future platform naming map. */
 export function shortcutKeyLabels(id: ShortcutId, names: Partial<Record<ShortcutKey, string>> = {}): string[] {

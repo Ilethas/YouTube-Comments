@@ -1,7 +1,7 @@
 import type { AcquisitionNotification, AcquisitionProgress, AcquisitionTimings } from './acquisition';
 import type { Comment, ContentItem } from '../domain/discussion';
 import { translationTargets } from './preferences';
-import type { Appearance, Locale, Preferences, TranslationTarget } from './preferences';
+import type { Appearance, Locale, Preferences, TranslationTarget, SelectionControls } from './preferences';
 import type { WorkspaceState } from '../domain/workspace';
 import type { BulkSeenRequest, SeenMutationResult, SeenUndoResult, SeenUndoDescriptor } from '../domain/seen-operation';
 import type { HelperRequest, HelperStatus } from './helper-settings';
@@ -32,9 +32,10 @@ export interface ToggleSeenRequest {
   readonly commentId: string;
   readonly subtree: boolean;
 }
-export type PreferenceChange = { readonly locale: Locale } | { readonly appearance: Appearance } | { readonly translationTarget: TranslationTarget };
+export type PreferenceChange = { readonly locale: Locale } | { readonly appearance: Appearance } | { readonly translationTarget: TranslationTarget }
+  | { readonly selectionControls: SelectionControls } | { readonly includeCollapsedInPrefix: boolean };
 /** Identity only; main reads content and preferences and reconstructs destinations. */
-export interface CommentActionRequest { readonly itemId: string; readonly commentId: string; readonly action: 'author' | 'permalink' | 'translate' }
+export interface CommentActionRequest { readonly itemId: string; readonly commentId: string; readonly action: 'author' | 'permalink' | 'translate' | 'copy-permalink' }
 
 export interface AcquireRequest { readonly url: string }
 export interface TabRequest { readonly tabId: string }
@@ -107,7 +108,7 @@ function identifier(value: unknown): value is string {
 export function isHelperRequest(value: unknown): value is HelperRequest {
   return exactKeys(value, ['kind']) && (value.kind === 'yt-dlp' || value.kind === 'post-archiver');
 }
-/** Bounded frozen matching payload supports 50k discussions without generic ID writes.
+/** Bounded frozen matching/explicit intents support 50k discussions with narrow reasons.
  * Main separately enforces item ownership before any mutation. */
 export function isBulkSeenRequest(value: unknown): value is BulkSeenRequest {
   if (!exactKeys(value, ['itemId', 'seen', 'target']) || !identifier(value.itemId) || typeof value.seen !== 'boolean') return false;
@@ -115,6 +116,9 @@ export function isBulkSeenRequest(value: unknown): value is BulkSeenRequest {
   if (exactKeys(target, ['kind']) && target.kind === 'all') return true;
   if (exactKeys(target, ['kind', 'ids']) && target.kind === 'matching') return Array.isArray(target.ids)
     && target.ids.length <= 100000 && target.ids.every(identifier) && new Set(target.ids).size === target.ids.length;
+  if (exactKeys(target, ['kind', 'reason', 'ids']) && target.kind === 'explicit') return ['selected', 'view-prefix'].includes(target.reason as string)
+    && Array.isArray(target.ids) && target.ids.length > 0 && target.ids.length <= 100000
+    && target.ids.every(identifier) && new Set(target.ids).size === target.ids.length;
   if (target === null || typeof target !== 'object' || Array.isArray(target)) return false;
   const date = target as Record<string, unknown>;
   return Object.hasOwn(date, 'kind') && date.kind === 'publication' && Object.keys(date).every(key => ['kind', 'from', 'to', 'fromTime', 'toTime'].includes(key))
@@ -131,11 +135,13 @@ export function isToggleSeenRequest(value: unknown): value is ToggleSeenRequest 
 export function isPreferenceChange(value: unknown): value is PreferenceChange {
   return (exactKeys(value, ['locale']) && (value.locale === 'en' || value.locale === 'pl'))
     || (exactKeys(value, ['appearance']) && ['system', 'light', 'dark'].includes(value.appearance as string))
-    || (exactKeys(value, ['translationTarget']) && translationTargets.includes(value.translationTarget as TranslationTarget));
+    || (exactKeys(value, ['translationTarget']) && translationTargets.includes(value.translationTarget as TranslationTarget))
+    || (exactKeys(value, ['selectionControls']) && ['on-demand', 'always'].includes(value.selectionControls as string))
+    || (exactKeys(value, ['includeCollapsedInPrefix']) && typeof value.includeCollapsedInPrefix === 'boolean');
 }
 export function isCommentActionRequest(value: unknown): value is CommentActionRequest {
   return exactKeys(value, ['itemId', 'commentId', 'action']) && identifier(value.itemId) && identifier(value.commentId)
-    && ['author', 'permalink', 'translate'].includes(value.action as string);
+    && ['author', 'permalink', 'translate', 'copy-permalink'].includes(value.action as string);
 }
 export function isAcquireRequest(value: unknown): value is AcquireRequest {
   return exactKeys(value, ['url']) && typeof value.url === 'string' && value.url.length > 0 && value.url.length <= 2048;

@@ -42,6 +42,26 @@ it.each([false, true])('untested helper post=%s runs normal invocation and rejec
   expect(repository.bootstrap(['en'])).toEqual(before);
   expect(repository.history().at(-1)?.outcome).toBe('failed');
 });
+it('explicit selected/prefix snapshots remain exact while source Refresh is pending and later discoveries stay outside Undo', async () => {
+  const payload = await raw('yt-nested-a'), execute = videoProcess(payload);
+  const service = new ReaderService(() => repository, ['en'], vi.fn(), extractor(execute));
+  const acquired = await service.dispatch('acquire', [{ url: videoUrl }]); if (!acquired.ok) throw new Error('Expected baseline');
+  const itemId = acquired.value.summary.itemId, ids = acquired.value.state.comments[itemId].map(comment => comment.id);
+  let finish: (() => void) | undefined;
+  execute.mockImplementation(async request => {
+    if (request.arguments.includes('--version')) return outcome('2026.08.19');
+    await new Promise<void>(resolve => { finish = resolve; });
+    return outcome(JSON.stringify({ ...payload, comments: [...payload.comments as object[], { id: 'UgLaterDiscovery', text: 'Later', parent: 'root' }] }));
+  });
+  const refreshing = service.dispatch('refresh', [{ itemId }]); await vi.waitFor(() => expect(finish).toBeDefined());
+  expect(service.dispatch('bulkSeen', [{ itemId, seen: true, target: { kind: 'explicit', reason: 'view-prefix', ids } }])).toMatchObject({ ok: true, value: { targetCount: ids.length, undo: { kind: 'view-prefix' } } });
+  finish?.(); const refreshed = await refreshing; if (!refreshed.ok) throw new Error('Expected refresh');
+  const after = refreshed.value.state.comments[itemId];
+  expect(after.filter(comment => ids.includes(comment.id)).every(comment => comment.seen)).toBe(true);
+  expect(after.find(comment => !ids.includes(comment.id))?.seen).toBe(false);
+  expect(service.dispatch('undoSeen', [{ itemId }])).toMatchObject({ ok: true, value: { restored: ids.length, skipped: 0 } });
+});
+
 it.each(['failed', 'timeout', 'nonzero'] as const)('failed %s identity probe blocks invocation as an invalid/unavailable helper', async status => {
   const execute = vi.fn<ExecuteProcess>(async () => status === 'nonzero' ? outcome('2026.08.19', 1) : { ...outcome(), status });
   const result = await extractor(execute)({ sourceKind: 'youtube-video', sourceId: 'VidDemo_001', url: videoUrl }, new AbortController().signal);

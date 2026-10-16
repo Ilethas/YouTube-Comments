@@ -13,7 +13,7 @@ import { shortcutHint } from './shortcuts';
 
 type Scope = 'all' | 'matching' | 'after' | 'before' | 'between';
 /** Native modal owns focus/keys until cancellation or acknowledged commit. */
-function BulkConfirmation({ locale, title, description, pending, error, confirm, cancel }: {
+export function BulkConfirmation({ locale, title, description, pending, error, confirm, cancel }: {
   locale: Locale; title?: string; description: string; pending: boolean; error?: string; confirm: () => void; cancel: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null), t = translator(locale);
