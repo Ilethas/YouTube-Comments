@@ -4,6 +4,7 @@ import type { BulkSeenRequest } from '../domain/seen-operation';
 import type { Preferences } from '../shared/preferences';
 import { BulkConfirmation } from './BulkSeenControls';
 import { ActionIcon } from './ActionIcon';
+import { FloatingReaderControls } from './FloatingReaderControls';
 import { CommentContextMenu } from './CommentContextMenu';
 import type { CommentMenuItem, CommentMenuTarget } from './CommentContextMenu';
 import type { DiscussionViewSession } from './discussion-view-session';
@@ -25,6 +26,7 @@ export function DiscussionActions({ item, comments, session, locale, disabled, i
   const [pending, setPending] = useState(false), committing = useRef(false);
   const [error, setError] = useState<string>(), [feedback, setFeedback] = useState<TranslationKey>();
   const [copyFallback, setCopyFallback] = useState<string>();
+  const toolbar = useRef<HTMLDivElement>(null);
   useEffect(() => { modalChanged?.(!!confirmation); return () => modalChanged?.(false); }, [confirmation, modalChanged]);
   const hiddenSelected = [...state.bulkSelected].reduce((count, id) => count + Number(!displayed.indexById.has(id)), 0);
   async function commit(request: BulkSeenRequest) {
@@ -35,7 +37,7 @@ export function DiscussionActions({ item, comments, session, locale, disabled, i
     finally { committing.current = false; setPending(false); }
   }
   function prepare(ids: readonly string[], seen: boolean, reason: 'selected' | 'view-prefix', scope: string, hidden: number) {
-    if (!ids.length || disabled || !execute) return;
+    if (!ids.length || disabled || pending || !execute) return;
     const snapshot = [...ids], byId = new Map(comments.map(comment => [comment.id, comment]));
     const changed = snapshot.reduce((count, id) => count + Number(byId.get(id)?.seen !== seen), 0);
     const request: BulkSeenRequest = { itemId: item.id, seen, target: { kind: 'explicit', reason, ids: snapshot } };
@@ -98,17 +100,26 @@ export function DiscussionActions({ item, comments, session, locale, disabled, i
       { label: t('copyPermalink'), icon: 'copy', run: () => { void external('copy-permalink'); } });
     items.push({ label: t('copyComment'), icon: 'copy', run: () => { void copy(comment.text); } });
   }
-  return <>
-    {!state.selectionMode && <button className="text-button" disabled={disabled} onClick={() => session.setSelectionMode(true)}><ActionIcon name="select" />{t('selectComments')}</button>}
-    {(state.selectionMode || state.bulkSelected.size > 0) && <div className="selection-toolbar" role="group" aria-label={t('selectComments')}>
+  function extraActions() { return <>
+    <button disabled={disabled || pending || !expandableSelected} onClick={() => session.collapseSelected(false)}><ActionIcon name="chevronDown" />{t('expandSelected')}</button>
+    <button disabled={disabled || pending || !expandableSelected} onClick={() => session.collapseSelected(true)}><ActionIcon name="chevronUp" />{t('collapseSelected')}</button>
+    <button disabled={pending || !state.bulkSelected.size} onClick={() => session.clearBulkSelection()}><ActionIcon name="cancel" />{t('clearSelection')}</button>
+    <button disabled={pending} onClick={() => session.setSelectionMode(false)}><ActionIcon name="cancel" />{t('exitSelection')}</button>
+  </>; }
+  function selectionToolbar(compact: boolean) { return <div className={`selection-toolbar${compact ? ' floating-selection-toolbar' : ''}`} role="group" aria-label={t('selectComments')}>
       <span role="status">{t('selectedCount', { count: number.format(state.bulkSelected.size), hidden: number.format(hiddenSelected) })}</span>
-      <button disabled={disabled || !state.bulkSelected.size || !execute} onClick={() => selected(true)}><ActionIcon name="seen" />{t('markSelectedRead')}</button>
-      <button disabled={disabled || !state.bulkSelected.size || !execute} onClick={() => selected(false)}><ActionIcon name="unseen" />{t('markSelectedUnread')}</button>
-      <button disabled={disabled || !expandableSelected} onClick={() => session.collapseSelected(false)}><ActionIcon name="chevronDown" />{t('expandSelected')}</button>
-      <button disabled={disabled || !expandableSelected} onClick={() => session.collapseSelected(true)}><ActionIcon name="chevronUp" />{t('collapseSelected')}</button>
-      <button disabled={!state.bulkSelected.size} onClick={() => session.clearBulkSelection()}><ActionIcon name="cancel" />{t('clearSelection')}</button>
-      <button onClick={() => session.setSelectionMode(false)}><ActionIcon name="cancel" />{t('exitSelection')}</button>
-    </div>}
+      <button disabled={disabled || pending || !state.bulkSelected.size || !execute} aria-label={t('markSelectedRead')} title={t('markSelectedRead')} onClick={() => selected(true)}><ActionIcon name="seen" />{!compact && t('markSelectedRead')}</button>
+      <button disabled={disabled || pending || !state.bulkSelected.size || !execute} aria-label={t('markSelectedUnread')} title={t('markSelectedUnread')} onClick={() => selected(false)}><ActionIcon name="unseen" />{!compact && t('markSelectedUnread')}</button>
+      {compact ? <details className="selection-overflow"><summary aria-label={t('selectionMore')} title={t('selectionMore')}><ActionIcon name="chevronUp" /></summary>
+        <div className="selection-overflow-actions">{extraActions()}</div></details> : extraActions()}
+      {compact && error && !confirmation && <p className="floating-selection-feedback" role="alert">{error}</p>}
+    </div>; }
+  return <>
+    <div ref={toolbar}>
+      {!state.selectionMode && <button className="text-button" disabled={disabled} onClick={() => session.setSelectionMode(true)}><ActionIcon name="select" />{t('selectComments')}</button>}
+      {(state.selectionMode || state.bulkSelected.size > 0) && selectionToolbar(false)}
+    </div>
+    <FloatingReaderControls toolbar={toolbar} selection={state.bulkSelected.size > 0} locale={locale} onTop={() => session.scrollToStart()}>{selectionToolbar(true)}</FloatingReaderControls>
     {feedback && <p role="status">{t(feedback)}</p>}
     {copyFallback !== undefined && <button onClick={() => { void copy(copyFallback); }}><ActionIcon name="copy" />{t('copyComment')}</button>}
     {error && !confirmation && <p role="alert">{error}</p>}

@@ -28,6 +28,7 @@ if (process.versions.electron) {
     const panel = "document.querySelector('[role=tabpanel]:not([hidden])')";
     async function wait(expression) {
       for (let i = 0; i < 800; i++) { if (await js(expression)) return; await pause(25); }
+      console.error('Selection UI timeout state', await js(`({top:${panel}?.scrollTop, height:${panel}?.scrollHeight, focus:document.activeElement?.outerHTML.slice(0,150), rows:Array.from(${panel}?.querySelectorAll('.virtual-comment')??[],e=>({index:e.dataset.index,id:e.querySelector('article')?.id})), toolbar:!!${panel}?.querySelector('.floating-selection-toolbar')})`));
       throw new Error(`Timed out: ${expression}`);
     }
     const button = (label, scope = panel) => js(`Array.from(${scope}.querySelectorAll('button')).find(b=>b.textContent.trim()===${JSON.stringify(label)}).click()`);
@@ -83,9 +84,28 @@ if (process.versions.electron) {
     assert.ok(mountedRows < 100, 'Selecting an offscreen range keeps the full reader virtualized');
     assert.equal(await js(`${panel}.querySelectorAll('.discussion-ruler svg path').length`), 3);
     console.log(JSON.stringify({ selectionUiScale: fixture.count, mountedRows, rulerPaths: 3 }));
-    const start = Date.now(); await button('Mark selected read');
+    await wait(`!!${panel}.querySelector('.floating-selection-toolbar') && !!${panel}.querySelector('.back-to-top')`);
+    fs.writeFileSync(path.join(__dirname, `../.vite/selection-floating-${fixture.count}-en-light.png`), (await contents.capturePage()).toPNG());
+    const readingPoint = () => js(`(()=>{const p=${panel}.getBoundingClientRect();const row=Array.from(${panel}.querySelectorAll('article.comment')).find(e=>{const r=e.getBoundingClientRect();return r.bottom>p.top && r.top<p.bottom});return row && {id:row.id,offset:row.getBoundingClientRect().top-p.top}})()`);
+    const farAnchor = await readingPoint();
+    const start = Date.now();
+    await js(`${panel}.querySelector('.floating-selection-toolbar button[aria-label="Mark selected read"]').click()`);
     assert.equal(await js("document.activeElement.textContent.trim()"), 'Cancel'); await confirm();
     assert.equal(seenCount(), fixture.count); await undo(); assert.equal(seenCount(), 0);
+    const afterAnchor = await readingPoint();
+    assert.equal(afterAnchor.id, farAnchor.id, 'Floating confirmed marking and Undo retain reading identity');
+    assert.ok(Math.abs(afterAnchor.offset - farAnchor.offset) < 1, 'Reading offset survives bulk-feedback header reflow');
+    // Native top scrolling must preserve logical selection, seen and query. Force
+    // reduced motion through Chromium's media emulation, then exercise keyboard.
+    contents.debugger.attach('1.3');
+    await contents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    const selectedBeforeTop = await js(`${panel}.querySelector('.selection-toolbar [role=status]').textContent`);
+    await js(`${panel}.querySelector('.back-to-top').focus()`); await key('Enter');
+    await wait(`${panel}.scrollTop===0 && !${panel}.querySelector('.back-to-top') && !${panel}.querySelector('.floating-selection-toolbar')`);
+    assert.equal(await js(`document.activeElement===${panel}`), true, 'Removing a focused floating control returns focus to its reader without scrolling');
+    assert.equal(await js(`${panel}.querySelector('.selection-toolbar [role=status]').textContent`), selectedBeforeTop);
+    assert.equal(seenCount(), 0);
+    await contents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [] }); contents.debugger.detach();
     await button('Clear selection'); await button('Next unseen'); await wait(`!!${article(0)}`); await pause(200);
     // Actual native text selection and ordinary right mouse invocation.
     const copied = await js(`(()=>{const t=${article(0)}.querySelector('.comment-text').firstChild,r=document.createRange();r.setStart(t,0);r.setEnd(t,7);const s=getSelection();s.removeAllRanges();s.addRange(r);return s.toString();})()`);
@@ -105,8 +125,13 @@ if (process.versions.electron) {
     assert.equal(seenCount(), 21); await undo(); assert.equal(seenCount(), 0);
     // Two explicit selected thread assignments never recurse or write seen.
     await js(`${circle(0)}.click()`); await js(`${circle(20)}.click()`);
-    await button('Collapse selected threads'); await wait(`${panel}.querySelector('.selection-toolbar [role=status]').textContent.includes('2 selected')`);
-    assert.equal(seenCount(), 0); await button('Expand selected threads'); await button('Clear selection');
+    await js(`${panel}.scrollTo({top:${panel}.scrollHeight,behavior:'instant'})`);
+    await wait(`!!${panel}.querySelector('.floating-selection-toolbar')`);
+    await js(`${panel}.querySelector('.selection-overflow summary').click()`);
+    const floating = `${panel}.querySelector('.floating-selection-toolbar')`;
+    await button('Collapse selected threads', floating); await wait(`${floating}.querySelector('[role=status]').textContent.includes('2 selected')`);
+    assert.equal(seenCount(), 0); await button('Expand selected threads', floating); await button('Clear selection', floating);
+    await js(`${panel}.querySelector('.back-to-top').click()`); await wait(`${panel}.scrollTop===0 && !!${article(0)}`);
     await js(`${article(0)}.querySelector('.reply-toggle').click()`); await pause(100);
     await js("document.getElementById('settings-toggle').click()");
     await wait("!!document.querySelector('#panel-settings:not([hidden])')");
@@ -119,7 +144,15 @@ if (process.versions.electron) {
     // Menu bounds, keyboard movement, outside click and scroll dismissal.
     await js(`${article(20)}.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:innerWidth-1,clientY:innerHeight-1}))`);
     assert.ok(await js("(()=>{const r=document.querySelector('[role=menu]').getBoundingClientRect();return r.right<=innerWidth && r.bottom<=innerHeight && r.left>=0 && r.top>=0})()"));
-    await key('Down'); await key('Up'); await key('Escape');
+    const point = await js("(()=>{const r=document.querySelectorAll('[role=menuitem]')[2].getBoundingClientRect();return {x:Math.round(r.left+10),y:Math.round(r.top+r.height/2)}})()");
+    contents.sendInputEvent({ type: 'mouseMove', ...point }); await pause(100);
+    assert.equal(await js("document.querySelectorAll('[role=menuitem]')[2].dataset.active"), 'true');
+    await key('Down'); await pause(100);
+    assert.ok(await js("document.querySelectorAll('[role=menuitem]')[3].dataset.active==='true' && document.querySelectorAll('[role=menuitem][data-active=true]').length===1"));
+    assert.ok(await js("getComputedStyle(document.querySelectorAll('[role=menuitem]')[2]).outlineStyle==='none'"), 'Stationary hovered entry loses its highlight after keyboard navigation');
+    contents.sendInputEvent({ type: 'mouseMove', x: point.x + 1, y: point.y }); await pause(100);
+    assert.equal(await js("document.querySelectorAll('[role=menuitem]')[2].dataset.active"), 'true');
+    await key('Up'); await key('Escape');
     await menu(20); await js(`${panel}.dispatchEvent(new Event('scroll'))`); await wait("!document.querySelector('[role=menu]')");
     // Safe external capabilities are intercepted, never launch a real browser.
     await menu(20); await button('Translate in browser', "document.querySelector('[role=menu]')"); await pause(100);
@@ -145,8 +178,22 @@ if (process.versions.electron) {
       await js(`(()=>{const e=document.querySelectorAll('.preferences select')[${index}];e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`); await pause(100);
     }
     await js(`document.getElementById(${JSON.stringify('tab-discussion:' + fixture.itemId)}).click()`); await pause(250);
+    // Scattered selection remains usable in Polish/dark at the minimum window
+    // width and 125% zoom. Overflow opens upward without touching the ruler.
+    await js(`${circle(20)}.click();${circle(21)}.click();${panel}.scrollTo({top:${panel}.scrollHeight,behavior:'instant'})`);
+    await wait(`!!${panel}.querySelector('.floating-selection-toolbar')`);
+    window.setSize(720, 650); contents.setZoomFactor(1.25); await pause(400);
+    await js(`${panel}.querySelector('.selection-overflow summary').click()`);
+    assert.ok(await js(`(()=>{const p=${panel}.getBoundingClientRect(),f=${panel}.querySelector('.floating-reader-controls').getBoundingClientRect(),r=${panel}.querySelector('.discussion-ruler').getBoundingClientRect(),a=${panel}.querySelector('.selection-overflow-actions').getBoundingClientRect();return f.left>=p.left && f.right<r.left && f.bottom<=p.bottom && a.top>=p.top && a.right<=r.left})()`));
     fs.writeFileSync(path.join(__dirname, `../.vite/selection-${fixture.count}-pl-dark.png`), (await contents.capturePage()).toPNG());
-    console.log(`Selection Electron PASS ${fixture.count}: native Space/Shift range, one confirmed assignment, Undo, right-click text/Copy/Ctrl+C, exact prefixes 21/2, restrictive newest context prefix, group collapse, menu bounds/keys, safe actions, bounded DOM/ruler; workflow ${Date.now() - start}ms`);
+    await js("document.getElementById('library-toggle').click()"); await pause(150);
+    assert.equal(await js("Array.from(document.querySelectorAll('.floating-reader-controls')).filter(e=>e.getClientRects().length).length"), 0);
+    await js(`document.getElementById(${JSON.stringify('tab-discussion:' + fixture.itemId)}).click()`); await pause(150);
+    await js(`${panel}.querySelector('.back-to-top').click()`);
+    await wait(`${panel}.scrollTop===0`);
+    await js(`${panel}.querySelector('.selection-toolbar button:last-child').click()`);
+    assert.equal(await js(`${panel}.querySelector('.floating-selection-toolbar')===null`), true);
+    console.log(`Selection Electron PASS ${fixture.count}: floating confirmed assignment/Undo/group collapse/Clear, native Back to Top/reduced motion, Space/Shift range, text/Copy/Ctrl+C, exact prefixes 21/2, restrictive newest context, stationary-pointer menu highlight, Polish/dark/720px/125% zoom, safe actions, bounded DOM/ruler; workflow ${Date.now() - start}ms`);
   }
   require(path.resolve(__dirname, '../.vite/build/main.js'));
 } else {

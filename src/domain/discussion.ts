@@ -14,7 +14,9 @@ export interface Author {
 
 interface ItemBase {
   readonly id: string;
-  /** Main-derived capability; synthetic baseline content cannot be removed. */
+  /** Main-derived identity from stored synthetic baseline provenance, never names or IDs. */
+  readonly isDemo?: boolean;
+  /** Main-derived local removal capability, independent of demo identity. */
   readonly removable?: boolean;
   readonly sourceId: string;
   readonly author?: Author;

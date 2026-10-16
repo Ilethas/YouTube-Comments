@@ -14,8 +14,9 @@ import type { Locale } from './i18n';
 import type { SelectionControls } from '../shared/preferences';
 import type { OpenCommentAction } from './CommentActions';
 
+let layout: ReturnType<typeof installReaderLayout>;
 beforeEach(() => {
-  installReaderLayout();
+  layout = installReaderLayout();
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function(this: HTMLDialogElement) { this.setAttribute('open', ''); } });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function(this: HTMLDialogElement) { this.removeAttribute('open'); } });
 });
@@ -165,4 +166,51 @@ it.each([10000, 50000])('%i visual range/prefix includes unmounted IDs without e
   expect(reader.execute.mock.calls[0][0].target).toMatchObject({ kind: 'explicit', ids: Array.from({ length: count }, (_, index) => `generated-${index}`) });
   expect(reader.container.querySelectorAll('.virtual-comment').length).toBeLessThan(30);
   expect(reader.container.querySelectorAll('.discussion-ruler *').length).toBeLessThan(10);
+});
+
+it('floating selection uses the same live selection, hidden counts, collapse commands and frozen confirmation as the ordinary toolbar', async () => {
+  const reader = mount({ visibility: 'always' }), panel = required(reader.container.querySelector<HTMLElement>('main'));
+  fireEvent.click(reader.circle(0)); fireEvent.click(reader.circle(1));
+  const float = () => within(required(reader.container.querySelector<HTMLElement>('.floating-selection-toolbar')));
+  expect(reader.container.querySelector('.floating-selection-toolbar')).toBeNull();
+  panel.scrollTop = 1800; fireEvent.scroll(panel); act(() => layout.toolbarVisible(false));
+  expect(float().getByRole('status').textContent).toBe('2 selected (0 hidden)');
+  const top = panel.scrollTop, query = reader.session.state.result;
+  fireEvent.click(float().getByRole('button', { name: 'Mark selected read' }));
+  const dialog = screen.getByRole('dialog');
+  expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
+  // Changing membership cannot enlarge the captured confirmation.
+  act(() => reader.session.toggleBulk('generated-4', false));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
+  await waitFor(() => expect(reader.execute).toHaveBeenCalledExactlyOnceWith({ itemId: 'generated', seen: true, target: { kind: 'explicit', reason: 'selected', ids: ['generated-0', 'generated-1'] } }));
+  expect(float().getByRole('status').textContent).toBe('3 selected (0 hidden)');
+  expect(panel.scrollTop).toBe(top);
+  fireEvent.click(float().getByLabelText('More selection actions'));
+  fireEvent.click(float().getByRole('button', { name: 'Collapse selected threads' }));
+  expect(float().getByRole('status').textContent).toBe('3 selected (1 hidden)');
+  expect(reader.session.state.collapse.overrides).toEqual(['generated-0']);
+  fireEvent.click(float().getByRole('button', { name: 'Expand selected threads' }));
+  expect(float().getByRole('status').textContent).toBe('3 selected (0 hidden)');
+  expect(reader.session.state.result).toBe(query); expect(reader.toggle).not.toHaveBeenCalled();
+  // Collapse keeps the existing identity/offset anchor policy; changed row
+  // heights can legitimately adjust pixels, but never jump to the toolbar.
+  expect(panel.scrollTop).toBeGreaterThan(400);
+  act(() => layout.toolbarVisible(true)); expect(reader.container.querySelector('.floating-selection-toolbar')).toBeNull();
+  act(() => layout.toolbarVisible(false)); fireEvent.click(float().getByRole('button', { name: 'Clear selection' }));
+  expect(reader.session.state.bulkSelected.size).toBe(0); expect(reader.container.querySelector('.floating-selection-toolbar')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Back to top' })).toBeTruthy();
+});
+
+it('floating single-target failure is visible at the reading position and shares pending state', async () => {
+  const reader = mount({ visibility: 'always' }); fireEvent.click(reader.circle(0));
+  act(() => layout.toolbarVisible(false));
+  const float = within(required(reader.container.querySelector<HTMLElement>('.floating-selection-toolbar')));
+  let finish: (value: boolean) => void = () => undefined;
+  reader.execute.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  fireEvent.click(float.getByRole('button', { name: 'Mark selected read' }));
+  expect((float.getByRole('button', { name: 'Mark selected unread' }) as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => finish(false));
+  expect(float.getByRole('alert').textContent).toBe(translator('en')('bulkFailed'));
+  expect((float.getByRole('button', { name: 'Mark selected unread' }) as HTMLButtonElement).disabled).toBe(false);
+  expect(reader.session.state.bulkSelected).toEqual(new Set(['generated-0']));
 });

@@ -1,5 +1,84 @@
 # Testing strategy
 
+## Reader usability: removable demos, menu activity and floating controls (2026-10-17)
+
+This increment keeps schema 11 and existing main-owned mutation/confirmation/Undo
+paths. Focused coverage adds `CommentContextMenu.test.tsx`,
+`FloatingReaderControls.test.tsx`, `shared/demo-presentation.test.ts`, and extends
+App, DiscussionActions, CommentTree, source URL and SQLite removal regressions.
+
+Removal checks cover both demos alongside real-source fixtures, safe Cancel in
+EN/PL, provenance-based identity independent of names/application IDs/later attempts,
+all owned cascades, unrelated durable Undo/views/collapse/helpers/history, foreign
+keys, late-failure rollback, complete backup contents and acquisition conflicts.
+Runtime presentation/source actions no longer infer demos from `removable` or
+hardcoded discussion IDs. Fixture definitions retain their intentional IDs.
+
+Menu checks cover one active enabled entry, initial keyboard focus, wrap/Home/End,
+disabled skipping/click rejection, genuine pointer movement, repeated stationary
+coordinates through renders, mouse/keyboard transitions, Enter/Space exact actions,
+and existing native text-range/Copy/dismissal/focus/viewport behavior. The real
+Electron check leaves the mouse over a previous entry while navigating with keys,
+and verifies its computed outline is gone until the pointer actually moves.
+
+Floating controls use rooted intersection and passive threshold observation.
+Tests exercise count/hidden-count synchronization, the same confirmed selected-ID
+snapshot through later changes, shared pending and visible failure feedback,
+selected-parent collapse/expand, Clear/Exit and unchanged seen/applied identity.
+The Back to Top check targets the owning panel independently from another panel,
+with immediate native scrolling for normal/reduced motion and a localized accessible
+name. A virtualizer interaction regression supersedes a still-running collapse
+anchor correction through the existing session scroll revision, reaches the header
+and preserves navigation/bulk selection, seen, sort and query without evaluation.
+Repeated scroll events
+do not rerender the selection-content child. Existing 10k/50k virtualization,
+query/sort/collapse/ruler/navigation/restoration tests remain part of the full suite.
+
+`node scripts/smoke-selection.cjs` uses real built main/preload/renderer entries,
+native keyboard/pointer input and temporary 10k/50k discussions. It exercises the
+floating confirmed mark/Undo and group actions at a distant reading position,
+native Back to Top including Chromium reduced-motion emulation, original-toolbar
+intersection, menu transitions and tab hiding. Reading preservation compares row
+identity/offset: bulk-feedback header reflow legitimately changes absolute
+`scrollTop`. English/light and Polish/dark at 720px and 125% zoom are captured under
+ignored `.vite/selection-*.png`; bounds exclude the ruler/scrollbar. Scale checks
+retain 14 mounted rows and three ruler paths in both sizes; these are observations,
+not a new hardware performance budget.
+
+`node scripts/smoke-reader-usability.cjs` starts seven real processes in owned
+temporary development/production roots. It verifies fresh two-demo seeding, UI
+Cancel/confirmed deletion, unrelated real data/Undo/view/collapse preservation,
+restart without reseeding, an emptied existing development profile, fresh demo-free
+production, and removable demos restored from a verified complete development
+snapshot. The production mode/appData override belongs only to this harness; no
+shipped test bridge is added. Installation lifecycle is not exercised. The complete
+`test:electron` command now includes this harness alongside actual backup/restore
+and crash-recovery workflows. No owner's profile, live source or installer is used.
+
+Verification on the final source:
+
+- `npm.cmd test`: **827 tests in 65 files passed** (113.41 seconds).
+- `npm.cmd run typecheck`, `lint`, `build:renderer` and `git diff --check`: passed.
+- `npm.cmd run package -- --platform=win32 --arch=x64`: fresh application folder
+  verified, 73 files / 385,902,780 bytes; runtime/ASAR/fuses inspected by the
+  established validator. No Setup/maker/install lifecycle was executed.
+- The complete `test:electron` invocation passed general persistence, view
+  restoration, backup/recovery, external reader actions and collapse workflows,
+  then exposed floating focus/anchor regressions in the selection harness. After
+  those fixes, final `node scripts/smoke-selection.cjs` passed both 10k/50k write
+  and restart workflows (14 mounted rows, three ruler paths), and
+  `node scripts/smoke-reader-usability.cjs` passed all seven startup/removal phases.
+  A second complete Electron invocation after the last correction was not run;
+  the affected workflows were rerun against freshly rebuilt entries. Final
+  English/light and Polish/dark narrow-window screenshots were opened and inspected.
+
+Native floating-control keyboard focus return is covered in both the layout test
+and the Electron workflow: when Back to Top disappears, the reader receives focus
+without scrolling; focus already moved elsewhere is retained. Vite's existing CJS
+deprecation notice and Electron GPU shutdown diagnostics remain non-failing output.
+Live YouTube/helpers and dedicated assistive-technology testing were not performed;
+no installed Squirrel lifecycle or public release claim is made.
+
 ## README screenshots and application icon (2026-10-16)
 
 The public-facing README uses plain setup/use instructions and actual Electron

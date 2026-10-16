@@ -201,7 +201,13 @@ comments, content and attempts belonging to that item/target in one transaction.
 Because baseline and attempts form a FK cycle, checks are deferred to commit with
 foreign-key enforcement ON. No dangling references survive; late failures roll back
 everything. Unrelated items, preferences and app tabs stay untouched.
-Synthetic baselines cannot be removed. Main rejects removal of the active helper
+Synthetic demos use the same confirmed transactional deletion, including cascaded
+saved view/collapse and owned Undo. The reader DTO derives `isDemo` from the stored
+baseline attempt's `synthetic-demo` backend, separately from the `removable`
+capability. No schema change or history/identity rewrite is needed. Complete backups
+retain demos and their provenance; restored demos remain removable. Startup seeds
+only genuinely fresh development profiles, so deletions (including the last item)
+and restored empty profiles never cause reseeding. Main rejects removal of the active helper
 source, preventing stale results from recreating deleted content. There is no
 remote deletion/helper call or persistent remote tombstone.
 

@@ -19,6 +19,10 @@ export function CommentContextMenu({ target, items, locale, dismiss }: {
   target: CommentMenuTarget; items: readonly CommentMenuItem[]; locale: Locale; dismiss: () => void;
 }) {
   const menu = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(() => items.findIndex(item => !item.disabled));
+  // Coordinates change only on actual pointer movement. Focus/layout/rendering
+  // cannot reclaim activity from the keyboard under a stationary pointer.
+  const pointer = useRef<{ x: number; y: number }>({ x: target.x, y: target.y });
   const [position, setPosition] = useState({ left: target.x, top: target.y });
   const restore = useRef(true), close = useRef(dismiss); close.current = dismiss;
   function focusPreservingText(element: HTMLElement | undefined | null) {
@@ -56,13 +60,27 @@ export function CommentContextMenu({ target, items, locale, dismiss }: {
     style={position} onContextMenu={event => event.preventDefault()} onMouseDown={event => event.preventDefault()}
     onKeyDown={event => {
       if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); event.stopPropagation(); dismiss(); return; }
-      const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
-      const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
-      const index = event.key === 'ArrowDown' ? (current + 1) % buttons.length : event.key === 'ArrowUp' ? (current - 1 + buttons.length) % buttons.length
-        : event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : undefined;
-      if (index !== undefined) { event.preventDefault(); event.stopPropagation(); focusPreservingText(buttons[index]); }
+      const enabled = items.flatMap((item, index) => item.disabled ? [] : [index]);
+      const current = enabled.indexOf(active);
+      const index = event.key === 'ArrowDown' ? enabled[(current + 1) % enabled.length] : event.key === 'ArrowUp' ? enabled[(current - 1 + enabled.length) % enabled.length]
+        : event.key === 'Home' ? enabled[0] : event.key === 'End' ? enabled.at(-1) : undefined;
+      if (index !== undefined) {
+        event.preventDefault(); event.stopPropagation(); setActive(index);
+        focusPreservingText(menu.current?.querySelectorAll('button')[index]);
+      }
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault(); event.stopPropagation();
+        if (active >= 0 && !items[active]?.disabled) { dismiss(); items[active]?.run(); }
+      }
     }}>
     {items.map((item, index) => <button key={index} type="button" role="menuitem" tabIndex={-1} disabled={item.disabled}
+      data-active={active === index && !item.disabled}
+      onFocus={() => { if (!item.disabled) setActive(index); }}
+      onPointerMove={event => {
+        if (event.clientX === pointer.current.x && event.clientY === pointer.current.y) return;
+        pointer.current = { x: event.clientX, y: event.clientY };
+        if (!item.disabled) { setActive(index); focusPreservingText(event.currentTarget); }
+      }}
       onClick={() => { dismiss(); item.run(); }}><ActionIcon name={item.icon} />{item.label}</button>)}
   </div>, document.body);
 }

@@ -92,6 +92,12 @@ export class DiscussionViewSession {
   private seenRevision = 0;
   private disposed = false;
   private scrollRevision = 0;
+  /** Explicit header scrolling supersedes an unfinished sort/collapse reveal,
+   * retaining logical navigation selection, criteria and settled-anchor saving. */
+  scrollToStart(): void {
+    this.state = { ...this.state, scrollRequest: { revision: ++this.scrollRevision, kind: 'restore', offset: 0 } };
+    this.changed();
+  }
   private captureAnchor?: () => ReaderScrollAnchor | undefined;
   private readerMountedBefore = false;
   private anchor: DiscussionViewIntent['anchor'] = { commentId: null, offset: 0 };

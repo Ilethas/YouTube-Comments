@@ -21,6 +21,13 @@ tab hiding and target detachment close the viewport-clamped menu. Copy selection
 preserves native text ranges; full-comment text copy is separately labeled.
 Links/translation/copy permalink use stored-identity capabilities.
 
+The menu has one active enabled item, reflected in both focus and its single
+visual highlight. Actual pointer movement activates the entry beneath it;
+ArrowUp/Down wrap enabled entries and Home/End choose the endpoints. Enter/Space
+executes the active action. Keyboard activity wins while the pointer is stationary,
+even if CSS hover still matches another entry. Renders/focus changes do not count
+as pointer movement. Disabled entries cannot become active or execute.
+
 Prefix actions always confirm the exact inclusive reading prefix, with discussion,
 endpoint identity/position, target/changing/hidden counts and context notice.
 Include collapsed replies defaults enabled; disabling chooses visible rows only.
@@ -29,6 +36,57 @@ its item/ID snapshot through tab/view/Refresh changes; no later IDs are added.
 Cancel has default focus and Escape cancels before a pending write.
 See [ADR 0024](decisions/0024-comment-selection-context-menus-and-view-prefix-seen.md)
 for exact range fallback, snapshot, focus and security policy.
+
+## Floating reader controls
+
+A compact circular Back to top / Wróć na górę button appears in the lower-left
+of the active discussion viewport after scrolling beyond 400px or three-quarters
+of the viewport height, whichever is larger. It scrolls the existing `.reader-panel`
+to zero, including the header, filters and original selection toolbar. Scrolling
+is immediate for both normal and reduced motion: dynamic virtual-row measurement
+can interrupt native smooth scrolling.
+It never changes seen, bulk/navigation selection, sort, collapse or applied queries.
+The existing virtualizer's settled identity/offset persistence handles the new
+position. The existing session scroll revision supersedes an unfinished
+collapse/sort/reveal correction, so it cannot pull the reader away from the header
+after the explicit action. Only transient scroll intent changes; logical selection
+and criteria remain intact. Window/document scrolling is not involved.
+
+With at least one selected comment and the original selection toolbar entirely
+outside that same panel's viewport, a compact floating strip shows total/hidden
+counts and read/unread buttons with localized accessible names/tooltips. An upward
+details control exposes Expand/Collapse selected, Clear and Exit. Both presentations
+use the same DiscussionViewSession, selected IDs, command handlers, pending/error
+state, confirmation snapshot, sparse persisted collapse and revision-safe Undo.
+Actions do not scroll to the original toolbar. Clear/Exit removes the strip; existing
+Always/on-demand circle preferences remain unchanged. When the original toolbar
+intersects the viewport, its floating counterpart disappears.
+
+Controls stay inside their owning panel's visibility tree, so hidden/unmounted
+discussions and Library/Settings cannot display them. Fixed positioning follows the
+panel's measured viewport, with right clearance for the scrollbar/ruler; it does
+not narrow comment layout. The strip wraps at narrow widths/zoom, details opens
+upward, and semantic theme/focus tokens apply. Context menus layer above it; native
+modal confirmations remain in the top layer with their established inert/focus
+behavior. IntersectionObserver uses the reader as root; passive scroll observation
+only updates the Back to Top threshold. Neither path scans or mounts comments,
+rebuilds projections, or remeasures virtual rows.
+If scrolling or Clear/Exit removes a focused floating control, focus returns to
+its reader panel with preventScroll. Focus moved elsewhere by the user or a modal
+is retained.
+
+## Removing local demo discussions
+
+Library labels synthetic discussions Demo independently of the ordinary Remove
+from Library button. The same modal focuses Cancel initially; confirmed removal
+deletes only that local discussion, comments, manual state, history, tab, saved view,
+collapse and Undo. Unrelated content/settings/helpers/recovery remain. Main retains
+active-acquisition conflict protection. Demo identity is derived from the stored
+`synthetic-demo` baseline attempt, never title/author/source/application ID patterns.
+Demos retain their labels, fixture clock/NEW examples and unavailable source actions
+even though removal is allowed. Fresh development seeds as before; existing or
+restored databases never reseed, including after deletion empties the Library.
+Production starts demo-free; complete backups retain any demos until explicit removal.
 
 ## Persistent reply collapse (ADR 0023)
 

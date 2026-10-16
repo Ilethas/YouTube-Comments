@@ -20,7 +20,6 @@ import { DiscussionActions } from './DiscussionActions';
 import type { CommentMenuTarget } from './CommentContextMenu';
 import type { SelectionControls } from '../shared/preferences';
 
-const demo = (id: string) => id === 'video-demo' || id === 'post-demo';
 interface Props {
   active?: boolean;
   selectionControls?: SelectionControls;
@@ -62,7 +61,7 @@ export const DiscussionPanel = memo(function DiscussionPanel({ active = true, se
   useEffect(() => { setMenu(undefined); }, [active, view.result, view.sort, view.collapse, comments]);
   const presentation = session.presentation(comments);
   const t = translator(locale);
-  const now = useMemo(() => demo(item.id) ? demoNow : Date.now(), [item]);
+  const now = useMemo(() => item.isDemo ? demoNow : Date.now(), [item]);
   const newIds = useMemo(() => readerNewCommentIds(item, comments), [item, comments]);
   const time = item.publishedAt ? publicationTime(item.publishedAt, locale, now) : undefined;
   const toggle = useCallback((id: string, subtree: boolean) => onToggle(item.id, id, subtree), [onToggle, item.id]);
@@ -71,13 +70,13 @@ export const DiscussionPanel = memo(function DiscussionPanel({ active = true, se
   return (
         <div className="reading-column">
           <header className={`item-header ${item.kind}`}>
-            <div className="item-actions"><div className="eyebrow">{t(item.kind)} {demo(item.id) && <span className="demo-label">{t('demo')}</span>}</div>
-              <span className="item-status" title={t(coverageLimited ? 'coverageNotice' : demo(item.id) ? 'demoNotice' : 'localNotice')}
+            <div className="item-actions"><div className="eyebrow">{t(item.kind)} {item.isDemo && <span className="demo-label">{t('demo')}</span>}</div>
+              <span className="item-status" title={t(coverageLimited ? 'coverageNotice' : item.isDemo ? 'demoNotice' : 'localNotice')}
                 role={coverageLimited ? 'status' : undefined}>{t(coverageLimited ? 'coverageShort' : 'savedShort')}</span>
-              {!demo(item.id) && <button disabled={refreshDisabled} onClick={() => { onRefresh(item.id); }}><ActionIcon name="refresh" />{t('refresh')}</button>}
+              {!item.isDemo && <button disabled={refreshDisabled} onClick={() => { onRefresh(item.id); }}><ActionIcon name="refresh" />{t('refresh')}</button>}
             </div>
             <div className="item-title"><h1>{item.kind === 'video' ? item.title : item.author?.displayName ?? t('unknownAuthor')}</h1>
-              {!demo(item.id) && onOpenSource && <SourceAction itemId={item.id} locale={locale} open={onOpenSource} />}</div>
+              {!item.isDemo && onOpenSource && <SourceAction itemId={item.id} locale={locale} open={onOpenSource} />}</div>
             {item.kind === 'video' ? item.description && <VideoDescription id={item.id} text={item.description} locale={locale} /> : <p className="post-text">{item.text}</p>}
             <div className="item-meta"><strong>{item.author?.displayName ?? t('unknownAuthor')}</strong>
               {item.author?.handle && <span>{item.author.handle}</span>}
@@ -101,11 +100,11 @@ export const DiscussionPanel = memo(function DiscussionPanel({ active = true, se
             <DiscussionActions item={item} comments={comments} session={session} locale={locale} disabled={saving}
               includeCollapsedInPrefix={includeCollapsedInPrefix} menu={active ? menu : undefined} dismissMenu={dismissMenu}
               onAction={onAction} execute={onBulk} modalChanged={onBulkModal} />
-            <VirtualCommentList itemId={item.id} comments={comments} result={view.result} selected={view.selected} session={session} scrollRequest={view.scrollRequest}
+            <VirtualCommentList itemId={item.id} isDemo={item.isDemo} comments={comments} result={view.result} selected={view.selected} session={session} scrollRequest={view.scrollRequest}
               showSelection={selectionControls === 'always' || view.selectionMode} bulkSelected={view.bulkSelected} onContextMenu={setMenu}
               locale={locale} disabled={saving} onToggle={toggle} onAction={onAction} now={now} newIds={newIds} />
           </section>
-          {demo(item.id) && <footer className="reader-footer"><p>{t('newHelp')}</p><p>{t('clockNote')}: {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(demoNow)}</p></footer>}
+          {item.isDemo && <footer className="reader-footer"><p>{t('newHelp')}</p><p>{t('clockNote')}: {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(demoNow)}</p></footer>}
         </div>
   );
 });

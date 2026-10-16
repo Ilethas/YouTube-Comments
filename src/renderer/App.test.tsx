@@ -1,4 +1,6 @@
+import { translator } from './i18n';
 import { required } from './testing/required';
+import { installReaderIntersection } from './testing/reader-layout';
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
@@ -26,6 +28,7 @@ vi.mock('./query-executor', () => ({ createQueryExecutor: vi.fn() }));
 let api: ReaderApi;
 let state: ReaderState;
 beforeEach(() => {
+  installReaderIntersection();
   vi.stubGlobal('ResizeObserver', class { observe() { /* jsdom has no layout. */ } unobserve() { /* Test only. */ } disconnect() { /* Test only. */ } });
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: function(this: HTMLElement, options: ScrollToOptions) { this.scrollTop = options.top ?? 0; } });
   vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate: async (comments, query) => evaluateDiscussionQuery(comments, query), dispose: vi.fn() } as QueryExecutor as ReturnType<typeof createQueryExecutor>));
@@ -370,7 +373,7 @@ it('failed preferences keep saved language/appearance and rejected transport is 
 });
 
 function acquired(): AcquisitionResult {
-  const item = { ...items[0], id: 'acquired-video', removable: true, sourceId: 'abcdefghijk', title: 'Acquired video' };
+  const item = { ...items[0], id: 'acquired-video', isDemo: false, removable: true, sourceId: 'abcdefghijk', title: 'Acquired video' };
   const comment = { ...initialComments['video-demo'][0], id: 'acquired-comment', itemId: item.id, parentId: null, seen: false, text: 'Acquired comment' };
   return { operationId: 'fixture-operation', timings: { targetMs: 0, helperMs: 0, preparationMs: 0, fetchMs: 0, processingMs: 0, savingMs: 0, bootstrapMs: 0, totalMs: 0 },
     state: { discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' },
@@ -585,13 +588,13 @@ it('Library and Settings are ordinary singleton closable tabs; toolbar contains 
   await userEvent.click(screen.getByRole('button', { name: 'Library' }));
   expect(screen.getAllByRole('tab').at(-1)?.textContent).toBe('Library');
 });
-it('Library filters metadata, shows open/closed counts and demo protection, and activates without duplication', async () => {
+it('Library filters metadata, shows open/closed counts and removable demo identity, and activates without duplication', async () => {
   await showReader();
   await userEvent.click(screen.getByRole('button', { name: /^Close tab: Quiet Workshop/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Library' }));
   const panel = screen.getByRole('tabpanel');
-  expect(within(panel).getAllByText(/removal unavailable/)).toHaveLength(2);
-  expect(within(panel).queryByRole('button', { name: 'Remove from Library' })).toBeNull();
+  expect(within(panel).getAllByText('Demo')).toHaveLength(2);
+  expect(within(panel).getAllByRole('button', { name: 'Remove from Library' })).toHaveLength(2);
   expect(within(panel).getAllByText('Open tab')).toHaveLength(1);
   await userEvent.type(screen.getByRole('searchbox'), 'reading lamp');
   expect(within(panel).getAllByRole('listitem')).toHaveLength(1);
@@ -603,7 +606,7 @@ it('confirmation is required, Cancel preserves item, and successful Remove updat
   state = acquired().state;
   await showReader();
   await userEvent.click(screen.getByRole('button', { name: 'Library' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Remove from Library' }));
+  await userEvent.click(within(required(screen.getByText('Acquired video', { selector: 'h2' }).closest('li'))).getByRole('button', { name: 'Remove from Library' }));
   const dialog = screen.getByRole('dialog');
   expect(dialog.textContent).toContain('seen state, and refresh history');
   expect(dialog.textContent).toContain('does not affect YouTube');
@@ -611,7 +614,7 @@ it('confirmation is required, Cancel preserves item, and successful Remove updat
   await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(api.removeLibraryItem).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole('button', { name: 'Remove from Library' }));
+  await userEvent.click(within(required(screen.getByText('Acquired video', { selector: 'h2' }).closest('li'))).getByRole('button', { name: 'Remove from Library' }));
   await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(api.removeLibraryItem).toHaveBeenCalledWith({ itemId: 'acquired-video' });
@@ -619,12 +622,30 @@ it('confirmation is required, Cancel preserves item, and successful Remove updat
   expect(screen.getByRole('tabpanel').id).toBe('panel-library');
   expect(within(screen.getByRole('tabpanel')).getAllByRole('listitem')).toHaveLength(2);
 });
+it.each(['en', 'pl'] as const)('%s demos use ordinary removal confirmation with safe Cancel and preserve other discussions', async locale => {
+  state = acquired().state;
+  state = { ...state, preferences: { ...state.preferences, locale } };
+  const t = translator(locale);
+  await showReader();
+  await userEvent.click(screen.getByRole('button', { name: t('library') }));
+  const entry = required(screen.getByText(items[0].kind === 'video' ? items[0].title : '', { selector: 'h2' }).closest('li'));
+  expect(within(entry).getByText('Demo')).toBeTruthy();
+  await userEvent.click(within(entry).getByRole('button', { name: t('removeFromLibrary') }));
+  expect(document.activeElement).toBe(within(screen.getByRole('dialog')).getByRole('button', { name: t('cancel') }));
+  await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: t('cancel') }));
+  expect(api.removeLibraryItem).not.toHaveBeenCalled();
+  await userEvent.click(within(entry).getByRole('button', { name: t('removeFromLibrary') }));
+  await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: t('remove') }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(api.removeLibraryItem).toHaveBeenCalledExactlyOnceWith({ itemId: items[0].id });
+  expect(state.items.map(item => item.id)).toEqual(['post-demo', 'acquired-video']);
+});
 it('failed removal stays visible with storage feedback, and busy removal explains waiting', async () => {
   state = acquired().state;
   api.removeLibraryItem = vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } }));
   await showReader();
   await userEvent.click(screen.getByRole('button', { name: 'Library' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Remove from Library' }));
+  await userEvent.click(within(required(screen.getByText('Acquired video', { selector: 'h2' }).closest('li'))).getByRole('button', { name: 'Remove from Library' }));
   await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
   expect((await screen.findByRole('alert')).textContent).toContain('remains in Library');
   expect(screen.getByRole('tab', { name: /Acquired video/ })).toBeTruthy();
@@ -641,7 +662,7 @@ it('an older acquisition content snapshot cannot resurrect an unrelated removed 
   // Simulate a delayed acknowledgment from an already completed helper snapshot.
   await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   await userEvent.click(screen.getByRole('button', { name: 'Library' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Remove from Library' }));
+  await userEvent.click(within(required(screen.getByText('Acquired video', { selector: 'h2' }).closest('li'))).getByRole('button', { name: 'Remove from Library' }));
   await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   finish({ ok: true, value: old });
@@ -796,7 +817,7 @@ it.each(['textarea', 'select', 'contenteditable'])('leaves ordinary navigation a
 it('removal confirmation and pending removal suspend shortcuts without losing dialog focus or mutating workspace', async () => {
   state = acquired().state; await showReader();
   await userEvent.click(screen.getByRole('button', { name: 'Library' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Remove from Library' }));
+  await userEvent.click(within(required(screen.getByText('Acquired video', { selector: 'h2' }).closest('li'))).getByRole('button', { name: 'Remove from Library' }));
   const dialog = screen.getByRole('dialog');
   const checkBlocked = () => {
     const focused = document.activeElement;

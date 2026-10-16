@@ -3,7 +3,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ReaderRepository, NotRemovableError } from './reader-repository';
+import { ReaderRepository } from './reader-repository';
+import { defaultQuery } from '../../domain/discussion-query';
 import { ReaderService } from '../reader-service';
 import { normalizeYtDlp } from '../extractors/yt-dlp';
 import { discussionTab } from '../../domain/workspace';
@@ -26,6 +27,27 @@ function raw<T>(action: (db: DatabaseSync) => T): T {
   const db = new DatabaseSync(file); db.exec('PRAGMA foreign_keys=ON');
   try { return action(db); } finally { db.close(); }
 }
+it.each(['real', 'video-demo', 'post-demo'])('removes %s and every owned record, preserving unrelated state and Undo', target => {
+  const real = insert(), id = target === 'real' ? real : target;
+  for (const item of repository.bootstrap(['en']).items) {
+    repository.bulkSeen({ itemId: item.id, seen: true, target: { kind: 'all' } });
+    repository.setDiscussionCollapse({ itemId: item.id, kind: 'all', collapsed: true });
+    repository.saveDiscussionView({ itemId: item.id, draft: defaultQuery, applied: defaultQuery, sort: 'original', anchor: { commentId: null, offset: 10 }, selected: null });
+  }
+  repository.setHelperSelection('yt-dlp', 'C:\\test-only\\yt-dlp.exe');
+  const preserved = repository.bootstrap(['en']);
+  const filter = (value: object) => Object.fromEntries(Object.entries(value).filter(([key]) => key !== id));
+  const after = repository.removeLibraryItem(id, ['en']);
+  expect(after.items).toEqual(preserved.items.filter(item => item.id !== id));
+  expect(after.comments).toEqual(filter(preserved.comments));
+  expect(after.seenUndo).toEqual(filter(preserved.seenUndo));
+  expect(after.discussionViews).toEqual(filter(preserved.discussionViews));
+  expect(after.discussionCollapse).toEqual(filter(preserved.discussionCollapse));
+  expect(repository.getHelperSelection('yt-dlp')).toBe('C:\\test-only\\yt-dlp.exe');
+  raw(db => expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]));
+  repository.close(); repository = ReaderRepository.open(file);
+  expect(repository.bootstrap(['en'])).toEqual(after);
+});
 it.each(['closed', 'background', 'active-right', 'active-left'] as const)('removes %s real item and every owned record, preserving unrelated data and app tabs', position => {
   const id = insert();
   repository.toggleSeen({ itemId: id, commentId: repository.bootstrap(['en']).comments[id][0].id, subtree: true });
@@ -59,21 +81,42 @@ it('removing the last active discussion leaves an empty workspace', () => {
   for (const tab of repository.workspace().tabs) if (tab.id !== discussionTab(id).id) repository.changeWorkspace('closeTab', tab.id);
   expect(repository.removeLibraryItem(id, ['en']).workspace).toMatchObject({ tabs: [], activeTabId: null });
 });
-it('a late delete failure rolls back workspace, local state, comments, evidence and history', () => {
-  const id = insert(), before = repository.bootstrap(['en']), history = repository.history();
+it.each(['real', 'video-demo'])('a late %s delete failure rolls back workspace, local state, comments, evidence and history', target => {
+  const real = insert(), id = target === 'real' ? real : target;
+  repository.bulkSeen({ itemId: id, seen: true, target: { kind: 'all' } });
+  repository.setDiscussionCollapse({ itemId: id, kind: 'all', collapsed: true });
+  repository.saveDiscussionView({ itemId: id, draft: defaultQuery, applied: defaultQuery, sort: 'original', anchor: { commentId: null, offset: 0 }, selected: null });
+  const before = repository.bootstrap(['en']), history = repository.history();
   raw(db => db.exec("CREATE TRIGGER fail_remove BEFORE DELETE ON extraction_attempts BEGIN SELECT RAISE(ABORT,'late removal failure'); END"));
   expect(() => repository.removeLibraryItem(id, ['en'])).toThrow('late removal failure');
   expect(repository.bootstrap(['en'])).toEqual(before); expect(repository.history()).toEqual(history);
   raw(db => expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]));
 });
-it('synthetic baselines are protected in main even if a renderer asks to remove them', () => {
+it('synthetic baseline provenance supplies demo identity independently from removal, even after later observations', () => {
   const before = repository.bootstrap(['en']);
-  expect(before.items.every(item => !item.removable)).toBe(true);
-  expect(() => repository.removeLibraryItem('video-demo', ['en'])).toThrow(NotRemovableError);
+  expect(before.items.every(item => item.isDemo && item.removable)).toBe(true);
+  const id = insert();
+  expect(repository.getStoredItem(id)).toMatchObject({ isDemo: false, removable: true });
+  // Author, title, source ID or a later backend must not reclassify a real baseline.
+  raw(db => db.prepare("UPDATE content_items SET title='Quiet Workshop', author_display_name='Quiet Workshop' WHERE id=?").run(id));
+  repository.ingest({ ...extraction, provenance: { ...extraction.provenance, backend: 'synthetic-demo' } });
+  expect(repository.getStoredItem(id)?.isDemo).toBe(false);
   const service = new ReaderService(() => repository, ['en'], () => undefined);
-  expect(service.dispatch('removeLibraryItem', [{ itemId: 'post-demo' }])).toMatchObject({ error: { code: 'NOT_REMOVABLE' } });
+  expect(service.dispatch('removeLibraryItem', [{ itemId: 'post-demo' }]).ok).toBe(true);
   expect(service.dispatch('removeLibraryItem', [{ itemId: 'missing' }])).toMatchObject({ error: { code: 'NOT_FOUND' } });
-  expect(repository.bootstrap(['en'])).toEqual(before);
+  expect(repository.getStoredItem('video-demo')).toMatchObject({ isDemo: true, removable: true });
+});
+it('complete backups retain demo identity and removability alongside real discussions', async () => {
+  insert(); const before = repository.bootstrap(['en']);
+  const backup = path.join(directory, 'backup.sqlite'); await repository.createBackup(backup);
+  const restored = ReaderRepository.open(backup);
+  try {
+    expect(restored.bootstrap(['en'])).toEqual(before);
+    const after = restored.removeLibraryItem('video-demo', ['en']);
+    expect(after.items).toEqual(before.items.filter(item => item.id !== 'video-demo'));
+    expect(after.comments['post-demo']).toEqual(before.comments['post-demo']);
+    expect(repository.bootstrap(['en'])).toEqual(before);
+  } finally { restored.close(); }
 });
 it('removal includes failed history recorded for its source before first successful acquisition', () => {
   const target = { sourceKind: 'youtube-video' as const, sourceId: 'VidDemo_001' };

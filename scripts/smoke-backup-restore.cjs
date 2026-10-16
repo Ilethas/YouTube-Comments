@@ -117,7 +117,7 @@ if (process.versions.electron && process.type === 'browser') {
       await invoke('toggleSeen', { itemId: 'video-demo', commentId: 'v1', subtree: false });
       await invoke('undoSeen', { itemId: 'post-demo' }); await invoke('closeTab', { tabId: 'discussion:post-demo' });
       await invoke('updatePreferences', { appearance: 'light' });
-      const state = await metadata(), removable = state.items.find(item => item.removable);
+      const state = await metadata(), removable = state.items.find(item => item.removable && !item.isDemo);
       if (removable) await remove(removable.id);
       fs.writeFileSync(path.join(root, 'previous.json'), JSON.stringify(data(database(root))));
       confirmation = false; const before = data(database(root));
@@ -152,7 +152,7 @@ if (process.versions.electron && process.type === 'browser') {
       if (phase === 'verify') assert.ok(fs.existsSync(path.join(root, 'relaunch')));
       if (phase === 'verify') {
         assert.ok(boot.seenUndo['post-demo']); await invoke('undoSeen', { itemId: 'post-demo' });
-        const removable = boot.items.find(item => item.removable);
+        const removable = boot.items.find(item => item.removable && !item.isDemo);
         assert.ok(removable); await remove(removable.id);
       }
       console.log(`Backup smoke PASS ${phase}: fresh process exact table round trip`);

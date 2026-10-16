@@ -10,6 +10,7 @@ import { CommentAction } from './CommentActions';
 import type { OpenCommentAction } from './CommentActions';
 
 interface Props {
+  isDemo?: boolean;
   bulkSelected?: boolean;
   showSelection?: boolean;
   onSelect?: (id: string, shift: boolean) => void;
@@ -35,7 +36,7 @@ interface Props {
 export const commentTargetId = (id: string) => `comment-${encodeURIComponent(id)}`;
 
 /** A single measured reader article; React never recursively constructs replies. */
-export const CommentArticle = memo(function CommentArticle({ bulkSelected = false, showSelection = false, onSelect, descendantCount = 0, hiddenUnseen = 0, hiddenMatches = 0, collapsed = false, onCollapse, comment, locale, disabled, onToggle, onAction, role, rawHit, selected, hasChildren, isNew = false, now = demoNow }: Props) {
+export const CommentArticle = memo(function CommentArticle({ isDemo = false, bulkSelected = false, showSelection = false, onSelect, descendantCount = 0, hiddenUnseen = 0, hiddenMatches = 0, collapsed = false, onCollapse, comment, locale, disabled, onToggle, onAction, role, rawHit, selected, hasChildren, isNew = false, now = demoNow }: Props) {
   recordRenderWork('comment', comment.itemId);
   const t = translator(locale);
   const author = comment.author?.displayName ?? comment.author?.handle ?? t('unknownAuthor');
@@ -78,7 +79,7 @@ export const CommentArticle = memo(function CommentArticle({ bulkSelected = fals
         {role === 'context' && rawHit && <span className="badge raw-match-badge">{t('rawSearchHit')}</span>}
         {comment.likeCount !== undefined && <span>{t('likes', { count: new Intl.NumberFormat(locale).format(comment.likeCount) })}</span>}
         {!comment.seen && <span className="badge unseen-badge">{t('unseen')}</span>}
-        {isNew && <span className="badge new-badge" title={t(comment.itemId === 'video-demo' || comment.itemId === 'post-demo' ? 'newHelp' : 'newDiscoveryHelp')}>{t('new')}</span>}
+        {isNew && <span className="badge new-badge" title={t(isDemo ? 'newHelp' : 'newDiscoveryHelp')}>{t('new')}</span>}
         {comment.actions?.translate && onAction && <CommentAction comment={comment} action="translate" locale={locale} open={onAction} />}
       </div>
     </div>

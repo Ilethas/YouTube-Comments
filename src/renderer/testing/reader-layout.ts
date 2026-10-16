@@ -1,8 +1,24 @@
 import { vi } from 'vitest';
 
+/** Explicit intersection delivery for jsdom, which has no native viewport. */
+export function installReaderIntersection() {
+  const observers = new Set<IntersectionDriver>();
+  class IntersectionDriver {
+    readonly targets = new Set<Element>();
+    constructor(readonly callback: IntersectionObserverCallback, readonly options: IntersectionObserverInit) { observers.add(this); }
+    observe(target: Element) { this.targets.add(target); }
+    disconnect() { this.targets.clear(); observers.delete(this); }
+  }
+  vi.stubGlobal('IntersectionObserver', IntersectionDriver);
+  return { toolbarVisible(visible: boolean) {
+    for (const observer of observers) observer.callback([...observer.targets].map(target => ({ target, isIntersecting: visible } as IntersectionObserverEntry)), observer as unknown as IntersectionObserver);
+  }, roots: () => [...observers].map(observer => observer.options.root) };
+}
+
 /** Deterministic layout/ResizeObserver driver. Models geometry and events only;
  * React and the actual pinned virtualizer run normally (no virtualizer mocks). */
 export function installReaderLayout(viewportHeight = 600, initialWidth = 1000) {
+  const intersection = installReaderIntersection();
   let width = initialWidth;
   let margin = 280;
   const heights = new Map<string, number>();
@@ -49,6 +65,6 @@ export function installReaderLayout(viewportHeight = 600, initialWidth = 1000) {
       observer.callback(entries, observer as unknown as ResizeObserver);
     }
   }
-  return { notify, resize(nextWidth: number) { width = nextWidth; notify(); }, setHeight(id: string, height: number) { heights.set(id, height); notify(); },
+  return { ...intersection, notify, resize(nextWidth: number) { width = nextWidth; notify(); }, setHeight(id: string, height: number) { heights.set(id, height); notify(); },
     setMargin(nextMargin: number, notifyNow = true) { margin = nextMargin; if (notifyNow) notify(); } };
 }

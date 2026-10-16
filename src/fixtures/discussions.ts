@@ -5,10 +5,10 @@ export { demoNow, demoNewCommentIds } from '../shared/demo-presentation';
 // Entirely synthetic application data; not captured or inferred extractor output.
 const creator: Author = { sourceId: 'demo-author-studio', displayName: 'Quiet Workshop', handle: '@quietworkshop' };
 export const items: readonly ContentItem[] = [
-  { id: 'video-demo', sourceId: 'synthetic-video', kind: 'video', title: 'A quieter desk, built one detail at a time',
+  { id: 'video-demo', isDemo: true, removable: true, sourceId: 'synthetic-video', kind: 'video', title: 'A quieter desk, built one detail at a time',
     description: 'An afternoon in the workshop: a solid-wood desk, a cable tray, and a little more room to think.',
     author: creator, publishedAt: '2026-09-16T10:00:00Z', baselineDiscoveryId: 'video-baseline' },
-  { id: 'post-demo', sourceId: 'synthetic-post', kind: 'post', author: creator,
+  { id: 'post-demo', isDemo: true, removable: true, sourceId: 'synthetic-post', kind: 'post', author: creator,
     text: 'What should we build next?\n\nI’m sketching a reading lamp with replaceable parts. Tell me which small details make your workspace feel better.\n\nDzięki za wszystkie pomysły!',
     publishedAt: '2026-09-18T08:00:00Z', baselineDiscoveryId: 'post-baseline' },
 ];

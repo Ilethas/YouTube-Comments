@@ -352,7 +352,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
         <ul className="library-list">{filterLibrary(items, libraryFilter).map(item => <li key={item.id} className="library-entry">
           <TabIcon kind={item.kind} /><div className="library-details">
             <h2>{itemLabel(item)}</h2>
-            <div className="item-meta"><span>{t(item.kind)}</span><strong>{item.author?.displayName ?? t('unknownAuthor')}</strong>
+            <div className="item-meta"><span>{t(item.kind)}</span>{item.isDemo && <span className="demo-label">{t('demo')}</span>}<strong>{item.author?.displayName ?? t('unknownAuthor')}</strong>
               {item.author?.handle && <span>{item.author.handle}</span>}</div>
             <div className="item-meta"><span>{countLabel(locale, 'comments', comments[item.id].length)}</span>
               <span>{countLabel(locale, 'unseenCount', comments[item.id].filter(comment => !comment.seen).length)}</span>
@@ -361,8 +361,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
           <div className="library-entry-actions"><button disabled={workspaceSaving} onClick={() => {
             void workspaceAction(() => api.openStoredItem({ itemId: item.id }), discussionTab(item.id).id);
           }}>{t(isOpen(item.id) ? 'activate' : 'open')}</button>
-          {item.removable ? <button className="destructive" onClick={() => { setRemovalError(undefined); setRemoving(item); }}>{t('removeFromLibrary')}</button>
-            : <span className="reader-help" title={t('demoRemovalHelp')}>{t('demoProtected')}</span>}</div>
+          {item.removable && <button className="destructive" onClick={() => { setRemovalError(undefined); setRemoving(item); }}>{t('removeFromLibrary')}</button>}</div>
         </li>)}</ul>
         {!items.length && <p>{t('empty')}</p>}
         {!!items.length && !filterLibrary(items, libraryFilter).length && <p>{t('noLibraryMatches')}</p>}

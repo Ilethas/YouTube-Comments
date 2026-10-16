@@ -120,13 +120,13 @@ async function run() {
     // Switch discussion: independent draft/applied state, including Community evidence.
     await draft('video draft');
     state = await snapshot();
-    let post = state.items.find(item => item.kind === 'post' && item.removable);
+    let post = state.items.find(item => item.kind === 'post' && !item.isDemo);
     if (!post && process.env.YOUTUBE_COMMENTS_LIVE_POST_URL) {
       await js("document.querySelector('[aria-controls=acquisition-form]').click()");
       await js(`(() => {const input=document.getElementById('source-url');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(process.env.YOUTUBE_COMMENTS_LIVE_POST_URL)});input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
       await js("document.querySelector('.acquisition-bar button').click()");
       await waitFor("!document.getElementById('source-url') || !!document.querySelector('.save-error[role=alert]')", 'Community acquisition', 3000);
-      state=await snapshot();post=state.items.find(item=>item.kind==='post'&&item.removable);
+      state=await snapshot();post=state.items.find(item=>item.kind==='post'&&!item.isDemo);
       assert.ok(post, 'Community acquisition failed');
     }
     let communityChecked = false;

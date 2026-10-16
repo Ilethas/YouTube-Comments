@@ -131,8 +131,10 @@ export class ReaderRepository {
     else this.db.prepare('INSERT INTO helper_settings VALUES (?,?) ON CONFLICT(kind) DO UPDATE SET executable_path = excluded.executable_path').run(kind, executable);
   }
 
-  /** Only empty demo databases are initialized. Existing discussions/preferences
-   * are never replaced or upserted. These are synthetic observations, not a
+  /** Explicit seed for genuinely fresh development profiles only; startup owns
+   * that file-existence/recovery gate. Never call for an existing/restored empty
+   * profile. Existing discussions/preferences are not replaced or upserted.
+   * These are synthetic observations, not a
    * first real acquisition or evidence of source-ID uniqueness. */
   initializeDemo(): void {
     transaction(this.db, () => {
@@ -183,11 +185,11 @@ export class ReaderRepository {
     return rows.map(row => {
       if (row.remote_json === null) throw new Error('Missing durable item evidence');
       const remote = remoteEvidence<StoredContentObservation>(String(row.remote_json));
-      const removable = this.db.prepare('SELECT backend FROM extraction_attempts WHERE id=?').get(row.baseline_attempt_id)?.backend !== 'synthetic-demo';
+      const isDemo = this.db.prepare('SELECT backend FROM extraction_attempts WHERE id=?').get(row.baseline_attempt_id)?.backend === 'synthetic-demo';
       // Attempts are append-only and inserted inside the accepted merge transaction.
       // Use durable insertion order, not clock time or lexicographic UUID ordering.
       const latestAccepted = this.db.prepare("SELECT id FROM extraction_attempts WHERE item_id=? AND outcome='accepted' ORDER BY attempt_order DESC LIMIT 1").get(row.id);
-      const base = { id: String(row.id), removable, sourceId: String(row.source_id), author: author(row, remote.author), remote, sourceKind: remote.sourceKind,
+      const base = { id: String(row.id), isDemo, removable: true, sourceId: String(row.source_id), author: author(row, remote.author), remote, sourceKind: remote.sourceKind,
         publishedAt: optionalText(row, 'published_at'), baselineDiscoveryId: String(row.baseline_discovery_id),
         latestAcceptedDiscoveryId: latestAccepted ? String(latestAccepted.id) : undefined };
       return row.kind === 'video'
@@ -458,7 +460,7 @@ export class ReaderRepository {
     return transaction(this.db, () => {
       const item = this.readItems().find(item => item.id === itemId);
       if (!item) throw new MissingCommentError('Unknown discussion');
-      if (!item.removable) throw new NotRemovableError('Synthetic discussion');
+      if (!item.removable) throw new NotRemovableError('Discussion removal unavailable');
       this.db.exec('PRAGMA defer_foreign_keys = ON');
       const state = this.workspace(), next = closeWorkspaceTab(state, discussionTab(itemId).id);
       // Revision advances even for a closed item: stale content acknowledgments

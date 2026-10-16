@@ -43,8 +43,10 @@ and a reply tree whose ancestry does not compete with manual unseen state. ADR
   manual state and history. An English/Polish native modal `<dialog>` explains
   this and that YouTube is unaffected, offers Cancel and destructive Remove,
   and contains focus while making the background inert. Main validates existence
-  and protects synthetic baselines (identified by main-owned `synthetic-demo`
-  provenance); renderer receives only a `removable` capability.
+  and permits synthetic demo removal as well (usability update, 2026-10-17).
+  Renderer receives independent `isDemo` identity from main-owned `synthetic-demo`
+  baseline provenance and the `removable` capability. Names/source/application IDs
+  do not confer demo identity; source action exclusions keep using that identity.
 - Removal uses one short SQLite transaction: remove its view using ordinary
   neighbor rules, delete comment_state/comments/content and associated attempts
   (including earlier failed attempts with the same canonical target). The cyclic
@@ -52,7 +54,11 @@ and a reply tree whose ancestry does not compete with manual unseen state. ADR
   enforcement remains ON. No helper runs and no remote deletion occurs. A late
   failure rolls back every record and returns stable storage failure. Removal
   advances revision even for a closed item. Unrelated content/preferences/app tabs
-  survive. Removed real content does not reseed; demo Remove is unavailable.
+  survive, including unrelated durable Undo, helper configuration and recovery data.
+  Saved view/collapse/Undo owned by the removed discussion cascade. Development
+  seeds only genuinely fresh profiles: removed demos and existing/restored empty
+  profiles stay empty on restart. Full backups retain demos when present, and
+  production-restored demos remain removable. Schema stays 11 for this update.
 - The existing single-live-operation scheduler records its canonical active source
   before awaiting extraction. Main rejects same-source removal with
   `ACQUISITION_BUSY` until it settles, including Acquire of an already stored URL.

@@ -41,6 +41,12 @@ scroll, resize, tab hiding, target detachment, accepted view/order/collapse/cont
 changes. A scoped observer exists only while open; tab activation does not require
 rerendering cached discussion panels.
 
+The 2026-10-17 usability update uses one active enabled item for both focus and
+highlight. Actual pointer movement updates it; keyboard navigation replaces it
+until the pointer moves again. CSS hover and stationary-pointer enter events never
+compete with keyboard activity. Disabled items stay inactive; text ranges and all
+existing dismissal/focus semantics remain.
+
 Only a clicked member of a multi-selected set exposes selected-group commands.
 Ordinary commands and the prefix always refer to the clicked comment. No unrelated
 selection is silently used or cleared. A single-state marking label reflects the
@@ -129,6 +135,18 @@ walks. Only bounded virtual rows/circles mount; the ruler retains three SVG path
 Menu opening inspects only its target plus selected IDs; no full DOM scan or menu
 framework/dependency is added. Selection-control width changes invalidate cached
 heights with anchor preservation. Bootstrap/SQLite/query scaling stays Q-21.
+
+The usability update adds a viewport-only floating selection presentation when
+selected IDs exist and the ordinary toolbar no longer intersects its `.reader-panel`
+root. It shares this component's session, handlers, confirmation snapshot and
+pending/error state; no new bulk/selection/collapse/Undo path exists. Read/unread
+and total/hidden count stay compact; native details exposes the other four actions.
+Back to Top scrolls only that panel to zero, respecting reduced motion without
+session mutations. Fixed controls follow panel resize/visibility, remain below
+menus/native modal dialogs, and do not reserve comment width. A passive threshold
+listener and rooted IntersectionObserver perform no comment/projection work on
+scroll. Cached hidden panels hide their controls without rerendering discussion
+content. No schema, preference, framework or dependency change is required.
 
 Verification and measured limits are in [TESTING](../TESTING.md). No live acquisition
 change, library-wide batch scope, automatic seen, translation API, helper bundling,

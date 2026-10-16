@@ -23,6 +23,7 @@ export const completeReaderLimit = 200;
 const noNewIds: ReadonlySet<string> = new Set();
 
 interface Props {
+  isDemo?: boolean;
   showSelection?: boolean;
   bulkSelected?: ReadonlySet<string>;
   onContextMenu?: (target: CommentMenuTarget) => void;
@@ -60,7 +61,7 @@ export function ReaderRails({ row }: { row: ReaderRow }) {
 
 /** Renderer-only geometry over complete application-data membership. Header and
  * query controls share the existing panel scrollbar, outside this measured list. */
-export const VirtualCommentList = memo(function VirtualCommentList({ showSelection = false, bulkSelected = noNewIds, onContextMenu, itemId, comments, result, selected, scrollRequest, session,
+export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = false, showSelection = false, bulkSelected = noNewIds, onContextMenu, itemId, comments, result, selected, scrollRequest, session,
   locale, disabled, now, onToggle, onAction, overscan = readerOverscan, newIds = noNewIds }: Props) {
   const list = useRef<HTMLOListElement>(null);
   const sort = session.state.sort;
@@ -281,7 +282,7 @@ export const VirtualCommentList = memo(function VirtualCommentList({ showSelecti
           showSelection={showSelection} bulkSelected={bulkSelected.has(row.id)} onSelect={selectBulk}
           descendantCount={presentation.summaries.get(row.id)?.descendants} hiddenUnseen={presentation.collapsed.has(row.id) ? presentation.summaries.get(row.id)?.unseen : 0} hiddenMatches={presentation.collapsed.has(row.id) ? presentation.summaries.get(row.id)?.matches : 0} collapsed={presentation.collapsed.has(row.id)}
           onCollapse={toggleCollapse}
-          locale={locale} now={now} disabled={disabled} onToggle={onToggle} onAction={onAction} isNew={newIds.has(row.id)} />
+          locale={locale} now={now} disabled={disabled} onToggle={onToggle} onAction={onAction} isNew={newIds.has(row.id)} isDemo={isDemo} />
       </li>;
     })}
   </ol>{panel && createPortal(<DiscussionRuler buckets={buckets} height={geometry.height} top={geometry.top} left={geometry.left}

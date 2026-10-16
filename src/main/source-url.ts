@@ -4,7 +4,7 @@ import { parseAcquisitionTarget } from './acquisition-target';
 /** Reconstruct only supported canonical destinations from stored application identity.
  * Remote URL fields are never browser capabilities. Synthetic content has no action. */
 export function sourceUrl(item: ContentItem): string | undefined {
-  if (item.removable === false) return undefined;
+  if (item.isDemo) return undefined;
   if (item.kind === 'video' ? !/^[A-Za-z0-9_-]{11}$/.test(item.sourceId) : !/^Ug[A-Za-z0-9_-]{8,254}$/.test(item.sourceId)) return undefined;
   const url = item.kind === 'video' && item.sourceKind === 'youtube-video'
     ? `https://www.youtube.com/watch?v=${encodeURIComponent(item.sourceId)}`

@@ -209,9 +209,23 @@ time, .muted { color: var(--muted); }
 .selection-circle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .selection-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; font-size: 12px; }
 .selection-toolbar button { padding: 4px 7px; }
+.floating-reader-controls { position: fixed; z-index: 4; display: flex; align-items: end; gap: 8px; pointer-events: none; }
+.floating-reader-controls > * { pointer-events: auto; box-shadow: 0 2px 10px #0003; }
+.floating-reader-controls button, .selection-overflow summary { background: var(--surface); color: var(--text); border: 1px solid var(--border); cursor: pointer; }
+.floating-reader-controls .back-to-top { flex: 0 0 34px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; padding: 6px; }
+.floating-selection-toolbar { position: relative; min-width: 0; margin: 0; padding: 5px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); gap: 4px; }
+.floating-selection-toolbar > span { padding: 0 4px; overflow-wrap: anywhere; }
+.floating-selection-feedback { flex-basis: 100%; max-width: 300px; margin: 2px 4px; color: var(--danger); }
+.floating-selection-toolbar > button { min-width: 30px; min-height: 30px; border-radius: 4px; }
+.selection-overflow summary { list-style: none; display: grid; place-items: center; min-width: 30px; min-height: 30px; border-radius: 4px; }
+.selection-overflow summary::-webkit-details-marker { display: none; }
+.selection-overflow-actions { position: absolute; bottom: calc(100% + 6px); right: 0; max-width: 100%; max-height: min(240px, 45vh); overflow-y: auto; display: flex; flex-direction: column; padding: 5px; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 2px 10px #0003; }
+.selection-overflow-actions button { display: flex; align-items: center; gap: 5px; text-align: left; }
+@media (max-width: 560px) { .floating-reader-controls { gap: 5px; } .floating-selection-toolbar > span { flex-basis: 100%; } }
 .comment-context-menu { position: fixed; z-index: 100; display: flex; flex-direction: column; max-width: min(440px, calc(100vw - 8px)); max-height: calc(100vh - 8px); overflow-y: auto; padding: 4px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--text); box-shadow: 0 4px 16px #0004; }
 .comment-context-menu button { display: flex; align-items: center; gap: 8px; text-align: left; border: 0; border-radius: 3px; background: transparent; padding: 6px 9px; }
-.comment-context-menu button:hover, .comment-context-menu button:focus { background: var(--accent-soft); outline: 2px solid var(--focus); outline-offset: -2px; }
+.comment-context-menu button { outline: none; }
+.comment-context-menu button[data-active='true'] { background: var(--accent-soft); outline: 2px solid var(--focus); outline-offset: -2px; }
 .removal-dialog #bulk-description { white-space: pre-line; }
 @media (forced-colors: active) { .comment[data-bulk-selected='true'] { border-left: 3px solid Highlight; } .selection-circle[aria-pressed='true'] { color: Highlight; } }
 .virtual-reader { position: relative; overflow-anchor: none; }

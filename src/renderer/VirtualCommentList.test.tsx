@@ -20,6 +20,22 @@ let layout: ReturnType<typeof installReaderLayout>;
 beforeEach(() => { layout = installReaderLayout(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); delete window.__readerWork; });
 const executor = () => ({ evaluate: vi.fn(async (rows: Parameters<typeof evaluateDiscussionQuery>[0], query: Parameters<typeof evaluateDiscussionQuery>[1]) => evaluateDiscussionQuery(rows, query)), dispose: vi.fn() });
+it('Back to Top supersedes pending collapse anchor correction without changing selection, seen, sort or query', async () => {
+  const data = generateDiscussion({ count: 10000, shape: 'shallow', seenRatio: .5 }), reader = mount(data.comments, false, data.item);
+  act(() => reader.session.select('generated-9999'));
+  await waitFor(() => expect(document.getElementById('comment-generated-9999')).not.toBeNull());
+  act(() => reader.session.toggleBulk('generated-9999', false));
+  const before = reader.session.state, evaluations = reader.engine.evaluate.mock.calls.length;
+  act(() => reader.session.setCollapsed({ kind: 'comments', ids: ['generated-0'], collapsed: true }));
+  fireEvent.scroll(reader.panel);
+  fireEvent.click(required(reader.panel.querySelector<HTMLButtonElement>('.back-to-top')));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+  expect(reader.panel.scrollTop).toBe(0);
+  expect(reader.session.state.selected).toBe(before.selected);
+  expect(reader.session.state.bulkSelected).toEqual(before.bulkSelected);
+  expect(reader.session.state.result).toBe(before.result); expect(reader.session.state.sort).toBe(before.sort);
+  expect(reader.engine.evaluate).toHaveBeenCalledTimes(evaluations); expect(reader.onToggle).not.toHaveBeenCalled();
+});
 function mount(comments: readonly Comment[], restrictive = false, suppliedItem?: ContentItem, saved?: DiscussionViewIntent, collapse?: DiscussionCollapse) {
   const data = generateDiscussion({ count: 0 }), engine = executor(), session = new DiscussionViewSession(comments, engine, undefined, undefined, { saved, collapse });
   if (restrictive) {

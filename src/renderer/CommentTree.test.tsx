@@ -9,7 +9,13 @@ import { unrestrictedView } from '../domain/discussion-query';
 import { toggleSeen } from '../domain/discussion';
 import { initialComments } from '../fixtures/discussions';
 import { required } from './testing/required';
+import { translator } from './i18n';
 afterEach(() => { cleanup(); document.getSelection()?.removeAllRanges(); });
+it.each([false, true])('NEW badge explanation follows explicit demo identity=%s, never a fixture-like application ID', isDemo => {
+  const comment = { ...initialComments['video-demo'][0], itemId: isDemo ? 'renamed-demo' : 'video-demo' };
+  render(<CommentArticle comment={comment} isDemo={isDemo} isNew role="normal" rawHit={false} hasChildren={false} selected={false} locale="en" disabled={false} onToggle={vi.fn()} />);
+  expect(screen.getByText('NEW').title).toBe(translator('en')(isDemo ? 'newHelp' : 'newDiscoveryHelp'));
+});
 function article(disabled = false) {
   const comment = initialComments['video-demo'][0], onToggle = vi.fn();
   const view = render(<CommentArticle comment={comment} role="normal" rawHit={false} hasChildren selected={false} locale="en" disabled={disabled} onToggle={onToggle} />);

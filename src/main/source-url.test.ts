@@ -52,6 +52,8 @@ it('missing and synthetic items fail safely; unsupported kinds and malformed sto
   expect(await service.dispatch('openSource', [{ itemId: 'missing' }])).toMatchObject({ error: { code: 'NOT_FOUND' } });
   expect(await service.dispatch('openSource', [{ itemId: 'video-demo' }])).toMatchObject({ error: { code: 'NOT_OPENABLE' } });
   const base = repository.getStoredItem(stored(false)); if (!base) throw new Error('Expected stored item');
+  expect(sourceUrl({ ...base, isDemo: true, removable: true })).toBeUndefined();
+  expect(sourceUrl({ ...base, id: 'video-demo' })).toBe('https://www.youtube.com/watch?v=VidDemo_001');
   for (const change of [{ sourceKind: undefined }, { sourceKind: 'youtube-community-post' }, { kind: 'post' },
     { sourceId: '../evil' }, { sourceId: 'VidDemo_001&v=evil' }, { sourceId: 'https://evil.test' }, { sourceId: 'javascript:' }]) {
     expect(sourceUrl({ ...base, ...change } as ContentItem)).toBeUndefined();
