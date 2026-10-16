@@ -1,135 +1,143 @@
-# Packaging and distribution
+# Windows application and ZIP distribution
 
-## Profile backup and release migration protection (ADR 0019)
+Windows x64 application folders and no-install ZIPs are supported development-preview
+artifacts under [ADR 0020](decisions/0020-windows-packaged-application-and-zip-distribution.md).
+This is not a signed, installer-based or zero-configuration public release.
 
-Complete SQLite backup and confirmed full-profile restore are implemented without
-installer/portable/Forge changes. Recovery lives beside each isolated database in
-`recovery/`: verified safety snapshots, previous originals, staged candidates and
-immutable restore phases are retained without pruning. Do not remove this directory
-during install/update/uninstall as an incidental cleanup. Backups exclude binaries
-and Chromium caches and may carry machine-specific helper paths.
+## Build and verify
 
-Startup now creates a verified recoverable pre-migration snapshot before the known
-transactional chain can modify a recognized older database. Failure aborts startup.
-Every future released schema still needs populated upgrade/crash tests and validator
-compatibility updates. Newer schemas reject; no downgrade runs. Single-instance
-ownership and offline startup recovery precede opening a restored profile.
-
-Windows file-replacement guarantees use absent rename destinations plus preserved
-safety/previous files; Node cannot portably fsync Windows directory metadata. The
-protocol fails closed with ambiguous artifacts/missing live data. Backup destinations
-must support hard links for exclusive publication; unsupported filesystems return an
-error without replacing existing files. Future cross-platform/format portability,
-retention management, uninstall-data policy and released upgrade matrix remain open.
-See [ADR 0019](decisions/0019-consistent-sqlite-backup-and-safe-restore.md).
-
-Windows is the initial development and packaging target. Keep future Linux/macOS support possible, but neither is an initial implementation or release requirement. This document separates that target from the existing scaffold; no release-ready package is established. See [Architecture](ARCHITECTURE.md), [Database](DATABASE.md), and [Extractors](EXTRACTORS.md) for the boundaries packaging must preserve.
-
-## Current scaffold
-
-The repository currently uses Electron Forge with Vite and TypeScript. [package.json](../package.json) provides `start`, `package`, `make`, `publish`, and `lint` scripts. These scripts describe scaffold entry points; the presence of `publish` is not authorization or configuration for a release destination.
-
-[forge.config.ts](../forge.config.ts) currently contains:
-
-| Configuration | Observed state |
-| --- | --- |
-| Application archive | `asar: true`. |
-| Main/preload builds | Separate Vite entries for `src/main.ts` and `src/preload.ts`. |
-| Renderer build | A Vite renderer named `main_window`. |
-| Makers | Squirrel, ZIP restricted to `darwin`, RPM, and DEB. |
-| Electron fuses | `RunAsNode`, Node options environment variables, and Node CLI inspect arguments disabled; cookie encryption, embedded ASAR integrity validation, and loading only from ASAR enabled. |
-
-These maker declarations come from the scaffold and do not expand the initial Windows target into a cross-platform release commitment. Windows versions/architectures, installer details, signing, and release channels remain unresolved. Linux/macOS makers may remain in the scaffold without making those platforms initial requirements.
-
-The reader uses React, synthetic discussions, English/Polish, and themes. The persistence milestone adds main-owned built-in `node:sqlite`, migrations, an application service, and the typed validated preload API, while keeping sandbox/context isolation enabled and renderer Node integration disabled. The main Vite build leaves `node:sqlite` external for Electron to supply. No ABI-specific SQLite add-on, rebuild, or ASAR unpacking configuration is needed. Forge main/preload/renderer production builds and real runtime/restart checks passed against Electron 44.4.5 (embedded Node 24.21.0 / SQLite 3.53.4). Forge again exited during packaging without a completed executable in `out`; a final package/installer is not verified. See [Testing](TESTING.md) and [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md). Makers/fuses are unchanged; live adapters/execution now exist in [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md), while helper distribution and release metadata remain future work.
-
-## Target packaging responsibilities
-
-The packaged application must preserve the renderer → typed preload/contextBridge API → privileged backend owned by the Electron main side → persistence/extractors boundary. The renderer must not gain Node.js, SQLite, filesystem, or process-launching access to make packaging convenient. Release verification should examine the actual built app as well as source configuration; see [Architecture](ARCHITECTURE.md) and [Testing](TESTING.md).
-
-The main-side backend owns persistence and may use an internal database worker. That is an implementation option behind the same security boundary, not renderer SQLite access. External extractors remain invoked only by the Electron main process.
-
-The build carries the React renderer, English/Polish translations, theme assets, and main-side code using Electron's built-in SQLite. Recheck built-in SQLite compatibility during Electron upgrades; Node test/development scripts require 24.13+ and are verified on the installed Node 26.7.0. `@types/node` is a direct development dependency only. If a future driver or helper adds platform-specific artifacts, verify it against each supported Electron/platform/architecture combination. Completed distributable/installer verification is still outstanding.
-
-System is the first-run appearance default. System, Light, and Dark preferences and live OS appearance changes must work in the packaged app. Language selection and locale-aware formatting must also work without relying on development-only asset paths. See [Localization and theming](LOCALIZATION_AND_THEMING.md).
-
-## External helper distribution
-
-[ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md) extends development
-lookup with exact main-startup executable overrides. The owner's small PATH
-directory can retain its forwarding `.bat`; the application launches the selected
-real `.exe` directly and never executes/parses the wrapper. Example PowerShell:
+Use the lockfile (`npm.cmd ci`) and Node 24.13+. Verified here: Node 26.7.0,
+Forge 7.11.2, Packager 18.4.4, Electron 44.4.5, Windows x64.
 
 ```powershell
-$env:YOUTUBE_COMMENTS_YTDLP_EXE =
-  'C:\Users\Ilethas\AppData\Roaming\Python\Python312\Scripts\yt-dlp.exe'
-# Optional when Community is installed:
-$env:YOUTUBE_COMMENTS_POST_ARCHIVER_EXE =
-  'C:\Users\Ilethas\AppData\Roaming\Python\Python312\Scripts\post-archiver.exe'
-npm.cmd start
+npm.cmd run package -- --platform=win32 --arch=x64
+npm.cmd run make -- --platform=win32 --arch=x64 --targets=@electron-forge/maker-zip
+npm.cmd run verify:artifacts
+npm.cmd run test:packaged
 ```
 
-[ADR 0014](decisions/0014-main-owned-helper-settings.md) implements startup environment
-> saved profile helper selection > safe direct PATH > HELPER_UNAVAILABLE. Invalid
-higher-priority paths and invalid helper identity fail closed. Windows requires an
-absolute regular .exe and bounded helper-specific identity probing.
-[ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) makes
-yt-dlp 2026.08.19 and post-archiver 0.4.0 tested confidence signals; credible other
-versions are allowed with a textual warning. Validated output remains the safety
-boundary. Settings uses a main-owned native picker; saved selections take
-effect for later acquisition/Refresh without restart. Use automatic detection clears
-only the saved selection. Environment-controlled helpers disable Browse/reset.
-Development and production naturally have independent schema-7 configuration.
+`package` produces `out/youtube-comments-win32-x64/youtube-comments.exe` and its
+complete adjacent runtime. `make` first packages, then invokes the existing ZIP maker,
+producing `out/make/zip/win32/x64/youtube-comments-win32-x64-1.0.0.zip`.
+Select the ZIP target explicitly; Squirrel completion is outside this milestone.
+The existing version/product/profile names remain; `1.0.0` is inherited metadata,
+not a stable release declaration. The description identifies a development preview.
 
-Helpers remain user-installed, not bundled/downloaded/updated. No Python runtime
-is managed. This usability milestone changes neither bundling nor Forge
-finalization. Desktop executable selection does not establish release-ready helper
-distribution; artifacts, licensing, integrity, update ownership and completed
-installer verification remain open.
+The parent wrapper removes only the previous Windows x64 target (and its ZIP for
+`make`), waits for Forge, then inspects fresh output. Exit zero without output fails.
+Checks cover x64 PE, required Electron resources/locales, ASAR main/preload/HTML/CSS/
+renderer/worker and all six configured fuses. ZIP checks read every entry and compare
+SHA-256 with the entire application folder, rejecting missing/duplicate/unexpected/
+empty/truncated output. Packages, ZIPs and logs remain ignored; nothing is published.
 
-Before committing to helper bundling, decide and document:
+## Diagnosed finalization failure
 
-- Distribution artifacts and the process for updating tested-version confidence after fixture/live validation; runtime identity/output validation is already required by ADR 0015.
-- Artifacts and any runtime dependencies for the supported Windows versions/architectures; assess Linux/macOS separately if later added.
-- Installation locations and resolver precedence, with clear behavior when no usable helper is available.
-- Applicable redistribution licenses, notices, signing, and artifact integrity checks.
-- Whether updates arrive with the app or through a separate mechanism, and how failures are handled without compromising stored discussions.
+The original command reproduced exit **0** with no `out` application. Debug output
+stopped inside Electron ZIP extraction, before app copying or fuse hooks. A standalone
+`extract-zip` reproduction abandoned the first `locales/ja.pak` stream and reached
+Node `beforeExit` with extraction still pending. The temporary template held only
+that partial file. No completed output was created and then removed.
 
-The application license in `package.json` does not establish redistribution rights for helpers or their dependencies. Do the assessment for the actual selected artifacts. No automatic downloading/updating behavior is implemented; user selection is implemented by ADR 0014. See the [extractor contract](EXTRACTORS.md) and [decision register](decisions/README.md).
+Forge's `extract-zip@2.0.1` selected `yauzl@2.10.0`/`fd-slicer@1.1.0`, whose legacy
+stream destruction conflicts with Node 26. A scoped override selects fixed
+`yauzl@3.4.0` only for `extract-zip`; the same cached archive then extracts and Forge
+completes. See [upstream diagnosis](https://github.com/thejoshwolfe/yauzl/issues/176).
+Evidence did not implicate antivirus, a terminating packaging child, fuses or ASAR.
 
-## Protecting durable data
+The first Windows `make` exposed a second Node 26 incompatibility: `cross-zip@4.0.1`
+calls removed recursive `fs.rmdir`. Only the ZIP maker's utility is pinned to the
+API-compatible `3.1.0`, which uses rimraf and the same Windows .NET ZIP implementation.
+No filesystem monkey patch, alternate packager or security reduction is involved.
+Revisit both scoped overrides when upstream fixes compatibility.
 
-SQLite is valuable user data. The database and durable preferences live outside replaceable binaries: `<appData>/youtube-comments-development/reader.sqlite` for unpackaged development and `<appData>/youtube-comments-production/reader.sqlite` for packaged production (Windows normally `%APPDATA%`). Main resolves the paths and sets Chromium `userData` to the matching profile directory. Tests explicitly own temporary directories. `YOUTUBE_COMMENTS_DEMO_ROOT` is an optional absolute root selecting the development profile even for packaged smoke checks; an empty/relative value fails. It always appends the development-directory suffix and never substitutes for the production profile. Only development/demo mode seeds synthetic fixtures; normal packaged production currently opens an empty library. Final product identity changes need a deliberate profile migration, not a renamed default that loses data. See [Database](DATABASE.md) and [ADR 0002](decisions/0002-sqlite-and-typed-reader-boundary.md).
+## Run the ZIP and keep your data
 
-Installer and update planning must account for:
+Download/copy the ZIP, extract **all** files into an ordinary folder, and run
+`youtube-comments.exe`. Keep the entire folder together. npm, an IDE, the repository,
+a Vite server and an installer are not runtime requirements. An EXE alone is insufficient.
 
-- Preserving discussions, seen state, discovery information, refresh history, tabs, and preferences across supported upgrades.
-- Running explicit schema migrations with transaction/recovery behavior; do not silently create a replacement empty database after a migration error.
-- A consistent backup/restore mechanism and a defined policy for backup creation and retention around schema upgrades.
-- Safe behavior when an older app encounters a newer schema; downgrade compatibility is unresolved and must not be assumed.
-- App removal and any optional data deletion as a deliberate, documented policy rather than an accidental consequence of replacing binaries.
-- Eventual discussion export as a separate product capability; export is not automatically a complete database backup.
+This is **no-install**, not portable-data mode. Normal packaged data remains at
+`%APPDATA%/youtube-comments-production/reader.sqlite`, with `recovery/`, helper settings,
+seen/Undo/history, views and Chromium data in that established profile. Copying the
+application folder on the same Windows account reuses the same production data.
+No database-beside-EXE, portable flag or portable mode is implemented. Development
+remains separate at `%APPDATA%/youtube-comments-development`.
 
-The required persistence guarantees and unresolved operational policies are documented in [Database](DATABASE.md). Packaging must not weaken [transactional refresh](REFRESH_AND_MERGE.md) or [manual seen state](SEEN_STATE.md).
+`YOUTUBE_COMMENTS_DEMO_ROOT` remains an explicit absolute development/demo root even
+when packaged, appending `youtube-comments-development`. Only genuinely new development
+profiles seed examples. Normal packaged production starts with an empty library;
+existing/restored data is never seeded or replaced with an empty fallback.
 
-## Proposed release verification
+## Packaged smoke and isolation
 
-The following is a release checklist to establish during implementation, not a claim of checks already available:
+`test:packaged` verifies/extracts the ZIP to an owned OS temporary directory, launches
+the unmodified fused EXE with a temporary working directory and drives its renderer
+through explicit test-only loopback CDP plus native Windows dialog controls. No test
+bridge/main hook/debug default ships. It requires an interactive Windows desktop.
 
-| Check | Why it matters |
-| --- | --- |
-| Deterministic domain, adapter, and persistence suites pass. | Packages must preserve the product's state and merge invariants. |
-| Packaged app starts on supported Windows targets and can reopen a prior test profile. | Development execution does not prove packaged paths, dependencies, or migrations work. |
-| Fresh acquisition and refresh work through the selected helper strategy in an isolated test profile. | Detect missing binaries/runtime dependencies and invocation differences without touching real user data. |
-| Invalid/unavailable helpers, untested warnings, failed output and partial outcomes are understandable and preserve stored data. | Acquisition can fail independently of the local reader. |
-| Security boundary and safe rendering are verified in the built artifact. | Process/database access and untrusted remote text must stay within their intended boundaries. |
-| English/Polish, locale formatting, System as the first-run default, all appearance modes, and restart persistence work. | Localization and theming are product requirements, including offline installed usage. |
-| Backup/restore and supported upgrade paths succeed against disposable database fixtures. | A distributable update must account for valuable existing data. |
-| Product metadata, icons, artifact names, diagnostics, and DevTools behavior are reviewed. | Scaffold defaults are not a finished release experience. |
-| Licenses/notices, signing, integrity, and release destinations match the decided distribution policy. | Distribution must match the actual artifact and supported platform choices. |
+It tests demo mode and ordinary production mode with **no demo override**, using
+independently created `APPDATA`, `LOCALAPPDATA`, `USERPROFILE`, Desktop/Documents/Downloads
+directories. This host's Electron resolves `appData` to the existing disposable roaming
+directory; a path-only probe verified that before any production launch. This is an
+isolated profile environment on the same account, not a new OS account or VM. Never
+simply omit the demo override in an ordinary smoke launch against the owner's account.
+The harness retains disposable data/reports for diagnosis and prints its root.
 
-Live YouTube smoke tests remain optional and separate from the normal deterministic suite. A release may include an explicitly chosen live verification step, but ordinary test execution must not silently depend on YouTube availability. Performance checks should use representative large local fixtures as described in [Testing](TESTING.md).
+The smoke covers schema 8, transactions, Undo/NEW/history, worker, bounded virtual
+rendering/navigation, view reconstruction, native backup/restore and actual relaunch.
+It compares every authoritative table and the independent safety snapshot. ADR 0019
+is unchanged: relaunch must use the extracted EXE; recovery cannot require source paths.
 
-## Decisions still open
+## Assets and security
 
-Within the initial Windows target, supported versions/architectures, final branding/app identity, packaging completion, helper distribution/version/update strategy, application updates, signing/release destinations, backup retention, supported released upgrades/downgrades, and uninstall-data policy remain unresolved. The initial built-in SQLite integration and distinct profile identifiers are selected in ADR 0002; newer schemas fail safely instead of being downgraded. Future Linux/macOS support would need its own verification. Resolve remaining choices as needed under [decisions](decisions/README.md); do not infer release commitments from the Forge template.
+Vite bundles main, sandboxed preload, React, Temporal, translations and application
+icons/styles. The worker is a separate ASAR asset loaded under relative `file://` paths.
+There are currently no separate application font dependencies. Main's external
+`node:sqlite` is supplied by Electron, without an ABI add-on/unpacking requirement.
+Recheck actual runtime compatibility on Electron upgrades.
+
+ASAR, embedded integrity, ASAR-only loading and cookie encryption remain enabled;
+RunAsNode, Node environment options and Node CLI inspection remain disabled. Sandbox,
+context isolation, disabled renderer Node, blocked navigation/windows and the frozen
+narrow bridge remain. Native paths and canonical identity-only source opening stay
+main-owned. CDP is an explicit smoke launch argument, not a shipped default.
+
+## External helpers
+
+Acquisition requires user-installed **yt-dlp** and/or **post-archiver**, including their
+own runtime dependencies. Nothing is bundled/downloaded/updated. Main retains startup
+environment > saved executable > safe direct PATH > unavailable; invalid configured
+paths fail closed. Shells and `.bat`/`.cmd` wrappers remain excluded. Settings selects
+real EXEs through native dialogs, validates identity, shows tested/untested confidence
+and persists per profile. Backups may include machine-specific executable paths.
+
+Optional native-selection/live checks are separate from deterministic tests:
+
+```powershell
+$env:PACKAGED_SMOKE_YTDLP_EXE = 'C:\path\to\yt-dlp.exe'
+$env:PACKAGED_SMOKE_POST_ARCHIVER_EXE = 'C:\path\to\post-archiver.exe'
+node scripts/smoke-packaged.cjs --live
+```
+
+These variables are test-runner inputs, not shipped application capabilities. The
+runner selects them through real pickers, retaining the existing Python user-base for
+installed Python launchers while isolating the reader's Windows profile.
+Add `--compare-startup` to compare the same closed database with the built-entry
+development runtime through the same external rendered-shell ready point.
+
+## Durable data and remaining release work
+
+Preserve the entire profile/recovery directory while replacing binaries. ADR 0019
+requires online verified backups, pre-migration snapshots, staged validation, offline
+closed-file replacement, retained safety/previous files and fail-closed recovery.
+Never copy an open database, prune recovery incidentally, downgrade or initialize an
+empty replacement after recovery failure. Snapshot publication requires hard links;
+unsupported filesystems fail safely. Node cannot portably fsync Windows directory
+metadata. See [database policy](DATABASE.md) and [verification evidence](TESTING.md).
+
+Q-20 still covers Windows version compatibility beyond this tested host, final
+identity/icons, Squirrel/MSI, signing/SmartScreen, updates, release hosting/channels,
+notices/licensing review, helper distribution, released schema upgrades and uninstall
+data policy. Retention, future format portability/export, portable data, other platform
+distribution and public release publishing remain separate. A working ZIP is not
+release readiness.

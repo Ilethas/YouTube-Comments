@@ -2,20 +2,32 @@
   "name": "youtube-comments",
   "productName": "youtube-comments",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "Persistent YouTube discussion reader (development preview)",
   "main": ".vite/build/main.js",
   "private": true,
-  "engines": { "node": ">=24.13.0" },
+  "engines": {
+    "node": ">=24.13.0"
+  },
   "scripts": {
     "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
+    "package": "node scripts/forge-verified.cjs package",
+    "make": "node scripts/forge-verified.cjs make",
+    "verify:artifacts": "node scripts/verify-artifacts.cjs",
+    "test:packaged": "node scripts/smoke-packaged.cjs",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "vitest run",
     "test:electron": "node scripts/smoke-electron.cjs && node scripts/smoke-view-restoration.cjs && node scripts/smoke-backup-restore.cjs",
     "typecheck": "tsc --noEmit",
     "build:renderer": "vite build --config vite.renderer.config.ts --outDir .vite/renderer-preview"
+  },
+  "overrides": {
+    "extract-zip": {
+      "yauzl": "3.4.0"
+    },
+    "@electron-forge/maker-zip": {
+      "cross-zip": "3.1.0"
+    }
   },
   "keywords": [],
   "author": {
@@ -32,6 +44,7 @@
     "@electron-forge/plugin-auto-unpack-natives": "^7.11.2",
     "@electron-forge/plugin-fuses": "^7.11.2",
     "@electron-forge/plugin-vite": "^7.11.2",
+    "@electron/asar": "3.4.1",
     "@electron/fuses": "^1.8.0",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
@@ -47,7 +60,8 @@
     "jsdom": "^25.0.1",
     "typescript": "~5.6.3",
     "vite": "^5.4.21",
-    "vitest": "^3.2.6"
+    "vitest": "^3.2.6",
+    "yauzl": "3.4.0"
   },
   "dependencies": {
     "@js-temporal/polyfill": "0.5.1",

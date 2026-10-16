@@ -3,7 +3,11 @@
 Complete SQLite backup and safe full-profile restore are implemented in
 [ADR 0019](decisions/0019-consistent-sqlite-backup-and-safe-restore.md), including
 verified safety snapshots, startup crash recovery and pre-migration protection.
-Installer/portable packaging and Forge finalization remain separate release work.
+Windows x64 application folders and no-install ZIP distribution are implemented in
+[ADR 0020](decisions/0020-windows-packaged-application-and-zip-distribution.md).
+Extract the complete ZIP and run its EXE; data stays in the existing user profile.
+See [build/run instructions](PACKAGING.md). Signing, installers, helper bundling and
+fully portable data remain separate release work.
 
 This is the specification for a persistent YouTube discussion reader. The implementation has main-owned SQLite discussions/seen/history, English/Polish and System/Light/Dark preferences, preserving migrations, isolated profiles and typed validated IPC. Live public acquisition/refresh is implemented in [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md). [ADR 0006](decisions/0006-compact-reader-and-persistent-tabs.md) adds compact reading, real avatar evidence, closable persistent tabs with Library reopen and main startup helper overrides. [ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) adds unified draggable Library/Settings/discussion tabs, local metadata filtering, confirmed local removal and structural ancestry rails. Development still seeds synthetic examples. [ADR 0008](decisions/0008-active-discussion-applied-queries.md) implements active-discussion search/seen filtering, stable session applied views and match/unseen navigation. [ADR 0010](decisions/0010-variable-height-discussion-virtualization.md) adds bounded variable-height comment rendering and unmounted-target reveal. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds the applied-view overview ruler and durable NEW presentation. [ADR 0012](decisions/0012-publication-date-and-latest-discovery-filters.md) adds system-zone publication-date and latest-refresh discovery filtering. [ADR 0013](decisions/0013-atomic-bulk-seen-and-durable-undo.md) implements atomic bulk seen/unseen with durable safe Undo. [ADR 0014](decisions/0014-main-owned-helper-settings.md) implements main-owned native helper selection, profile-local configuration, identity probing and immediate runtime resolution. [ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) adds source actions, tested/untested helper confidence, bulk local minutes and deliberate row seen gestures. [ADR 0016](decisions/0016-whole-conversation-sorting.md) adds immediate whole-conversation sorting, sorted navigation/match position/ruler and identity/offset anchoring, resolving Q-08. [ADR 0018](decisions/0018-acquisition-progress-and-safe-cancellation.md) adds global coarse progress, safe exact-ID cancellation before atomic merge, failed cancellation history and monotonic diagnostic stage timings without extraction optimization. Helper distribution remains open. [ADR 0017](decisions/0017-persistent-discussion-view-restoration.md) implements persistent per-discussion draft/applied queries, sort, comment anchor/offset and selection, with lazy fresh reconstruction at restart. Reply collapse remains future; storage/query/library scalability stays partly open under Q-21. See [verification status](TESTING.md).
 
@@ -31,7 +35,7 @@ For the project owner, begin with [How it works](HOW_IT_WORKS.md), then [Product
 | [EXTRACTORS.md](EXTRACTORS.md) | External helper adapters, normalization, and process lifecycle |
 | [LOCALIZATION_AND_THEMING.md](LOCALIZATION_AND_THEMING.md) | English/Polish, locale-independent search, and appearance |
 | [TESTING.md](TESTING.md) | Deterministic verification and later UI/release checks |
-| [PACKAGING.md](PACKAGING.md) | Scaffold packaging status and future distribution requirements |
+| [PACKAGING.md](PACKAGING.md) | Windows x64 ZIP build/run workflow, profile safety and remaining release work |
 | [decisions/README.md](decisions/README.md) | Accepted foundations, unresolved choices, and ADR guidance |
 
 ## How to interpret these documents

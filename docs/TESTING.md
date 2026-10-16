@@ -1,5 +1,136 @@
 # Testing strategy
 
+## Windows x64 application and ZIP (2026-10-16, ADR 0020)
+
+Final deterministic verification: **701 tests across 54 files pass**, including three
+artifact checks. Typecheck/lint pass; standalone renderer, real Forge package/ZIP,
+artifact verification, existing `test:electron`, extracted `test:packaged` and explicit
+packaged helper live acquire/Refresh all pass. No commit, push or publish was performed.
+
+This supersedes historical notes below saying Forge finalization has no output.
+The actual Windows command reproduced exit 0 with no `out` app; debug logging stopped
+in cached Electron ZIP extraction. Standalone `extract-zip` left the first ja.pak
+partially written (814,127 bytes) and reached Node `beforeExit` with its promise pending.
+The old yauzl/fd-slicer streams conflict with Node 26. A scoped yauzl 3.4.0 override
+fixed extraction without changing Forge/fuses/ASAR. Windows make then exposed removed
+recursive fs.rmdir in cross-zip 4.0.1; pinning only the ZIP maker to compatible 3.1.0
+fixed it. No completed artifact was briefly created/removed, and no evidence implicated
+antivirus/file locks or an unexpectedly terminating packaging child. See
+[ADR 0020](decisions/0020-windows-packaged-application-and-zip-distribution.md).
+
+Verified outputs (not committed):
+
+| Artifact | Actual output | Size |
+| --- | --- | ---: |
+| Application | `out/youtube-comments-win32-x64/youtube-comments.exe` plus 72 adjacent files | 385,857,588 bytes (368.0 MiB), entire folder |
+| ZIP | `out/make/zip/win32/x64/youtube-comments-win32-x64-1.0.0.zip` | 158,320,053 bytes (151.0 MiB) |
+
+Observed warm-cache verified package took 4.99 s; make including packaging, compression
+and complete ZIP-byte verification took 20.71 s (an earlier make was 18.62 s).
+These are local samples, not performance budgets. Main/preload/renderer/worker production
+bundles complete; standalone renderer remains 437.76 kB JS / 136.06 kB gzip, CSS 14.84 kB,
+worker 2.60 kB. Runtime is Electron 44.4.5, built-in Node 24.21.0 / SQLite 3.53.4;
+host tooling is Node 26.7.0 / npm 11.19.0 on Windows 10.0.26300 x64.
+
+The parent wrapper clears only previous target output and rejects zero-exit/no-artifact
+builds. `verify:artifacts` checks the x64 PE, Electron runtime resources/locales,
+ASAR main/preload/renderer/CSS/worker, relative asset references and six fuse values.
+Every ZIP entry is decompressed and SHA-256 compared with the full folder. Three
+deterministic tests reject missing/empty/package-only/incomplete/changed output.
+
+### Unmodified extracted executable
+
+`test:packaged` launches the real fused EXE from an ordinary temporary extraction
+directory, with a temporary working directory and no npm start, IDE or Vite server.
+The runner uses explicit loopback CDP and real native Windows dialog controls, not a
+modified main/preload/ASAR, mocked dialogs or intercepted relaunch. Normal startup
+does not enable CDP. Separate preload/renderer contexts exist, neither has ambient
+Node globals, the bridge is frozen/allowlisted, and extra executable-path/URL intent
+fields reject. ASAR/integrity/ASAR-only, cookie encryption and restrictive Node fuses
+are inspected directly in the executable; sandbox/context isolation/Node integration
+settings are also checked in the packaged main.
+
+Both explicit packaged demo mode and ordinary production mode are exercised. Production
+has no demo override and uses independently owned Windows profile environment directories
+(APPDATA/LOCALAPPDATA/USERPROFILE and shell folders). A prior path-only Electron probe
+proved this host resolves the disposable appData path. This is a profile environment
+on the current account, not a new Windows account/VM. Owner development/production
+databases are never opened. Fresh production is empty; a populated schema-8 database
+is reopened with no reseeding/replacement.
+
+The fixture-backed production smoke checks Library/Settings/workspace, source headers,
+English/Polish, System/Light/Dark, Ctrl+Shift subtree marking, atomic failed matching
+mutation, persistent usable Undo, durable latest discovery/NEW and source history.
+A restrictive text search invokes the real ASAR worker, publication uses the bundled
+Temporal resolver, discovery filtering selects the new comment, and sorting/ruler/
+virtual navigation work over 250 additional variable-height fixture roots with bounded
+mounted DOM. Saved query/sort/selection/anchor intent survives fresh restart.
+
+Settings creates a native-dialog-selected verified complete SQLite snapshot. After
+Undo changes current data, native Open plus actual Cancel-first confirmation restores
+the snapshot. The old process quits, `app.relaunch()` starts a different PID pointing
+at the extracted `youtube-comments.exe`, startup recovery records complete, and every
+authoritative table equals the snapshot. Independent safety equals the pre-restore
+tables. No ADR 0019 protocol or app startup/profile source was changed. The existing
+Electron suite additionally passes large-profile round trips and both forced rename-gap
+crash/restart recovery scenarios. Expected invalid-backup/unowned-target diagnostics
+are emitted by deliberate negative tests; occasional Chromium GPU shutdown diagnostics
+remain non-failing.
+
+Startup samples from process spawn through externally observed rendered app shell:
+demo 798 ms; fresh empty production 208 ms; populated 656 ms; restart 611 ms; actual
+restore relaunch 640 ms. CDP polling/connection adds measurement overhead. Built-entry
+small-profile checks typically reported about 170–235 ms through their internal ready
+point; these are different instrumentation/fixture sizes. No material startup regression
+was observed, and no permanent latency budget follows from these samples. Large 60k
+built-entry backup tests still show the previously documented synchronous bootstrap cost.
+
+A separate same-data/same-instrumentation `--compare-startup` run observed packaged
+existing/restart/copied-folder starts at 612/610/621 ms and the built-entry development
+runtime at 841 ms. This sample does not show a packaging startup penalty; cache/order
+and machine load prevent treating it as a universal performance claim.
+
+The final combined run (including explicit checkbox-only marking and actual fresh
+renderer view reconstruction) passed with existing/restart/copied starts 609/612/626 ms
+and development 640 ms. Fresh empty startup varied up to 3,210 ms in that run, versus
+208–239 ms in earlier samples. Restore/relaunch observation was 2,081 ms including
+Windows PID discovery and native acknowledgement automation. The test driver now
+dismisses the startup acknowledgement before attaching CDP, avoiding an observed
+attachment race; application startup/recovery code is unchanged. Windows process
+inspection also observed the actual packaged renderer's `--enable-sandbox` argument.
+
+### Optional actual helpers
+
+The packaged smoke selected both installed EXEs through real native pickers, validated
+and persisted them, checked configured status after restart and included settings in
+backup/restore. yt-dlp **2026.08.19** and post-archiver **0.4.0** both reported tested.
+An explicit separate `--live` run performed acquisition and Refresh through each:
+
+| Helper | Comments after Refresh | Coverage acquire / Refresh | Refresh insertions | Acquire + mark seen + Refresh |
+| --- | ---: | --- | ---: | ---: |
+| yt-dlp | 173 | partial / partial | 0 | 18.09 s |
+| post-archiver | 34 | partial / partial | 0 | 8.52 s |
+
+Both retained an explicitly marked comment's seen state. These anonymous network
+checks use the public video/post already documented below, log counts rather than
+content and remain outside deterministic tests. No helper/Python bundling, download
+or updater was added. Untested-version confidence remains covered by the existing
+deterministic/built-entry helper suites.
+
+No-install means extract the whole folder and run; data remains in the established
+application-data profile. The smoke also launches the original `out` EXE with the
+same disposable production environment to check copied-folder profile reuse and clean
+shutdown. The harness leaves its owned temporary data and ignored JSON/log report for
+review. [Packaging](PACKAGING.md) documents commands and current release limitations.
+The last combined run's full JSON report is
+`.packaging-diagnostics/packaged-smoke.json`, with process paths, timing samples,
+runtime/context evidence and helper counts; command/debug logs share that ignored
+directory. The final process check found no remaining application/harness processes.
+
+Squirrel/MSI, signing/SmartScreen, updates, helper bundling/licensing distribution,
+public hosting, final branding/icons, released upgrade matrix, Windows version matrix,
+portable data and other platforms remain unverified/outside this milestone.
+
 ## Complete SQLite backup and safe profile restore (2026-10-15)
 
 [ADR 0019](decisions/0019-consistent-sqlite-backup-and-safe-restore.md) keeps schema

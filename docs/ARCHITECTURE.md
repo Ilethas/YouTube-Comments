@@ -1,5 +1,18 @@
 # Architecture
 
+## Windows distribution (ADR 0020)
+
+Forge produces a complete Windows x64 ASAR application and the existing ZIP maker
+archives its entire runtime. The ZIP needs no installer; durable data remains in the
+established application-data profile, independent of the executable directory. Normal
+packaged mode is production; the explicit demo root still selects development. No
+renderer capability or ADR 0019 recovery/relaunch protocol changes. Main/preload/
+renderer/worker, restricted fuses and actual extracted-EXE restore/relaunch are checked
+by artifact validation and an external disposable-profile smoke. Scoped build-time ZIP
+dependency overrides fix the reproduced Node 26 extraction/archiving failures. See
+[ADR 0020](decisions/0020-windows-packaged-application-and-zip-distribution.md) and
+[Packaging](PACKAGING.md). Signing/installers/helper distribution remain separate.
+
 ## Main-owned profile data operations (ADR 0019)
 
 Settings exposes only payload-free `createBackup`/`restoreBackup`; native paths and
