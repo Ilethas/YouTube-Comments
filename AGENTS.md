@@ -13,6 +13,20 @@ The current implementation includes main-owned SQLite ingestion/merge/history, i
 
 ## Invariants to protect
 
+- [ADR 0021](docs/decisions/0021-windows-squirrel-installer-and-application-identity.md)
+  adds Windows x64 Squirrel artifacts and stable identity alongside ZIP. Use
+  `npm.cmd run make:squirrel` or `make:zip`; preserve exact resolvable maker names
+  so Forge target selection retains config. Validate Setup's embedded payload,
+  NuGet runtime bytes, RELEASES and existing package/ZIP checks. Keep fixed
+  youtube-comments EXE/profile identities independent of productName. Lifecycle
+  events must never enter reader/profile/SQLite startup; let the established helper
+  finish shortcut work before quitting. Uninstall retains profile/recovery data.
+  NEVER execute Setup/install/update/uninstall on the owner's normal account;
+  APPDATA redirection is not Squirrel isolation. Genuine installation tests require
+  an established permitted disposable account/VM/Sandbox; do not provision one
+  without permission. Without it, report lifecycle behavior UNVERIFIED.
+  Version 1.0.0 is scaffold metadata; unsigned artifacts are not a public release.
+
 - [ADR 0020](docs/decisions/0020-windows-packaged-application-and-zip-distribution.md)
   implements Windows x64 Forge application folders and complete no-install ZIPs.
   Package/make commands validate fresh executable/runtime/ASAR/fuse output; never
@@ -22,7 +36,8 @@ The current implementation includes main-owned SQLite ingestion/merge/history, i
   production data. Do not rename profiles, add portable data or weaken fuses/sandbox.
   Use `npm.cmd run test:packaged` for extracted-EXE native backup/real relaunch tests;
   it owns demo and independently isolated Windows production profile environments.
-  Helper bundling, installers, signing and public release remain outside this increment.
+  Squirrel artifact generation is added by ADR 0021; genuine installed verification,
+  helper bundling, signing and public release remain outside ADR 0020 evidence.
 
 - [ADR 0019](docs/decisions/0019-consistent-sqlite-backup-and-safe-restore.md) implements complete asynchronous SQLite backup and confirmed full-profile restore in Settings, with native main-owned dialogs and payload-free intents. Flush renderer seen/view queues before snapshots; main rejects later mutations, settles children/helpers, verifies a separate current-data safety snapshot, checkpoints WAL/selects DELETE and closes connections before offline replacement. Immutable phases and startup recovery preserve safety/previous/failed artifacts without pruning. Unknown/modified/newer schemas reject; known older backups migrate only on staged copies. Startup creates verified pre-migration snapshots before schema changes. Never copy an open live file, downgrade, seed an existing/restored empty profile, or create an empty fallback after failed recovery. Use disposable profiles for verification. Retention management, future portability/format versioning, export and installer/portable finalization remain outside ADR 0019; Windows application/ZIP packaging is implemented separately in ADR 0020.
 
@@ -65,4 +80,4 @@ The current implementation includes main-owned SQLite ingestion/merge/history, i
 
 ## Useful commands at this milestone
 
-`npm test` runs deterministic domain/localization/component, IPC, packaging-check and temporary SQLite tests (Node 24.13+). `npm run typecheck` and `npm run lint` check source. `npm run build:renderer` builds the renderer only. `npm.cmd run package -- --platform=win32 --arch=x64` produces and validates a fresh application; `npm.cmd run make -- --platform=win32 --arch=x64 --targets=@electron-forge/maker-zip` also creates/verifies the ZIP. `npm run verify:artifacts` inspects existing outputs. `npm run test:packaged` tests the extracted unmodified EXE with disposable data/native dialogs/actual relaunch; optional installed-helper live checks are documented in PACKAGING. `npm run test:electron` verifies built-entry IPC/persistence across disposable restarts. `npm start` uses isolated development data. On restricted PowerShell use `npm.cmd`. See [testing status](docs/TESTING.md). Do not install a stack or implement features merely to validate documentation.
+`npm test` runs deterministic domain/localization/component, IPC, packaging-check and temporary SQLite tests (Node 24.13+). `npm run typecheck` and `npm run lint` check source. `npm run build:renderer` builds the renderer only. `npm.cmd run package -- --platform=win32 --arch=x64` produces and validates a fresh application; `npm.cmd run make -- --platform=win32 --arch=x64 --targets=@electron-forge/maker-zip` also creates/verifies the ZIP. `npm.cmd run make:squirrel` builds only Squirrel Setup/full NuGet/RELEASES; `npm.cmd run make:zip` builds only ZIP. `npm run verify:artifacts -- --squirrel` inspects both distributions without executing an installer. `npm run test:packaged` tests the extracted unmodified EXE with disposable data/native dialogs/actual relaunch; optional installed-helper live checks are documented in PACKAGING. `npm run test:electron` verifies built-entry IPC/persistence across disposable restarts. `npm start` uses isolated development data. On restricted PowerShell use `npm.cmd`. See [testing status](docs/TESTING.md). Do not install a stack or implement features merely to validate documentation.

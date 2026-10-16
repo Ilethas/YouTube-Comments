@@ -1,8 +1,10 @@
-# Windows application and ZIP distribution
+# Windows application, ZIP and Squirrel installer
 
 Windows x64 application folders and no-install ZIPs are supported development-preview
 artifacts under [ADR 0020](decisions/0020-windows-packaged-application-and-zip-distribution.md).
-This is not a signed, installer-based or zero-configuration public release.
+[ADR 0021](decisions/0021-windows-squirrel-installer-and-application-identity.md) adds
+real Squirrel artifacts and stable identity. This is an unsigned development preview;
+genuine installation behavior remains **UNVERIFIED** and acquisition needs helpers.
 
 ## Build and verify
 
@@ -12,23 +14,105 @@ Forge 7.11.2, Packager 18.4.4, Electron 44.4.5, Windows x64.
 ```powershell
 npm.cmd run package -- --platform=win32 --arch=x64
 npm.cmd run make -- --platform=win32 --arch=x64 --targets=@electron-forge/maker-zip
-npm.cmd run verify:artifacts
+npm.cmd run make:squirrel
+npm.cmd run verify:artifacts -- --squirrel
 npm.cmd run test:packaged
 ```
 
 `package` produces `out/youtube-comments-win32-x64/youtube-comments.exe` and its
 complete adjacent runtime. `make` first packages, then invokes the existing ZIP maker,
 producing `out/make/zip/win32/x64/youtube-comments-win32-x64-1.0.0.zip`.
-Select the ZIP target explicitly; Squirrel completion is outside this milestone.
-The existing version/product/profile names remain; `1.0.0` is inherited metadata,
-not a stable release declaration. The description identifies a development preview.
+`npm.cmd run make:zip` is the ZIP-only alias. `make:squirrel` is exactly
+`npm.cmd run make -- --platform=win32 --arch=x64 --targets=@electron-forge/maker-squirrel`;
+it selects ONLY Squirrel. Bare `make` rejects implicit maker selection. Resolvable
+maker module names ensure `--targets` retains configured options (short-named maker
+instances lose their options under this Forge version). Version `1.0.0` remains
+inherited scaffold metadata, not a stable release declaration. Nothing is published.
 
-The parent wrapper removes only the previous Windows x64 target (and its ZIP for
-`make`), waits for Forge, then inspects fresh output. Exit zero without output fails.
+Installer output is `out/make/squirrel.windows/x64/`:
+
+- `Setup.exe`
+- `youtube_comments-1.0.0-full.nupkg`
+- `RELEASES`
+
+`npm.cmd run verify:artifacts -- --squirrel-only` checks package + installer without
+requiring ZIP. Default verification remains package + ZIP; `--squirrel` adds the
+installer. Verification inspects bytes and never executes Setup.
+
+The wrapper removes only the previous Windows x64 package and selected maker output
+(ZIP or Squirrel x64 directory), waits for Forge, then inspects fresh output. Exit
+zero without output fails. Unselected maker output remains.
 Checks cover x64 PE, required Electron resources/locales, ASAR main/preload/HTML/CSS/
 renderer/worker and all six configured fuses. ZIP checks read every entry and compare
 SHA-256 with the entire application folder, rejecting missing/duplicate/unexpected/
 empty/truncated output. Packages, ZIPs and logs remain ignored; nothing is published.
+
+Squirrel checks PE signatures/section bounds, coherent NuGet XML identity/version,
+complete runtime byte equality, archive CRCs, RELEASES SHA1/size/name, and Setup's
+embedded archive with identical NuGet/RELEASES plus the known vendor updater.
+Squirrel's bootstrapper/updater is x86; its checked application payload is x64.
+The complete-runtime nuspec template preserves Chromium notices and `version`,
+which electron-winstaller's default file list omits. Icon frames and application
+display metadata are checked. Stale artifacts cannot satisfy the fresh-build wrapper.
+
+## Stable identity and temporary icon
+
+| Purpose | Value |
+| --- | --- |
+| npm package / Forge folder / ZIP name | `youtube-comments` |
+| Human display name / NuGet title / intended shortcut name | `YouTube Comments` |
+| EXE | `youtube-comments.exe` |
+| Squirrel package / install directory / registration identity | `youtube_comments` |
+| AppUserModelID and Squirrel shortcut identity | `com.squirrel.youtube_comments.youtube-comments` |
+| Installer filename | `Setup.exe` |
+| Build version | `1.0.0` (unpublished scaffold metadata) |
+
+`src/shared/application-identity.json` is shared by main, Forge and validation.
+Packager explicitly fixes folder/EXE names independently of `productName`. Main sets
+the same AppUserModelID as Squirrel's shortcut convention. Keep upgrade identifiers
+stable even when replacing final branding.
+
+`node scripts/generate-icon.cjs` reproduces the original neutral slate discussion
+glyph in `assets/application.svg` and `application.ico`. ICO has 32-bit PNG frames
+at 16/24/32/48/64/128/256 pixels. No YouTube/Google imagery or external asset is used.
+Application, Setup, packaged Squirrel helper and execution stub contain the icon;
+Setup also carries `setupIcon.ico`. Shortcuts/taskbar are intended to use the EXE
+icon; actual installed rendering is unverified. No hosted `iconUrl` is invented:
+Programs and Features may use a generic icon, because this API normally downloads
+its registration icon. Setup's raw embedded bootstrap updater retains the vendor
+icon; the separately packaged helper is branded. The default install animation
+remains. Branding is temporary and replaceable.
+
+## Installer lifecycle and safe testing
+
+MakerSquirrel uses electron-winstaller 5.4.4, with no MSI, deltas, update feed,
+signing or auto-updater. Setup is intended for ordinary per-user installation
+without elevation, supplying its runtime and Windows shell shortcuts. Installed
+launch should need no npm, Node, Vite, IDE or source. These installation claims
+remain intended behavior pending genuine isolated tests.
+
+`electron-squirrel-startup` handles install/updated shortcut creation, uninstall
+shortcut removal and obsolete exit before main enters normal startup. Main does
+not quit early while its shortcut child is pending. Lifecycle paths cannot resolve
+profiles, register ready/window callbacks or touch SQLite, migrations, backups,
+restore, demo seeding or acquisition. Tests use inert VM process dependencies and
+mocked Electron imports; they perform no real lifecycle actions. Ordinary
+`--squirrel-firstrun` is a normal reader launch.
+
+**Never run Setup.exe, install/update/uninstall, modify installations, shortcuts or
+registration, or clean Squirrel/LocalAppData on the owner's normal Windows account.
+APPDATA redirection is not installer isolation.** First establish an already
+available suitable, permitted disposable Windows account/VM/Sandbox. Do not create
+users, enable features, install virtualization or configure/launch a new VM without
+permission. Do not bypass SmartScreen or Windows protection.
+
+No isolated installation environment was established. Read-only checks found no
+Sandbox executable, VM management command or running VM among checked tools/processes;
+no disposable account was designated. No separate account, VM or Sandbox was used.
+Zero real install/update/uninstall/reinstall tests ran. Fresh install, shortcuts/
+taskbar identity, installed native dialogs, installed restore/relaunch, data retention
+on uninstall/reinstall and controlled upgrade remain **UNVERIFIED**. Non-destructive
+packaging and disposable-profile ZIP tests are separate evidence.
 
 ## Diagnosed finalization failure
 
@@ -60,8 +144,16 @@ This is **no-install**, not portable-data mode. Normal packaged data remains at
 `%APPDATA%/youtube-comments-production/reader.sqlite`, with `recovery/`, helper settings,
 seen/Undo/history, views and Chromium data in that established profile. Copying the
 application folder on the same Windows account reuses the same production data.
+Installed execution uses the exact same profile, independent of its LocalAppData
+binary location. The new display name does not move it or hide the database.
 No database-beside-EXE, portable flag or portable mode is implemented. Development
 remains separate at `%APPDATA%/youtube-comments-development`.
+
+Uninstall must retain the whole production profile and `recovery/`; no deletion hook
+is added. Reinstall and future binary replacement are intended to reuse comments,
+history/NEW/seen/Undo, tabs, filters, sort, anchor/selection, helpers and preferences.
+Existing schema checks, pre-migration snapshots and recovery still apply. Installed
+lifecycle retention has not been tested. Never copy an open database for an upgrade.
 
 `YOUTUBE_COMMENTS_DEMO_ROOT` remains an explicit absolute development/demo root even
 when packaged, appending `youtube-comments-development`. Only genuinely new development
@@ -135,9 +227,10 @@ empty replacement after recovery failure. Snapshot publication requires hard lin
 unsupported filesystems fail safely. Node cannot portably fsync Windows directory
 metadata. See [database policy](DATABASE.md) and [verification evidence](TESTING.md).
 
-Q-20 still covers Windows version compatibility beyond this tested host, final
-identity/icons, Squirrel/MSI, signing/SmartScreen, updates, release hosting/channels,
-notices/licensing review, helper distribution, released schema upgrades and uninstall
-data policy. Retention, future format portability/export, portable data, other platform
-distribution and public release publishing remain separate. A working ZIP is not
-release readiness.
+Q-20 now retains genuine isolated installer lifecycle verification, Windows version
+compatibility beyond this host, final branding/registration icon, signing/SmartScreen,
+updates, release hosting/channels, notices/licensing, helper distribution and released
+schema upgrades. Uninstall retention policy is settled; actual behavior is unverified.
+Retention management, future format portability/export, portable data, other platforms
+and public publishing remain separate. Unsigned Setup/EXE may trigger SmartScreen;
+do not bypass protection. Setup existing is not public release readiness.

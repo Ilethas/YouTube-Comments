@@ -1,6 +1,6 @@
 # Architecture
 
-## Windows distribution (ADR 0020)
+## Windows distribution (ADRs 0020/0021)
 
 Forge produces a complete Windows x64 ASAR application and the existing ZIP maker
 archives its entire runtime. The ZIP needs no installer; durable data remains in the
@@ -11,7 +11,13 @@ renderer/worker, restricted fuses and actual extracted-EXE restore/relaunch are 
 by artifact validation and an external disposable-profile smoke. Scoped build-time ZIP
 dependency overrides fix the reproduced Node 26 extraction/archiving failures. See
 [ADR 0020](decisions/0020-windows-packaged-application-and-zip-distribution.md) and
-[Packaging](PACKAGING.md). Signing/installers/helper distribution remain separate.
+[Packaging](PACKAGING.md). ADR 0021 adds the existing Squirrel maker, complete-runtime
+NuGet/Setup validation and fixed application/shortcut identity. Squirrel lifecycle
+events gate all normal startup work, before profile or SQLite initialization.
+ZIP and installed execution share fixed profiles; uninstall must retain data.
+ADR 0019 uses default `app.relaunch()` to restart the running EXE, independent of
+binary location. No installer runs on the owner's account: genuine installed
+behavior remains unverified. Signing/helper distribution remain separate.
 
 ## Main-owned profile data operations (ADR 0019)
 

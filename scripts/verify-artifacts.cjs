@@ -8,8 +8,39 @@ const asar = require('@electron/asar');
 const yauzl = require('yauzl');
 const { getCurrentFuseWire, FuseV1Options } = require('@electron/fuses');
 const metadata = require('../package.json');
-const packageDirectory = path.resolve(__dirname, '../out', `${metadata.productName}-win32-x64`);
-const zipFile = path.resolve(__dirname, '../out/make/zip/win32/x64', `${metadata.productName}-win32-x64-${metadata.version}.zip`);
+const identity = require('../src/shared/application-identity.json');
+const packageDirectory = path.resolve(__dirname, '../out', `${identity.packageName}-win32-x64`);
+const zipFile = path.resolve(__dirname, '../out/make/zip/win32/x64', `${identity.packageName}-win32-x64-${metadata.version}.zip`);
+const squirrelDirectory = path.resolve(__dirname, '../out/make/squirrel.windows/x64');
+const nupkgName = `${identity.squirrelPackageId}-${require('electron-winstaller').convertVersion(metadata.version)}-full.nupkg`;
+function verifyPE(bytes, machine) {
+  assert.ok(bytes.length >= 64, 'Truncated PE header');
+  assert.equal(bytes.toString('ascii', 0, 2), 'MZ', 'Missing DOS signature');
+  const offset = bytes.readUInt32LE(0x3c);
+  assert.ok(offset >= 64 && offset + 24 <= bytes.length, 'Invalid PE offset');
+  assert.equal(bytes.toString('binary', offset, offset + 4), 'PE\0\0', 'Invalid PE signature');
+  assert.equal(bytes.readUInt16LE(offset + 4), machine, 'Unexpected PE architecture');
+  const count = bytes.readUInt16LE(offset + 6), optionalSize = bytes.readUInt16LE(offset + 20);
+  assert.ok(count > 0 && optionalSize >= 96 && offset + 24 + optionalSize + count * 40 <= bytes.length, 'Truncated PE sections');
+  for (let index = 0; index < count; index++) {
+    const section = offset + 24 + optionalSize + index * 40;
+    assert.ok(bytes.readUInt32LE(section + 20) + bytes.readUInt32LE(section + 16) <= bytes.length, 'Truncated PE section data');
+  }
+}
+async function resources(bytes) {
+  const { NtExecutable, NtExecutableResource } = await import('resedit');
+  return NtExecutableResource.from(NtExecutable.from(bytes)).entries;
+}
+async function verifyIcon(entries) {
+  const { Data, Resource } = await import('resedit');
+  const expected = Data.IconFile.from(fs.readFileSync(path.resolve(__dirname, '../assets/application.ico'))).icons;
+  const actual = Resource.IconGroupEntry.fromEntries(entries);
+  assert.ok(actual.some(group => {
+    const frames = group.getIconItemsFromEntries(entries);
+    const bytes = frame => Buffer.from(frame.isRaw() ? frame.bin : frame.generate());
+    return frames.length === expected.length && frames.every((frame, index) => bytes(frame).equals(bytes(expected[index].data)));
+  }), 'Expected application icon frames missing');
+}
 function filesUnder(directory, prefix = '') {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const relative = prefix + entry.name;
@@ -23,10 +54,14 @@ function requireFile(directory, relative, minimum = 1) {
   return file;
 }
 async function verifyPackage(directory = packageDirectory) {
-  const executable = requireFile(directory, `${metadata.productName}.exe`, 1000000);
-  const header = fs.readFileSync(executable).subarray(0, 4096);
-  assert.equal(header.toString('ascii', 0, 2), 'MZ');
-  assert.equal(header.readUInt16LE(header.readUInt32LE(0x3c) + 4), 0x8664, 'PE must be Windows x64');
+  const executable = requireFile(directory, `${identity.executableName}.exe`, 1000000);
+  const executableBytes = fs.readFileSync(executable);
+  verifyPE(executableBytes, 0x8664);
+  const entriesPE = await resources(executableBytes);
+  await verifyIcon(entriesPE);
+  const { Resource } = await import('resedit');
+  const versions = Resource.VersionInfo.fromEntries(entriesPE).flatMap(info => info.getAllLanguagesForStringValues().map(lang => info.getStringValues(lang)));
+  assert.ok(versions.some(info => info.ProductName === identity.displayName && info.FileDescription === identity.displayName), 'Windows display identity missing');
   for (const file of ['resources/app.asar', 'icudtl.dat', 'resources.pak', 'snapshot_blob.bin', 'v8_context_snapshot.bin',
     'chrome_100_percent.pak', 'chrome_200_percent.pak', 'ffmpeg.dll', 'd3dcompiler_47.dll', 'dxcompiler.dll', 'dxil.dll',
     'vk_swiftshader.dll', 'vk_swiftshader_icd.json', 'vulkan-1.dll', 'version',
@@ -36,11 +71,13 @@ async function verifyPackage(directory = packageDirectory) {
   const read = name => asar.extractFile(archive, path.normalize(name)).toString('utf8');
   const pkg = JSON.parse(read('package.json'));
   assert.equal(pkg.name, metadata.name);
+  assert.equal(pkg.productName, identity.displayName);
   assert.equal(pkg.version, metadata.version);
   assert.equal(pkg.main, '.vite/build/main.js');
   for (const file of [pkg.main, '.vite/build/preload.js', '.vite/renderer/main_window/index.html']) assert.ok(read(file).length, file);
   const main = read(pkg.main);
   assert.match(main, /node:sqlite/);
+  assert.ok(main.includes(identity.appUserModelId), 'Stable AppUserModelID missing');
   assert.ok(/sandbox:\s*(?:true|!0)/.test(main), 'Sandbox must remain enabled');
   assert.ok(/contextIsolation:\s*(?:true|!0)/.test(main), 'Context isolation must remain enabled');
   assert.ok(/nodeIntegration:\s*(?:false|!1)/.test(main), 'Node integration must remain disabled');
@@ -86,8 +123,111 @@ async function verifyZip(archive = zipFile, directory = packageDirectory) {
     return { archive, bytes: fs.statSync(archive).size };
   } finally { clearTimeout(watchdog); zip.close(); }
 }
-module.exports = { verifyPackage, verifyZip, packageDirectory, zipFile };
+const digest = (bytes, algorithm = 'sha256') => crypto.createHash(algorithm).update(bytes).digest('hex');
+// Stream every entry, including ignored NuGet bookkeeping, to reject damaged ZIPs.
+// No archive is extracted onto disk and no packaged executable is invoked.
+async function inspectArchive(input, visit) {
+  const zip = Buffer.isBuffer(input)
+    ? await promisify(yauzl.fromBuffer)(input, { lazyEntries: true })
+    : await promisify(yauzl.open)(input, { lazyEntries: true });
+  const names = new Set();
+  const watchdog = setTimeout(() => zip.emit('error', new Error('Archive validation timed out')), 120000);
+  try {
+    await new Promise((resolve, reject) => {
+      zip.on('error', reject); zip.on('end', resolve);
+      zip.on('entry', async entry => {
+        try {
+          assert.ok(!names.has(entry.fileName), `Duplicate archive entry: ${entry.fileName}`); names.add(entry.fileName);
+          assert.ok(!entry.fileName.split('/').includes('..') && !/^[\/\\]|:/.test(entry.fileName), 'Unsafe archive entry');
+          if (!entry.fileName.endsWith('/')) {
+            const stream = await promisify(zip.openReadStream.bind(zip))(entry), chunks = [];
+            for await (const chunk of stream) chunks.push(chunk);
+            const bytes = Buffer.concat(chunks);
+            assert.equal(bytes.length, entry.uncompressedSize, 'Truncated archive entry');
+            // zlib's CRC32 is available on the supported Node 24.13+ toolchain.
+            assert.equal(require('node:zlib').crc32(bytes), entry.crc32, `Archive CRC mismatch: ${entry.fileName}`);
+            await visit(entry.fileName, bytes);
+          }
+          zip.readEntry();
+        } catch (error) { zip.close(); reject(error); }
+      });
+      zip.readEntry();
+    });
+    return names;
+  } finally { clearTimeout(watchdog); zip.close(); }
+}
+function verifyReleases(text, bytes) {
+  const lines = text.trim().split(/\r?\n/);
+  assert.equal(lines.length, 1, 'Expected one local full release, no feed/delta');
+  const match = /^([a-f\d]{40}) (\S+) (\d+)$/i.exec(lines[0]);
+  assert.ok(match, 'Invalid RELEASES metadata');
+  assert.equal(match[2], nupkgName, 'RELEASES identity/version mismatch');
+  assert.equal(Number(match[3]), bytes.length, 'RELEASES size mismatch');
+  assert.equal(match[1].toLowerCase(), digest(bytes, 'sha1'), 'RELEASES SHA1 mismatch');
+}
+function verifyNuspec(bytes) {
+  const { DOMParser } = require('@xmldom/xmldom');
+  const xml = bytes.toString('utf8');
+  assert.ok(!/<!DOCTYPE|<!ENTITY/i.test(xml), 'Unexpected XML declaration');
+  const document = new DOMParser({ onError: level => { throw new Error(`Invalid nuspec XML: ${level}`); } }).parseFromString(xml, 'application/xml');
+  const value = name => {
+    const nodes = document.getElementsByTagName(name); assert.equal(nodes.length, 1, `Expected single nuspec ${name}`); return nodes[0].textContent;
+  };
+  assert.equal(value('id'), identity.squirrelPackageId);
+  assert.equal(value('version'), require('electron-winstaller').convertVersion(metadata.version));
+  assert.equal(value('title'), identity.displayName);
+  assert.equal(value('authors'), metadata.author.name);
+  assert.equal(value('description'), metadata.description);
+  assert.equal(document.getElementsByTagName('iconUrl').length, 0, 'No remote branding dependency');
+}
+async function verifySquirrel(directory = squirrelDirectory, application = packageDirectory) {
+  const setup = requireFile(directory, identity.setupExe, 1000000);
+  const nupkg = requireFile(directory, nupkgName, 1000000);
+  const releases = requireFile(directory, 'RELEASES');
+  const packageBytes = fs.readFileSync(nupkg), releasesBytes = fs.readFileSync(releases);
+  verifyReleases(releasesBytes.toString('utf8'), packageBytes);
+  const expected = new Set(filesUnder(application)), squirrelFiles = new Set();
+  let spec = false;
+  const names = await inspectArchive(packageBytes, async (name, bytes) => {
+    if (name.endsWith('.nuspec')) { assert.equal(name, `${identity.squirrelPackageId}.nuspec`); verifyNuspec(bytes); spec = true; }
+    if (!name.startsWith('lib/net45/')) return;
+    const relative = name.slice('lib/net45/'.length);
+    if (expected.delete(relative)) assert.equal(digest(bytes), digest(fs.readFileSync(path.join(application, relative))), `NuGet bytes differ: ${relative}`);
+    else {
+      assert.ok(['Squirrel.exe', `${identity.executableName}_ExecutionStub.exe`].includes(relative), `Unexpected NuGet runtime: ${relative}`);
+      verifyPE(bytes, 0x14c); squirrelFiles.add(relative);
+      await verifyIcon(await resources(bytes));
+    }
+  });
+  assert.ok(spec && names.has('[Content_Types].xml') && names.has('_rels/.rels'), 'Incomplete NuGet structure');
+  assert.equal(expected.size, 0, `NuGet missing runtime files: ${[...expected]}`);
+  assert.ok(squirrelFiles.has('Squirrel.exe'), 'Squirrel helper missing');
+  const setupBytes = fs.readFileSync(setup);
+  // Squirrel's bootstrapper is x86 even for an x64 application payload.
+  verifyPE(setupBytes, 0x14c);
+  const entries = await resources(setupBytes); await verifyIcon(entries);
+  const payload = entries.filter(entry => entry.type === 'DATA' && entry.id === 131);
+  assert.equal(payload.length, 1, 'Squirrel embedded payload missing');
+  let embeddedPackage = false, embeddedReleases = false, updater = false;
+  await inspectArchive(Buffer.from(payload[0].bin), async (name, bytes) => {
+    if (name === nupkgName) { assert.equal(digest(bytes), digest(packageBytes), 'Setup NuGet payload mismatch'); embeddedPackage = true; }
+    else if (name === 'RELEASES') { assert.deepEqual(bytes, releasesBytes, 'Setup RELEASES mismatch'); embeddedReleases = true; }
+    else if (name === 'Update.exe') {
+      verifyPE(bytes, 0x14c);
+      assert.equal(digest(bytes), digest(fs.readFileSync(path.join(path.dirname(require.resolve('electron-winstaller/package.json')), 'vendor/Squirrel.exe'))), 'Unexpected bootstrap updater');
+      updater = true;
+    }
+    else if (name === 'background.gif') assert.deepEqual(bytes, fs.readFileSync(path.join(path.dirname(require.resolve('electron-winstaller/package.json')), 'resources/install-spinner.gif')));
+    else if (name === 'setupIcon.ico') assert.deepEqual(bytes, fs.readFileSync(path.resolve(__dirname, '../assets/application.ico')));
+    else assert.fail(`Unexpected Setup payload: ${name}`);
+  });
+  assert.ok(embeddedPackage && embeddedReleases && updater, 'Incomplete embedded Setup payload');
+  return { setup, setupBytes: setupBytes.length, nupkg, nupkgBytes: packageBytes.length, releases, releasesBytes: releasesBytes.length,
+    bootstrapper: 'x86', application: 'x64', packageId: identity.squirrelPackageId, version: metadata.version };
+}
+module.exports = { verifyPackage, verifyZip, verifySquirrel, verifyPE, verifyReleases, verifyNuspec, inspectArchive, packageDirectory, zipFile, squirrelDirectory };
 if (require.main === module) (async () => {
   console.log(JSON.stringify(await verifyPackage(), null, 2));
-  if (!process.argv.includes('--package-only')) console.log(JSON.stringify(await verifyZip(), null, 2));
+  if (!process.argv.includes('--package-only') && !process.argv.includes('--squirrel-only')) console.log(JSON.stringify(await verifyZip(), null, 2));
+  if (process.argv.includes('--squirrel') || process.argv.includes('--squirrel-only')) console.log(JSON.stringify(await verifySquirrel(), null, 2));
 })().catch(error => { console.error(error); process.exitCode = 1; });

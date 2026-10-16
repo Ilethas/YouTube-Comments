@@ -35,7 +35,7 @@ For the project owner, begin with [How it works](HOW_IT_WORKS.md), then [Product
 | [EXTRACTORS.md](EXTRACTORS.md) | External helper adapters, normalization, and process lifecycle |
 | [LOCALIZATION_AND_THEMING.md](LOCALIZATION_AND_THEMING.md) | English/Polish, locale-independent search, and appearance |
 | [TESTING.md](TESTING.md) | Deterministic verification and later UI/release checks |
-| [PACKAGING.md](PACKAGING.md) | Windows x64 ZIP build/run workflow, profile safety and remaining release work |
+| [PACKAGING.md](PACKAGING.md) | Windows x64 ZIP/Squirrel build and validation, identity, installer isolation and profile safety |
 | [decisions/README.md](decisions/README.md) | Accepted foundations, unresolved choices, and ADR guidance |
 
 ## How to interpret these documents

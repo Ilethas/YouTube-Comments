@@ -1,5 +1,86 @@
 # Testing strategy
 
+## Windows Squirrel artifacts and identity (2026-10-16, ADR 0021)
+
+Non-destructive artifact verification passes for fresh Squirrel and existing ZIP.
+The full deterministic suite passes **711 tests across 55 files** (113.64 s).
+`test:electron` also passes real process persistence, view restoration, the large
+backup/restore round trip and recovery after both forced rename-gap crashes.
+Deliberate invalid-backup/view failures emit expected diagnostics; they are not
+installer operations. Final focused artifact tests pass after TypeScript narrowing.
+The final Squirrel-only build runs the configured MakerSquirrel, not a default
+instance accidentally selected by module name. Tests cover that exact Forge
+selection regression, fixed identity, lifecycle startup gating with inert process
+dependencies, malformed PE/sections/architecture, missing installer output and
+incoherent NuGet/RELEASES metadata. No lifecycle test invokes Update.exe.
+
+Verified generated outputs (ignored, never committed or published):
+
+| Artifact | Path | Bytes |
+| --- | --- | ---: |
+| Setup | `out/make/squirrel.windows/x64/Setup.exe` | 155,667,456 |
+| Full NuGet | `out/make/squirrel.windows/x64/youtube_comments-1.0.0-full.nupkg` | 154,971,653 |
+| Release metadata | `out/make/squirrel.windows/x64/RELEASES` | 87 |
+| ZIP | `out/make/zip/win32/x64/youtube-comments-win32-x64-1.0.0.zip` | 158,300,924 |
+| Complete app folder (73 files) | `out/youtube-comments-win32-x64/` | 385,857,495 |
+
+Measured verified command durations: package **5.15 s**, ZIP make **20.42 s**,
+Squirrel make **48.06 s**, each make including packaging and structural verification.
+These are observations with warm local tooling, not thresholds. NuGet bookkeeping
+can vary between builds. Version 1.0.0 is inherited metadata, not a stable release.
+
+`verify:artifacts -- --squirrel` passes for all current outputs. Setup's x86 PE
+has valid bounded sections and an embedded DATA/131 ZIP containing the exact full
+NuGet, identical RELEASES, known x86 vendor updater, setup icon and default animation.
+Every compressed entry passes size/CRC checks. RELEASES matches package identity,
+SHA1 and length. NuGet XML title is YouTube Comments, ID is youtube_comments, version
+is 1.0.0, author/description match, and all 73 x64 runtime files match SHA-256 against
+the independently checked package, plus the two expected Squirrel helper/stub files.
+The application/Setup/helper/stub contain the seven original ICO frames. ZIP byte
+comparison, ASAR/runtime/worker assets and restrictive fuses pass unchanged.
+
+Standalone renderer build passes (437.76 kB JS / 136.06 kB gzip, 14.84 kB CSS,
+2.60 kB worker). Typecheck and lint pass. The sandbox initially denied esbuild's
+configuration lookup; approved reruns outside it passed. This did not involve
+installer execution or changes to Windows installation state.
+
+The extracted unmodified ZIP smoke passes with disposable demo and production
+profile environments. It verifies fresh-empty schema 8 and populated state, native
+helper-picker cancellation, EN/PL and appearance, worker/virtual navigation,
+seen/Undo/NEW/history, restored view intent, native SQLite backup and confirmed
+restore, exact all-table restoration, independent pre-restore safety, completion
+marker and real `app.relaunch()` into the extracted EXE at a different PID. The
+original out/ copy then reopens the same disposable production profile. Observed
+shell-ready samples: demo 798 ms, fresh production 221 ms, populated 621 ms,
+restart 610 ms, actual restore relaunch 2109 ms, copied app 666 ms. These include
+external CDP/native-dialog instrumentation overhead. Evidence is retained in
+`.packaging-diagnostics/packaged-smoke.json` and its printed owned temporary root.
+No optional live helper acquisition was requested for this milestone.
+
+### Explicit installation verification boundary
+
+**No Setup.exe was run. No real install, upgrade, uninstall or reinstall occurred.**
+The owner account is not disposable. Read-only discovery found no Sandbox EXE,
+checked VM command or running VM; no disposable Windows account was designated.
+No separate account/VM/Sandbox was used, created, enabled or provisioned. Redirected
+application-profile environments are not evidence of installer isolation.
+
+Fresh per-user/no-admin installation, installed shortcuts and AppUserModelID/taskbar
+grouping, installed native dialogs, installed backup/restore/relaunch, uninstall
+data retention, reinstall/profile reuse, local upgrades, installation time and
+installed footprint are **UNVERIFIED**. Static metadata, default Electron relaunch
+and the unchanged fixed production profile support the intended design, not a
+claim of genuine installation success. See [ADR 0021](decisions/0021-windows-squirrel-installer-and-application-identity.md)
+and the [installation safety policy](PACKAGING.md#installer-lifecycle-and-safe-testing).
+
+Read-only manifest inspection confirms Setup requests `asInvoker`. Authenticode
+inspection reports `NotSigned` for Setup and the application EXE.
+Artifacts are unsigned; SmartScreen warnings are possible and protection must not
+be bypassed. Programs and Features icon behavior remains unverified/generic because
+no hosted iconUrl is provided. Acquisition still requires separately installed
+helpers; signing, final branding, helper distribution/licensing, Windows compatibility
+and public release remain outstanding. No commit, push or publish was performed.
+
 ## Windows x64 application and ZIP (2026-10-16, ADR 0020)
 
 Final deterministic verification: **701 tests across 54 files pass**, including three

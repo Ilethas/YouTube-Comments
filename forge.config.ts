@@ -1,20 +1,38 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
-import { MakerSquirrel } from '@electron-forge/maker-squirrel';
-import { MakerZIP } from '@electron-forge/maker-zip';
+import type { MakerSquirrelConfig } from '@electron-forge/maker-squirrel';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import path from 'node:path';
+import identity from './src/shared/application-identity.json';
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    name: identity.packageName,
+    executableName: identity.executableName,
+    icon: path.resolve(__dirname, 'assets/application.ico'),
+    win32metadata: { ProductName: identity.displayName, FileDescription: identity.displayName },
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
-    new MakerZIP({}, ['win32', 'darwin']),
+    // Resolvable names preserve config when Forge 7.11's --targets selects a
+    // module name. Maker instances instead expose the short name "squirrel".
+    { name: '@electron-forge/maker-squirrel', config: {
+      name: identity.squirrelPackageId,
+      title: identity.displayName,
+      exe: `${identity.executableName}.exe`,
+      setupExe: identity.setupExe,
+      setupIcon: path.resolve(__dirname, 'assets/application.ico'),
+      nuspecTemplate: path.resolve(__dirname, 'assets/windows.nuspectemplate'),
+      // No hosted branding dependency or Electron icon download at install time.
+      iconUrl: '',
+      noMsi: true,
+      noDelta: true,
+    } satisfies MakerSquirrelConfig },
+    { name: '@electron-forge/maker-zip', config: {}, platforms: ['win32', 'darwin'] },
     new MakerRpm({}),
     new MakerDeb({}),
   ],

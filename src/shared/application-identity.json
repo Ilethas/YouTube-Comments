@@ -1,0 +1,8 @@
+{
+  "packageName": "youtube-comments",
+  "displayName": "YouTube Comments",
+  "squirrelPackageId": "youtube_comments",
+  "executableName": "youtube-comments",
+  "appUserModelId": "com.squirrel.youtube_comments.youtube-comments",
+  "setupExe": "Setup.exe"
+}
