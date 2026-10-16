@@ -3,11 +3,13 @@ import { useAcquisitionProgress } from './use-acquisition-progress';
 import type { AcquisitionProgress } from '../shared/acquisition';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AcquisitionResult, ErrorCode, ReaderApi, ReaderState, Result } from '../shared/reader-api';
-import type { Appearance } from '../shared/preferences';
+import { translationTargets } from '../shared/preferences';
+import type { TranslationTarget, Appearance } from '../shared/preferences';
 import { countLabel, initialLocale, Locale, translator } from './i18n';
 import { discussionTab } from '../domain/workspace';
 import { WorkspaceTabs } from './WorkspaceTabs';
 import { TabIcon } from './TabIcon';
+import { ActionIcon } from './ActionIcon';
 import { filterLibrary } from './library';
 import { RemovalDialog } from './RemovalDialog';
 import type { WorkspaceState } from '../domain/workspace';
@@ -53,6 +55,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   const [items, setItems] = useState(initialState.items);
   const [locale, setLocale] = useState<Locale>(initialState.preferences.locale);
   const [appearance, setAppearance] = useState<Appearance>(initialState.preferences.appearance);
+  const [translationTarget, setTranslationTarget] = useState<TranslationTarget>(initialState.preferences.translationTarget);
   const [workspace, setWorkspace] = useState(initialState.workspace);
   const activeId = workspace.activeTabId;
   const activeDiscussion = useRef<string>();
@@ -197,6 +200,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     return task.then(() => succeeded);
   }, []);
   const openSource = useCallback((itemId: string) => api.openSource({ itemId }), [api]);
+  const openCommentAction = useCallback((request: Parameters<ReaderApi['openCommentAction']>[0]) => api.openCommentAction(request), [api]);
   const t = translator(locale);
   const operationProgress = updatingView ?? progress;
   const openItems = workspace.tabs.flatMap(tab => tab.kind === 'discussion' ? items.find(item => item.id === tab.itemId) ?? [] : []);
@@ -306,8 +310,8 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       <div className="brand"><span className="brand-icon" aria-hidden="true">≡</span><strong>{t('appName')}</strong></div>
       <div className="workspace-actions">
         <button title={shortcutHint(locale, 'open-url')} disabled={!!acquiring || !!progress} aria-expanded={showAcquisition} aria-controls="acquisition-form" onClick={() => { setShowAcquisition(value => !value); }}>{t('acquire')}</button>
-        <button id="library-toggle" disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openLibrary()); }}>{t('library')}</button>
-        <button id="settings-toggle" title={shortcutHint(locale, 'keyboard-help')} disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openSettings()); }}>{t('settings')}</button>
+        <button id="library-toggle" disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openLibrary()); }}><ActionIcon name="library" />{t('library')}</button>
+        <button id="settings-toggle" title={shortcutHint(locale, 'keyboard-help')} disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openSettings()); }}><ActionIcon name="settings" />{t('settings')}</button>
       </div>
     </header>
     {showAcquisition && <form id="acquisition-form" className="acquisition-bar" onKeyDown={event => {
@@ -317,7 +321,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       <input id="source-url" type="text" inputMode="url" value={url} placeholder={t('urlPlaceholder')} autoFocus
         onChange={event => setUrl(event.target.value)} autoComplete="off" spellCheck={false} />
       <button type="submit" title={shortcutHint(locale, 'submit', t('openUrl'))} disabled={!!acquiring || !!progress || !url.trim()}>{t('openUrl')}</button>
-      <button type="button" title={shortcutHint(locale, 'cancel')} onClick={() => setShowAcquisition(false)}>{t('cancel')}</button>
+      <button type="button" title={shortcutHint(locale, 'cancel')} onClick={() => setShowAcquisition(false)}><ActionIcon name="cancel" />{t('cancel')}</button>
     </form>}
     {operationProgress ? <AcquisitionStatus key={operationProgress.operationId} progress={operationProgress} locale={locale} updating={!!updatingView}
       cancel={() => api.cancelAcquisition({ operationId: operationProgress.operationId })} />
@@ -378,7 +382,14 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
         }}>
           {(['system', 'light', 'dark'] as const).map(value => <option key={value} value={value}>{t(value)}</option>)}
         </select></label>
+        <label>{t('translationTarget')}<select value={translationTarget} disabled={saving} onChange={event => {
+          const next = event.target.value as TranslationTarget;
+          void save(() => api.updatePreferences({ translationTarget: next }), value => setTranslationTarget(value.translationTarget));
+        }}>
+          {translationTargets.map(value => <option key={value} value={value}>{t(({ app: 'targetApp', en: 'targetEn', pl: 'targetPl', de: 'targetDe', fr: 'targetFr', es: 'targetEs', it: 'targetIt', pt: 'targetPt', ja: 'targetJa', ko: 'targetKo', 'zh-CN': 'targetZh' } as const)[value])}</option>)}
+        </select></label>
       </div>
+        <p className="reader-help">{t('translationPrivacy')}</p>
         <ExternalTools api={api} locale={locale} active={activeId === 'settings'} />
         <DataBackups api={api} locale={locale} onBusy={value => {
           dataBusy.current = value;
@@ -397,7 +408,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       className="reader-panel" hidden={activeId !== discussionTab(item.id).id} tabIndex={0}>
       {(activeId === discussionTab(item.id).id || views.has(item.id)) && <DiscussionPanel item={item} comments={comments[item.id]} session={views.get(item.id, comments[item.id])}
         locale={locale} saving={saving && savingItemId === item.id} refreshDisabled={!!acquiring || !!progress}
-        coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onToggle={toggleComment}
+        coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onAction={openCommentAction} onToggle={toggleComment}
         undo={seenUndo[item.id]} feedback={seenFeedback[item.id]} onBulk={bulkSeen} onUndo={undoSeen} onBulkModal={setBulkModalOpen} />}
     </main>)}
   </div>;

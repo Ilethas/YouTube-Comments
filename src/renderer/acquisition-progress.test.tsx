@@ -9,6 +9,12 @@ import type { ReaderApi } from '../shared/reader-api';
 const progress: AcquisitionProgress = { operationId: 'first', kind: 'refresh', sourceKind: 'youtube-video',
   itemId: 'item-id', stage: 'fetching', startedAt: 1000, cancellable: true };
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
+it.each(['checking-helper', 'preparing', 'fetching', 'processing', 'saving'] as const)('uses a compact decorative spinner and textual status during %s', stage => {
+  render(<AcquisitionStatus progress={{ ...progress, stage, cancellable: stage !== 'saving' }} locale="en" cancel={vi.fn()} />);
+  expect(document.querySelector('.acquisition-spinner')?.getAttribute('aria-hidden')).toBe('true');
+  expect(screen.getByRole('status').textContent).toBeTruthy(); expect(screen.queryByRole('progressbar')).toBeNull();
+  expect(!!screen.queryByRole('button', { name: 'Cancel' })).toBe(stage !== 'saving');
+});
 it('settlement retires IDs and late old progress cannot replace a new run', () => {
   const state = new AcquisitionProgressState();
   expect(state.accept(progress)).toBe(progress);
@@ -42,7 +48,8 @@ it('elapsed uses a local monotonic timer; Cancel disappears after saving or upda
   const cancel = vi.fn(async () => undefined);
   const view = render(<AcquisitionStatus progress={progress} locale="en" cancel={cancel} />);
   expect(screen.getByLabelText('Elapsed time').textContent).toBe('00:08');
-  expect(screen.getByRole('progressbar').hasAttribute('value')).toBe(false);
+  expect(document.querySelector('.acquisition-spinner')).toBeTruthy();
+  expect(screen.queryByRole('progressbar')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(cancel).toHaveBeenCalledTimes(1);
   await act(async () => { mono = 2000; vi.setSystemTime(1000000); await vi.advanceTimersByTimeAsync(250); });

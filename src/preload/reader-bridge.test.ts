@@ -6,11 +6,12 @@ import { defaultQuery } from '../domain/discussion-query';
 it('exposes only explicit intent and progress methods without a generic privileged transport', async () => {
   const invoke = vi.fn(async () => ({ ok: true, value: {} }));
   const api = createReaderBridge(invoke);
-  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'moveTab', 'onAcquisitionProgress', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'toggleSeen', 'undoSeen', 'updatePreferences']);
+  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'moveTab', 'onAcquisitionProgress', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   await api.getHelperStatus({ kind: 'yt-dlp' });
   await api.chooseHelper({ kind: 'post-archiver' });
   await api.clearHelper({ kind: 'yt-dlp' });
   expect(Object.isFrozen(api)).toBe(true);
+  await api.openCommentAction({ itemId: 'stored-item', commentId: 'stored-comment', action: 'translate' });
   await api.openSource({ itemId: 'stored-item' });
   await api.bootstrap();
   await api.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: true });
@@ -30,6 +31,7 @@ it('exposes only explicit intent and progress methods without a generic privileg
     [readerChannels.getHelperStatus, { kind: 'yt-dlp' }],
     [readerChannels.chooseHelper, { kind: 'post-archiver' }],
     [readerChannels.clearHelper, { kind: 'yt-dlp' }],
+    [readerChannels.openCommentAction, { itemId: 'stored-item', commentId: 'stored-comment', action: 'translate' }],
     [readerChannels.openSource, { itemId: 'stored-item' }],
     [readerChannels.bootstrap],
     [readerChannels.toggleSeen, { itemId: 'video-demo', commentId: 'v2', subtree: true }],

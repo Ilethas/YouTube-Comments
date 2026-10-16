@@ -173,6 +173,9 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
     FOREIGN KEY(item_id, anchor_comment_id) REFERENCES comments(item_id, id),
     FOREIGN KEY(item_id, selected_comment_id) REFERENCES comments(item_id, id)
   ) STRICT;
+`) }, { version: 9, apply: db => db.exec(`
+  ALTER TABLE preferences ADD COLUMN translation_target TEXT NOT NULL DEFAULT 'app'
+    CHECK(translation_target IN ('app','en','pl','de','fr','es','it','pt','ja','ko','zh-CN'));
 `) }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 

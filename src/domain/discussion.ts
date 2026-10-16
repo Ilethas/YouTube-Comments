@@ -39,6 +39,8 @@ export type ContentItem = ItemBase & (
  * Publication stays distinct from discovery, with honest precision/label evidence.
  * Optional evidence properties also permit the original pure synthetic fixtures. */
 export interface Comment {
+  /** Main-derived external action availability; never URL authority. */
+  readonly actions?: { readonly author: boolean; readonly permalink: boolean; readonly translate: boolean };
   readonly id: string;
   readonly itemId: string;
   readonly source: { readonly kind: ItemKind; readonly itemId: string; readonly commentId: string };

@@ -86,3 +86,15 @@ English and Polish interface text uses stable translation keys. Dates, relative 
 The current SQLite foundation has transactional schema migration, isolated development/test profiles, and typed main-owned persistence. Backup/restore and export still need designed workflows before they can protect released data across upgrades. React reaches main through a narrow typed preload bridge and receives acknowledged snapshots; it cannot open SQLite. Main may later delegate database work to an internal worker without changing that boundary. Future extractors will also be invoked only by main. See [Database](DATABASE.md), [Architecture](ARCHITECTURE.md), and [Packaging](PACKAGING.md).
 
 Deterministic tests exercise the rules above without live YouTube access. Saved helper fixtures test normalization; temporary databases test transactions and migrations. A small meaningful UI/E2E suite is expected later, focused on important workflows rather than an exhaustive UI matrix. Optional live smoke tests cannot replace deterministic checks. See [Testing](TESTING.md). Unsettled behavior and when it blocks implementation are collected in the [decision register](decisions/README.md).
+
+## Reader actions
+
+Comment surfaces support native drag and Shift text selection, including selection
+across elements and Copy. Only checkbox click / Ctrl+checkbox changes seen state.
+Trusted video creator evidence adds a subtle author accent. Safe author names and
+video comment timestamps open their original channel/comment in the browser; missing
+identity stays plain, and Community timestamps have no invented comment destination.
+Translate in browser opens the stored comment in Google Translate only when chosen.
+Settings explains this Google disclosure and saves Follow application language or an
+explicit target independently of the interface. Long comments offer full Copy for
+manual translation. See ADR 0022 and UI_AND_NAVIGATION for boundaries and shortcuts.

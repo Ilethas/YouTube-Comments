@@ -93,7 +93,10 @@ async function start(executable, environment, profile, label, developmentEntry) 
   assert.equal(security.result.value,'undefined,undefined','Sandboxed preload has no ambient Node globals');
   report.runtime={isolatedPreloadContext:true,rendererNodeGlobals:false,userAgent:await session.js('navigator.userAgent')};
   assert.equal(await session.js("['invoke','exec','readFile','openExternal','spawn','selectExecutable'].some(key=>key in window.reader)"),false);
-  for (const [method,payload] of [['openSource',{itemId:'x',url:'https://example.com'}],['chooseHelper',{kind:'yt-dlp',path:'evil.exe'}]])
+  for (const [method,payload] of [['openSource',{itemId:'x',url:'https://example.com'}],
+    ['openCommentAction',{itemId:'x',commentId:'y',action:'translate',url:'https://example.com'}],
+    ['openCommentAction',{itemId:'x',commentId:'y',action:'translate',translationTarget:'de'}],
+    ['chooseHelper',{kind:'yt-dlp',path:'evil.exe'}]])
     assert.deepEqual(await session.js(`window.reader.${method}(${JSON.stringify(payload)})`),{ok:false,error:{code:'INVALID_REQUEST'}});
   return session;
 }
@@ -169,12 +172,12 @@ async function run() {
   session=await start(executable,environment,profile,'production-fresh');
   assert.equal((await session.invoke('bootstrap')).items.length,0,'Fresh packaged production must not seed demo');
   assert.ok(fs.existsSync(database)); await close(session);
-  report.checks.push('Fresh production schema 8 in independent disposable Windows profile environment; no demo');
+  report.checks.push('Fresh production schema 9 in independent disposable Windows profile environment; no demo');
   const itemId=seed(database);
   session=await start(executable,environment,profile,'production-existing');
   let boot=await session.invoke('bootstrap'); assert.equal(boot.items.length,1);
   await session.wait("!!document.querySelector('.comment') && !!document.querySelector('.source-button')");
-  report.checks.push('Existing schema 8, source header, real ASAR renderer/preload and node:sqlite');
+  report.checks.push('Existing schema 9, source header, real ASAR renderer/preload and node:sqlite');
   const panel='[role=tabpanel]:not([hidden])';
   // UI preferences, kept in React as well as persisted in SQLite.
   await session.js("document.getElementById('settings-toggle').click()");
@@ -187,6 +190,9 @@ async function run() {
     await session.js(`(()=>{const e=document.querySelectorAll('.preferences select')[1]; e.value=${JSON.stringify(appearance)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     await session.wait(`document.documentElement.dataset.appearance===${JSON.stringify(appearance)}`);
   }
+  assert.equal((await session.invoke('bootstrap')).preferences.translationTarget,'app');
+  await session.js("(()=>{const e=document.querySelectorAll('.preferences select')[2];e.value='de';e.dispatchEvent(new Event('change',{bubbles:true}));})()");
+  await session.wait("window.reader.bootstrap().then(r=>r.value.preferences.translationTarget==='de')");
   // Native Cancel exercises the real picker without selecting a test executable.
   const picker=session.invoke('chooseHelper',{kind:'yt-dlp'}); picker.catch(()=>undefined);
   await pause(700);
@@ -203,9 +209,13 @@ async function run() {
   report.checks.push('Library/Settings, EN/PL, System/Light/Dark, two helper statuses and native executable picker');
   await session.js(`document.getElementById(${JSON.stringify('tab-discussion:'+itemId)}).click()`);
   await session.wait(`!!document.querySelector('${panel} .comment')`);
+  assert.equal(await session.js(`!!document.querySelector('${panel} .creator-author') && !!document.querySelector('${panel} .action-translate button[title]') && !!document.querySelector('${panel} .action-author button[title]')`),true,'Packaged reader exposes trusted creator and discoverable external actions');
+  assert.equal(await session.js(`!!document.querySelector('${panel} .action-permalink')`),false,'Sanitized non-YouTube fixture IDs never become fabricated permalinks');
   const before=(await session.invoke('bootstrap')).comments[itemId];
   const target=before.find(c=>c.parentId===null && before.some(child=>child.parentId===c.id)); assert.ok(target);
   await session.js(`document.getElementById(${JSON.stringify('comment-'+encodeURIComponent(target.id))}).querySelector('.comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,button:0,ctrlKey:true,shiftKey:true}))`);
+  await pause(100); assert.deepEqual((await session.invoke('bootstrap')).comments[itemId],before,'Former Ctrl+Shift row action never marks');
+  await session.js(`document.getElementById(${JSON.stringify('comment-'+encodeURIComponent(target.id))}).querySelector('input').dispatchEvent(new MouseEvent('click',{bubbles:true,button:0,ctrlKey:true}))`);
   await session.wait(`window.reader.bootstrap().then(r=>r.value.comments[${JSON.stringify(itemId)}].find(c=>c.id===${JSON.stringify(target.id)}).seen===true)`);
   boot=await session.invoke('bootstrap'); assert.ok(boot.seenUndo[itemId]);
   assert.equal(boot.comments[itemId].filter(c=>c.parentId===target.id).every(c=>c.seen),true);
@@ -231,7 +241,7 @@ async function run() {
   await session.js(`document.querySelector('${panel} .query-navigation button:nth-child(2)').click()`);
   await pause(600);
   assert.equal(await session.js(`!!document.querySelector('${panel} .comment[data-selected=true]')`),true,'Virtual navigation reveals selection');
-  report.checks.push('Ctrl+Shift row subtree, atomic rejection, durable Undo, restrictive ASAR worker, publication/discovery, sort, ruler and virtual reveal');
+  report.checks.push('Removed row gestures, explicit Ctrl+checkbox subtree, atomic rejection, durable Undo, restrictive ASAR worker, publication/discovery, sort, ruler and virtual reveal');
   await session.js("document.getElementById('settings-toggle').click()"); await pause(600);
   const snapshot=path.join(root,'complete-backup.sqlite');
   await session.js("document.querySelector('.data-backups button').click()"); await native(session,'file',snapshot);
@@ -239,7 +249,7 @@ async function run() {
   const expected=tables(snapshot); assert.deepEqual(tables(database),expected);
   await close(session);
   session=await start(executable,environment,profile,'production-restart');
-  boot=await session.invoke('bootstrap');
+  boot=await session.invoke('bootstrap'); assert.equal(boot.preferences.translationTarget,'de');
   for (const helper of report.helpers.filter(helper=>helper.path)) {
     const status=await session.invoke('getHelperStatus',{kind:helper.kind});
     assert.equal(status.path,helper.path); assert.equal(status.mode,'configured');
@@ -276,7 +286,7 @@ async function run() {
   current={pid:relaunchedPid,js:async()=>undefined,cdp:{socket:{close(){}}}};
   await native({pid:relaunchedPid},'acknowledge');
   session=await attach(profile,started,'production-real-relaunch'); assert.notEqual(session.pid,oldPid);
-  assert.deepEqual(tables(database),expected);
+  assert.deepEqual(tables(database),expected); assert.equal((await session.invoke('bootstrap')).preferences.translationTarget,'de');
   const recovery=path.join(profile,'recovery');
   const transactions=fs.readdirSync(recovery).filter(name=>name.startsWith('restore-'));
   assert.equal(transactions.length,1);
@@ -305,7 +315,7 @@ async function run() {
   session=await start(path.join(packageDirectory,'youtube-comments.exe'),environment,profile,'production-copied-application');
   const copied=await session.invoke('bootstrap');
   assert.ok(copied.items.some(item=>item.id===itemId));
-  assert.equal(copied.discussionViews[itemId].sort,'newest');
+  assert.equal(copied.discussionViews[itemId].sort,'newest'); assert.equal(copied.preferences.translationTarget,'de');
   assert.deepEqual(tables(database).helper_settings,expected.helper_settings);
   await close(session);
   report.checks.push('Original out/ EXE also launches from a temporary working directory and shares the copied folder production profile');

@@ -15,10 +15,10 @@ function article(disabled = false) {
   const view = render(<CommentArticle comment={comment} role="normal" rawHit={false} hasChildren selected={false} locale="en" disabled={disabled} onToggle={onToggle} />);
   return { ...view, comment, onToggle, row: screen.getByRole('article'), text: required(view.container.querySelector('.comment-text')) };
 }
-it.each([false, true])('Shift primary row click sends the application ID once, subtree=%s', ctrlKey => {
-  const { comment, onToggle, text } = article();
+it.each([false, true])('former Shift row gestures never mark, Ctrl=%s', ctrlKey => {
+  const { onToggle, text } = article();
   fireEvent.click(text, { shiftKey: true, ctrlKey, button: 0 });
-  expect(onToggle).toHaveBeenCalledExactlyOnceWith(comment.id, ctrlKey);
+  expect(onToggle).not.toHaveBeenCalled();
 });
 it.each([{}, { button: 2, shiftKey: true }, { button: 1, shiftKey: true }, { shiftKey: true, altKey: true }, { shiftKey: true, metaKey: true }, { ctrlKey: true }])('ignores row click modifiers %j and leaves context menus alone', modifiers => {
   const { onToggle, text } = article(); fireEvent.click(text, modifiers); fireEvent.contextMenu(text, { shiftKey: true }); expect(onToggle).not.toHaveBeenCalled();
@@ -57,7 +57,7 @@ it('non-collapsed text selection in or intersecting the comment preserves select
   fireEvent.click(text, { shiftKey: true, ctrlKey: true }); expect(onToggle).not.toHaveBeenCalled();
   const unrelated = document.createElement('p'); unrelated.textContent = 'Elsewhere'; document.body.append(unrelated);
   range.selectNodeContents(unrelated); document.getSelection()?.addRange(range);
-  fireEvent.pointerDown(row); fireEvent.click(text, { shiftKey: true }); expect(onToggle).toHaveBeenCalledTimes(1); unrelated.remove();
+  fireEvent.pointerDown(row); fireEvent.click(text, { shiftKey: true }); expect(onToggle).not.toHaveBeenCalled(); unrelated.remove();
 });
 it('seen checkbox keeps a native focusable input and keyboard Space activation', async () => {
   const { comment, onToggle } = article(); const checkbox = screen.getByRole('checkbox');

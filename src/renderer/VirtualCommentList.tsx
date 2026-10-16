@@ -1,3 +1,4 @@
+import type { OpenCommentAction } from './CommentActions';
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -21,6 +22,7 @@ export const completeReaderLimit = 200;
 const noNewIds: ReadonlySet<string> = new Set();
 
 interface Props {
+  onAction?: OpenCommentAction;
   itemId: string;
   comments: readonly Comment[];
   result: DiscussionViewResult;
@@ -55,7 +57,7 @@ export function ReaderRails({ row }: { row: ReaderRow }) {
 /** Renderer-only geometry over complete application-data membership. Header and
  * query controls share the existing panel scrollbar, outside this measured list. */
 export const VirtualCommentList = memo(function VirtualCommentList({ itemId, comments, result, selected, scrollRequest, session,
-  locale, disabled, now, onToggle, overscan = readerOverscan, newIds = noNewIds }: Props) {
+  locale, disabled, now, onToggle, onAction, overscan = readerOverscan, newIds = noNewIds }: Props) {
   const list = useRef<HTMLOListElement>(null);
   const sort = session.state.sort;
   const presentation = useMemo(() => {
@@ -249,7 +251,7 @@ export const VirtualCommentList = memo(function VirtualCommentList({ itemId, com
         className="comment-branch virtual-comment" style={{ transform: `translateY(${item.start - geometry.margin}px)`, '--reader-indent': `${readerIndent(row.depth)}px` } as CSSProperties}>
         <ReaderRails row={row} />
         <CommentArticle comment={row.comment} role={row.role} rawHit={row.rawHit} hasChildren={row.hasChildren} selected={selected === row.id}
-          locale={locale} now={now} disabled={disabled} onToggle={onToggle} isNew={newIds.has(row.id)} />
+          locale={locale} now={now} disabled={disabled} onToggle={onToggle} onAction={onAction} isNew={newIds.has(row.id)} />
       </li>;
     })}
   </ol>{panel && createPortal(<DiscussionRuler buckets={buckets} height={geometry.height} top={geometry.top} left={geometry.left}

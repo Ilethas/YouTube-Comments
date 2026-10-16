@@ -1,17 +1,14 @@
 # Seen state
 
-## Explicit row gestures and bulk local minutes (ADR 0015)
+## Explicit checkboxes and bulk local minutes (ADRs 0015/0022)
 
-[ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) adds Shift+primary click on the non-interactive comment surface to toggle
-one comment and Ctrl+Shift+primary click to assign its resulting state to all
-stored descendants, including unmounted rows. Plain/right/middle clicks and
-Alt/Meta variants do nothing. Inputs, checkbox labels, buttons, links, selects,
-textareas, editable/role/tabbable controls and explicitly marked interactive
-descendants are excluded. Non-collapsed text selection intersecting the comment
-at pointer down or click suppresses mutation. The enlarged checkbox label owns
-its click to retain Ctrl and cancel forwarding; input/Space remain native and
-never trigger twice. Ordinary row toggles preserve prior recovery; subtree
-changes replace it only with >1 actual changed comments, exactly ADR 0013.
+ADR 0022 removes the comment-wide Shift and Ctrl+Shift gestures introduced by
+ADR 0015. There is no replacement row modifier. Native drag/Shift/cross-element
+text selection and Copy never write seen. Checkbox click toggles one comment;
+Ctrl+checkbox applies its resulting value to the entire stored subtree, including
+unmounted replies. The enlarged label preserves Ctrl and cancels input forwarding,
+so direct/label/keyboard activation never sends duplicate commands. Subtree changes
+replace durable recovery only with more than one actual changed comment (ADR 0013).
 
 Publication bulk targets optionally carry strict HH:mm fromTime/toTime with
 their dates. Times are session-only command criteria; no query time UI is added.

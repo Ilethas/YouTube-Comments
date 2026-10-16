@@ -1,5 +1,96 @@
 # Testing strategy
 
+## Reader usability and action icons (2026-10-16, ADR 0022)
+
+The current marking contract supersedes the historical ADR 0015 gesture evidence
+below: row-wide Shift/Ctrl+Shift marking is removed. Explicit checkbox and
+Ctrl+checkbox, durable Undo, applied views, sorting, NEW and ruler remain protected.
+
+| Verification | Result |
+| --- | --- |
+| Full deterministic suite | 742 tests / 57 files pass, 102.85 s |
+| Typecheck / lint | Pass, no lint warnings |
+| Standalone renderer build | Pass; JS 441.80 kB / 137.59 kB gzip, CSS 16.32 kB, worker 2.60 kB |
+| Fresh Forge Windows application + ZIP | Pass; make:zip includes complete package and byte-for-byte ZIP verification, 23.94 s |
+| Final test:electron | Pass, exit 0; persistence, view restoration, backup/crash recovery, reader actions and restart |
+| Extracted unmodified EXE test:packaged | Pass; native dialogs, actual restore/relaunch and exact table equality |
+
+The deterministic suite covers positive/false/unknown video creator evidence and
+Community exclusion, safe/invalid/missing channel identities and handles, synthetic
+exclusion, source comment IDs versus application IDs, owned item/comment lookups,
+exact payload/arity rejection, browser failures and absence of text/URL diagnostics.
+No remote URL or renderer-supplied text/target authority is accepted.
+
+Translation tests cover all ten target languages, Follow app under EN/PL, independent
+overrides, Unicode/mixed Chinese/Korean, emoji, punctuation and newlines, exact decoded
+URL text, 5000 UTF-16 text units and the separate 8000-character complete encoded URL
+bound. Over-limit input rejects without truncation or opening a browser. EN/PL
+feedback offers full-text Copy and manual translation in smaller parts, with native
+selection/Copy explanation when clipboard access fails. There is no automatic
+translation request or cache. The privacy explanation is visible in Settings.
+
+Persistence checks retain all authoritative data through migration and complete
+backup/restore. A populated schema-8 source gets a verified pre-migration snapshot,
+remains byte-identical during staged restore, and upgrades to schema 9 with only the
+default Follow app preference added. Exact old schemas 1–8 still validate and stage;
+unknown/modified/newer backups still reject. Explicit German survives real restart
+and backup/restore alongside unrelated preferences, history, seen revisions, Undo,
+workspace, view intent and helper selections.
+
+Native Electron checks use disposable profiles and real Chromium pointer input for
+drag selection, Shift extension, selection across comment articles and selection
+beginning inside a linked author. Ordinary/former modifier row clicks never mark.
+Native Copy preserves selected text (Windows newline normalization only); the runner
+materializes/restores clipboard formats using Electron 44's asynchronous ClipboardItem
+API. Checkbox/label/Space and Ctrl subtree behavior retain one command and safe Undo.
+External actions keep persistent selected identity and seen state unchanged.
+
+The action harness captures main's browser destinations: canonical channel/video
+comment links and Google Translate auto-source EN/PL/German targets are verified
+through real preload/IPC. Browser opening is intercepted in this offline harness;
+fixture text is never transmitted to Google. German override, Polish interface and
+dark appearance survive a fresh Electron process, with no automatic browser opening.
+The actual CSS spinner rotates normally and stops under emulated reduced motion.
+Component/main tests cover every coarse stage, monotonic elapsed time, exact-ID
+Cancel, non-cancellable Saving/Updating view and global status through tab switches.
+
+EN/light and PL/dark screenshots were captured and visually inspected. Creator text
+has minimum contrast **6.58:1 light / 6.30:1 dark** against both ordinary and unseen
+row backgrounds. Compact actions are visible without hover. The real 50k action
+fixture mounts **11** rows initially; restored 10k and 50k discussions mount **19**
+rows each, with four ruler nodes, preserved anchors and no forced focus. Hidden
+discussions remain unmounted on Library startup. These are local observations,
+not new performance budgets; Q-21 bootstrap/clone/SQLite scaling remains open.
+The action harness checks seen with scoped read-only test queries instead of
+repeatedly serializing the full 50k bootstrap; production IPC is unchanged.
+
+Fresh generated output: 73 application files / 385,866,546 bytes, complete ZIP
+158,303,905 bytes. The unmodified extracted EXE runs with separate owned demo and
+Windows production profile environments. It verifies new creator/action affordances,
+rejects renderer URL/target fields, omits fabricated permalinks for sanitized fixture
+IDs, preserves German through restart/restore/copied-folder launch, and checks native
+helper-picker cancellation, EN/PL/theme switching, worker/virtual navigation and Undo.
+Native Save/Open/Cancel-first confirmation and actual app.relaunch produce a different
+PID, exact snapshot restoration, independent safety and completion metadata. Observed
+ready samples: demo 820 ms, fresh production 239 ms, populated/restart 623/623 ms,
+actual restore relaunch 2204 ms, copied app 672 ms. The built-entry backup suite also
+checks large round trips and both forced rename-gap crash recoveries. Deliberate
+invalid-backup/view diagnostics and occasional Chromium GPU shutdown messages are
+expected negative-test/runtime output.
+
+Logs and verification screenshots are ignored under `.packaging-diagnostics/`.
+Native selection and UI were automated in actual Electron; this is not a claim that
+a human manually completed the walkthrough. Real default-browser rendering of a
+public creator channel/comment and Google's returned translation remain **UNVERIFIED**:
+destinations were captured, and no live helper acquisition was run for this milestone.
+Community comment permalinks remain unsupported; the conservative handle fallback
+omits some valid short/international forms. Remote deletion/accessibility and future
+changes to Google/YouTube's UI are outside local guarantees.
+
+No Setup, install/update/uninstall, commit, push or publish was executed. Production
+owner data was not opened. Unsigned installer lifecycle verification remains the
+separate ADR 0021 limitation below.
+
 ## Windows Squirrel artifacts and identity (2026-10-16, ADR 0021)
 
 Non-destructive artifact verification passes for fresh Squirrel and existing ZIP.

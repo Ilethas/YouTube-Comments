@@ -97,18 +97,20 @@ it('an old large row offset is clamped to the current measured row so its identi
   expect(reader.rows().length).toBeLessThan(30);
 });
 
-it('row gestures include unmounted descendants with frozen applied views and live unseen/NEW ruler evidence', () => {
+it('explicit checkboxes include unmounted descendants with frozen applied views and live unseen/NEW ruler evidence', () => {
   const data = generateDiscussion({ count: 10000, roots: 1, seenRatio: 0, matchIndexes: [0], newIndexes: [9999] });
   const reader = mount(data.comments, true, data.item), frozen = reader.session.state.result;
   const root = required(document.getElementById('comment-generated-0'));
   expect(document.getElementById('comment-generated-9999')).toBeNull(); expect(reader.rows().length).toBeLessThan(30);
   fireEvent.click(required(root.querySelector('.comment-text')), { shiftKey: true, ctrlKey: true });
+  expect(reader.onToggle).not.toHaveBeenCalled();
+  fireEvent.click(required(root.querySelector('input')), { ctrlKey: true });
   expect(reader.onToggle).toHaveBeenCalledExactlyOnceWith(data.item.id, 'generated-0', true);
   expect(reader.current().every(comment => comment.seen)).toBe(true);
   expect(reader.session.state.result).toBe(frozen); expect(reader.session.state.seenStale).toBe(true);
   const ruler = required(reader.panel.querySelector<HTMLElement>('.discussion-ruler'));
   expect(ruler.dataset.unseenCount).toBe('0'); expect(ruler.dataset.newCount).toBe('1');
-  fireEvent.click(required(root.querySelector('.comment-text')), { shiftKey: true });
+  fireEvent.click(required(root.querySelector('input')));
   expect(reader.current()[0].seen).toBe(false); expect(reader.current().slice(1).every(comment => comment.seen)).toBe(true);
   expect(reader.session.state.result).toBe(frozen); expect(reader.rows().length).toBeLessThan(30);
 });

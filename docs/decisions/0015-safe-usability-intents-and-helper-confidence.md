@@ -80,7 +80,12 @@ discovery or item timestamp substitution exists. Recovery stores changed IDs and
 revisions, not calendar targets, so schema 7 and the durable Undo representation
 need no migration.
 
-### Deliberate comment gestures
+### Deliberate comment gestures (superseded)
+
+ADR 0022 removes both row-wide Shift gestures below. They remain here as historical
+rationale only; current marking uses explicit checkbox click / Ctrl+checkbox.
+
+### Historical ADR 0015 behavior
 
 Shift + primary click on the non-interactive comment surface toggles one comment;
 Ctrl+Shift applies the clicked resulting state to all stored descendants. Plain,

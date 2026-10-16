@@ -242,9 +242,9 @@ async function verifyWindow(window, nativeTheme) {
     key('W', ['control']); await active('library'); // closing Settings chooses right
     key('F1'); await waitFor("document.activeElement.id === 'keyboard-shortcuts' && !document.querySelector('.tabs button:disabled')", 'F1 reopens singleton');
     const rows = await js("Array.from(document.querySelectorAll('#panel-settings tr[data-shortcut-id]'),row=>({id:row.dataset.shortcutId,keys:row.querySelector('td').textContent}))");
-    assert.equal(rows.length, 21); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
-    assert.equal(rows.find(row => row.id === 'comment-toggle-row').keys, 'Shift+Click');
-    assert.equal(rows.find(row => row.id === 'comment-subtree-row').keys, 'Ctrl+Shift+Click');
+    assert.equal(rows.length, 19); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
+    assert.equal(rows.some(row => row.id === 'comment-toggle-row'), false);
+    assert.equal(rows.some(row => row.id === 'comment-subtree-row'), false);
     assert.equal(rows.find(row => row.id === 'previous-tab').keys, 'Ctrl+Shift+Tab');
     const hints = await js("({apply:document.querySelector('#panel-video-demo .query-controls button[type=submit]').title,next:document.querySelector('#panel-video-demo .query-navigation button:nth-child(2)').title,add:document.querySelector('[aria-controls=acquisition-form]').title,seen:document.querySelector('.seen-control').title,tab:document.querySelector('[role=tab]').title})");
     assert.match(hints.apply, /Ctrl\+Enter/); assert.match(hints.next, /F3/); assert.match(hints.add, /Ctrl\+L/);
@@ -278,7 +278,7 @@ async function verifyWindow(window, nativeTheme) {
   await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .query-controls') !== null", 'bootstrap');
   await verifyHelperSettings();
   if (phase === 'environment') return;
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'moveTab', 'onAcquisitionProgress', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'toggleSeen', 'undoSeen', 'updatePreferences']);
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'moveTab', 'onAcquisitionProgress', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   assert.deepEqual(await js("window.reader.acquire({url:'https://www.youtube.com/watch?v=abcdefghijk',executable:'evil'})"),
     { ok: false, error: { code: 'INVALID_REQUEST' } });
   assert.deepEqual(await js("window.reader.refresh({itemId:'video-demo',url:'https://example.com'})"),
@@ -340,7 +340,8 @@ async function verifyWindow(window, nativeTheme) {
         input.dispatchEvent(new Event('input', {bubbles:true})); })()`);
       await waitFor("!document.querySelector('.acquisition-bar button').disabled", 'URL ready');
       await js("document.querySelector('.acquisition-bar button').click()");
-      await waitFor("document.querySelector('.acquisition-status') !== null", 'acquisition progress');
+      await waitFor("document.querySelector('.acquisition-spinner') !== null", 'acquisition spinner');
+      assert.equal(await js("!!document.querySelector('.acquisition-status [role=status]') && !document.querySelector('.acquisition-status progress')"),true);
       assert.equal(await js("Array.from(document.querySelectorAll('input[type=checkbox]')).every(input => !input.disabled)"), true);
       await waitFor("document.querySelector('#source-url') === null && !document.body.innerText.includes('Pobieranie…')", 'acquisition acknowledgment');
       assert.equal(await js("document.querySelector('[role=alert]') === null"), true);
@@ -610,18 +611,15 @@ async function verifyWindow(window, nativeTheme) {
     await js("document.getElementById('comment-v2').querySelector('input').dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}))");
     await waitFor("document.getElementById('comment-v2').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'mixed subtree assignment');
     assert.deepEqual((await undoUi()).comments,mixed.comments,'Undo restores mixed subtree');
-    await js("document.querySelector('#comment-v2 .comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true,ctrlKey:true}))");
-    await waitFor("document.getElementById('comment-v2').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'row subtree assignment');
-    assert.deepEqual((await undoUi()).comments,mixed.comments,'Row subtree reuses durable recovery');
-    await js("document.querySelector('#comment-v2 .comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}))");
-    await waitFor("document.getElementById('comment-v2').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'row single assignment');
-    assert.equal((await snapshot()).comments['video-demo'].find(comment=>comment.id==='v2').seen,true);
-    await js("document.querySelector('#comment-v2 .comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}))");
-    await waitFor("!document.getElementById('comment-v2').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'row restore');
+    const rowBefore = await snapshot();
+    for (const modifiers of [{}, {shiftKey:true}, {shiftKey:true,ctrlKey:true}]) {
+      await js(`document.querySelector('#comment-v2 .comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,...${JSON.stringify(modifiers)}}))`);
+      await pause(30); assert.deepEqual(await snapshot(),rowBefore,'Row clicks never mark or replace recovery');
+    }
     const selectionBefore = await snapshot();
     assert.equal(await js("(() => {const text=document.querySelector('#comment-v2 .comment-text'),range=document.createRange();range.selectNodeContents(text);getSelection().removeAllRanges();getSelection().addRange(range);return !getSelection().isCollapsed;})()"),true,'Smoke has an active text selection');
     await js("document.querySelector('#comment-v2 .comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true,ctrlKey:true}))");
-    await pause(30); assert.deepEqual(await snapshot(),selectionBefore,'Selected text prevents seen gesture');
+    await pause(30); assert.deepEqual(await snapshot(),selectionBefore,'Selected text never changes seen');
     await js('getSelection().removeAllRanges()');
     // Real Chromium mouse selection and Shift extension, beyond DOM range tests.
     window.showInactive();
@@ -634,6 +632,17 @@ async function verifyWindow(window, nativeTheme) {
     contents.sendInputEvent({type:'mouseDown',x:selectionPoint.x+130,y:selectionPoint.y,button:'left',clickCount:1,modifiers:['shift']});
     contents.sendInputEvent({type:'mouseUp',x:selectionPoint.x+130,y:selectionPoint.y,button:'left',clickCount:1,modifiers:['shift']});
     await pause(50); assert.deepEqual(await snapshot(),selectionBefore,'Native Shift selection extension never marks seen');
+    const cross = await js("(() => {const a=document.querySelector('#comment-v2 strong'),b=document.querySelector('#comment-v3 .comment-text'),x=a.getBoundingClientRect(),y=b.getBoundingClientRect();return {start:{x:Math.round(x.left+2),y:Math.round(x.top+6)},end:{x:Math.round(y.left+100),y:Math.round(y.top+7)}};})()");
+    contents.sendInputEvent({type:'mouseDown',...cross.start,button:'left',clickCount:1});
+    contents.sendInputEvent({type:'mouseMove',...cross.end});
+    contents.sendInputEvent({type:'mouseUp',...cross.end,button:'left',clickCount:1});
+    await waitFor("!getSelection().isCollapsed && getSelection().anchorNode!==getSelection().focusNode",'native cross-element selection');
+    const selectedText=await js('getSelection().toString()');
+    const {clipboard}=require('electron'), restoreClipboard=await require('./snapshot-clipboard.cjs')();
+    try {
+      contents.copy(); await pause(50); assert.equal((await clipboard.readText()).replace(/\r\n/g,'\n'),selectedText.replace(/\r\n/g,'\n'),'Native Copy preserves complete selected text');
+    } finally { await restoreClipboard(); }
+    assert.deepEqual(await snapshot(),selectionBefore,'Cross-element selection and copy never mark');
     await js('getSelection().removeAllRanges()'); window.hide();
     const hit = await js("(() => {const label=document.querySelector('#comment-v2 .seen-control'),r=label.getBoundingClientRect();label.querySelector('input').focus();return {width:r.width,height:r.height,focused:document.activeElement===label.querySelector('input'),outline:getComputedStyle(label).outlineWidth};})()");
     assert.ok(hit.width>=32 && hit.height>=32); assert.equal(hit.focused,true); assert.equal(hit.outline,'2px');
@@ -814,7 +823,7 @@ if (process.versions.electron && process.type === 'browser') {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 8);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 9);
         assert.equal(db.prepare('SELECT count(*) AS count FROM helper_settings').get().count,0);
         assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 7);
         assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 3);

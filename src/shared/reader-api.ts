@@ -1,6 +1,7 @@
 import type { AcquisitionNotification, AcquisitionProgress, AcquisitionTimings } from './acquisition';
 import type { Comment, ContentItem } from '../domain/discussion';
-import type { Appearance, Locale, Preferences } from './preferences';
+import { translationTargets } from './preferences';
+import type { Appearance, Locale, Preferences, TranslationTarget } from './preferences';
 import type { WorkspaceState } from '../domain/workspace';
 import type { BulkSeenRequest, SeenMutationResult, SeenUndoResult, SeenUndoDescriptor } from '../domain/seen-operation';
 import type { HelperRequest, HelperStatus } from './helper-settings';
@@ -9,7 +10,7 @@ import type { DataBackupResult } from './data-backup';
 
 export type ErrorCode = 'INVALID_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA'
   | 'ACQUISITION_CANCELLED' | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE' | 'NOT_REMOVABLE' | 'SOURCE_OPEN_FAILED' | 'NOT_OPENABLE'
-  | 'INVALID_BACKUP' | 'NEWER_BACKUP' | 'OLDER_BACKUP' | 'DATA_BUSY' | 'DATA_WRITE_FAILED' | 'RESTORE_FAILED' | 'RECOVERY_REQUIRED';
+  | 'TRANSLATION_TOO_LONG' | 'INVALID_BACKUP' | 'NEWER_BACKUP' | 'OLDER_BACKUP' | 'DATA_BUSY' | 'DATA_WRITE_FAILED' | 'RESTORE_FAILED' | 'RECOVERY_REQUIRED';
 /** Stable codes cross IPC; raw privileged diagnostics never reach the renderer. */
 export type Result<T> = { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: { readonly code: ErrorCode } };
@@ -29,7 +30,9 @@ export interface ToggleSeenRequest {
   readonly commentId: string;
   readonly subtree: boolean;
 }
-export type PreferenceChange = { readonly locale: Locale } | { readonly appearance: Appearance };
+export type PreferenceChange = { readonly locale: Locale } | { readonly appearance: Appearance } | { readonly translationTarget: TranslationTarget };
+/** Identity only; main reads content and preferences and reconstructs destinations. */
+export interface CommentActionRequest { readonly itemId: string; readonly commentId: string; readonly action: 'author' | 'permalink' | 'translate' }
 
 export interface AcquireRequest { readonly url: string }
 export interface TabRequest { readonly tabId: string }
@@ -46,6 +49,7 @@ export interface AcquisitionResult {
 
 /** Intent-only capabilities. No generic invoke, SQL, executable input or Node handles. */
 export interface ReaderApi {
+  openCommentAction(request: CommentActionRequest): Promise<Result<null>>;
   createBackup(): Promise<Result<DataBackupResult>>;
   restoreBackup(): Promise<Result<DataBackupResult>>;
   onAcquisitionProgress(listener: (progress: AcquisitionNotification) => void): () => void;
@@ -73,6 +77,7 @@ export interface ReaderApi {
 }
 
 export const readerChannels = {
+  openCommentAction: 'reader:comment-action',
   createBackup: 'reader:create-backup', restoreBackup: 'reader:restore-backup',
   getAcquisitionProgress: 'reader:acquisition-current', cancelAcquisition: 'reader:cancel-acquisition',
   saveDiscussionView: 'reader:save-discussion-view',
@@ -121,7 +126,12 @@ export function isToggleSeenRequest(value: unknown): value is ToggleSeenRequest 
 }
 export function isPreferenceChange(value: unknown): value is PreferenceChange {
   return (exactKeys(value, ['locale']) && (value.locale === 'en' || value.locale === 'pl'))
-    || (exactKeys(value, ['appearance']) && ['system', 'light', 'dark'].includes(value.appearance as string));
+    || (exactKeys(value, ['appearance']) && ['system', 'light', 'dark'].includes(value.appearance as string))
+    || (exactKeys(value, ['translationTarget']) && translationTargets.includes(value.translationTarget as TranslationTarget));
+}
+export function isCommentActionRequest(value: unknown): value is CommentActionRequest {
+  return exactKeys(value, ['itemId', 'commentId', 'action']) && identifier(value.itemId) && identifier(value.commentId)
+    && ['author', 'permalink', 'translate'].includes(value.action as string);
 }
 export function isAcquireRequest(value: unknown): value is AcquireRequest {
   return exactKeys(value, ['url']) && typeof value.url === 'string' && value.url.length > 0 && value.url.length <= 2048;

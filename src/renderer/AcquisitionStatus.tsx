@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ActionIcon } from './ActionIcon';
 import type { AcquisitionProgress } from '../shared/acquisition';
 import { translator } from './i18n';
 import type { Locale } from './i18n';
@@ -21,11 +22,11 @@ export function AcquisitionStatus({ progress, locale, updating, cancel }: {
   const stageKey = { 'checking-helper': 'stageHelper', preparing: 'stagePreparing', fetching: 'stageFetching',
     processing: 'stageProcessing', saving: 'stageSaving', 'updating-view': 'stageView' } as const;
   return <div className="acquisition-status">
-    <progress aria-label={t(stageKey[stage])} />
+    <span className="acquisition-spinner" aria-hidden="true" />
     <span role="status" title={t(progress.kind === 'refresh' ? 'refreshing' : 'acquiring')}>{t(progress.kind === 'refresh' ? 'operationRefresh' : 'operationAcquire')} <strong>{t(stageKey[stage])}</strong></span>
     <time aria-label={t('operationElapsed')}>{String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}</time>
     {!updating && progress.cancellable && <button disabled={cancelling} onClick={() => {
       setCancelling(true); void cancel().catch(() => undefined).finally(() => setCancelling(false));
-    }}>{t('cancel')}</button>}
+    }}><ActionIcon name="cancel" />{t('cancel')}</button>}
   </div>;
 }

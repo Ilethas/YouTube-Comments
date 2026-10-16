@@ -2,6 +2,7 @@ import type { WorkspaceState, WorkspaceTab } from '../domain/workspace';
 import { useTabStrip } from './use-tab-strip';
 import { translator, Locale } from './i18n';
 import { TabIcon } from './TabIcon';
+import { ActionIcon } from './ActionIcon';
 import { reorderHelp, shortcutHint } from './shortcuts';
 
 interface Props {
@@ -47,7 +48,7 @@ export function WorkspaceTabs({ workspace, locale, disabled, label, icon, activa
       </button>
       <button className="tab-close" disabled={disabled} aria-label={t('closeTab', { title: label(tab) })}
         title={workspace.activeTabId === tab.id ? shortcutHint(locale, 'close-tab', t('closeTab', { title: label(tab) })) : t('closeTab', { title: label(tab) })}
-        onClick={() => close(tab.id)}>×</button>
+        onClick={() => close(tab.id)}><ActionIcon name="cancel" /></button>
     </div>)}
   </div>;
 }

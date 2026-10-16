@@ -1,3 +1,4 @@
+import { ActionIcon } from './ActionIcon';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Comment } from '../domain/discussion';
@@ -25,7 +26,7 @@ function BulkConfirmation({ locale, title, description, pending, error, confirm,
     onCancel={event => { event.preventDefault(); if (!pending) cancel(); }}>
     <h2 id="bulk-title">{t('bulkConfirmTitle')}</h2>{title && <p className="remove-item-title">{title}</p>}<p id="bulk-description">{description}</p>
     <p>{t('bulkRecoveryHelp')}</p>{error && <p role="alert">{error}</p>}
-    <div className="dialog-actions"><button autoFocus disabled={pending} onClick={cancel}>{t('cancel')}</button>
+    <div className="dialog-actions"><button autoFocus disabled={pending} onClick={cancel}><ActionIcon name="cancel" />{t('cancel')}</button>
       <button disabled={pending} onClick={confirm}>{t('bulkExecute')}</button></div>
   </dialog>, document.body);
 }
@@ -93,13 +94,13 @@ export function BulkSeenControls({ itemId, title, comments, result, locale, disa
           {scope !== 'after' && <label>{t('bulkToTime')}<input name="bulk-toTime" type="time" step="60" value={toTime} disabled={disabled || pending} onChange={event => setToTime(event.target.value)} /></label>}
           <p className="reader-help">{t('bulkDateHelp')}</p>
         </>}
-        <button disabled={disabled || pending || scope === 'matching' && !matchingAvailable} onClick={prepare}>{t('bulkExecute')}</button>
+        <button disabled={disabled || pending || scope === 'matching' && !matchingAvailable} onClick={prepare}><ActionIcon name={seen ? 'seen' : 'unseen'} />{t('bulkExecute')}</button>
       </div><p className="reader-help">{t('bulkScopeHelp')}</p>
     </details>
     {feedback && <span role={feedback.kind === 'error' ? 'alert' : 'status'}>{feedback.kind === 'error' ? t('bulkFailed') : feedback.kind === 'noop' ? t('bulkNoop')
       : feedback.kind === 'undo' ? t('bulkRestored', { comments: countLabel(locale, 'comments', feedback.count ?? 0), skipped: number.format(feedback.skipped ?? 0) })
         : t(feedback.seen ? 'bulkMarkedSeen' : 'bulkMarkedUnseen', { comments: countLabel(locale, 'comments', feedback.count ?? 0) })} </span>}
-    {undo && <button className="text-button" title={shortcutHint(locale, 'undo-seen')} disabled={disabled || pending} onClick={() => recover(itemId)}>{t('bulkUndo')}</button>}
+    {undo && <button className="text-button" title={shortcutHint(locale, 'undo-seen')} disabled={disabled || pending} onClick={() => recover(itemId)}><ActionIcon name="undo" />{t('bulkUndo')}</button>}
     {error && !confirmation && <p role="alert">{error}</p>}
     {confirmation && <BulkConfirmation locale={locale} title={title} description={confirmation.description} pending={pending} error={error}
       confirm={() => { void commit(confirmation.request); }} cancel={() => setConfirmation(undefined)} />}

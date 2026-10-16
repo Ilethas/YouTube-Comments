@@ -1,3 +1,5 @@
+import { ActionIcon } from './ActionIcon';
+import type { OpenCommentAction } from './CommentActions';
 import { memo, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { Comment, ContentItem } from '../domain/discussion';
 import { visibleUnseenIds } from '../domain/discussion-query';
@@ -17,6 +19,7 @@ import { SourceAction } from './SourceAction';
 
 const demo = (id: string) => id === 'video-demo' || id === 'post-demo';
 interface Props {
+  onAction?: OpenCommentAction;
   item: ContentItem;
   comments: readonly Comment[];
   session: DiscussionViewSession;
@@ -45,7 +48,7 @@ function VideoDescription({ id, text, locale }: { id: string; text: string; loca
 
 /** Mounted content is independent of its workspace visibility wrapper.
  * Session notifications update only this discussion; draft edits reuse the forest. */
-export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onOpenSource, onToggle, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
+export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onOpenSource, onToggle, onAction, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
   recordRenderWork('panel', item.id);
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const presentation = session.presentation(comments);
@@ -62,7 +65,7 @@ export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, s
             <div className="item-actions"><div className="eyebrow">{t(item.kind)} {demo(item.id) && <span className="demo-label">{t('demo')}</span>}</div>
               <span className="item-status" title={t(coverageLimited ? 'coverageNotice' : demo(item.id) ? 'demoNotice' : 'localNotice')}
                 role={coverageLimited ? 'status' : undefined}>{t(coverageLimited ? 'coverageShort' : 'savedShort')}</span>
-              {!demo(item.id) && <button disabled={refreshDisabled} onClick={() => { onRefresh(item.id); }}>{t('refresh')}</button>}
+              {!demo(item.id) && <button disabled={refreshDisabled} onClick={() => { onRefresh(item.id); }}><ActionIcon name="refresh" />{t('refresh')}</button>}
             </div>
             <div className="item-title"><h1>{item.kind === 'video' ? item.title : item.author?.displayName ?? t('unknownAuthor')}</h1>
               {!demo(item.id) && onOpenSource && <SourceAction itemId={item.id} locale={locale} open={onOpenSource} />}</div>
@@ -86,7 +89,7 @@ export const DiscussionPanel = memo(function DiscussionPanel({ item, comments, s
               unseenCount={visibleUnseenIds(view.result, comments).length} />
             {view.result.restrictive && !view.result.matchCount && <p className="reader-help">{t('noDiscussionMatches')}</p>}
             <VirtualCommentList itemId={item.id} comments={comments} result={view.result} selected={view.selected} session={session} scrollRequest={view.scrollRequest}
-              locale={locale} disabled={saving} onToggle={toggle} now={now} newIds={newIds} />
+              locale={locale} disabled={saving} onToggle={toggle} onAction={onAction} now={now} newIds={newIds} />
           </section>
           {demo(item.id) && <footer className="reader-footer"><p>{t('newHelp')}</p><p>{t('clockNote')}: {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(demoNow)}</p></footer>}
         </div>

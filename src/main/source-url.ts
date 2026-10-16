@@ -5,6 +5,7 @@ import { parseAcquisitionTarget } from './acquisition-target';
  * Remote URL fields are never browser capabilities. Synthetic content has no action. */
 export function sourceUrl(item: ContentItem): string | undefined {
   if (item.removable === false) return undefined;
+  if (item.kind === 'video' ? !/^[A-Za-z0-9_-]{11}$/.test(item.sourceId) : !/^Ug[A-Za-z0-9_-]{8,254}$/.test(item.sourceId)) return undefined;
   const url = item.kind === 'video' && item.sourceKind === 'youtube-video'
     ? `https://www.youtube.com/watch?v=${encodeURIComponent(item.sourceId)}`
     : item.kind === 'post' && item.sourceKind === 'youtube-community-post'

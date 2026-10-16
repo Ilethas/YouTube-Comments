@@ -1,5 +1,24 @@
 # Architecture
 
+## Reader external actions (ADR 0022)
+
+`openCommentAction` is an exact identity/action intent. Main reads the stored item
+and an indexed, item-owned comment, revalidates safe source/author identity, and
+constructs a fixed YouTube or Google Translate HTTPS URL before invoking the existing
+browser capability. No renderer text/URL/target/host/process authority is accepted.
+Bootstrap contains only affordance booleans; no per-render IPC or click-time forest
+reconstruction is needed. Browser errors are sanitized without logging exceptions
+that could contain translated text or generated URLs. Main resolves the saved
+translation target at activation. No automatic translation/network work exists.
+
+Creator presentation uses positive normalized video uploader evidence only. No
+Community creator or comment permalink is inferred. Row-wide marking handlers are
+removed, preserving native selection and explicit checkbox-only marking. Global
+progress keeps ADR 0018's transport and linearization, with a reduced-motion CSS
+spinner. [ADR 0022](decisions/0022-reader-actions-external-links-and-translation-preferences.md)
+records the schema-9 preference and shared outline icon vocabulary.
+
+
 ## Windows distribution (ADRs 0020/0021)
 
 Forge produces a complete Windows x64 ASAR application and the existing ZIP maker

@@ -17,6 +17,6 @@ it('pending browser opening prevents duplicate intents and failure is localized 
   render(<SourceAction itemId="stored" locale="pl" open={open} />);
   const button = screen.getByRole('button'); fireEvent.click(button); fireEvent.click(button); expect(open).toHaveBeenCalledTimes(1);
   finish({ ok: false, error: { code: 'SOURCE_OPEN_FAILED' } });
-  expect((await screen.findByRole('alert')).textContent).toBe('Nie udało się otworzyć YouTube. Spróbuj ponownie.');
+  expect((await screen.findByRole('alert')).textContent).toBe('Nie udało się otworzyć strony w przeglądarce. Spróbuj ponownie.');
   expect(button.hasAttribute('disabled')).toBe(false);
 });

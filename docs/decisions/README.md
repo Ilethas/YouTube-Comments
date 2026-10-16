@@ -156,6 +156,8 @@ Prefer small records about significant decisions, such as SQLite integration, pa
 
 ## ADR index
 
+- [0022 - Reader actions, external links and translation preferences](0022-reader-actions-external-links-and-translation-preferences.md): accepted; removes Shift row marking, keeps explicit checkbox semantics, uses a reduced-motion CSS spinner, accents trusted video creator evidence, adds identity-only main-owned author/video-comment/Google Translate actions, preserves native selection, adds constrained schema-9 translation targets and a shared outline icon vocabulary. No invented Community comment permalink or automatic translation.
+
 - [0020 — Windows packaged application and ZIP distribution](0020-windows-packaged-application-and-zip-distribution.md): accepted; diagnosed Node 26 ZIP stream/API failures, scoped dependency corrections, verified fresh Forge folder/ZIP output, no-install with unchanged profiles, extracted executable smoke and actual restore/relaunch. Narrows Q-20; signing/installers/helper bundling/public release remain open.
 - [0021 — Windows Squirrel installer and application identity](0021-windows-squirrel-installer-and-application-identity.md): accepted; fresh Setup/full NuGet/RELEASES validation, stable identity, neutral icon, lifecycle startup gate, unchanged profiles and uninstall data-retention policy. Installer tests require genuine isolation; none ran on the owner's account. Narrows Q-20 and Q-18; signing/helpers/public release remain open.
 

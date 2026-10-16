@@ -160,7 +160,7 @@ async function verify(window, root, phase) {
       assert.deepEqual(await js('window.__readerWork'), {}, 'Hidden discussions do not mount or reconstruct');
       if (phase === 'library') {
         await js("document.getElementById('settings-toggle').click()"); await wait("document.querySelector('.preferences select') !== null", 'Settings');
-        await control('.preferences label:first-child select', 'pl'); await control('.preferences label:last-child select', 'dark');
+        await control('.preferences label:first-child select', 'pl'); await control('.preferences label:nth-child(2) select', 'dark');
         await wait("document.documentElement.lang==='pl' && document.documentElement.dataset.appearance==='dark'", 'Polish/dark'); await library();
       } else {
         assert.equal(await js('document.documentElement.lang'), 'pl'); assert.equal(await js('document.documentElement.dataset.appearance'), 'dark');

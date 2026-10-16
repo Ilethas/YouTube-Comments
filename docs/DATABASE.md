@@ -1,5 +1,21 @@
 # Database and durable data
 
+## Translation target (schema 9, ADR 0022)
+
+The additive migration adds `preferences.translation_target TEXT NOT NULL DEFAULT
+'app'`, constrained to app/en/pl/de/fr/es/it/pt/ja/ko/zh-CN. Existing preferences become
+Follow application language, preserving all other tables/values and profile identities.
+Only exact validated preference intents update this field. Main resolves app to the
+current persisted locale at browser activation; explicit overrides survive restart.
+
+Backup includes the target with all existing authoritative data. Exact known schema
+validation now recognizes 1–9; schema 1–8 copies upgrade only in staging. Verified
+pre-migration safety protects schema-8 profiles before opening/migration; rollback,
+crash recovery, newer/modified-schema rejection and source immutability remain ADR
+0019. No separate store, translation text/cache or URL persistence is added. See
+[ADR 0022](decisions/0022-reader-actions-external-links-and-translation-preferences.md).
+
+
 ## Complete backup and full-profile restore (ADR 0019)
 
 Settings creates independently usable complete SQLite snapshots with asynchronous
@@ -18,8 +34,8 @@ SQLite backup includes committed WAL state without copying sidecars.
 
 Restore stages the selected standalone snapshot in
 `<profile>/recovery/restore-<UUID>/candidate.sqlite`. It validates recognized schema,
-full SQLite integrity, foreign keys and application invariants. Schemas 1–7 migrate
-only on the copy, followed by revalidation/bootstrap. Current schema is 8. Version
+full SQLite integrity, foreign keys and application invariants. Schemas 1–8 migrate
+only on the copy, followed by revalidation/bootstrap. Current schema is 9. Version
 0/unknown/modified schemas and newer versions reject. The source stays untouched.
 
 Explicit Cancel-first native confirmation precedes child settlement, a verified
@@ -78,7 +94,7 @@ workspace/content/history. Helper selections already store paths only; tested
 versus untested is probe evidence, not a new durable configuration field.
 
 
-SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 8 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW. [ADR 0014](decisions/0014-main-owned-helper-settings.md) adds separate profile-local helper selections.
+SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 9 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW. [ADR 0014](decisions/0014-main-owned-helper-settings.md) adds separate profile-local helper selections.
 
 The implementation below is deliberately small. Later sections describe the broader conceptual target and must not be read as implemented tables/features. Read the [domain model](DOMAIN_MODEL.md) for meanings and [architecture](ARCHITECTURE.md) for ownership.
 
@@ -215,7 +231,7 @@ Do not use localStorage for durable discussions, seen state, tabs or user prefer
 | Discovery/observation information | `publishedAt`, `firstDiscoveredAt`, `lastObservedAt`; first-discovery refresh association | Baseline imports retain discovery history without visual NEW; publication and discovery remain distinct |
 | Refresh attempts | Item, timing, outcome, coverage, diagnostics and useful counts | Committed outcome must agree with committed changes |
 | Tab/view state | Open tab identities/order/active ID; separate draft/applied queries, sort, anchor/row offset and selection per discussion | One optional view per stored item; close retains it, removal deletes it. Expansion remains future |
-| Preferences | Explicit language and appearance choice | Persist intent such as System, not just the resolved current theme |
+| Preferences | Interface language, appearance and translation target | Persist System/Follow app intent, not only resolved values |
 | Migration metadata | Applied schema versions and runner bookkeeping | Must support ordered, repeatable startup decisions |
 | Reversible changes | Information required by the chosen bulk undo/recovery mechanism | Schema 6 stores one operation per item and changed IDs/written revisions (ADR 0013) |
 

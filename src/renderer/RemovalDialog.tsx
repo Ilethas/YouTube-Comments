@@ -1,3 +1,4 @@
+import { ActionIcon } from './ActionIcon';
 import { useEffect, useRef } from 'react';
 import { translator, Locale } from './i18n';
 
@@ -25,7 +26,7 @@ export function RemovalDialog({ title, locale, pending, error, cancel, remove }:
     <h2 id="remove-title">{t('removeTitle')}</h2><p className="remove-item-title">{title}</p>
     <p id="remove-description">{t('removeDescription')}</p>
     {error && <p role="alert">{error}</p>}
-    <div className="dialog-actions"><button autoFocus disabled={pending} onClick={cancel}>{t('cancel')}</button>
+    <div className="dialog-actions"><button autoFocus disabled={pending} onClick={cancel}><ActionIcon name="cancel" />{t('cancel')}</button>
       <button className="destructive" disabled={pending} onClick={remove}>{t('remove')}</button></div>
   </dialog>;
 }

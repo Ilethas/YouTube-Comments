@@ -1,6 +1,6 @@
 import { isCancelAcquisitionRequest } from '../shared/acquisition';
 import type { AcquisitionNotification, AcquisitionProgress } from '../shared/acquisition';
-import { isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshRequest, isTabRequest, isMoveTabRequest, isBulkSeenRequest, isHelperRequest } from '../shared/reader-api';
+import { isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshRequest, isTabRequest, isMoveTabRequest, isBulkSeenRequest, isHelperRequest, isCommentActionRequest } from '../shared/reader-api';
 import type { AcquisitionResult, ReaderOperation, ReaderState, Result } from '../shared/reader-api';
 import type { SeenMutationResult, SeenUndoResult } from '../domain/seen-operation';
 import type { Preferences } from '../shared/preferences';
@@ -16,6 +16,7 @@ import type { HelperStatus } from '../shared/helper-settings';
 import { HelperSettingsService } from './helper-settings';
 import type { HelperSettingsOptions } from './helper-settings';
 import { sourceUrl } from './source-url';
+import { authorUrl, commentPermalink, commentActionAvailability, translationUrl } from './comment-actions';
 import path from 'node:path';
 import type { DataBackupResult } from '../shared/data-backup';
 import type { DataBackupDialogs } from './data-backup-dialogs';
@@ -77,7 +78,7 @@ export class ReaderService {
   dispatch(operation: 'acquire' | 'refresh', args: readonly unknown[]): Promise<Result<AcquisitionResult>>;
   dispatch(operation: 'getHelperStatus' | 'clearHelper', args: readonly unknown[]): Promise<Result<HelperStatus>>;
   dispatch(operation: 'chooseHelper', args: readonly unknown[]): Promise<Result<HelperStatus | null>>;
-  dispatch(operation: 'openSource', args: readonly unknown[]): Promise<Result<null>>;
+  dispatch(operation: 'openSource' | 'openCommentAction', args: readonly unknown[]): Promise<Result<null>>;
   dispatch(operation: 'getAcquisitionProgress', args: readonly unknown[]): Result<AcquisitionProgress | null>;
   dispatch(operation: 'cancelAcquisition', args: readonly unknown[]): Result<null>;
   dispatch(operation: 'saveDiscussionView', args: readonly unknown[]): Result<null>;
@@ -98,6 +99,7 @@ export class ReaderService {
       return this.acquisition?.cancel(args[0].operationId) ?? { ok: false, error: { code: 'NOT_FOUND' } };
     }
     if (operation === 'openSource') return this.openSource(args);
+    if (operation === 'openCommentAction') return this.openCommentAction(args);
     if (operation === 'getHelperStatus' || operation === 'chooseHelper' || operation === 'clearHelper') {
       if (args.length !== 1 || !isHelperRequest(args[0])) return Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
       if (!this.helpers) return Promise.resolve({ ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } });
@@ -215,6 +217,30 @@ export class ReaderService {
       await this.openBrowser(url);
       return { ok: true, value: null };
     } catch (error) { this.diagnose(error); return { ok: false, error: { code: 'SOURCE_OPEN_FAILED' } }; }
+  }
+  private async openCommentAction(args: readonly unknown[]): Promise<Result<null>> {
+    if (args.length !== 1 || !isCommentActionRequest(args[0])) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+    if (!this.repository) return { ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } };
+    const { itemId, commentId, action } = args[0];
+    let url: string | undefined;
+    try {
+      const item = this.repository.getStoredItem(itemId);
+      if (!item) return { ok: false, error: { code: 'NOT_FOUND' } };
+      const comment = this.repository.getActionComment(item, commentId);
+      if (!comment) return { ok: false, error: { code: 'NOT_FOUND' } };
+      if (!commentActionAvailability(item, comment)[action]) return { ok: false, error: { code: 'NOT_OPENABLE' } };
+      url = action === 'author' ? authorUrl(comment.author) : action === 'permalink' ? commentPermalink(item, comment)
+        : translationUrl(comment.text, this.repository.preferences(this.languages));
+      if (!url) return { ok: false, error: { code: action === 'translate' ? 'TRANSLATION_TOO_LONG' : 'NOT_OPENABLE' } };
+    } catch { return { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }; }
+    try {
+      if (!this.openBrowser) return { ok: false, error: { code: 'SOURCE_OPEN_FAILED' } };
+      await this.openBrowser(url);
+      return { ok: true, value: null };
+    } catch {
+      // Browser errors can include the URL and comment text. Never diagnose them.
+      return { ok: false, error: { code: 'SOURCE_OPEN_FAILED' } };
+    }
   }
   /** Synchronous idle-only test cleanup. Runtime quit uses shutdown to await children. */
   close(): void { void this.acquisition?.close(); void this.helpers?.shutdown(); this.repository?.close(); }

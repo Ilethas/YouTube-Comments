@@ -1,5 +1,37 @@
 # UI and navigation
 
+## Reader actions and selection (ADR 0022)
+
+Normal comment surfaces never mark seen. Drag, Shift extension, cross-element
+selection and Copy use native browser behavior. Explicit checkbox click toggles one;
+Ctrl+checkbox assigns that result to all stored descendants. Settings and tooltips
+list only the remaining checkbox shortcut. Undo and applied membership stay stable.
+
+Positive video uploader evidence accents the author name and adds Creator/Autor text;
+Community and unknown evidence remain ordinary. Pinned, UNSEEN, MATCH, CONTEXT and
+NEW stay separate. Safe author names and video timestamps are underlined browser
+commands with small external glyphs, native focusable buttons, localized names and
+tooltips. Missing safe identity gives ordinary text. Estimated publication labels
+stay approximate. Community has no invented comment permalink; Open on YouTube in
+the heading explicitly opens its post. Actions neither mark nor select/navigate rows.
+Selecting across a link-shaped control suppresses activation without cancelling
+native pointer events.
+
+Translate in browser is always visible beside compact metadata, with an outline
+language icon and localized label. It opens the full stored comment in Google
+Translate with auto-detection and the saved target. Text exceeding 5000 UTF-16 units or a URL exceeding 8000 encoded
+characters is rejected; localized feedback offers full Copy and manual translation in smaller parts. There
+is no truncation or automatic outbound request. Settings explains the Google privacy
+boundary and provides Follow application language plus ten explicit target choices.
+
+A compact 16px CSS spinner replaces the indeterminate progress bar. Coarse stage,
+elapsed time and exact-ID Cancel stay global while switching tabs; Saving and
+Updating view remain non-cancellable. Reduced motion keeps a static ring with stage
+text. No percentage is shown. Existing app-owned outline vectors now share one
+ActionIcon mapping for external/translation/copy, Refresh/Cancel, seen/unseen/Undo,
+Library/Settings and tab close; icons are decorative and controls remain named.
+
+
 ## Data and backups (ADR 0019)
 
 Settings has localized Create backup… and Restore backup… actions, complete-profile
@@ -27,10 +59,10 @@ compact localized header alert, without changing stored content/workspace.
 Synthetic demos omit the action.
 
 Seen labels offer at least 36 px width/height with compact visible checkbox and
-visible focus. Shift+Click comment toggles one; Ctrl+Shift+Click comment applies
-the resulting state to its stored descendants. Controls and selected text are
-excluded; plain/right/Alt/Meta clicks are not mutations. Ctrl+Click checkbox
-retains existing behavior. See [Seen state](SEEN_STATE.md).
+visible focus. Only checkbox click and Ctrl+checkbox mutate seen; row-wide Shift
+and Ctrl+Shift gestures were removed in ADR 0022. Native text selection, Shift
+extension, cross-element selection, Copy and external actions never mark comments.
+See [Seen state](SEEN_STATE.md).
 
 Publication bulk scopes show a date and optional native minute time per boundary.
 Blank time retains calendar-day semantics; upper time includes the whole entered
@@ -106,8 +138,6 @@ Background close controls omit Ctrl+W because that command closes the active tab
 | Alt+Left / Alt+Right | Reorder only the focused workspace tab. |
 | Left / Right / Home / End | Existing activation/focus navigation on workspace tabs. |
 | Ctrl+Z | Undo latest recoverable multi-comment seen change in the active discussion, outside editable controls and confirmation dialogs; unavailable recovery leaves the key unconsumed. |
-| Shift+Click comment | Toggle only that comment, outside interactive targets/text selection. |
-| Ctrl+Shift+Click comment | Apply the clicked resulting state to all stored descendants, with the same exclusions. |
 | Ctrl+Click | Seen checkbox applies its resulting state to the comment and all descendants. |
 | Enter | Existing natural URL submission or discussion query form Apply. |
 | Escape | Drag cancellation, URL form hiding and removal/bulk dialog cancellation unless its write is pending. |

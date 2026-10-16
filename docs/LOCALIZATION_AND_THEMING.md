@@ -1,13 +1,32 @@
 # Localization and theming
 
+## External translation and action presentation (ADR 0022)
+
+Settings persists `translationTarget`: Follow application language (default), English,
+Polish, German, French, Spanish, Italian, Portuguese, Japanese, Korean or Chinese
+(Simplified). Follow app resolves to en/pl when the action runs; explicit choices do
+not change with the interface. Labels, action tooltips, long-text/manual-copy feedback
+and the privacy explanation have paired EN/PL keys. Opening translation explicitly
+sends this comment's text to Google through the external browser; no automatic
+translation, cache or API exists. UI language still does not translate stored content
+or alter search. Publication labels preserve source precision/estimatedness.
+
+Creator tokens are purple with separate light/dark values and a text badge, never a
+full-row tint or an identity inference. Unknown/Community evidence has no accent.
+Shared decorative outline action vectors inherit currentColor; named controls and
+focus outlines carry meaning. The progress ring stops rotating under
+prefers-reduced-motion while the localized stage remains visible. Native text
+selection no longer competes with Shift row gestures. See
+[ADR 0022](decisions/0022-reader-actions-external-links-and-translation-preferences.md).
+
+
 ## Usability labels and evidence (ADR 0015)
 
 [ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) adds English/Polish source-button labels and compact failure text,
 textual tested/untested/unavailable helper status with detected/tested versions
 and an untested-format warning. Warning styling uses semantic theme tokens and
 an icon plus text, never icon/color alone. Settings is titled Shortcuts and gestures
-/ Skróty i gesty, including Shift+Click comment, Ctrl+Shift+Click comment and
-Ctrl+Click checkbox. Seen labels retain native keyboard focus and visible outline.
+/ Skróty i gesty, including Ctrl+Click checkbox. ADR 0022 removes the row-wide Shift gestures. Seen labels retain native keyboard focus and visible outline.
 
 Bulk-only optional native time inputs expose localized From/To date/time labels,
 validation and timed confirmation text. Minute values remain HH:mm data; locale

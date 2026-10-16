@@ -26,8 +26,6 @@ export const shortcuts = [
   { id: 'apply-view', keys: ['Ctrl', 'Enter'], description: 'applyHelp', group: 'shortcutSearch', scope: 'shortcutDiscussion' },
   { id: 'next-match', keys: ['F3'], description: 'nextMatch', group: 'shortcutSearch', scope: 'shortcutDiscussion' },
   { id: 'previous-match', keys: ['Shift', 'F3'], description: 'previousMatch', group: 'shortcutSearch', scope: 'shortcutDiscussion' },
-  { id: 'comment-toggle-row', keys: ['Shift', 'Click'], description: 'shortcutRowToggle', group: 'shortcutComments', scope: 'shortcutCommentSurface' },
-  { id: 'comment-subtree-row', keys: ['Ctrl', 'Shift', 'Click'], description: 'shortcutSubtree', group: 'shortcutComments', scope: 'shortcutCommentSurface' },
   { id: 'comment-subtree', keys: ['Ctrl', 'Click'], description: 'shortcutSubtree', group: 'shortcutComments', scope: 'shortcutSeenCheckbox' },
   { id: 'undo-seen', keys: ['Ctrl', 'Z'], description: 'bulkUndoHelp', group: 'shortcutComments', scope: 'bulkUndoScope' },
   { id: 'submit', keys: ['Enter'], description: 'shortcutSubmit', group: 'shortcutAcquisition', scope: 'shortcutSubmitScope' },
@@ -57,7 +55,7 @@ export function shortcutHint(locale: Locale, id: ShortcutId, label?: string): st
   return `${label ?? translator(locale)(shortcut(id).description)} (${formatShortcut(id)})`;
 }
 export function seenHelp(locale: Locale): string {
-  return translator(locale)('seenHelp', { shortcut: formatShortcut('comment-subtree'), row: formatShortcut('comment-toggle-row'), subtree: formatShortcut('comment-subtree-row') });
+  return translator(locale)('seenHelp', { shortcut: formatShortcut('comment-subtree') });
 }
 export function reorderHelp(locale: Locale): string {
   return translator(locale)('reorderHelp', { left: formatShortcut('move-tab-left'), right: formatShortcut('move-tab-right') });

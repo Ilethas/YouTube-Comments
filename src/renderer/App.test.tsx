@@ -1,3 +1,4 @@
+import { required } from './testing/required';
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
@@ -28,13 +29,14 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() { /* jsdom has no layout. */ } unobserve() { /* Test only. */ } disconnect() { /* Test only. */ } });
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: function(this: HTMLElement, options: ScrollToOptions) { this.scrollTop = options.top ?? 0; } });
   vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate: async (comments, query) => evaluateDiscussionQuery(comments, query), dispose: vi.fn() } as QueryExecutor as ReturnType<typeof createQueryExecutor>));
-  state = { discussionViews: {}, seenUndo: {}, items, comments: initialComments, preferences: { locale: 'en', appearance: 'system' },
+  state = { discussionViews: {}, seenUndo: {}, items, comments: initialComments, preferences: { locale: 'en', appearance: 'system', translationTarget: 'app' },
     workspace: { tabs: items.map(item => discussionTab(item.id)), activeTabId: discussionTab(items[0].id).id, revision: 0 } };
   const open: ReaderApi['openStoredItem'] = async ({ itemId }) => {
     state = { ...state, workspace: openWorkspaceTab(state.workspace, discussionTab(itemId)) };
     return { ok: true as const, value: state.workspace };
   };
   api = {
+    openCommentAction: vi.fn(async () => ({ ok: true as const, value: null })),
     createBackup: vi.fn(async () => ({ ok: true as const, value: { status: 'cancelled' as const } })),
     restoreBackup: vi.fn(async () => ({ ok: true as const, value: { status: 'cancelled' as const } })),
     onAcquisitionProgress: vi.fn(() => () => undefined),
@@ -80,6 +82,21 @@ beforeEach(() => {
   };
 });
 async function showReader() { render(<App api={api} />); await screen.findByRole('tabpanel'); }
+
+it('Settings persists a bounded translation override independently from language and restores it on remount', async () => {
+  await showReader(); fireEvent.click(required(document.getElementById('settings-toggle')));
+  const target = await screen.findByRole('combobox', { name: 'Translation target language' });
+  expect((target as HTMLSelectElement).value).toBe('app'); expect(target.querySelectorAll('option')).toHaveLength(11);
+  expect(screen.getByText(/Opening translation sends/)).toBeTruthy();
+  fireEvent.change(target, { target: { value: 'de' } });
+  await waitFor(() => expect(state.preferences.translationTarget).toBe('de'));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'pl' } });
+  await waitFor(() => expect(document.documentElement.lang).toBe('pl'));
+  expect((screen.getByRole('combobox', { name: 'Docelowy język tłumaczenia' }) as HTMLSelectElement).value).toBe('de');
+  cleanup(); await showReader();
+  expect((screen.getByRole('combobox', { name: 'Docelowy język tłumaczenia' }) as HTMLSelectElement).value).toBe('de');
+  expect(api.openCommentAction).not.toHaveBeenCalled(); expect(api.toggleSeen).not.toHaveBeenCalled();
+});
 
 beforeEach(() => {
   vi.stubGlobal('PointerEvent', MouseEvent);
@@ -355,7 +372,7 @@ function acquired(): AcquisitionResult {
   const item = { ...items[0], id: 'acquired-video', removable: true, sourceId: 'abcdefghijk', title: 'Acquired video' };
   const comment = { ...initialComments['video-demo'][0], id: 'acquired-comment', itemId: item.id, parentId: null, seen: false, text: 'Acquired comment' };
   return { operationId: 'fixture-operation', timings: { targetMs: 0, helperMs: 0, preparationMs: 0, fetchMs: 0, processingMs: 0, savingMs: 0, bootstrapMs: 0, totalMs: 0 },
-    state: { discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system' },
+    state: { discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system', translationTarget: 'app' },
     workspace: { tabs: [...items, item].map(item => discussionTab(item.id)), activeTabId: discussionTab(item.id).id, revision: 1 } },
     summary: { itemId: item.id, coverage: 'unknown', inserted: 1, updated: 0, warnings: 0 } };
 }
@@ -1148,7 +1165,7 @@ it('bulk no-op/error retains prior acknowledged checkboxes and durable Undo', as
 });
 
 it.each(['en', 'pl'] as const)('global progress remains visible through tab switches; cancellation is neutral in %s', async locale => {
-  state = { ...acquired().state, preferences: { locale, appearance: 'system' } };
+  state = { ...acquired().state, preferences: { locale, appearance: 'system', translationTarget: 'app' } };
   let listener!: (value: AcquisitionNotification) => void;
   let finish!: (value: Result<AcquisitionResult>) => void;
   api.onAcquisitionProgress = callback => { listener = callback; return () => undefined; };
@@ -1163,19 +1180,19 @@ it.each(['en', 'pl'] as const)('global progress remains visible through tab swit
   });
   await showReader();
   fireEvent.click(screen.getByRole('button', { name: locale === 'en' ? 'Refresh' : 'Od\u015bwie\u017c' }));
-  await screen.findByRole('progressbar');
+  await waitFor(() => expect(document.querySelector('.acquisition-spinner')).toBeTruthy());
   fireEvent.click(checkboxes()[0]); await waitFor(() => expect(api.toggleSeen).toHaveBeenCalled());
   const settings = document.getElementById('settings-toggle'); if (!settings) throw new Error('Missing Settings');
   fireEvent.click(settings);
   await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe('panel-settings'));
-  expect(screen.getByRole('progressbar')).toBeTruthy();
+  expect(document.querySelector('.acquisition-spinner')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: locale === 'en' ? 'Cancel' : 'Anuluj' }));
-  await waitFor(() => expect(screen.queryByRole('progressbar')).toBeNull());
+  await waitFor(() => expect(document.querySelector('.acquisition-spinner')).toBeNull());
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.getByText(locale === 'en' ? 'Refresh cancelled. Saved discussion was unchanged.'
     : 'Od\u015bwie\u017canie anulowane. Zapisana dyskusja pozosta\u0142a bez zmian.')).toBeTruthy();
   act(() => listener(progress));
-  expect(screen.queryByRole('progressbar')).toBeNull();
+  expect(document.querySelector('.acquisition-spinner')).toBeNull();
 });
 
 it('committed Refresh shows non-cancellable Updating view until query settlement; query failure remains a view error', async () => {

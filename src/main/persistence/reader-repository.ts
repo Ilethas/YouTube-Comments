@@ -25,6 +25,9 @@ import type { HelperKind } from '../../shared/helper-settings';
 import { isSaveDiscussionViewRequest } from '../../domain/discussion-view';
 import type { DiscussionViewIntent, SaveDiscussionViewRequest } from '../../domain/discussion-view';
 import { createVerifiedBackup } from './sqlite-backup';
+import { commentActionAvailability } from '../comment-actions';
+import type { ActionComment } from '../comment-actions';
+import { sourceUrl } from '../source-url';
 import type { BackupTimings } from './sqlite-backup';
 
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
@@ -161,11 +164,21 @@ export class ReaderRepository {
 
   /** Read-only stored identity lookup; opening a browser never changes the workspace. */
   getStoredItem(itemId: string): ContentItem | undefined {
-    return this.readItems().find(item => item.id === itemId);
+    return this.readItems(itemId)[0];
   }
 
-  private readItems(): readonly ContentItem[] {
-    return this.db.prepare('SELECT * FROM content_items ORDER BY position').all().map(row => {
+  /** Indexed ownership lookup for explicit actions; no forest/bootstrap per click. */
+  getActionComment(item: ContentItem, commentId: string): ActionComment | undefined {
+    const row = this.db.prepare('SELECT id, item_id, source_comment_id, author_source_id, author_display_name, author_handle, text FROM comments WHERE item_id=? AND id=?').get(item.id, commentId);
+    if (!row) return undefined;
+    return { id: String(row.id), itemId: item.id, source: { kind: item.kind, itemId: item.sourceId, commentId: String(row.source_comment_id) },
+      author: { sourceId: optionalText(row, 'author_source_id'), handle: optionalText(row, 'author_handle') }, text: String(row.text) };
+  }
+
+  private readItems(itemId?: string): readonly ContentItem[] {
+    const rows = itemId === undefined ? this.db.prepare('SELECT * FROM content_items ORDER BY position').all()
+      : this.db.prepare('SELECT * FROM content_items WHERE id=?').all(itemId);
+    return rows.map(row => {
       if (row.remote_json === null) throw new Error('Missing durable item evidence');
       const remote = remoteEvidence<StoredContentObservation>(String(row.remote_json));
       const removable = this.db.prepare('SELECT backend FROM extraction_attempts WHERE id=?').get(row.baseline_attempt_id)?.backend !== 'synthetic-demo';
@@ -182,6 +195,7 @@ export class ReaderRepository {
   }
 
   private readComments(item: ContentItem): readonly Comment[] {
+    const canonicalItem = sourceUrl(item) ?? '';
     const rows = this.db.prepare(`SELECT c.*, s.seen FROM comments c
       LEFT JOIN comment_state s ON s.comment_id = c.id WHERE c.item_id = ? ORDER BY c.position`).all(item.id);
     const evidence = rows.map(row => {
@@ -193,7 +207,7 @@ export class ReaderRepository {
       if (row.seen !== 0 && row.seen !== 1) throw new Error('Missing local comment state');
       const relationship = projection.get(String(row.id));
       if (!relationship) throw new Error('Missing relationship projection');
-      return {
+      const comment: Comment = {
         id: String(row.id), itemId: item.id, parentId: relationship.parentId,
         directParentId: relationship.directParentId, remote: evidence[index].remote,
         relationshipStatus: relationship.status,
@@ -206,6 +220,7 @@ export class ReaderRepository {
         isCreator: row.is_creator === null ? undefined : row.is_creator === 1,
         isPinned: row.is_pinned === null ? undefined : row.is_pinned === 1, seen: row.seen === 1,
       };
+      return { ...comment, actions: commentActionAvailability(item, comment, canonicalItem) };
     });
   }
 
@@ -286,10 +301,10 @@ export class ReaderRepository {
   }
 
   preferences(languages: readonly string[]): Preferences {
-    const row = this.db.prepare('SELECT locale, appearance FROM preferences WHERE id = 1').get();
+    const row = this.db.prepare('SELECT locale, appearance, translation_target FROM preferences WHERE id = 1').get();
     if (!row) throw new Error('Missing preferences');
     return { locale: row.locale === null ? initialLocale(languages) : row.locale as Preferences['locale'],
-      appearance: row.appearance as Preferences['appearance'] };
+      appearance: row.appearance as Preferences['appearance'], translationTarget: row.translation_target as Preferences['translationTarget'] };
   }
 
   bootstrap(languages: readonly string[]): ReaderState {
@@ -499,7 +514,8 @@ export class ReaderRepository {
   updatePreferences(change: PreferenceChange, languages: readonly string[]): Preferences {
     return transaction(this.db, () => {
       if ('locale' in change) this.db.prepare('UPDATE preferences SET locale = ? WHERE id = 1').run(change.locale);
-      else this.db.prepare('UPDATE preferences SET appearance = ? WHERE id = 1').run(change.appearance);
+      else if ('appearance' in change) this.db.prepare('UPDATE preferences SET appearance = ? WHERE id = 1').run(change.appearance);
+      else this.db.prepare('UPDATE preferences SET translation_target = ? WHERE id = 1').run(change.translationTarget);
       return this.preferences(languages);
     });
   }

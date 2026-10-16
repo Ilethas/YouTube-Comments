@@ -7,6 +7,7 @@
   --text: #202b37;
   --muted: #596778;
   --border: #d7dfe7;
+  --creator: #6f4093;
   --accent: #235ba8;
   --accent-soft: #eaf2fd;
   --unseen: #235ba8;
@@ -24,6 +25,7 @@
   --text: #e5eaf0;
   --muted: #abb8c8;
   --border: #3a4859;
+  --creator: #d4b0f0;
   --accent: #9dc7ff;
   --accent-soft: #223956;
   --unseen: #9dc7ff;
@@ -42,7 +44,8 @@
     --text: #e5eaf0;
     --muted: #abb8c8;
     --border: #3a4859;
-    --accent: #9dc7ff;
+    --creator: #d4b0f0;
+  --accent: #9dc7ff;
     --accent-soft: #223956;
     --unseen: #9dc7ff;
     --new-text: #ffdc88;
@@ -231,6 +234,22 @@ time, .muted { color: var(--muted); }
 .discussion-sort label { display: flex; align-items: center; gap: 6px; }
 
 .acquisition-status { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
-.acquisition-status progress { width: 4rem; height: .5rem; }
+.acquisition-spinner { width: 16px; height: 16px; flex: 0 0 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-right-color: var(--accent); border-radius: 50%; animation: acquisition-spin .9s linear infinite; }
+@keyframes acquisition-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .acquisition-spinner { animation: none; } }
 .acquisition-status time { font-variant-numeric: tabular-nums; }
 .acquisition-completion { padding: .3rem .8rem; color: var(--muted); font-size: .85rem; }
+
+.action-icon { width: 16px; height: 16px; vertical-align: -3px; flex: 0 0 16px; pointer-events: none; }
+button > .action-icon { margin-right: 4px; }
+.source-button > .action-icon { margin: 0; }
+.inline-link { border: 0; background: transparent; color: inherit; font: inherit; padding: 0; text-align: inherit; text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 3px; user-select: text; }
+.inline-link > .action-icon { width: 11px; height: 11px; margin: 0 0 0 3px; vertical-align: -1px; }
+.comment-byline .creator-author, .creator-badge { color: var(--creator); }
+.creator-badge { border: 1px solid currentColor; background: var(--surface); }
+.comment-translate { border: 0; background: transparent; color: var(--muted); padding: 0 2px; font-size: inherit; }
+.comment-action-feedback { display: inline; color: var(--text); font-weight: normal; }
+.comment-action-feedback button { color: var(--accent); background: var(--surface); border: 1px solid var(--border); border-radius: 4px; margin-left: 4px; }
+.inline-link:focus-visible, .comment-translate:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.tab-close > .action-icon { width: 12px; height: 12px; margin: 0; vertical-align: 0; }
