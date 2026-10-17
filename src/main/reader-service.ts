@@ -1,3 +1,4 @@
+import type { ReaderCallerContext } from './caller-context';
 import { isCancelAcquisitionRequest } from '../shared/acquisition';
 import type { AcquisitionNotification, AcquisitionProgress } from '../shared/acquisition';
 import { isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshRequest, isTabRequest, isMoveTabRequest, isBulkSeenRequest, isHelperRequest, isCommentActionRequest } from '../shared/reader-api';
@@ -75,28 +76,30 @@ export class ReaderService {
     }
   }
 
-  /** args preserve arity validation even for bootstrap's payload-free query. */
-  dispatch(operation: 'bootstrap' | 'removeLibraryItem', args: readonly unknown[]): Result<ReaderState>;
-  dispatch(operation: 'toggleSeen' | 'bulkSeen', args: readonly unknown[]): Result<SeenMutationResult>;
-  dispatch(operation: 'undoSeen', args: readonly unknown[]): Result<SeenUndoResult>;
-  dispatch(operation: 'updatePreferences', args: readonly unknown[]): Result<Preferences>;
-  dispatch(operation: 'openStoredItem' | 'activateTab' | 'closeTab' | 'openLibrary' | 'openSettings' | 'moveTab', args: readonly unknown[]): Result<WorkspaceState>;
-  dispatch(operation: 'acquire' | 'refresh', args: readonly unknown[]): Promise<Result<AcquisitionResult>>;
-  dispatch(operation: 'getHelperStatus' | 'clearHelper', args: readonly unknown[]): Promise<Result<HelperStatus>>;
-  dispatch(operation: 'chooseHelper', args: readonly unknown[]): Promise<Result<HelperStatus | null>>;
-  dispatch(operation: 'openSource' | 'openCommentAction', args: readonly unknown[]): Promise<Result<null>>;
-  dispatch(operation: 'getAcquisitionProgress', args: readonly unknown[]): Result<AcquisitionProgress | null>;
-  dispatch(operation: 'cancelAcquisition', args: readonly unknown[]): Result<null>;
-  dispatch(operation: 'saveDiscussionView' | 'setDiscussionCollapse', args: readonly unknown[]): Result<null>;
-  dispatch(operation: 'createBackup' | 'restoreBackup', args: readonly unknown[]): Promise<Result<DataBackupResult>>;
-  dispatch(operation: 'getThumbnail' | 'checkThumbnail', args: readonly unknown[]): Promise<Result<string | null>>;
-  dispatch(operation: 'openThumbnail', args: readonly unknown[]): Promise<Result<null>>;
-  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ServiceValue> | Promise<Result<ServiceValue>>;
-  dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ServiceValue> | Promise<Result<ServiceValue>> {
+  /** args preserve arity validation even for bootstrap's payload-free query.
+   * IPC supplies main-authenticated context separately; trusted internal callers
+   * may omit it. Shared operations stay profile-owned; only dialogs need origin. */
+  dispatch(operation: 'bootstrap' | 'removeLibraryItem', args: readonly unknown[], caller?: ReaderCallerContext): Result<ReaderState>;
+  dispatch(operation: 'toggleSeen' | 'bulkSeen', args: readonly unknown[], caller?: ReaderCallerContext): Result<SeenMutationResult>;
+  dispatch(operation: 'undoSeen', args: readonly unknown[], caller?: ReaderCallerContext): Result<SeenUndoResult>;
+  dispatch(operation: 'updatePreferences', args: readonly unknown[], caller?: ReaderCallerContext): Result<Preferences>;
+  dispatch(operation: 'openStoredItem' | 'activateTab' | 'closeTab' | 'openLibrary' | 'openSettings' | 'moveTab', args: readonly unknown[], caller?: ReaderCallerContext): Result<WorkspaceState>;
+  dispatch(operation: 'acquire' | 'refresh', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<AcquisitionResult>>;
+  dispatch(operation: 'getHelperStatus' | 'clearHelper', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<HelperStatus>>;
+  dispatch(operation: 'chooseHelper', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<HelperStatus | null>>;
+  dispatch(operation: 'openSource' | 'openCommentAction', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<null>>;
+  dispatch(operation: 'getAcquisitionProgress', args: readonly unknown[], caller?: ReaderCallerContext): Result<AcquisitionProgress | null>;
+  dispatch(operation: 'cancelAcquisition', args: readonly unknown[], caller?: ReaderCallerContext): Result<null>;
+  dispatch(operation: 'saveDiscussionView' | 'setDiscussionCollapse', args: readonly unknown[], caller?: ReaderCallerContext): Result<null>;
+  dispatch(operation: 'createBackup' | 'restoreBackup', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<DataBackupResult>>;
+  dispatch(operation: 'getThumbnail' | 'checkThumbnail', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<string | null>>;
+  dispatch(operation: 'openThumbnail', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<null>>;
+  dispatch(operation: ReaderOperation, args: readonly unknown[], caller?: ReaderCallerContext): Result<ServiceValue> | Promise<Result<ServiceValue>>;
+  dispatch(operation: ReaderOperation, args: readonly unknown[], caller?: ReaderCallerContext): Result<ServiceValue> | Promise<Result<ServiceValue>> {
     if (operation === 'createBackup' || operation === 'restoreBackup') {
       if (args.length !== 0) return Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
       if (this.dataPending || this.stopping || this.restartPending) return Promise.resolve({ ok: false, error: { code: 'DATA_BUSY' } });
-      this.dataPending = this.runDataOperation(operation).finally(() => { this.dataPending = undefined; });
+      this.dataPending = this.runDataOperation(operation, caller).finally(() => { this.dataPending = undefined; });
       return this.dataPending;
     }
     if (this.stopping || this.restartPending || this.dataPending && operation !== 'getAcquisitionProgress') return { ok: false, error: { code: 'DATA_BUSY' } };
@@ -114,7 +117,7 @@ export class ReaderService {
       if (!this.helpers) return Promise.resolve({ ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } });
       const kind = args[0].kind;
       const pending = operation === 'getHelperStatus' ? this.helpers.getStatus(kind)
-        : operation === 'chooseHelper' ? this.helpers.choose(kind) : this.helpers.clear(kind);
+        : operation === 'chooseHelper' ? this.helpers.choose(kind, caller) : this.helpers.clear(kind);
       return pending.catch(error => { this.diagnose(error); return { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }; });
     }
     if (operation === 'acquire' || operation === 'refresh') {
@@ -208,26 +211,28 @@ export class ReaderService {
     if (!item || item.kind !== 'video' || item.isDemo || item.sourceKind !== 'youtube-video' || item.sourceId !== grant.value.videoId) return undefined;
     return this.thumbnails?.cache.read(grant.value);
   }
-  private async runDataOperation(operation: 'createBackup' | 'restoreBackup'): Promise<Result<DataBackupResult>> {
+  private async runDataOperation(operation: 'createBackup' | 'restoreBackup', caller?: ReaderCallerContext): Promise<Result<DataBackupResult>> {
     const options = this.dataOptions, repository = this.repository;
     if (!options || !repository) return { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } };
+    const originLost = () => caller !== undefined && !caller.isCurrent();
     let closed = false, settled = false;
     try {
       const locale = repository.preferences(this.languages).locale;
       if (operation === 'createBackup') {
         if (this.acquisition?.current()) return { ok: false, error: { code: 'DATA_BUSY' } };
         await this.helpers?.settle();
-        if (this.stopping) return { ok: true, value: { status: 'cancelled' } };
-        const destination = await options.dialogs.save(locale);
-        if (!destination || this.stopping) return { ok: true, value: { status: 'cancelled' } };
+        if (this.stopping || originLost()) return { ok: true, value: { status: 'cancelled' } };
+        const destination = await options.dialogs.save(locale, caller);
+        if (!destination || this.stopping || originLost()) return { ok: true, value: { status: 'cancelled' } };
         await validateBackupDestination(destination, options.databasePath);
+        if (originLost()) return { ok: true, value: { status: 'cancelled' } };
         await repository.createBackup(destination);
         return { ok: true, value: { status: 'created', destination } };
       }
-      const source = await options.dialogs.select(locale);
-      if (!source || this.stopping) return { ok: true, value: { status: 'cancelled' } };
+      const source = await options.dialogs.select(locale, caller);
+      if (!source || this.stopping || originLost()) return { ok: true, value: { status: 'cancelled' } };
       const directory = await prepareRestore(source, options.databasePath, options.checkpoint);
-      if (this.stopping || !await options.dialogs.confirm(locale) || this.stopping) return { ok: true, value: { status: 'cancelled' } };
+      if (this.stopping || originLost() || !await options.dialogs.confirm(locale, caller) || this.stopping || originLost()) return { ok: true, value: { status: 'cancelled' } };
       // Main has rejected new IPC mutations since this operation began. Accepted
       // renderer queues were flushed before invocation; now settle all children
       // and any earlier helper selection before the safety snapshot.

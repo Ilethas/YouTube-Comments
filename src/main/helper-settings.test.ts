@@ -51,6 +51,19 @@ it('environment > saved > PATH, captures startup authority, and never persists o
   expect(repository.getHelperSelection('post-archiver')).toBeUndefined();
 });
 
+it('captures caller before queueing and cancels selection if origin expires before probe commit', async () => {
+  let current = true;
+  const caller = { windowId: 'origin', rendererLease: 'lease', isCurrent: () => current };
+  const choose = vi.fn(async () => path.join(directory, 'custom.exe')), service = helper({}, choose);
+  execute.mockImplementationOnce(async () => { current = false; return output('2026.08.19'); });
+  expect(await service.choose('yt-dlp', caller)).toEqual({ ok: true, value: null });
+  expect(choose).toHaveBeenCalledWith('yt-dlp', caller);
+  expect(repository.getHelperSelection('yt-dlp')).toBeUndefined();
+  choose.mockClear();
+  expect(await service.choose('yt-dlp', caller)).toEqual({ ok: true, value: null });
+  expect(choose).not.toHaveBeenCalled();
+});
+
 it('invalid environment and broken saved paths fail closed, including empty overrides', async () => {
   repository.setHelperSelection('yt-dlp', path.join(directory, 'custom.exe'));
   for (const invalid of ['', 'relative.exe', path.join(directory, 'missing.exe')]) {

@@ -1,5 +1,10 @@
 # Multi-window readiness audit
 
+Follow-up: M1 is now implemented by
+[ADR 0027](decisions/0027-secure-window-coordination-foundation.md). The audit below
+remains the historical baseline; its mutable-mainWindow findings describe the
+pre-M1 source. Public startup still creates one reader; M2–M9 remain future work.
+
 Research date: 2026-10-17 (Europe/Warsaw). Source baseline:
 `bc5493801d499d99b8c6214b3a94550500f9ec63`, schema **12**, Electron **44.4.5**,
 host Node **26.7.0**. This is an audit, not an accepted implementation ADR.

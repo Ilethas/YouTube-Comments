@@ -3,6 +3,8 @@ import { dialog } from 'electron';
 import type { BrowserWindow } from 'electron';
 import { backupFilename, createDataBackupDialogs } from './data-backup-dialogs';
 import { backupText } from '../shared/data-backup';
+import { WindowCoordinator } from './window-coordinator';
+import { windowFixture } from './testing/window-fixture';
 
 vi.mock('electron', () => ({ dialog: {
   showSaveDialog: vi.fn(async () => ({ canceled: true })), showOpenDialog: vi.fn(async () => ({ canceled: true, filePaths: [] })),
@@ -18,4 +20,23 @@ it.each(['en', 'pl'] as const)('uses owned native dialogs and %s confirmation wi
 });
 it('uses the local calendar for the suggested name', () => {
   expect(backupFilename(new Date(2026, 9, 15, 8, 5))).toBe('youtube-comments-backup-2026-10-15_08-05.sqlite');
+});
+
+it.each(['save', 'select', 'confirm'] as const)('%s keeps the accepted origin across asynchronous completion and cancels on origin death', async operation => {
+  const windows = new WindowCoordinator('file:///app/index.html', ''), a = windowFixture(), b = windowFixture();
+  for (const entry of [a, b]) { windows.register(entry.window); entry.commit(); }
+  const origin = windows.resolveCaller(a.event()), peer = windows.resolveCaller(b.event());
+  const dialogs = createDataBackupDialogs(caller => windows.originWindow(caller));
+  let finish!: (result: never) => void;
+  const mock = operation === 'save' ? vi.mocked(dialog.showSaveDialog) : operation === 'select' ? vi.mocked(dialog.showOpenDialog) : vi.mocked(dialog.showMessageBox);
+  mock.mockImplementationOnce(() => new Promise<never>(resolve => { finish = resolve; }));
+  const pending = dialogs[operation]('en', origin);
+  expect(mock).toHaveBeenLastCalledWith(a.window, expect.anything());
+  a.native.emit('closed');
+  finish({ canceled: false, filePath: 'chosen.sqlite', filePaths: ['chosen.sqlite'], response: 1 } as never);
+  expect(await pending).toBe(operation === 'confirm' ? false : undefined);
+  mock.mockClear();
+  expect(await dialogs[operation]('en', origin)).toBe(operation === 'confirm' ? false : undefined);
+  expect(mock).not.toHaveBeenCalled();
+  await dialogs[operation]('en', peer); expect(mock).toHaveBeenLastCalledWith(b.window, expect.anything());
 });

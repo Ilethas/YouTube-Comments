@@ -1,5 +1,5 @@
-import { acquisitionProgressChannel, isAcquisitionNotification } from './shared/acquisition';
-import { app, BrowserWindow, shell, dialog, clipboard, protocol, nativeImage } from 'electron';
+import { isAcquisitionNotification } from './shared/acquisition';
+import { app, shell, dialog, clipboard, protocol, nativeImage } from 'electron';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -7,6 +7,7 @@ import started from 'electron-squirrel-startup';
 import { ReaderRepository } from './main/persistence/reader-repository';
 import { resolveDatabasePath, resolveThumbnailDirectory } from './main/persistence/profile';
 import { ThumbnailCache } from './main/thumbnail-cache';
+import { WindowCoordinator } from './main/window-coordinator';
 import { ReaderService } from './main/reader-service';
 import { registerReaderIpc } from './main/reader-ipc';
 import { createHelperPicker } from './main/helper-picker';
@@ -31,40 +32,11 @@ function startReader() {
   const databasePath = resolveDatabasePath({ mode, appData: demoRoot ?? app.getPath('appData') });
   const thumbnailDirectory = resolveThumbnailDirectory({ mode, appData: demoRoot ?? app.getPath('appData') });
   app.setPath('userData', path.dirname(databasePath));
-  let mainWindow: BrowserWindow | undefined;
   let service: ReaderService;
   const documentPath = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
   const documentUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL ? new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).href : pathToFileURL(documentPath).href;
 
-  const createWindow = () => {
-    // Create the browser window.
-    mainWindow = new BrowserWindow({
-      width: 1240,
-      height: 900,
-      minWidth: 720,
-      minHeight: 520,
-      autoHideMenuBar: true,
-      webPreferences: {
-        preload: path.join(__dirname, 'preload.js'),
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: true,
-      },
-    });
-
-    // and load the index.html of the app.
-    if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-      mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-    } else {
-      mainWindow.loadFile(
-        documentPath,
-      );
-    }
-
-    mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    mainWindow.webContents.on('will-navigate', event => event.preventDefault());
-    mainWindow.on('closed', () => { mainWindow = undefined; });
-  };
+  const windows = new WindowCoordinator(documentUrl, path.join(__dirname, 'preload.js'));
 
   // This method will be called when Electron has finished
   // initialization and is ready to create browser windows.
@@ -90,11 +62,9 @@ function startReader() {
         profileLocale = repository.preferences(app.getPreferredSystemLanguages()).locale;
         return repository;
       } catch (error) { repository.close(); throw error; }
-    }, app.getPreferredSystemLanguages(), console.error, undefined, { choose: createHelperPicker(() => mainWindow) }, url => shell.openExternal(url), value => {
-      const contents = mainWindow?.webContents;
-      if (contents && !contents.isDestroyed() && contents.mainFrame.url === documentUrl && isAcquisitionNotification(value))
-        contents.send(acquisitionProgressChannel, value);
-    }, { databasePath, dialogs: createDataBackupDialogs(() => mainWindow), restart: () => { app.relaunch(); app.quit(); } }, text => clipboard.writeText(text), {
+    }, app.getPreferredSystemLanguages(), console.error, undefined, { choose: createHelperPicker(caller => windows.originWindow(caller)) }, url => shell.openExternal(url), value => {
+      if (isAcquisitionNotification(value)) windows.sendAcquisitionProgress(value);
+    }, { databasePath, dialogs: createDataBackupDialogs(caller => windows.originWindow(caller)), restart: () => { app.relaunch(); app.quit(); } }, text => clipboard.writeText(text), {
       cache: new ThumbnailCache(thumbnailDirectory, { decode: bytes => {
         const image = nativeImage.createFromBuffer(bytes);
         return image.isEmpty() ? undefined : image.getSize();
@@ -107,9 +77,9 @@ function startReader() {
           : new Response(null, { status: 404 });
       } catch { return new Response(null, { status: 404 }); }
     });
-    registerReaderIpc(service, () => mainWindow, documentUrl);
-    createWindow();
-    if (recovery && mainWindow) void dialog.showMessageBox(mainWindow, { type: 'info', message: backupText(profileLocale)[recovery] });
+    registerReaderIpc(service, windows);
+    const window = windows.createReaderWindow();
+    if (recovery) void dialog.showMessageBox(window, { type: 'info', message: backupText(profileLocale)[recovery] });
   });
   let shutdownStarted = false;
   app.on('before-quit', event => {
@@ -132,8 +102,8 @@ function startReader() {
   app.on('activate', () => {
     // On OS X it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+    if (service && !shutdownStarted && windows.size === 0) {
+      windows.createReaderWindow();
     }
   });
 

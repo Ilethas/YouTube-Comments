@@ -19,9 +19,10 @@
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "vitest run",
-    "test:electron": "node scripts/smoke-electron.cjs && node scripts/smoke-view-restoration.cjs && node scripts/smoke-backup-restore.cjs && node scripts/smoke-reader-actions.cjs && node scripts/smoke-collapse.cjs && node scripts/smoke-selection.cjs && node scripts/smoke-reader-usability.cjs && node scripts/smoke-thumbnails.cjs && node scripts/smoke-usability-milestone.cjs",
+    "test:electron": "node scripts/smoke-electron.cjs && node scripts/smoke-view-restoration.cjs && node scripts/smoke-backup-restore.cjs && node scripts/smoke-reader-actions.cjs && node scripts/smoke-collapse.cjs && node scripts/smoke-selection.cjs && node scripts/smoke-reader-usability.cjs && node scripts/smoke-thumbnails.cjs && node scripts/smoke-usability-milestone.cjs && node scripts/smoke-window-coordination.cjs",
     "typecheck": "tsc --noEmit",
-    "build:renderer": "vite build --config vite.renderer.config.ts --outDir .vite/renderer-preview"
+    "build:renderer": "vite build --config vite.renderer.config.ts --outDir .vite/renderer-preview",
+    "test:window-coordination": "node scripts/smoke-window-coordination.cjs"
   },
   "overrides": {
     "extract-zip": {

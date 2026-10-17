@@ -4,6 +4,7 @@ import type { Result } from '../shared/reader-api';
 import { createHelperResolution, executeProcess, helperOverrideVariables, isHelperExecutable } from './helper-process';
 import type { ExecuteProcess, ResolveHelper } from './helper-process';
 import { probeHelper } from './helper-probe';
+import type { ReaderCallerContext } from './caller-context';
 
 export interface HelperSelectionStore {
   getHelperSelection(kind: HelperKind): string | undefined;
@@ -11,7 +12,7 @@ export interface HelperSelectionStore {
 }
 /** Main-only injection; renderer can request a helper identity, never a file path. */
 export interface HelperSettingsOptions {
-  readonly choose?: (kind: HelperKind) => Promise<string | undefined>;
+  readonly choose?: (kind: HelperKind, caller?: ReaderCallerContext) => Promise<string | undefined>;
   readonly execute?: ExecuteProcess;
   readonly environment?: NodeJS.ProcessEnv;
   readonly platform?: NodeJS.Platform;
@@ -58,14 +59,16 @@ export class HelperSettingsService {
     });
   }
 
-  choose(kind: HelperKind): Promise<Result<HelperStatus | null>> {
+  choose(kind: HelperKind, caller?: ReaderCallerContext): Promise<Result<HelperStatus | null>> {
     return this.serial(async () => {
+      if (caller && !caller.isCurrent()) return { ok: true, value: null };
       if (this.startup[helperOverrideVariables[kind]] !== undefined) return { ok: false, error: { code: 'FORBIDDEN' } };
       if (this.controller.signal.aborted || !this.options.choose) return { ok: false, error: { code: 'HELPER_UNAVAILABLE' } };
-      const file = await this.options.choose(kind);
-      if (file === undefined) return { ok: true, value: null };
+      const file = await this.options.choose(kind, caller);
+      if (file === undefined || caller && !caller.isCurrent()) return { ok: true, value: null };
       const executable = await isHelperExecutable(file, this.platform) ? file : undefined;
       const status = await this.inspect(kind, 'configured', file, executable);
+      if (caller && !caller.isCurrent()) return { ok: true, value: null };
       if (!['tested', 'untested'].includes(status.state) || this.controller.signal.aborted) return { ok: false,
         error: { code: 'HELPER_UNAVAILABLE' } };
       this.store.setHelperSelection(kind, file);

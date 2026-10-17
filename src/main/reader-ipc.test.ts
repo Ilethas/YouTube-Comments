@@ -1,24 +1,26 @@
+import { WindowCoordinator } from './window-coordinator';
+import { windowFixture } from './testing/window-fixture';
+import { ReaderService as ActualReaderService } from './reader-service';
 import { beforeEach, expect, it, vi } from 'vitest';
-import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
 import type { ReaderService } from './reader-service';
 import { registerReaderIpc } from './reader-ipc';
 import { readerChannels } from '../shared/reader-api';
 
 const { handlers } = vi.hoisted(() => ({ handlers: new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>() }));
-vi.mock('electron', () => ({ ipcMain: { handle: (channel: string, handler: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => handlers.set(channel, handler) } }));
+vi.mock('electron', () => ({ ipcMain: { handle: (channel: string, handler: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => { if (handlers.has(channel)) throw new Error('Duplicate handler'); handlers.set(channel, handler); } } }));
 beforeEach(() => handlers.clear());
 
 it('routes only the expected window top-level application document and rejects foreign frames/windows/URLs', () => {
   const url = 'file:///app/index.html';
-  const frame = { url };
-  const contents = { mainFrame: frame };
-  const window = { webContents: contents } as unknown as BrowserWindow;
+  const fixture = windowFixture(url), contents = fixture.contents, frame = contents.mainFrame;
+  const windows = new WindowCoordinator(url, ''); windows.register(fixture.window); fixture.commit();
   const dispatch = vi.fn(() => ({ ok: true, value: 'sentinel' }));
-  registerReaderIpc({ dispatch } as unknown as ReaderService, () => window, url);
+  registerReaderIpc({ dispatch } as unknown as ReaderService, windows);
   const handler = handlers.get('reader:bootstrap');
   if (!handler) throw new Error('Missing handler');
   expect(handler({ sender: contents, senderFrame: frame } as unknown as IpcMainInvokeEvent)).toEqual({ ok: true, value: 'sentinel' });
-  expect(dispatch).toHaveBeenCalledWith('bootstrap', []);
+  expect(dispatch).toHaveBeenCalledWith('bootstrap', [], windows.resolveCaller(fixture.event()));
   for (const event of [
     { sender: {}, senderFrame: frame },
     { sender: contents, senderFrame: { url } },
@@ -30,9 +32,10 @@ it('routes only the expected window top-level application document and rejects f
 });
 
 it('applies sender/frame/document checks to every intent, including acquire and refresh', async () => {
-  const url = 'file:///app/index.html', frame = { url }, contents = { mainFrame: frame };
+  const url = 'file:///app/index.html', fixture = windowFixture(url), contents = fixture.contents, frame = contents.mainFrame;
+  const windows = new WindowCoordinator(url, ''); windows.register(fixture.window); fixture.commit();
   const dispatch = vi.fn(async () => ({ ok: true, value: 'ack' }));
-  registerReaderIpc({ dispatch } as unknown as ReaderService, () => ({ webContents: contents }) as unknown as BrowserWindow, url);
+  registerReaderIpc({ dispatch } as unknown as ReaderService, windows);
   for (const [operation, channel] of Object.entries(readerChannels)) {
     const handler = handlers.get(channel);
     if (!handler) throw new Error('Missing handler');
@@ -40,6 +43,24 @@ it('applies sender/frame/document checks to every intent, including acquire and 
       expect(await handler(event as unknown as IpcMainInvokeEvent, { executable: 'evil' })).toEqual({ ok: false, error: { code: 'FORBIDDEN' } });
     }
     expect(await handler({ sender: contents, senderFrame: frame } as unknown as IpcMainInvokeEvent, { intent: 'test' })).toEqual({ ok: true, value: 'ack' });
-    expect(dispatch).toHaveBeenLastCalledWith(operation, [{ intent: 'test' }]);
+    expect(dispatch).toHaveBeenLastCalledWith(operation, [{ intent: 'test' }], windows.resolveCaller(fixture.event()));
   }
+});
+
+it('registers every channel once independently of window creation/reload and retains service payload validation', async () => {
+  const windows = new WindowCoordinator('file:///app/index.html', ''), fixture = windowFixture();
+  const service = new ActualReaderService(() => { throw new Error('No storage needed'); }, ['en'], () => undefined);
+  registerReaderIpc(service, windows);
+  expect(handlers.size).toBe(Object.keys(readerChannels).length);
+  for (let i = 0; i < 2; i++) { windows.register(fixture.window); fixture.commit(); fixture.reload(); }
+  expect(handlers.size).toBe(Object.keys(readerChannels).length);
+  for (const channel of Object.values(readerChannels)) {
+    expect(await handlers.get(channel)?.(fixture.event(), { windowId: 'forged', executable: 'evil' }, 'extra'))
+      .toEqual({ ok: false, error: { code: 'INVALID_REQUEST' } });
+  }
+  fixture.native.emit('closed');
+  for (const channel of Object.values(readerChannels)) expect(await handlers.get(channel)?.(fixture.event()))
+    .toEqual({ ok: false, error: { code: 'FORBIDDEN' } });
+  expect(() => registerReaderIpc(service, windows)).toThrow('Duplicate handler');
+  await service.shutdown();
 });

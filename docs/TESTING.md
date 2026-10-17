@@ -1,5 +1,76 @@
 # Testing strategy
 
+## Secure window foundation (M1, 2026-10-17, ADR 0027)
+
+The full Vitest suite passes **952 tests in 76 files** (24 additional tests).
+Typecheck and lint pass without warnings. Forge's Windows x64 production build
+and complete application/artifact/fuse validation pass (73 runtime files).
+Schema remains **12**. No production profile, Setup/install/uninstall, commit,
+push or publication is used. The M0/M0.5 experiment files are unchanged.
+
+| Final command | Result |
+| --- | --- |
+| `npm.cmd test` | 952/952 tests, 76/76 files, exit 0; final run 131.25 s |
+| `npm.cmd run typecheck` | Exit 0 |
+| `npm.cmd run lint` | Exit 0, no warnings |
+| `npm.cmd run build:renderer` | Exit 0; unchanged 2.60 kB worker, 477.29 kB JS, 21.13 kB CSS |
+| `npm.cmd run package -- --platform=win32 --arch=x64` | Exit 0; verified 73 files / 385,932,110 bytes, including ASAR/runtime/fuses |
+| `npm.cmd run test:electron` | Exit 0; all ten harnesses, including both M1 phases |
+| `git diff --check` | Exit 0 |
+| `node scripts/verify-presentation.cjs` | Exit 0; 11 local README links, four screenshots, seven ICO frames |
+
+New coordinator/factory tests cover explicit registration before trusted commit,
+opaque identities/frozen contexts, exact sender/top-frame/document, subframe
+navigation isolation, detached/destroyed frames and contents, navigation/in-page
+revocation, close/crash, reload/re-registration and listener cleanup. The existing
+all-channel IPC negative checks remain, alongside one registration per channel,
+forged identity/extra arity rejection through the real ReaderService validator,
+and rejection after close. Native dialog adapters test both origins independently,
+no unparented fallback, origin loss during pending Save/Open/confirmation and
+reload during helper selection. Service tests cover origin loss during a helper
+probe before persistence, backup selection and staged restore, and app-owned
+completion after confirmed restore even when the origin expires during safety work.
+
+`npm.cmd run test:window-coordination` runs `scripts/smoke-window-coordination.cjs`
+after a Forge build. Its test-only coordinator phase uses real sandboxed windows,
+the built preload and normal reader channels. It checks actual registered callers,
+an unregistered WebContents at the identical trusted file URL, a real child frame
+against every channel, stale Electron events/contexts after reload, actual renderer
+crash/reload recovery, dialog origin
+loss and destruction, navigation away and channel registration count. Native dialog
+answers are controlled at the main-only seam; this is not physical native dialog
+interaction. An intentional stale senderFrame access can emit Electron's lifetime
+warning while the guard correctly returns FORBIDDEN.
+
+Its separate actual built-entry phase asserts exactly **one reader BrowserWindow**,
+normal rendered comments and two seeded demos, secure runtime options, seen state
+through reload, extra-field rejection, window.open/navigation denial and normal
+last-window close with awaited database shutdown. The launcher owns a new OS-temp
+`reader-m1-*` root, points appData/userData/sessionData/logs/crashDumps inside it,
+and sets the existing explicit demo root. It checks schema 12 and SQLite integrity
+after exit, then removes only that owned root. The first executed smoke used
+`reader-m1-22yi0w` and passed both phases; all data was disposable.
+
+The full final `npm.cmd run test:electron` sequence passes, **exit 0**, with all
+nine existing harnesses plus this M1 harness at the end. This includes backup/restore
+large-profile round trip and previous/candidate crash recovery, reader actions,
+collapse, 10k/50k selection, isolated production/development removal, thumbnails
+and the previous usability milestone's first/restart checks. The final M1 root was
+`reader-m1-tbuh3r`; its real renderer crash/reload recovery and both phases pass.
+The saved-view harness's startup clock injection was adapted from loadFile to
+the factory's exact loadURL path; all original clock, relative-date, 10k/50k anchor,
+lazy Library and failure assertions remain. Its seven phases pass individually.
+The initial aggregate run stopped at that obsolete injection seam; this was a
+harness adaptation, not a removed security/reader assertion.
+
+Native Windows gestures, Escape behavior and mixed-DPI dragging are **not tested
+by M1**. Native dialog modality/owner-close interaction and macOS activation still
+need platform/manual verification; Windows startup/last-close are automated here.
+M8 is not implemented or certified. The accepted provisional outside-drag Escape
+limitation is documented in ADR 0027; future native outcome detection must remain
+independent of transfer ownership. Cross-window shared notifications and global
+profile/close drain barriers remain M2/M3 and are not claimed by these tests.
+
 ## Usability milestone (2026-10-17, ADR 0026)
 
 The final deterministic suite passes **928 tests in 74 files**. Typecheck, lint,

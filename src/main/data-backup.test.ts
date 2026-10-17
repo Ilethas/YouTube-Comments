@@ -114,3 +114,26 @@ it('settles an in-flight backup before shutdown closes the database', async () =
   const shutdown = service.shutdown(); finish(path.join(root, 'cancelled.sqlite'));
   expect(await backup).toMatchObject({ value: { status: 'cancelled' } }); await shutdown;
 });
+
+it('captures data-operation origin, cancels before confirmation, and completes confirmed restore after origin loss', async () => {
+  let current = true, expireAt: string | undefined;
+  const caller = { windowId: 'origin', rendererLease: 'lease', isCurrent: () => current };
+  start(undefined, phase => { if (phase === expireAt) current = false; });
+  await service.dispatch('createBackup', [], caller);
+  expect(dialogs.save).toHaveBeenCalledWith('en', caller);
+  expireAt = 'staged';
+  expect(await service.dispatch('restoreBackup', [], caller)).toMatchObject({ value: { status: 'cancelled' } });
+  expect(dialogs.select).toHaveBeenCalledWith('en', caller); expect(dialogs.confirm).not.toHaveBeenCalled();
+  current = true; expireAt = 'safety';
+  expect(await service.dispatch('restoreBackup', [], caller)).toMatchObject({ value: { status: 'restarting' } });
+  expect(current).toBe(false); expect(dialogs.confirm).toHaveBeenCalledWith('en', caller);
+  await vi.waitFor(() => expect(restart).toHaveBeenCalledOnce());
+});
+
+it('does not create a backup if origin dies during native selection', async () => {
+  start(); let current = true;
+  const caller = { windowId: 'origin', rendererLease: 'lease', isCurrent: () => current };
+  vi.mocked(dialogs.save).mockImplementationOnce(async () => { current = false; return path.join(root, 'snapshot.sqlite'); });
+  expect(await service.dispatch('createBackup', [], caller)).toMatchObject({ value: { status: 'cancelled' } });
+  expect(readdirSync(root)).not.toContain('snapshot.sqlite');
+});

@@ -1,5 +1,27 @@
 # Architecture
 
+## Secure window coordination (M1, ADR 0027)
+
+`WindowCoordinator` owns application-window registration and renderer lifetimes.
+The shared secured factory fixes sandbox/context isolation/preload/Node settings
+and denies popup/navigation/redirects before load. Runtime opaque windowId is
+independent of BrowserWindow IDs; every trusted document commit gets a new renderer
+lease. Navigation/reload/crash/close revoke the old context. The once-registered
+reader IPC guard checks registered live sender, exact current top frame and document,
+and current main-owned lease before passing a frozen caller context to ReaderService.
+No renderer-provided identity participates in authorization; no preload contract changes.
+
+Native helper/backup/restore dialogs resolve only their accepted caller's still-live
+origin. Expired dialog results cancel without reparenting. Helper probes recheck before
+saving; restore preflight rechecks before confirmation. Confirmed restore and started
+backup finish under the existing application-owned safety/shutdown protocol. Startup
+recovery messages retain separate application-level ownership. One service/repository,
+single reader startup, existing profile/order/seeding, thumbnail protocol and packaged
+security remain. Registry removal never shuts down persistence. See
+[ADR 0027](decisions/0027-secure-window-coordination-foundation.md) for exact lifecycle
+and cancellation boundaries. Cross-window synchronization and global drain barriers
+remain M2/M3; persistent windows/views and public additional windows remain later work.
+
 ## Usability increment (ADR 0026)
 
 Settings keeps custom translation drafts separate from acknowledged preferences.

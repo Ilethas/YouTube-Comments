@@ -1,5 +1,10 @@
 # Decisions and open questions
 
+[ADR 0027](0027-secure-window-coordination-foundation.md) implements M1 secured
+window coordination and authenticated native-dialog origins with one production
+reader and no schema change. It records the accepted provisional HTML dragging
+policy; actual gestures and M2–M9 remain outside this increment.
+
 [ADR 0026](0026-custom-translation-reader-minutes-and-layout.md) adds schema-12
 atomic custom translation, shared reader/bulk publication minutes, an activity-only
 reduced-motion exception, title-first video headers and aligned selection/rail gutters.

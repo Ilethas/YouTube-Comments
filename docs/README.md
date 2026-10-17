@@ -1,9 +1,15 @@
 # Documentation map
 
+[ADR 0027](decisions/0027-secure-window-coordination-foundation.md) implements M1:
+main-owned window registration/document leases, one secured factory, authenticated
+IPC caller context and originating native dialogs. Production still opens one
+reader, with schema 12. M2–M9 remain future work. The owner accepts provisional
+HTML DnD outside detachment where Escape may detach; M8 native testing is pending.
+
 [M0 drag feasibility](MULTI_WINDOW_M0_FEASIBILITY.md) records the isolated two-window
 fake-tab experiment, automated evidence and pending native Windows checklist.
-Full browser-like desktop dragging remains unproven; production multi-window
-implementation has not started. See the [audit](MULTI_WINDOW_AUDIT.md) and
+Full browser-like desktop dragging remains unproven; production M1 is implemented.
+See the historical [audit](MULTI_WINDOW_AUDIT.md) and
 [proposed design](MULTI_WINDOW_DESIGN.md) for the separately scoped milestones.
 
 [ADR 0026](decisions/0026-custom-translation-reader-minutes-and-layout.md) adds

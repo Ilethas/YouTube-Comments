@@ -198,11 +198,11 @@ if (process.versions.electron && process.type === 'browser') {
   const watchdog = setTimeout(() => app.exit(1), 120000); let failed = false;
   app.on('browser-window-created', (_event, window) => {
     window.hide(); const contents = window.webContents; contents.setBackgroundThrottling(false);
-    const load = contents.loadFile.bind(contents);
-    contents.loadFile = async (...args) => {
+    const load = contents.loadURL.bind(contents);
+    contents.loadURL = async (...args) => {
       // Create the renderer on a blank page first, then register the clock script
       // before the real file navigation. No application code runs on this page.
-      await contents.loadURL('about:blank');
+      await load('about:blank');
       contents.debugger.attach('1.3');
       await contents.debugger.sendCommand('Page.enable');
       await contents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: `Date.now=()=>${now + (phase === 'relative' ? 2 * 86400000 : 0)};window.__readerWork={};window.__viewSmokeStart=performance.now();` });

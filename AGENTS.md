@@ -22,6 +22,17 @@ ADR 0024 adds selection, menus and explicit selected/prefix scopes.
 
 ## Invariants to protect
 
+- [ADR 0027](docs/decisions/0027-secure-window-coordination-foundation.md) implements
+  M1: one secured application-window factory, main-owned WindowCoordinator runtime
+  identities/document leases and once-registered authenticated reader IPC. Native
+  dialogs use the captured current caller only; origin loss cancels preflight and
+  helper selection, never reparents. Confirmed restore/started backup retain existing
+  app-owned safety/shutdown. Production still opens ONE reader, schema 12. M2/M3
+  synchronization/global barriers and later windows/topology/transfer are not implemented.
+  Native HTML DnD is preferred for future M8; the owner accepts initial outside
+  detachment where Escape may create a window. Keep outcome detection separate from
+  durable transfer logic; M8 real native input testing remains required.
+
 - [ADR 0026](docs/decisions/0026-custom-translation-reader-minutes-and-layout.md)
   adds schema-12 atomic custom translation activation plus separately retained code,
   renderer/main syntax validation and accessible Settings help. Reader semantic

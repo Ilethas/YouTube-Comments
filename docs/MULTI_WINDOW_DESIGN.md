@@ -1,6 +1,18 @@
 # Multiple equal windows: proposed architecture
 
-Research/design, 2026-10-17. **Not implemented and not an accepted ADR.**
+Research/design, 2026-10-17. **Broader architecture remains proposed.**
+M1 is implemented in [ADR 0027](decisions/0027-secure-window-coordination-foundation.md)
+with one production reader and runtime-only window identities, without a schema
+change. Other milestones below remain unimplemented.
+
+**Accepted owner policy, recorded during M1:** native HTML DnD is preferred for
+reorder/attachment. VS Code-style outside drag-end detachment is acceptable for the
+first implementation, including Escape outside creating a window. This deliberate
+limitation supersedes the original unconditional cancellation/no-phantom-window
+rules below; historical M0/M0.5 findings remain intact. It is not correct cancellation
+or evidence of desktop release. Future native detection must remain isolated from
+durable ownership/transfer logic. No drag code is added in M1; M8 still requires
+real native input testing.
 See [MULTI_WINDOW_AUDIT.md](MULTI_WINDOW_AUDIT.md) for verified source traces,
 technical debt, command results and evidence limits. Current schema is **12**.
 Names and tables below are proposed responsibilities, not existing APIs.
@@ -381,7 +393,9 @@ activate it or replace a target draft. Library filter can remain target-local.
 
 Cancellation/failed readiness/stale versions/rejected validation before commit:
 discard provisional target/preview and unfreeze source in its original placement;
-no DB changes. Escape is never a successful detach. On target crash **after commit**,
+no DB changes. A positively cancelled transfer does not detach. The accepted provisional
+outside-HTML adapter may interpret an unobserved Escape as detach intent (see policy
+above); ownership transactions must not depend on that detector. On target crash **after commit**,
 placement remains durable and a fresh target renderer/recovery restores it. Do not
 automatically clone into source or roll back over new target edits. If compensating
 move is offered, it is another version-checked transaction. Main crash before commit
