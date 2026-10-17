@@ -1,6 +1,6 @@
 import type { AcquisitionNotification, AcquisitionProgress, AcquisitionTimings } from './acquisition';
 import type { Comment, ContentItem } from '../domain/discussion';
-import { translationTargets } from './preferences';
+import { normalizeTranslationCode, translationTargets } from './preferences';
 import type { Appearance, Locale, Preferences, TranslationTarget, SelectionControls } from './preferences';
 import type { WorkspaceState } from '../domain/workspace';
 import type { BulkSeenRequest, SeenMutationResult, SeenUndoResult, SeenUndoDescriptor } from '../domain/seen-operation';
@@ -32,7 +32,7 @@ export interface ToggleSeenRequest {
   readonly commentId: string;
   readonly subtree: boolean;
 }
-export type PreferenceChange = { readonly locale: Locale } | { readonly appearance: Appearance } | { readonly translationTarget: TranslationTarget }
+export type PreferenceChange = { readonly locale: Locale } | { readonly appearance: Appearance } | { readonly translationTarget: TranslationTarget; readonly customTranslationTarget?: string }
   | { readonly selectionControls: SelectionControls } | { readonly includeCollapsedInPrefix: boolean };
 /** Identity only; main reads content and preferences and reconstructs destinations. */
 export interface CommentActionRequest { readonly itemId: string; readonly commentId: string; readonly action: 'author' | 'permalink' | 'translate' | 'copy-permalink' }
@@ -140,6 +140,8 @@ export function isPreferenceChange(value: unknown): value is PreferenceChange {
   return (exactKeys(value, ['locale']) && (value.locale === 'en' || value.locale === 'pl'))
     || (exactKeys(value, ['appearance']) && ['system', 'light', 'dark'].includes(value.appearance as string))
     || (exactKeys(value, ['translationTarget']) && translationTargets.includes(value.translationTarget as TranslationTarget))
+    || (exactKeys(value, ['translationTarget', 'customTranslationTarget']) && value.translationTarget === 'custom'
+      && normalizeTranslationCode(value.customTranslationTarget) !== undefined)
     || (exactKeys(value, ['selectionControls']) && ['on-demand', 'always'].includes(value.selectionControls as string))
     || (exactKeys(value, ['includeCollapsedInPrefix']) && typeof value.includeCollapsedInPrefix === 'boolean');
 }

@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { buildCommentTree, toggleSeen } from '../../domain/discussion';
 import type { Author, Comment, ContentItem } from '../../domain/discussion';
 import { initialComments, items } from '../../fixtures/discussions';
-import { initialLocale } from '../../shared/preferences';
+import { initialLocale, normalizeTranslationCode } from '../../shared/preferences';
 import type { Preferences } from '../../shared/preferences';
 import type { PreferenceChange, ReaderState, ToggleSeenRequest } from '../../shared/reader-api';
 import { migrateDatabase, transaction } from './migrations';
@@ -20,7 +20,7 @@ import type { BulkSeenRequest, SeenMutationResult, SeenUndoDescriptor, SeenUndoR
 import { resolveBulkPublication } from '../../domain/publication-filter';
 import type { QueryEvaluationTime } from '../../domain/publication-filter';
 import { publicationMatches, ownPublicationInstant } from '../../domain/publication-predicate';
-import { isBulkSeenRequest } from '../../shared/reader-api';
+import { isBulkSeenRequest, isPreferenceChange } from '../../shared/reader-api';
 import type { HelperKind } from '../../shared/helper-settings';
 import { isSetDiscussionCollapseRequest } from '../../domain/discussion-collapse';
 import type { DiscussionCollapse, SetDiscussionCollapseRequest } from '../../domain/discussion-collapse';
@@ -313,6 +313,7 @@ export class ReaderRepository {
     if (!row) throw new Error('Missing preferences');
     return { locale: row.locale === null ? initialLocale(languages) : row.locale as Preferences['locale'],
       appearance: row.appearance as Preferences['appearance'], translationTarget: row.translation_target as Preferences['translationTarget'],
+      ...(row.custom_translation_target === null ? {} : { customTranslationTarget: String(row.custom_translation_target) }),
       selectionControls: row.selection_controls as Preferences['selectionControls'], includeCollapsedInPrefix: row.include_collapsed_in_prefix === 1 };
   }
 
@@ -566,13 +567,19 @@ export class ReaderRepository {
   }
 
   updatePreferences(change: PreferenceChange, languages: readonly string[]): Preferences {
+    if (!isPreferenceChange(change)) throw new InvalidPreferenceError();
     return transaction(this.db, () => {
       if ('locale' in change) this.db.prepare('UPDATE preferences SET locale = ? WHERE id = 1').run(change.locale);
       else if ('appearance' in change) this.db.prepare('UPDATE preferences SET appearance = ? WHERE id = 1').run(change.appearance);
-      else if ('translationTarget' in change) this.db.prepare('UPDATE preferences SET translation_target = ? WHERE id = 1').run(change.translationTarget);
+      else if ('translationTarget' in change) {
+        const custom = normalizeTranslationCode(change.customTranslationTarget === undefined ? this.preferences(languages).customTranslationTarget : change.customTranslationTarget);
+        if (change.translationTarget === 'custom' && !custom) throw new InvalidPreferenceError();
+        this.db.prepare('UPDATE preferences SET translation_target = ?, custom_translation_target = ? WHERE id = 1').run(change.translationTarget, custom ?? null);
+      }
       else if ('selectionControls' in change) this.db.prepare('UPDATE preferences SET selection_controls = ? WHERE id = 1').run(change.selectionControls);
       else this.db.prepare('UPDATE preferences SET include_collapsed_in_prefix = ? WHERE id = 1').run(Number(change.includeCollapsedInPrefix));
       return this.preferences(languages);
     });
   }
 }
+export class InvalidPreferenceError extends Error {}

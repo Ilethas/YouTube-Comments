@@ -18,6 +18,9 @@ async function verifyTabHover(window) {
   const debuggerApi = contents.debugger;
   const backgroundThrottling = contents.getBackgroundThrottling();
   contents.setBackgroundThrottling(false);
+  contents.debugger.attach('1.3');
+  await contents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  contents.debugger.detach();
   // A visible surface is required for Chromium pixel capture; do not steal focus.
   window.showInactive();
   debuggerApi.attach('1.3');
@@ -343,9 +346,11 @@ async function verifyWindow(window, nativeTheme) {
       await waitFor("!document.querySelector('.acquisition-bar button').disabled", 'URL ready');
       await js("document.querySelector('.acquisition-bar button').click()");
       await waitFor("document.querySelector('.acquisition-spinner') !== null", 'acquisition spinner');
+      assert.equal(await js("getComputedStyle(document.querySelector('.acquisition-spinner')).animationName"), 'acquisition-spin');
       assert.equal(await js("!!document.querySelector('.acquisition-status [role=status]') && !document.querySelector('.acquisition-status progress')"),true);
       assert.equal(await js("Array.from(document.querySelectorAll('input[type=checkbox]')).every(input => !input.disabled)"), true);
       await waitFor("document.querySelector('#source-url') === null && !document.body.innerText.includes('Pobieranie…')", 'acquisition acknowledgment');
+      await waitFor("document.querySelector('.acquisition-spinner') === null", 'activity removed after settlement');
       assert.equal(await js("document.querySelector('[role=alert]') === null"), true);
       return snapshot();
     }
@@ -835,7 +840,7 @@ if (process.versions.electron && process.type === 'browser') {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 11);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 12);
         assert.equal(db.prepare('SELECT count(*) AS count FROM helper_settings').get().count,0);
         assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 7);
         assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 3);

@@ -133,11 +133,12 @@ h1 { font-size: 20px; line-height: 1.3; margin: 5px 0; }
 h2 { font-size: 15px; margin: 0; }
 .discussion-heading > span, .reader-help { color: var(--muted); font-size: 12px; }
 .reader-help { line-height: 1.4; margin: 4px 0 10px; }
-.root-tree { --avatar-size: 32px; --row-pad-x: 6px; --row-pad-y: 7px; --branch-gap: 4px; --rail-x: calc(var(--row-pad-x) + var(--avatar-size) / 2); --elbow-y: calc(var(--row-pad-y) + var(--avatar-size) / 2); }
+.root-tree { --avatar-size: 32px; --row-pad-x: 6px; --row-pad-y: 7px; --branch-gap: 4px; --selection-size: 20px; --selection-gutter: 0px; --row-gap: 10px; --rail-x: calc(var(--row-pad-x) + var(--avatar-size) / 2); --elbow-y: calc(var(--row-pad-y) + var(--avatar-size) / 2); }
+.root-tree[data-selection='true'] { --selection-gutter: calc(var(--selection-size) + var(--row-gap)); }
 .comment-tree { list-style: none; margin: 0; padding: 0; }
 .comment-branch { position: relative; }
 .comment-body { min-width: 100px; }
-.comment { display: flex; align-items: flex-start; gap: 10px; padding: var(--row-pad-y) var(--row-pad-x); border-radius: 4px; }
+.comment { display: flex; align-items: flex-start; gap: var(--row-gap, 10px); padding: var(--row-pad-y) var(--row-pad-x); border-radius: 4px; }
 .comment.is-unseen { background: color-mix(in srgb, var(--accent-soft) 65%, transparent); }
 .comment-tree > li { margin-bottom: var(--branch-gap); }
 .avatar img { border-radius: 50%; object-fit: cover; display: block; }
@@ -176,6 +177,11 @@ time, .muted { color: var(--muted); }
 .library-entry-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .settings-view .preferences { align-items: flex-start; flex-direction: column; margin: 24px 0 32px; font-size: 14px; gap: 20px; }
 .settings-view .preferences label { justify-content: space-between; width: min(360px, 100%); }
+.translation-settings { width: min(520px, 100%); }
+.custom-translation-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+.settings-view .custom-translation-controls label { width: auto; flex-wrap: wrap; gap: 6px; }
+.custom-translation-controls input { width: 110px; min-width: 0; padding: 5px; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border); border-radius: 4px; }
+.translation-settings small { display: block; margin-top: 6px; color: var(--muted); }
 .settings-view p { color: var(--muted); line-height: 1.6; max-width: 650px; }
 .removal-dialog { width: min(520px, calc(100vw - 32px)); padding: 24px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
 .removal-dialog::backdrop { background: rgb(0 0 0 / .5); }
@@ -210,7 +216,7 @@ time, .muted { color: var(--muted); }
 .raw-match-badge { border: 1px dashed var(--border); background: transparent; }
 .comment[data-selected='true'] { outline: 2px solid var(--focus); outline-offset: -2px; }
 .comment[data-bulk-selected='true'] { box-shadow: inset 3px 0 var(--accent); }
-.selection-circle { flex: 0 0 20px; width: 20px; height: 20px; min-width: 20px; padding: 0; margin-top: 4px; border-radius: 50%; border: 1px solid var(--muted); color: var(--accent); background: var(--surface); line-height: 18px; }
+.selection-circle { position: absolute; left: var(--row-pad-x); top: calc(var(--elbow-y) - var(--selection-size) / 2); width: var(--selection-size); height: var(--selection-size); padding: 0; border-radius: 50%; border: 1px solid var(--muted); color: var(--accent); background: var(--surface); line-height: 1; }
 .selection-circle[aria-pressed='true'] { border: 2px solid currentColor; }
 .selection-circle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .selection-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; font-size: 12px; }
@@ -234,9 +240,10 @@ time, .muted { color: var(--muted); }
 .comment-context-menu button[data-active='true'] { background: var(--accent-soft); outline: 2px solid var(--focus); outline-offset: -2px; }
 .removal-dialog #bulk-description { white-space: pre-line; }
 @media (forced-colors: active) { .comment[data-bulk-selected='true'] { border-left: 3px solid Highlight; } .selection-circle[aria-pressed='true'] { color: Highlight; } }
-.virtual-reader { position: relative; overflow-anchor: none; }
-.virtual-reader > .virtual-comment { position: absolute; top: 0; left: 0; width: 100%; margin: 0; padding: 0 0 4px var(--reader-indent); }
-.reader-rails { position: absolute; inset: 0; pointer-events: none; }
+.virtual-reader { position: relative; overflow-anchor: none; container-type: inline-size; --indent-budget: max(0px, calc(100cqw - var(--selection-gutter) - 210px)); }
+.virtual-reader > .virtual-comment { position: absolute; top: 0; left: 0; width: 100%; margin: 0; padding: 0 0 var(--branch-gap) calc(var(--reader-indent) + var(--selection-gutter)); }
+/* A shared outer selection lane leaves avatar-based tree geometry uninterrupted. */
+.reader-rails { position: absolute; inset: 0 var(--selection-gutter) 0 0; transform: translateX(var(--selection-gutter)); pointer-events: none; }
 .ancestor-rail, .parent-rail, .child-rail { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--border); }
 .parent-rail[data-last='true'] { bottom: auto; height: var(--elbow-y); }
 .flat-elbow { position: absolute; top: var(--elbow-y); border-top: 1px solid var(--border); }
@@ -268,7 +275,8 @@ time, .muted { color: var(--muted); }
 .acquisition-status { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
 .acquisition-spinner { width: 16px; height: 16px; flex: 0 0 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-right-color: var(--accent); border-radius: 50%; animation: acquisition-spin .9s linear infinite; }
 @keyframes acquisition-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .acquisition-spinner { animation: none; } }
+/* Intentional reduced-motion exception: steady, indeterminate activity remains
+   visible during acquisition and backup/restore. No other animation is overridden. */
 .acquisition-status time { font-variant-numeric: tabular-nums; }
 .acquisition-completion { padding: .3rem .8rem; color: var(--muted); font-size: .85rem; }
 

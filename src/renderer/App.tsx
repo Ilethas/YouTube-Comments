@@ -3,7 +3,7 @@ import { useAcquisitionProgress } from './use-acquisition-progress';
 import type { AcquisitionProgress } from '../shared/acquisition';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AcquisitionResult, ErrorCode, ReaderApi, ReaderState, Result } from '../shared/reader-api';
-import { translationTargets } from '../shared/preferences';
+import { TranslationSettings } from './TranslationSettings';
 import type { TranslationTarget, Appearance, SelectionControls } from '../shared/preferences';
 import { countLabel, initialLocale, Locale, translator } from './i18n';
 import { discussionTab } from '../domain/workspace';
@@ -56,6 +56,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   const [locale, setLocale] = useState<Locale>(initialState.preferences.locale);
   const [appearance, setAppearance] = useState<Appearance>(initialState.preferences.appearance);
   const [translationTarget, setTranslationTarget] = useState<TranslationTarget>(initialState.preferences.translationTarget);
+  const [customTranslationTarget, setCustomTranslationTarget] = useState(initialState.preferences.customTranslationTarget);
   const [selectionControls, setSelectionControls] = useState<SelectionControls>(initialState.preferences.selectionControls);
   const [includeCollapsedInPrefix, setIncludeCollapsedInPrefix] = useState(initialState.preferences.includeCollapsedInPrefix);
   const [workspace, setWorkspace] = useState(initialState.workspace);
@@ -296,7 +297,7 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       } else if (tab?.kind === 'discussion') {
         const session = views.get(tab.itemId, comments[tab.itemId]);
         if (command === 'undo-seen') undoSeen(tab.itemId);
-        else if (command === 'apply-view') void session.apply(comments[tab.itemId], false, items.find(item => item.id === tab.itemId));
+        else if (command === 'apply-view') document.querySelector<HTMLFormElement>('.reader-panel:not([hidden]) .query-controls')?.requestSubmit();
         else navigateDiscussion(session, comments[tab.itemId], 'match', command === 'previous-match' ? -1 : 1);
       } else {
         return;
@@ -383,12 +384,10 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
         }}>
           {(['system', 'light', 'dark'] as const).map(value => <option key={value} value={value}>{t(value)}</option>)}
         </select></label>
-        <label>{t('translationTarget')}<select value={translationTarget} disabled={saving} onChange={event => {
-          const next = event.target.value as TranslationTarget;
-          void save(() => api.updatePreferences({ translationTarget: next }), value => setTranslationTarget(value.translationTarget));
-        }}>
-          {translationTargets.map(value => <option key={value} value={value}>{t(({ app: 'targetApp', en: 'targetEn', pl: 'targetPl', de: 'targetDe', fr: 'targetFr', es: 'targetEs', it: 'targetIt', pt: 'targetPt', ja: 'targetJa', ko: 'targetKo', 'zh-CN': 'targetZh' } as const)[value])}</option>)}
-        </select></label>
+        <TranslationSettings preferences={{ translationTarget, customTranslationTarget }} locale={locale} disabled={saving}
+          save={change => save(() => api.updatePreferences(change), value => {
+            setTranslationTarget(value.translationTarget); setCustomTranslationTarget(value.customTranslationTarget);
+          })} />
         <label>{t('selectionControls')}<select value={selectionControls} disabled={saving} onChange={event => {
           const next = event.target.value as SelectionControls;
           void save(() => api.updatePreferences({ selectionControls: next }), value => setSelectionControls(value.selectionControls));

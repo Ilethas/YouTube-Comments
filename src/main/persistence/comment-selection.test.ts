@@ -90,7 +90,7 @@ it('schema 10 upgrade preserves populated recoverable operations and child entri
   const bytes = readFileSync(file); await protectBeforeMigration(file);
   const snapshots = readdirSync(recoveryDirectory(file)); expect(snapshots).toHaveLength(1);
   const safety = path.join(recoveryDirectory(file), snapshots[0]); expect(validateBackup(safety)).toBe(10);
-  const staged = await prepareRestore(safety, file); expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(11);
+  const staged = await prepareRestore(safety, file); expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(12);
   expect(readFileSync(file)).toEqual(bytes);
   repo = ReaderRepository.open(file); expect(bootstrap()).toEqual(before); expect(repo.history()).toEqual(history);
   raw(db => { expect(db.prepare('SELECT * FROM seen_operation_entries').all()).toEqual(entries); expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]); });
@@ -109,7 +109,7 @@ it('a failure after rebuilding the Undo parent rolls back preferences, parent, e
     expect(db.prepare('PRAGMA table_info(preferences)').all().some(row => row.name === 'selection_controls')).toBe(false);
     migrateDatabase(db); expect(db.prepare('SELECT * FROM seen_operation_entries').all()).toEqual(entries);
   });
-  expect(validateBackup(file)).toBe(11); repo = ReaderRepository.open(file);
+  expect(validateBackup(file)).toBe(12); repo = ReaderRepository.open(file);
   expect(repo.undoSeen('video-demo').restored).toBeGreaterThan(0);
 });
 

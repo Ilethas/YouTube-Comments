@@ -20,6 +20,23 @@ let layout: ReturnType<typeof installReaderLayout>;
 beforeEach(() => { layout = installReaderLayout(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); delete window.__readerWork; });
 const executor = () => ({ evaluate: vi.fn(async (rows: Parameters<typeof evaluateDiscussionQuery>[0], query: Parameters<typeof evaluateDiscussionQuery>[1]) => evaluateDiscussionQuery(rows, query)), dispose: vi.fn() });
+it('remeasures the bounded mounted set after width/locale invalidation during scrolling, without overlapping rows or changing session intent', async () => {
+  const data = generateDiscussion({ count: 10000, shape: 'shallow', textLength: 700 }), reader = mount(data.comments);
+  const state = reader.session.state;
+  for (const width of [500, 420]) {
+    act(() => { reader.panel.scrollTop = 5000; fireEvent.scroll(reader.panel); layout.resize(width); });
+    if (width === 420) reader.setLocale('pl');
+    await waitFor(() => {
+      const rows = [...reader.panel.querySelectorAll<HTMLElement>('.virtual-comment')];
+      expect(rows.length).toBeGreaterThan(1); expect(rows.length).toBeLessThan(40);
+      for (let i = 1; i < rows.length; i++) if (Number(rows[i].dataset.index) === Number(rows[i - 1].dataset.index) + 1)
+        expect(rows[i].getBoundingClientRect().top).toBeGreaterThanOrEqual(rows[i - 1].getBoundingClientRect().bottom - .001);
+    });
+  }
+  expect(reader.session.state.draft).toBe(state.draft); expect(reader.session.state.applied).toBe(state.applied);
+  expect(reader.session.state.selected).toBe(state.selected); expect(reader.onToggle).not.toHaveBeenCalled();
+  expect(reader.engine.evaluate).not.toHaveBeenCalled(); expect(reader.current()).toEqual(data.comments);
+});
 it('Back to Top supersedes pending collapse anchor correction without changing selection, seen, sort or query', async () => {
   const data = generateDiscussion({ count: 10000, shape: 'shallow', seenRatio: .5 }), reader = mount(data.comments, false, data.item);
   act(() => reader.session.select('generated-9999'));

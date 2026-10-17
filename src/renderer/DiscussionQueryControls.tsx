@@ -1,5 +1,5 @@
 import { ActionIcon } from './ActionIcon';
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { sameQuery } from '../domain/discussion-query';
 import type { DiscussionQuery, SearchField } from '../domain/discussion-query';
 import type { PublicationCriteria } from '../domain/publication-filter';
@@ -23,19 +23,23 @@ export function DiscussionQueryControls({ setCollapsed, state, presentation, sor
 }) {
   const t = translator(locale), draft = state.draft;
   const sortHelpId = useId();
+  const [nativeInvalid, setNativeInvalid] = useState(false);
   const position = state.selected ? presentation.orderedMatchIds.indexOf(state.selected) + 1 : 0;
   const custom = draft.publication.kind === 'custom' ? draft.publication : undefined;
   const customDisabled = draft.publication.kind !== 'all' && !custom;
-  const invalidRange = !!(custom?.from && custom.to && custom.from > custom.to);
+  const invalidRange = !!(custom?.from && custom.to && (custom.from > custom.to
+    || custom.from === custom.to && custom.fromTime && custom.toTime && custom.fromTime > custom.toTime));
   const publicationLabel = (criteria: PublicationCriteria) => t(criteria.kind === 'today' ? 'dateToday'
     : criteria.kind === 'last-24-hours' ? 'dateLast24Hours' : criteria.kind === 'last-7-days' ? 'dateLast7Days' : 'dateCustom');
   const appliedPublication = state.applied.publication;
   const publicationActive = appliedPublication.kind !== 'all' && (appliedPublication.kind !== 'custom' || !!(appliedPublication.from || appliedPublication.to));
   const errorKey = state.error === 'INVALID_REGEX' ? 'queryInvalidRegex' : state.error === 'NO_SEARCH_FIELDS' ? 'queryNoFields'
     : state.error === 'INVALID_PUBLICATION_RANGE' ? 'queryInvalidDateRange' : state.error === 'INVALID_PUBLICATION_DATE' ? 'queryInvalidDate'
+    : state.error === 'INVALID_PUBLICATION_TIME' ? 'queryInvalidTime' : state.error === 'INVALID_LOCAL_TIME' ? 'bulkInvalidLocalTime'
     : state.error === 'QUERY_TOO_EXPENSIVE' ? 'queryTooExpensive' : 'queryFailed';
   return <div className="discussion-query">
-    <form className="query-controls" onSubmit={event => { event.preventDefault(); apply(); }}>
+    <form className="query-controls" onInvalid={() => setNativeInvalid(true)} onInput={() => setNativeInvalid(false)}
+      onSubmit={event => { event.preventDefault(); setNativeInvalid(false); apply(); }}>
       <label className="query-search">{t('searchDiscussion')}<input type="search" value={draft.text} maxLength={maxQueryTextLength} spellCheck={false} title={shortcutHint(locale, 'focus-search', t('searchDiscussion'))}
         onChange={event => edit({ ...draft, text: event.target.value })} /></label>
       <details className="query-fields"><summary>{t('searchFields')}</summary>
@@ -53,10 +57,15 @@ export function DiscussionQueryControls({ setCollapsed, state, presentation, sor
           </select></label>
           <label title={customDisabled ? t('datePresetDisablesCustom') : undefined}>{t('dateFrom')}<input name="publication-from" type="date" min="0001-01-01" max="9999-12-31"
             disabled={customDisabled} value={custom?.from ?? ''} aria-invalid={invalidRange || undefined}
-            onChange={event => edit({ ...draft, publication: { kind: 'custom', from: event.target.value || undefined, to: custom?.to } })} /></label>
+            onChange={event => edit({ ...draft, publication: { ...custom, kind: 'custom', from: event.target.value || undefined } })} /></label>
+          <label>{t('bulkFromTime')}<input name="publication-fromTime" type="time" step="60" disabled={customDisabled} value={custom?.fromTime ?? ''}
+            onChange={event => edit({ ...draft, publication: { ...custom, kind: 'custom', fromTime: event.target.value || undefined } })} /></label>
           <label title={customDisabled ? t('datePresetDisablesCustom') : undefined}>{t('dateTo')}<input name="publication-to" type="date" min="0001-01-01" max="9999-12-31"
             disabled={customDisabled} value={custom?.to ?? ''} aria-invalid={invalidRange || undefined}
-            onChange={event => edit({ ...draft, publication: { kind: 'custom', from: custom?.from, to: event.target.value || undefined } })} /></label>
+            onChange={event => edit({ ...draft, publication: { ...custom, kind: 'custom', to: event.target.value || undefined } })} /></label>
+          <label>{t('bulkToTime')}<input name="publication-toTime" type="time" step="60" disabled={customDisabled} value={custom?.toTime ?? ''}
+            onChange={event => edit({ ...draft, publication: { ...custom, kind: 'custom', toTime: event.target.value || undefined } })} /></label>
+          <small>{t('queryTimeHelp')}</small>
           {customDisabled && <small>{t('datePresetDisablesCustom')}</small>}
           <label>{t('discoveryFilter')}<select name="discovery" value={draft.discovery} onChange={event => edit({ ...draft, discovery: event.target.value as DiscussionQuery['discovery'] })}>
             <option value="all">{t('discoveryAll')}</option><option value="new">{t('discoveryNew')}</option>
@@ -88,14 +97,14 @@ export function DiscussionQueryControls({ setCollapsed, state, presentation, sor
     <div className="query-status" aria-live="polite">
       {state.result.restrictive && <span className="applied-counts">{t('appliedCounts', { comments: countLabel(locale, 'matchingComments', state.result.matchCount), threads: countLabel(locale, 'containingThreads', state.result.threadCount) })}</span>}
       {publicationActive && <span>{t('appliedPublication', { range: appliedPublication.kind === 'custom'
-        ? t('dateCustomRange', { from: appliedPublication.from ?? t('dateOpenBoundary'), to: appliedPublication.to ?? t('dateOpenBoundary') })
+        ? t('dateCustomRange', { from: `${appliedPublication.from ?? t('dateOpenBoundary')}${appliedPublication.fromTime ? ` ${appliedPublication.fromTime}` : ''}`, to: `${appliedPublication.to ?? t('dateOpenBoundary')}${appliedPublication.toTime ? ` ${appliedPublication.toTime}` : ''}` })
         : publicationLabel(appliedPublication) })}</span>}
       {state.applied.discovery === 'new' && <span>{t('discoveryNew')}</span>}
       {!sameQuery(draft, state.applied) && <span>{t('queryDraftPending')}</span>}
       {state.seenStale && <span>{t('querySeenPending')}</span>}
       {state.pending && <span>{t('queryEvaluating')}</span>}
     </div>
-    {(invalidRange || (state.error && state.error !== 'QUERY_CANCELLED')) && <p className="query-error" role="alert">{t(invalidRange ? 'queryInvalidDateRange' : errorKey)}</p>}
+    {(nativeInvalid || invalidRange || (state.error && state.error !== 'QUERY_CANCELLED')) && <p className="query-error" role="alert">{t(nativeInvalid ? 'queryInvalidTime' : invalidRange ? 'queryInvalidDateRange' : errorKey)}</p>}
     <div className="query-navigation" role="group" aria-label={t('discussionNavigation')}>
       <button title={shortcutHint(locale, 'previous-match')} disabled={!presentation.orderedMatchIds.length} onClick={() => navigate('match', -1)}>{t('previousMatch')}</button>
       <button title={shortcutHint(locale, 'next-match')} disabled={!presentation.orderedMatchIds.length} onClick={() => navigate('match', 1)}>{t('nextMatch')}</button>

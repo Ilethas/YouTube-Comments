@@ -35,6 +35,7 @@ it.each([
   finish();
   await screen.findByText(t.cancelled);
   expect(screen.queryByRole('dialog')).toBeNull();
+  expect(document.querySelector('.acquisition-spinner')).toBeNull();
   expect(trigger.hasAttribute('disabled')).toBe(false);
   expect(document.activeElement).toBe(trigger);
   expect(onBusy).toHaveBeenLastCalledWith(false);

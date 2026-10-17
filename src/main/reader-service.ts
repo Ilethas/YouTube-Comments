@@ -4,7 +4,7 @@ import { isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshReq
 import type { AcquisitionResult, ReaderOperation, ReaderState, Result } from '../shared/reader-api';
 import type { SeenMutationResult, SeenUndoResult } from '../domain/seen-operation';
 import type { Preferences } from '../shared/preferences';
-import { ReaderRepository, MissingCommentError, NotRemovableError, InvalidSeenTargetError, InvalidDiscussionViewError } from './persistence/reader-repository';
+import { ReaderRepository, MissingCommentError, NotRemovableError, InvalidSeenTargetError, InvalidDiscussionViewError, InvalidPreferenceError } from './persistence/reader-repository';
 import { isSetDiscussionCollapseRequest } from '../domain/discussion-collapse';
 import { isSaveDiscussionViewRequest } from '../domain/discussion-view';
 import { UnsupportedSchemaError } from './persistence/migrations';
@@ -169,7 +169,7 @@ export class ReaderService {
       return { ok: true, value };
     } catch (error) {
       this.diagnose(error);
-      return { ok: false, error: { code: error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError || error instanceof InvalidSeenTargetError || error instanceof InvalidDiscussionViewError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
+      return { ok: false, error: { code: error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError || error instanceof InvalidSeenTargetError || error instanceof InvalidDiscussionViewError || error instanceof InvalidPreferenceError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
     }
   }
   private async thumbnail(operation: 'getThumbnail' | 'checkThumbnail' | 'openThumbnail', args: readonly unknown[]): Promise<Result<string | null>> {

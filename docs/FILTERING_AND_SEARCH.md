@@ -1,5 +1,24 @@
 # Filtering and search
 
+## Optional reader clock minutes (ADR 0026)
+
+Custom publication filters accept optional local From/To HH:mm. Each time requires
+its date. Blank From means day start; blank To includes the whole final day,
+unchanged. Explicit From is inclusive; explicit To ends exclusively one elapsed
+minute after its uniquely resolved instant, including the complete minute. Either
+boundary may be open; same-day/equal-minute intervals are valid. Invalid dates/times,
+reversed ranges and ambiguous/nonexistent specified DST minutes reject without
+changing applied results or seen state. Presets keep their semantics and disable
+custom fields. Reader/bulk share the same Temporal resolver and publication predicate.
+
+Query bounds resolve once using evaluation-time system IANA zone before worker
+dispatch. Missing instants fail active predicates; stored approximate/coarse instants
+participate without inferring precision from relative labels. Times belong to draft
+until successful Apply, participate in equality/status, and persist across tabs,
+close/reopen, restart and backup/restore. Refresh retains applied criteria and drafts;
+old date-only JSON stays valid, and no UTC bounds persist. Native validation also
+guards Ctrl+Enter against partial input silently becoming a whole-day filter.
+
 ## Selection and prefix scope (ADR 0024)
 
 Successful Apply/Refresh intersects bulk selection with COMPLETE applied membership;

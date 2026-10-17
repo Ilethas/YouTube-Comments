@@ -11,6 +11,28 @@ import { navigateDiscussion } from './discussion-navigation';
 const rows = initialComments['video-demo'];
 const executor = () => ({ evaluate: vi.fn(async (comments: readonly QueryComment[], query: ResolvedDiscussionQuery): Promise<QueryOutcome> => evaluateDiscussionQuery(comments, query)), dispose: vi.fn() });
 
+it('clock drafts remain separate; Apply resolves once outside the worker, Refresh retains applied times, and errors never replace results or seen', async () => {
+  const comments = [dateTestComment('before', '2026-10-16T12:29:59Z'), dateTestComment('lower', '2026-10-16T12:30:00Z'),
+    dateTestComment('last-minute', '2026-10-17T07:15:59.999Z'), dateTestComment('after', '2026-10-17T07:16:00Z'), dateTestComment('unknown', undefined)];
+  const engine = executor(), clock = vi.fn(() => ({ now: 0, timeZone: 'Europe/Warsaw' }));
+  const session = new DiscussionViewSession(comments, engine, undefined, clock);
+  const publication = { kind: 'custom' as const, from: '2026-10-16', fromTime: '14:30', to: '2026-10-17', toTime: '09:15' };
+  const original = session.state.result, snapshot = JSON.stringify(comments);
+  session.edit({ ...session.state.draft, publication }); expect(session.state.result).toBe(original); expect(clock).not.toHaveBeenCalled();
+  await session.apply(comments); expect(clock).toHaveBeenCalledTimes(1);
+  expect(session.state.result.activeMatchIds).toEqual(['lower', 'last-minute']);
+  expect(engine.evaluate.mock.calls[0][1].publicationBounds).toEqual({ from: Date.parse('2026-10-16T12:30:00Z'), to: Date.parse('2026-10-17T07:16:00Z'), toInclusive: false });
+  expect(engine.evaluate.mock.calls[0][1]).not.toHaveProperty('publication');
+  session.edit({ ...session.state.draft, publication: { ...publication, fromTime: '15:00' } });
+  await session.apply(comments, true); expect(session.state.applied.publication).toEqual(publication);
+  const previous = session.state.result;
+  engine.evaluate.mockResolvedValueOnce({ ok: false, error: 'QUERY_TOO_EXPENSIVE' }); await session.apply(comments);
+  expect(session.state.result).toBe(previous); expect(session.state.applied.publication).toEqual(publication);
+  session.edit({ ...session.state.draft, publication: { kind: 'custom', fromTime: '14:30' } }); await session.apply(comments);
+  expect(session.state.result).toBe(previous); expect(engine.evaluate).toHaveBeenCalledTimes(3);
+  expect(JSON.stringify(comments)).toBe(snapshot);
+});
+
 it('sort immediately preserves query/result/selection/seen state, captures anchor and never evaluates the worker', () => {
   const engine = executor(), session = new DiscussionViewSession(rows, engine);
   session.select(rows[0].id);

@@ -39,6 +39,7 @@ it.each([
   [{ seen: 'seen' }, ['week']],
   [{ seen: 'unseen' }, ['old', 'reply', 'today']],
   [{ publication: { kind: 'custom', from: '2026-10-08', to: '2026-10-08' } }, ['week']],
+  [{ publication: { kind: 'custom', from: '2026-10-14', fromTime: '11:00', to: '2026-10-14', toTime: '11:00' } }, ['today']],
   [{ publication: { kind: 'today' } }, ['reply', 'today']],
   [{ publication: { kind: 'last-24-hours' } }, ['reply', 'today']],
   [{ publication: { kind: 'last-7-days' } }, ['reply', 'today', 'week']],

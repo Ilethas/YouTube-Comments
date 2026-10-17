@@ -61,6 +61,9 @@ if (process.versions.electron && process.type === 'browser') {
     });
   });
   async function verify(window) {
+    window.webContents.debugger.attach('1.3');
+    await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    window.webContents.debugger.detach();
     const js = code => window.webContents.executeJavaScript(code);
     async function wait(expression) {
       for (let i = 0; i < 2400; i++) { if (await js(expression)) return; await pause(25); }
@@ -104,9 +107,12 @@ if (process.versions.electron && process.type === 'browser') {
       // Exercise the actual Settings flow, including renderer view/seen flushing.
       const begin = performance.now();
       await js("document.querySelector('.data-backups button').click()");
+      await wait("!!document.querySelector('dialog .acquisition-spinner')");
+      assert.equal(await js("getComputedStyle(document.querySelector('dialog .acquisition-spinner')).animationName"), 'acquisition-spin');
       await wait("document.querySelector('.data-backups > [role=status]')?.textContent.includes('snapshot.sqlite')");
       const operationMs = performance.now() - begin;
       assert.equal(await js("document.querySelector('dialog[open]')===null"), true);
+      assert.equal(await js("document.querySelector('.acquisition-spinner')===null"), true);
       fs.writeFileSync(checkpoint, JSON.stringify(data(snapshot)));
       assert.deepEqual(data(database(root)), data(snapshot));
       console.log('Backup smoke PASS Settings + verified complete snapshot');

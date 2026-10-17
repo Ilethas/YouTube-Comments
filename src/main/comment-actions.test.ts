@@ -94,10 +94,10 @@ it('rejects missing/mismatched identities, synthetic sources and extra renderer 
   expect(open).not.toHaveBeenCalled();
 });
 it.each(translationTargets)('translation target %s encodes full Unicode/newline text with auto detection', translationTarget => {
-  const preferences: Preferences = { locale: 'pl', appearance: 'dark', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget };
+  const preferences: Preferences = { locale: 'pl', appearance: 'dark', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget, customTranslationTarget: 'uk' };
   const url = new URL(translationUrl(text, preferences) ?? '');
   expect(url.origin + url.pathname).toBe('https://translate.google.com/');
-  expect(Object.fromEntries(url.searchParams)).toEqual({ sl: 'auto', tl: translationTarget === 'app' ? 'pl' : translationTarget, text, op: 'translate' });
+  expect(Object.fromEntries(url.searchParams)).toEqual({ sl: 'auto', tl: translationTarget === 'app' ? 'pl' : translationTarget === 'custom' ? 'uk' : translationTarget, text, op: 'translate' });
   expect(url.href).not.toContain('你好');
 });
 it('main resolves Follow app at click, overrides stay independent, and bootstrap never opens a browser', async () => {
@@ -111,6 +111,13 @@ it('main resolves Follow app at click, overrides stay independent, and bootstrap
   }
   expect(open).toHaveBeenCalledTimes(5);
   for (const translationTarget of ['', 'auto', 'zh', 'javascript:', 'de&text=evil', null, 1]) expect(isPreferenceChange({ translationTarget })).toBe(false);
+});
+it.each(['uk', 'nl', 'sv', 'zh-TW', 'pt-BR', 'mni-Mtei'])('main-owned translation uses the committed custom %s code', async code => {
+  const { item, comment } = stored(), { reader, open } = service();
+  expect(reader.dispatch('updatePreferences', [{ translationTarget: 'custom', customTranslationTarget: code }]).ok).toBe(true);
+  expect(await reader.dispatch('openCommentAction', [{ itemId: item.id, commentId: comment.id, action: 'translate' }])).toEqual({ ok: true, value: null });
+  const params = new URL(open.mock.calls.at(-1)?.[0] ?? '').searchParams;
+  expect(Object.fromEntries(params)).toEqual({ sl: 'auto', tl: code, text, op: 'translate' });
 });
 it('bounds the entire encoded URL without truncation, and suppresses browser error text/URLs in diagnostics', async () => {
   const { item, comment } = stored(false, '中'.repeat(2000)), { reader, open, diagnose } = service();

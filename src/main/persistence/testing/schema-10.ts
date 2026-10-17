@@ -4,6 +4,7 @@ import { migrations, migrateDatabase } from '../migrations';
 /** Test fixture construction only: restore the exact historical schema before
  * existing tests strip earlier increments. Never used by profile startup. */
 export function downgradeSelectionFixture(db: DatabaseSync): void {
+  downgradeCustomTranslationFixture(db);
   if (!db.prepare('PRAGMA table_info(preferences)').all().some(row => row.name === 'selection_controls')) return;
   const reference = new DatabaseSync(':memory:');
   try {
@@ -19,5 +20,20 @@ export function downgradeSelectionFixture(db: DatabaseSync): void {
       ALTER TABLE preferences DROP COLUMN selection_controls;
       ALTER TABLE preferences DROP COLUMN include_collapsed_in_prefix;
       PRAGMA user_version=10;`);
+  } finally { reference.close(); }
+}
+
+/** Reconstruct schema 11 exactly, retaining every historical preference field. */
+export function downgradeCustomTranslationFixture(db: DatabaseSync): void {
+  if (!db.prepare('PRAGMA table_info(preferences)').all().some(row => row.name === 'custom_translation_target')) return;
+  const reference = new DatabaseSync(':memory:');
+  try {
+    migrateDatabase(reference, migrations.slice(0, 11));
+    const sql = String(reference.prepare("SELECT sql FROM sqlite_schema WHERE name='preferences'").get()?.sql);
+    db.exec(`CREATE TEMP TABLE fixture_preferences AS SELECT id,locale,appearance,
+      CASE WHEN translation_target='custom' THEN 'app' ELSE translation_target END AS translation_target,
+      selection_controls,include_collapsed_in_prefix FROM preferences; DROP TABLE preferences;`);
+    db.exec(sql);
+    db.exec('INSERT INTO preferences SELECT * FROM fixture_preferences; DROP TABLE fixture_preferences; PRAGMA user_version=11;');
   } finally { reference.close(); }
 }

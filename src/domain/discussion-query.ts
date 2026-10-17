@@ -35,7 +35,7 @@ export interface DiscussionViewResult {
   readonly matchCount: number;
   readonly threadCount: number;
 }
-export type QueryErrorCode = 'NO_SEARCH_FIELDS' | 'INVALID_REGEX' | 'QUERY_TOO_EXPENSIVE' | 'QUERY_FAILED' | 'QUERY_CANCELLED' | 'INVALID_PUBLICATION_DATE' | 'INVALID_PUBLICATION_RANGE';
+export type QueryErrorCode = 'NO_SEARCH_FIELDS' | 'INVALID_REGEX' | 'QUERY_TOO_EXPENSIVE' | 'QUERY_FAILED' | 'QUERY_CANCELLED' | 'INVALID_PUBLICATION_DATE' | 'INVALID_PUBLICATION_RANGE' | 'INVALID_PUBLICATION_TIME' | 'INVALID_LOCAL_TIME';
 export type QueryOutcome = { readonly ok: true; readonly result: DiscussionViewResult }
   | { readonly ok: false; readonly error: QueryErrorCode };
 
@@ -113,7 +113,8 @@ export function sameQuery(left: DiscussionQuery, right: DiscussionQuery): boolea
   return left.text === right.text && left.mode === right.mode && left.caseSensitive === right.caseSensitive && left.seen === right.seen
     && left.discovery === right.discovery && left.publication.kind === right.publication.kind
     && (left.publication.kind !== 'custom' || (right.publication.kind === 'custom'
-      && left.publication.from === right.publication.from && left.publication.to === right.publication.to))
+      && left.publication.from === right.publication.from && left.publication.to === right.publication.to
+      && left.publication.fromTime === right.publication.fromTime && left.publication.toTime === right.publication.toTime))
     && left.fields.length === right.fields.length && left.fields.every(field => right.fields.includes(field));
 }
 /** Resolve browser-find style wrap using displayed preorder, even when selection is context. */

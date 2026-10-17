@@ -105,7 +105,7 @@ it('settles active acquisition and blocks stale IPC until restart, with a separa
   expect(service.dispatch('toggleSeen', [{ itemId: 'video-demo', commentId: 'v1', subtree: false }])).toMatchObject({ error: { code: 'DATA_BUSY' } });
   await vi.waitFor(() => expect(restart).toHaveBeenCalledOnce());
   const directory = path.join(recoveryDirectory(file), readdirSync(recoveryDirectory(file))[0]);
-  expect(validateBackup(path.join(directory, 'safety.sqlite'))).toBe(11); expect(validateBackup(file)).toBe(11);
+  expect(validateBackup(path.join(directory, 'safety.sqlite'))).toBe(12); expect(validateBackup(file)).toBe(12);
 });
 it('settles an in-flight backup before shutdown closes the database', async () => {
   start(); let finish!: (file: string) => void;

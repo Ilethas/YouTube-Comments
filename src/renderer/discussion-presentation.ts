@@ -70,14 +70,19 @@ export function projectReaderRows(comments: readonly Comment[], result: Discussi
   const orderedIds = rows.map(row => row.id);
   return { rows, indexById, orderedIds, orderedMatchIds: orderedIds.filter(id => active.has(id)), mostLikedAvailable };
 }
-/** Original 22/10/3px compaction with an upper gutter budget for pathological depth.
+/** Original 44/10/3px compaction with an upper gutter budget for pathological depth.
  * Exact depth and linked ancestry remain available, independently of pixel compaction. */
 export function readerIndent(depth: number): number {
   return Math.min(340, Math.min(depth, 4) * 44 + Math.max(0, Math.min(depth, 9) - 4) * 10 + Math.max(0, depth - 9) * 3);
 }
+/** CSS shares the same responsive indentation budget for articles and rails.
+ * Selection occupies a separate outer lane, independent of avatar geometry. */
+export function readerIndentCss(depth: number): string {
+  return `min(${readerIndent(depth)}px, var(--indent-budget))`;
+}
 /** Compact reply levels return from the parent's avatar gutter to its left edge. */
-export function readerRailX(depth: number): number {
-  return readerIndent(Math.max(0, depth - 1)) + (depth < 5 ? 22 : 0);
+export function readerRailX(depth: number): string {
+  return `calc(${readerIndentCss(Math.max(0, depth - 1))} + ${depth < 5 ? 'var(--rail-x)' : '0px'})`;
 }
 /** Unmeasured multiline estimate; every mounted row is subsequently measured. */
 export function estimateReaderHeight(row: ReaderRow, width: number): number {

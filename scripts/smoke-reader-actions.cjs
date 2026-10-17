@@ -129,7 +129,7 @@ if (process.versions.electron) {
         await contents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
         assert.equal(await js("getComputedStyle(document.getElementById('spinner-probe')).animationName"),'acquisition-spin');
         await contents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
-        assert.equal(await js("getComputedStyle(document.getElementById('spinner-probe')).animationName"),'none');
+        assert.equal(await js("getComputedStyle(document.getElementById('spinner-probe')).animationName"),'acquisition-spin');
         await js("document.getElementById('spinner-probe').remove()");
       } finally { contents.debugger.detach(); }
       await preference(0,'pl'); await preference(1,'dark'); await preference(2,'de');

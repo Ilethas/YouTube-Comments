@@ -35,8 +35,9 @@ export function isDiscussionQuery(value: unknown): value is DiscussionQuery {
   if (!keys(value, ['text', 'fields', 'mode', 'caseSensitive', 'seen', 'publication', 'discovery'])) return false;
   const publication = value.publication;
   const validPublication = keys(publication, ['kind']) && ['all', 'today', 'last-24-hours', 'last-7-days'].includes(publication.kind as string)
-    || keys(publication, ['kind'], ['from', 'to']) && publication.kind === 'custom'
-      && ['from', 'to'].every(key => publication[key] === undefined || typeof publication[key] === 'string' && /^\d{4}-\d{2}-\d{2}$/u.test(publication[key] as string));
+    || keys(publication, ['kind'], ['from', 'to', 'fromTime', 'toTime']) && publication.kind === 'custom'
+      && ['from', 'to'].every(key => publication[key] === undefined || typeof publication[key] === 'string' && /^\d{4}-\d{2}-\d{2}$/u.test(publication[key] as string))
+      && ['fromTime', 'toTime'].every(key => publication[key] === undefined || typeof publication[key] === 'string' && /^\d{2}:\d{2}$/u.test(publication[key] as string));
   return typeof value.text === 'string' && value.text.length <= maxQueryTextLength
     && Array.isArray(value.fields) && value.fields.length <= 3
     && value.fields.every(field => ['content', 'author', 'replied-to-author'].includes(field)) && new Set(value.fields).size === value.fields.length

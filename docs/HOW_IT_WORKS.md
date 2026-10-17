@@ -89,6 +89,20 @@ Deterministic tests exercise the rules above without live YouTube access. Saved 
 
 ## Reader actions
 
+Settings offers Custom… / Własny… for codes such as uk, zh-TW or mni-Mtei. Save
+validates and activates the code together; switching to a preset retains it for later.
+The “?” button provides accessible code-only help. Valid syntax cannot promise Google
+support. Failed saves keep the committed choice. Restart/backup/restore retain both.
+
+Date/discoveries accepts optional local From/To HH:mm. Blank times include whole
+days; explicit To includes the complete entered minute. Times need dates;
+invalid/reversed or repeated/skipped DST times preserve applied results. Editing
+does not filter until Apply; saved views and Refresh retain semantic applied times.
+
+Activity rings keep rotating even with Windows Animation effects disabled, beside
+textual status/elapsed time. Selection circles align with avatars in an outer lane
+that leaves compact reply rails uninterrupted.
+
 Comment surfaces support native drag and Shift text selection, including selection
 across elements and Copy. Only checkbox click / Ctrl+checkbox changes seen state.
 Trusted video creator evidence adds a subtle author accent. Safe author names and
@@ -117,7 +131,7 @@ marks comments seen. See [ADR 0023](decisions/0023-persistent-thread-collapse-an
 
 ## Video header thumbnails
 
-A saved real video can show an optional thumbnail above its title. Comments open
+A saved real video can show an optional thumbnail below its title and source button. Comments open
 immediately; obtaining an image never runs the comment extractor. Click the image
 (or press Enter/Space on it) to expand to the reading column; activate again to
 shrink to about 360px. It keeps all image content within a 16:9 box and fits narrow

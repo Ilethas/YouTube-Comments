@@ -39,8 +39,9 @@ if (process.versions.electron) {
     await wait(`${image}?.querySelector('img').naturalWidth===1280 && !${image}.parentElement.hidden`);
     const before = await boot();
     const compact = await js(`${image}.getBoundingClientRect().width`); assert.ok(Math.abs(compact - 360) < 1);
-    assert.equal(await js(`${image}.parentElement.previousElementSibling.className`), 'item-actions');
-    assert.equal(await js(`${image}.parentElement.nextElementSibling.className`), 'item-title');
+    assert.equal(await js(`${image}.parentElement.previousElementSibling.className`), 'item-title');
+    assert.equal(await js(`${image}.parentElement.previousElementSibling.querySelector('.source-button')!==null`), true);
+    assert.equal(await js(`${image}.parentElement.previousElementSibling.previousElementSibling.className`), 'item-actions');
     assert.equal(await js(`${image}.getAttribute('aria-label')`), 'Expand thumbnail');
     assert.equal(opened.length, 0);
     await js(`${image}.click()`); await pause(60);
@@ -84,6 +85,8 @@ if (process.versions.electron) {
     }
     await js(`document.getElementById(${JSON.stringify('tab-discussion:' + fixture.itemId)}).click()`);
     await wait(`${image}?.getAttribute('aria-label')==='Pomniejsz miniaturę'`);
+    assert.equal(await js(`${image}.parentElement.previousElementSibling.className`), 'item-title');
+    assert.equal(await js(`${image}.parentElement.previousElementSibling.querySelector('.source-button')!==null`), true);
     await js(`${image}.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true}))`);
     assert.equal(await js("document.querySelector('[role=menuitem]').textContent"), 'Otwórz w przeglądarce obrazów');
     await js("document.querySelector('[role=menu]').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");

@@ -72,8 +72,8 @@ it.each([10000, 50000])('one header image for %i comments preserves projections,
   const view = render(<main className="reader-panel"><DiscussionPanel item={item} comments={comments} session={session} locale="en" saving={false} refreshDisabled={false} coverageLimited={false} onRefresh={vi.fn()} onToggle={toggle} /></main>);
   await load(view.container);
   const header = required(view.container.querySelector('.item-header'));
-  expect(required(header.querySelector('.item-actions')).nextElementSibling?.className).toBe('video-thumbnail-row');
-  expect(required(header.querySelector('.video-thumbnail-row')).nextElementSibling?.className).toBe('item-title');
+  expect(required(header.querySelector('.item-actions')).nextElementSibling?.className).toBe('item-title');
+  expect(required(header.querySelector('.item-title')).nextElementSibling?.className).toBe('video-thumbnail-row');
   const panel = required(view.container.querySelector('main'));
   act(() => { panel.scrollTop = 100000; fireEvent.scroll(panel); });
   act(() => layout.notify());
@@ -81,7 +81,7 @@ it.each([10000, 50000])('one header image for %i comments preserves projections,
   const before = session.state, scroll = panel.scrollTop;
   fireEvent.click(screen.getByRole('button', { name: 'Expand thumbnail' }));
   act(() => layout.setMargin(680));
-  await waitFor(() => expect(panel.scrollTop).toBe(scroll + 400));
+  await waitFor(() => expect(panel.scrollTop).toBeCloseTo(scroll + 400, 6));
   expect(session.state).toBe(before); expect(toggle).not.toHaveBeenCalled(); expect(engine.evaluate).not.toHaveBeenCalled();
   expect(view.container.querySelectorAll('.virtual-comment').length).toBeLessThan(35);
   expect(api.getThumbnail).toHaveBeenCalledTimes(1); expect(api.checkThumbnail).toHaveBeenCalledTimes(1);

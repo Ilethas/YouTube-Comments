@@ -1,5 +1,27 @@
 # Architecture
 
+## Usability increment (ADR 0026)
+
+Settings keeps custom translation drafts separate from acknowledged preferences.
+Shared syntax validation runs in renderer and privileged IPC/repository boundaries;
+one schema-12 transaction saves code and activation. Preset/app switches retain the
+code. Main resolves it from SQLite at the existing identity-only browser action;
+URLSearchParams, disclosure, length limits and copy fallback remain unchanged.
+
+Reader queries and bulk actions share one internal Temporal custom date/time
+resolver. Optional local HH:mm requires its date and rejects ambiguous/nonexistent
+specified minutes. Query bounds resolve once at Apply/Refresh using the captured
+system zone/clock before the numeric worker payload. No Temporal import/per-comment
+parsing enters the worker. Semantic times persist; native validity also guards Ctrl+Enter.
+
+Video titles/source actions precede optional thumbnails. Selection circles use an
+outer lane, with avatar-centered rails and responsive indentation using shared CSS
+variables. Existing measurement/anchor handling covers reflow, with a bounded
+next-frame mounted-row measurement fallback when scrolling makes synchronous
+layout-invalidation measurements unavailable. Loading rings
+intentionally rotate under reduced motion for acquisition/Refresh/backup/restore,
+without global motion overrides or percentages. See ADR 0026.
+
 ## Selection and confirmed explicit targets (ADR 0024)
 
 DiscussionViewSession owns a renderer-only bulk ID set and visual anchor, independent

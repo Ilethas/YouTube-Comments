@@ -89,7 +89,7 @@ it('schema 9 migrates additively with pre-migration safety; staged old backup mi
   expect(validateBackup(path.join(recoveryDirectory(file), snapshots[0]))).toBe(9);
   expect(readFileSync(file)).toEqual(bytes);
   const staged = await prepareRestore(path.join(recoveryDirectory(file), snapshots[0]), file);
-  expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(11);
+  expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(12);
   expect(readFileSync(file)).toEqual(bytes);
   repo = ReaderRepository.open(file);
   expect(repo.bootstrap(['en'])).toEqual(before); expect(repo.history()).toEqual(history);

@@ -76,9 +76,9 @@ export const DiscussionPanel = memo(function DiscussionPanel({ active = true, se
                 role={coverageLimited ? 'status' : undefined}>{t(coverageLimited ? 'coverageShort' : 'savedShort')}</span>
               {!item.isDemo && <button disabled={refreshDisabled} onClick={() => { onRefresh(item.id); }}><ActionIcon name="refresh" />{t('refresh')}</button>}
             </div>
-            {item.kind === 'video' && <VideoThumbnail key={`${item.id}:${item.sourceId}`} item={item} locale={locale} active={active} />}
             <div className="item-title"><h1>{item.kind === 'video' ? item.title : item.author?.displayName ?? t('unknownAuthor')}</h1>
               {!item.isDemo && onOpenSource && <SourceAction itemId={item.id} locale={locale} open={onOpenSource} />}</div>
+            {item.kind === 'video' && <VideoThumbnail key={`${item.id}:${item.sourceId}`} item={item} locale={locale} active={active} />}
             {item.kind === 'video' ? item.description && <VideoDescription id={item.id} text={item.description} locale={locale} /> : <p className="post-text">{item.text}</p>}
             <div className="item-meta"><strong>{item.author?.displayName ?? t('unknownAuthor')}</strong>
               {item.author?.handle && <span>{item.author.handle}</span>}

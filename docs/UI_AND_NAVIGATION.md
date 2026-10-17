@@ -1,5 +1,28 @@
 # UI and navigation
 
+## Reader usability (ADR 0026)
+
+Video headers order actions/status/Refresh, title with source-opening button,
+optional thumbnail, description, metadata. Community headers stay unchanged.
+Thumbnail compact/expanded sizing, keyboard/menu/cache behavior and no-image spacing
+stay unchanged; header reflow preserves virtual comment anchors. Selection circles
+occupy an outer lane independent of nesting and align vertically with avatars.
+Avatar gutters, rails/elbows and compact deep returns share layout variables and
+responsive indentation bounds. Existing measurement/anchor handling covers controls
+shown/hidden, locale and width changes without changing selection or hierarchy.
+If reflow invalidates row sizes during scrolling, a bounded mounted-row refresh
+prevents estimate heights from overlapping wrapped content, including at zoom.
+
+Date/discoveries adds optional local From/To HH:mm. Blank times retain whole days;
+To includes the entire minute. Presets disable custom fields. Edits remain drafts;
+Apply/Ctrl+Enter checks native and shared Temporal validity, preserving results on
+failure. Status/saved views include semantic times; Refresh uses applied criteria.
+
+Custom translation requires a saved valid code before activation. Explicit Save
+commits code/activation together; preset switches retain the code. Accessible “?” help
+explains syntax/support limits. Loading rings intentionally keep rotating under
+reduced motion, with existing text, elapsed time and completion/cancellation behavior.
+
 ## Comment selection and menus (ADR 0024)
 
 Bulk selection is a separate session-only ID set per discussion; F3's navigation
@@ -134,11 +157,11 @@ language icon and localized label. It opens the full stored comment in Google
 Translate with auto-detection and the saved target. Text exceeding 5000 UTF-16 units or a URL exceeding 8000 encoded
 characters is rejected; localized feedback offers full Copy and manual translation in smaller parts. There
 is no truncation or automatic outbound request. Settings explains the Google privacy
-boundary and provides Follow application language plus ten explicit target choices.
+boundary and provides Follow application language, ten presets and Custom… (ADR 0026).
 
 A compact 16px CSS spinner replaces the indeterminate progress bar. Coarse stage,
 elapsed time and exact-ID Cancel stay global while switching tabs; Saving and
-Updating view remain non-cancellable. Reduced motion keeps a static ring with stage
+Updating view remain non-cancellable. Reduced motion keeps steady rotation with stage
 text. No percentage is shown. Existing app-owned outline vectors now share one
 ActionIcon mapping for external/translation/copy, Refresh/Cancel, seen/unseen/Undo,
 Library/Settings and tab close; icons are decorative and controls remain named.
@@ -572,8 +595,8 @@ localized stable error. No stale busy surface remains after settlement.
 
 ## Optional video header thumbnail (ADR 0025)
 
-A cached image occupies its own row immediately after Video/status/Refresh and
-before the title, aligned with the title. Default width is 360px with max-width
+A cached image occupies its own row after the video title/source-action row and
+before description/metadata (ADR 0026), aligned with the title. Default width is 360px with max-width
 100%; activation toggles to full reading-column width. A 16:9 box uses contain,
 never crops or distorts the image, and changes size immediately. Missing/loading/
 failed-decoding images reserve no space. The button has visible focus, aria-expanded

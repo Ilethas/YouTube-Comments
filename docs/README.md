@@ -1,5 +1,10 @@
 # Documentation map
 
+[ADR 0026](decisions/0026-custom-translation-reader-minutes-and-layout.md) adds
+schema-12 custom translation targets, optional reader publication minutes shared
+with bulk resolution, steady loading rotation under reduced motion, title-first
+video headers and aligned selection/rail gutters. See [verification](TESTING.md).
+
 [ADR 0025](decisions/0025-persistent-video-thumbnails.md) adds optional cached video
 header thumbnails, inline expansion and explicit OS image-viewer opening. Cache
 bytes are profile-local presentation data excluded from SQLite backups; source

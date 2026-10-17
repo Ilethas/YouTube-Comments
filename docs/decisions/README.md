@@ -1,5 +1,9 @@
 # Decisions and open questions
 
+[ADR 0026](0026-custom-translation-reader-minutes-and-layout.md) adds schema-12
+atomic custom translation, shared reader/bulk publication minutes, an activity-only
+reduced-motion exception, title-first video headers and aligned selection/rail gutters.
+
 [ADR 0025](0025-persistent-video-thumbnails.md) implements optional persistent
 video thumbnails, main-owned bounded retrieval/cache, opaque image delivery,
 inline expansion and explicit OS-viewer action without schema changes.

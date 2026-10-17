@@ -1,5 +1,75 @@
 # Testing strategy
 
+## Usability milestone (2026-10-17, ADR 0026)
+
+The final deterministic suite passes **928 tests in 74 files**. Typecheck, lint,
+renderer production build, validated Windows x64 application packaging and
+`git diff --check` pass. The worker remains 2.60 kB; renderer JS is 477.29 kB
+(148.30 kB gzip), CSS 21.13 kB. Focused runs cover custom translation syntax and IPC rejection, every preset
+and Follow app URL, hyphenated custom targets, accessible EN/PL help/validation,
+Custom/preset/custom switching, rollback after a failed atomic save, restart,
+schema-11 migration and preserved populated content/preferences/workspace/Undo/views,
+pre-migration safety, older staged backups and custom-target/time backup restoration.
+Existing newer/modified-schema rejection and recovery tests continue to pass.
+
+Publication coverage includes unchanged date-only/preset behavior, optional/open
+clock boundaries, equal/same-day intervals, complete final minutes, invalid dates/
+times/ranges, dates required by times, DST gaps/repetitions, shared bulk/query
+resolution, draft/applied separation/status, fresh restart reconstruction and
+Refresh retaining applied times. Controls test native validity failures in EN/PL;
+session tests assert numeric worker bounds, retained results after timeout/failure,
+and unchanged comments/seen. Worker isolation/deadline and 10k/50k reader tests pass.
+Backup busy-state cancellation removes the shared spinner; acquisition lifecycle
+and exact-ID cancellation continue to pass.
+
+`scripts/smoke-usability-milestone.cjs` is part of `test:electron`. It starts with an
+owned schema-11 profile, migrates through real main/preload/renderer startup, and
+checks custom uk → French → custom, browser tl capture, restart, blank-time whole
+days, entered clock bounds, draft-only editing, invalid-range retention, native
+time validity, unchanged comment/seen data and 10k bounded virtual rows. It uses
+Chromium media emulation to check real changing spinner transforms under both
+motion preferences. Layout measurements check avatar/circle vertical centers,
+avatar child-rails, clear selection gutters, deep indentation and no horizontal
+overflow at EN/light/100%, PL/dark/125% and EN/dark/80%, including selected rows.
+Captures are written under `.vite/usability-*.png` for review.
+
+The complete final `npm.cmd run test:electron` passes: general IPC/persistence and
+helper restarts, saved views, full-profile backup/restore and crash recovery,
+reader actions, collapse, 10k/50k selection, isolated Library removal, thumbnails,
+and this milestone's first/restart checks. Native partial HH:mm input reports
+Chromium badInput and Ctrl+Enter preserves the prior applied view. Final captures
+at 80%, 100% and 125% were reviewed, including PL/dark at narrow width.
+
+Visual review caught persistent overlapping Polish rows after zoom/width changes
+while scrolling. The bounded mounted-row fallback now refreshes actual sizes on
+the next frame when normal synchronous measurement is skipped. A deterministic
+scroll/width/locale regression and Electron adjacent-row non-overlap assertion cover
+the fix; corrected PL/dark/125% captures are reviewed. Header-anchor assertions use
+subpixel numeric tolerance rather than exact floating-point addition equality.
+
+The existing thumbnail harness now asserts title-before-image placement and still
+checks 360px/expanded sizing, keyboard/menu behavior, no-image space, narrow/zoom,
+offline/restart/cache and identity/offset anchoring. Its shell.openPath is mocked.
+The general acquisition and native backup harnesses also emulate reduced motion
+while checking actual busy-state rotation and settled activity removal.
+
+Implementation files are shared preferences/reader API; main repository, service,
+migrations and backup validation; publication-filter/query/view domain contracts;
+App, TranslationSettings, DiscussionQueryControls, DiscussionPanel,
+VirtualCommentList, discussion-presentation, i18n and index.css. Tests include new
+preferences, custom-translation, TranslationSettings and DiscussionQueryControls
+files plus existing migration/session/layout regressions. Electron scripts and
+package.json include the new harness. AGENTS, the documentation map, owner guide,
+architecture, database, filtering, localization, navigation and ADR 0026 document
+the behavior. Historical migrations, CommentTree selection behavior, hierarchy,
+thumbnail cache and translation URL construction remain unchanged.
+
+All checks use disposable profiles. No production profile, installer, commit,
+push or publishing operation is used. Google language availability, live external
+browser behavior and the actual OS image viewer remain outside offline evidence.
+The established native Copy check can report UNVERIFIED when existing clipboard
+formats cannot be safely captured; it preserves the clipboard.
+
 ## Persistent video thumbnails (2026-10-17)
 
 [ADR 0025](decisions/0025-persistent-video-thumbnails.md) keeps schema 11 and

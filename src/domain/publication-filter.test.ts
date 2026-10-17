@@ -1,9 +1,32 @@
 import { expect, it, vi } from 'vitest';
-import { localDayStart, resolvePublication } from './publication-filter';
+import { localDayStart, resolvePublication, resolveBulkPublication } from './publication-filter';
 import type { PublicationCriteria } from './publication-filter';
 import { publicationMatches } from './publication-predicate';
 
 const time = { now: Date.parse('2026-10-07T12:34:56.789Z'), timeZone: 'Europe/Warsaw' };
+it.each([
+  { from: '2026-10-16', fromTime: '14:30' }, { to: '2026-10-17', toTime: '09:15' },
+  { from: '2026-10-16', fromTime: '14:30', to: '2026-10-17', toTime: '09:15' },
+  { from: '2026-10-16', fromTime: '14:30', to: '2026-10-16', toTime: '14:30' },
+  { from: '2026-10-16', to: '2026-10-17', toTime: '09:15' },
+  { from: '2026-10-16', fromTime: '14:30', to: '2026-10-17' },
+])('reader clock boundaries share bulk resolution: %j', criteria => {
+  const result = resolvePublication({ kind: 'custom', ...criteria }, time);
+  expect(result).toEqual(resolveBulkPublication(criteria, time)); expect(result.ok).toBe(true);
+  if (!result.ok || !result.bounds) throw new Error('Expected bounds');
+  const { from, to } = result.bounds;
+  if (from !== undefined) { expect(publicationMatches(from, result.bounds)).toBe(true); expect(publicationMatches(from - 1, result.bounds)).toBe(false); }
+  if (to !== undefined) { expect(publicationMatches(to - 1, result.bounds)).toBe(true); expect(publicationMatches(to, result.bounds)).toBe(false); }
+});
+it.each([
+  { fromTime: '14:30' }, { toTime: '09:15' }, { from: '2026-02-30', fromTime: '12:00' },
+  { from: '2026-10-16', fromTime: '' }, { from: '2026-10-16', fromTime: '1:30' }, { to: '2026-10-16', toTime: '24:00' },
+  { from: '2026-10-16', fromTime: '14:31', to: '2026-10-16', toTime: '14:30' },
+  { from: '2026-03-29', fromTime: '02:30' }, { to: '2026-10-25', toTime: '02:30' },
+])('rejects invalid reader clock criteria consistently with bulk: %j', criteria => {
+  const result = resolvePublication({ kind: 'custom', ...criteria }, time);
+  expect(result).toEqual(resolveBulkPublication(criteria, time)); expect(result.ok).toBe(false);
+});
 function bounds(criteria: PublicationCriteria, zone = time.timeZone) {
   const outcome = resolvePublication(criteria, { ...time, timeZone: zone });
   if (!outcome.ok || !outcome.bounds) throw new Error('Expected bounds');

@@ -1,5 +1,22 @@
 # Localization and theming
 
+## Custom targets and activity (ADR 0026)
+
+Settings ends with Custom… / Własny…. Code input, Save/Zapisz, validation and help
+are localized; examples are uk, nl, sv, zh-TW, pt-BR, mni-Mtei. The labeled “?” button
+toggles a help paragraph by keyboard/pointer with aria-expanded/controls and an input
+description. Help explains code-only input, no tl= or URL, and that valid syntax
+cannot guarantee Google support. Code and active choice remain independent of UI
+locale. Reader times reuse bulk native HH:mm conventions and optional EN/PL labels;
+applied status includes times without changing content/timezone semantics.
+
+The small indeterminate ring intentionally rotates under prefers-reduced-motion,
+including Windows Animation effects disabled. This exception covers only the shared
+acquisition/Refresh/backup/restore spinner: steady, low-contrast rotation with textual
+stage/elapsed status, no flash/pulse/percentage or global override. Completion and
+cancellation remove busy UI. Title-first video headers and selection/rail gutters
+retain existing semantic Light/Dark/System theme tokens.
+
 ## Selection and menu preferences (ADR 0024)
 
 English/Polish Settings expose selection controls: on-demand default or always,
@@ -30,8 +47,8 @@ or alter search. Publication labels preserve source precision/estimatedness.
 Creator tokens are purple with separate light/dark values and a text badge, never a
 full-row tint or an identity inference. Unknown/Community evidence has no accent.
 Shared decorative outline action vectors inherit currentColor; named controls and
-focus outlines carry meaning. The progress ring stops rotating under
-prefers-reduced-motion while the localized stage remains visible. Native text
+focus outlines carry meaning. The progress ring keeps steady rotation under
+prefers-reduced-motion as the ADR 0026 activity-only exception, with localized stage text. Native text
 selection no longer competes with Shift row gestures. See
 [ADR 0022](decisions/0022-reader-actions-external-links-and-translation-preferences.md).
 

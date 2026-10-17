@@ -7,7 +7,7 @@ import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
 import type { Comment } from '../domain/discussion';
 import type { DiscussionViewResult } from '../domain/discussion-query';
 import { CommentArticle, commentTargetId } from './CommentTree';
-import { estimateReaderHeight, readerIndent, readerRailX } from './discussion-presentation';
+import { estimateReaderHeight, readerIndentCss, readerRailX } from './discussion-presentation';
 import type { ReaderRow } from './discussion-presentation';
 import type { DiscussionViewSession, ReaderScrollAnchor, ReaderScrollRequest } from './discussion-view-session';
 import type { Locale } from './i18n';
@@ -45,7 +45,7 @@ interface Props {
 /** Draw ancestry from data; parent articles need not be mounted. Coalescing
  * compact coincident rails bounds visual work without discarding actual depth. */
 export function ReaderRails({ row }: { row: ReaderRow }) {
-  const continuations = new Set<number>();
+  const continuations = new Set<string>();
   for (let ancestor = row.ancestors; ancestor; ancestor = ancestor.parent) {
     if (ancestor.depth > 0 && ancestor.continues) continuations.add(readerRailX(ancestor.depth));
   }
@@ -53,9 +53,9 @@ export function ReaderRails({ row }: { row: ReaderRow }) {
   return <div className="reader-rails" aria-hidden="true">
     {[...continuations].map(left => <span key={left} className="ancestor-rail" style={{ left }} />)}
     {row.depth > 0 && <><span className="parent-rail" data-last={row.lastSibling} style={{ left: parentX }} />
-      <span className="flat-elbow" style={{ left: parentX, width: Math.max(0, readerIndent(row.depth) - parentX) }} /></>}
-    {row.depth >= 5 && row.firstSibling && <span className="compact-return" style={{ left: parentX, width: 22 }} />}
-    {row.hasChildren && <span className="child-rail" style={{ left: readerIndent(row.depth) + 22 }} />}
+      <span className="flat-elbow" style={{ left: parentX, width: `max(0px, calc(${readerIndentCss(row.depth)} - ${parentX}))` }} /></>}
+    {row.depth >= 5 && row.firstSibling && <span className="compact-return" style={{ left: parentX, width: 'var(--rail-x)' }} />}
+    {row.hasChildren && <span className="child-rail" style={{ left: `calc(${readerIndentCss(row.depth)} + var(--rail-x))` }} />}
   </div>;
 }
 
@@ -118,6 +118,24 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
       return size > 0 ? size : instance.measurementsCache[index]?.size ?? estimateSize(index);
     },
   });
+  const measureMountedRows = useCallback(() => {
+    // A layout invalidation can occur during native scrolling. measureElement
+    // deliberately skips its synchronous read then, and unchanged boxes need not
+    // emit another ResizeObserver event after measure() clears their cached sizes.
+    // Restore only the bounded mounted set directly, using the same actual boxes.
+    virtualizer.getTotalSize();
+    for (const element of [...virtualizer.elementsCache.values()]) virtualizer.measureElement(element);
+    if (!virtualizer.isScrolling) return () => undefined;
+    const frame = requestAnimationFrame(() => {
+      // Snapshot the mounted set: resize notifications may synchronously change
+      // the virtual window. Never follow newly mounted rows through a live iterator.
+      for (const element of [...virtualizer.elementsCache.values()]) {
+        const rect = element.getBoundingClientRect();
+        if (element.isConnected && rect.width > 0 && rect.height > 0) virtualizer.resizeItem(Number(element.dataset.index), rect.height);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [virtualizer]);
   const captureAnchor = useCallback((): ReaderScrollAnchor | undefined => {
     const panel = getScrollElement(), element = list.current;
     if (!panel || !element) return;
@@ -221,17 +239,17 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
     virtualizer.measure();
     // Rebuild the estimate coordinate cache before comparing DOM sizes against
     // it; otherwise unchanged boxes can compare equal to pre-invalidation sizes.
-    virtualizer.getTotalSize();
-    for (const element of virtualizer.elementsCache.values()) virtualizer.measureElement(element);
+    const cancelMeasurement = measureMountedRows();
     const index = anchor?.id === undefined ? undefined : indexById.get(anchor.id);
-    if (index !== undefined && anchor) return restoreMeasuredAnchor(index, anchor.offset);
-  }, [locale, showSelection, virtualizer, indexById]);
+    const cancelRestore = index !== undefined && anchor ? restoreMeasuredAnchor(index, anchor.offset) : undefined;
+    return () => { cancelMeasurement(); cancelRestore?.(); };
+  }, [locale, showSelection, virtualizer, indexById, measureMountedRows]);
   useLayoutEffect(() => {
     // Clearing the cache does not itself resize a DOM box. Rows whose height
     // stays unchanged during reflow may emit no ResizeObserver entry, so restore
     // their actual measurements explicitly before painting estimated positions.
-    for (const element of virtualizer.elementsCache.values()) virtualizer.measureElement(element);
-  }, [geometry.width, locale, virtualizer]);
+    return measureMountedRows();
+  }, [geometry.width, locale, measureMountedRows]);
   useLayoutEffect(() => {
     if (focusedId === undefined || indexById.has(focusedId)) return;
     // Explicit Apply can remove the focused row. Return focus to its reader
@@ -272,7 +290,7 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
   const contentHeight = Math.max(geometry.height + 4, geometry.margin + totalSize + geometry.after);
   const buckets = useMemo(() => aggregateRulerMarkers(markerIndex, measurements, contentHeight, geometry.height), [markerIndex, measurements, contentHeight, geometry.height]);
   const panel = getScrollElement();
-  return <><ol ref={list} className="comment-tree root-tree virtual-reader" data-row-count={rows.length} data-mounted-count={items.length}
+  return <><ol ref={list} className="comment-tree root-tree virtual-reader" data-selection={showSelection} data-row-count={rows.length} data-mounted-count={items.length}
     style={{ height: totalSize }}
     onFocusCapture={event => setFocusedId(event.target.closest<HTMLElement>('[data-comment-id]')?.dataset.commentId)}
     onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusedId(undefined); }}>
@@ -291,7 +309,7 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
           const rect = event.currentTarget.getBoundingClientRect(); openMenu(row.id, event.currentTarget, rect.left + 24, rect.top + 24);
         }}
         aria-posinset={item.index + 1} aria-setsize={rows.length}
-        className="comment-branch virtual-comment" style={{ transform: `translateY(${item.start - geometry.margin}px)`, '--reader-indent': `${readerIndent(row.depth)}px` } as CSSProperties}>
+        className="comment-branch virtual-comment" style={{ transform: `translateY(${item.start - geometry.margin}px)`, '--reader-indent': readerIndentCss(row.depth) } as CSSProperties}>
         <ReaderRails row={presentation.collapsed.has(row.id) ? { ...row, hasChildren: false } : row} />
         <CommentArticle comment={row.comment} role={row.role} rawHit={row.rawHit} hasChildren={row.hasChildren} selected={selected === row.id}
           showSelection={showSelection} bulkSelected={bulkSelected.has(row.id)} onSelect={selectBulk}

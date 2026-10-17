@@ -93,7 +93,7 @@ async function showReader() { render(<App api={api} />); await screen.findByRole
 it('Settings persists a bounded translation override independently from language and restores it on remount', async () => {
   await showReader(); fireEvent.click(required(document.getElementById('settings-toggle')));
   const target = await screen.findByRole('combobox', { name: 'Translation target language' });
-  expect((target as HTMLSelectElement).value).toBe('app'); expect(target.querySelectorAll('option')).toHaveLength(11);
+  expect((target as HTMLSelectElement).value).toBe('app'); expect(target.querySelectorAll('option')).toHaveLength(12);
   expect(screen.getByText(/Opening translation sends/)).toBeTruthy();
   fireEvent.change(target, { target: { value: 'de' } });
   await waitFor(() => expect(state.preferences.translationTarget).toBe('de'));
@@ -1069,7 +1069,7 @@ it('date/discovery controls are compact independent drafts, validate ranges, App
   expect(details?.open).toBe(false);
   fireEvent.click(within(panel()).getByText('Date / discoveries', { selector: 'summary' }));
   fireEvent.change(control('Publication date'), { target: { value: 'last-24-hours' } });
-  expect((control('From') as HTMLInputElement).disabled).toBe(true);
+  expect((control('From date') as HTMLInputElement).disabled).toBe(true);
   expect(matches()).toEqual([]); // Identity view stays unchanged until Apply.
   fireEvent.change(control('Discovery'), { target: { value: 'new' } });
   fireEvent.click(within(panel()).getByRole('button', { name: 'Apply' }));
@@ -1079,16 +1079,16 @@ it('date/discovery controls are compact independent drafts, validate ranges, App
   expect(panel().querySelector('[data-selected=true]')?.id).toBe('comment-fresh');
   expect(api.toggleSeen).not.toHaveBeenCalled();
   fireEvent.change(control('Publication date'), { target: { value: 'all' } });
-  fireEvent.change(control('From'), { target: { value: '2026-10-08' } });
-  fireEvent.change(control('To (whole day)'), { target: { value: '2026-10-07' } });
+  fireEvent.change(control('From date'), { target: { value: '2026-10-08' } });
+  fireEvent.change(control('To date'), { target: { value: '2026-10-07' } });
   expect(screen.getByRole('alert').textContent).toContain('From must be');
-  expect(control('From').getAttribute('aria-invalid')).toBe('true');
-  fireEvent.keyDown(control('From'), { key: 'Enter', ctrlKey: true, bubbles: true });
+  expect(control('From date').getAttribute('aria-invalid')).toBe('true');
+  fireEvent.keyDown(control('From date'), { key: 'Enter', ctrlKey: true, bubbles: true });
   await waitFor(() => expect(matches()).toEqual(['fresh']));
-  fireEvent.change(control('From'), { target: { value: '2001-01-01' } });
-  fireEvent.change(control('To (whole day)'), { target: { value: '2001-01-01' } });
+  fireEvent.change(control('From date'), { target: { value: '2001-01-01' } });
+  fireEvent.change(control('To date'), { target: { value: '2001-01-01' } });
   fireEvent.change(control('Discovery'), { target: { value: 'all' } });
-  fireEvent.keyDown(control('To (whole day)'), { key: 'Enter', ctrlKey: true, bubbles: true });
+  fireEvent.keyDown(control('To date'), { key: 'Enter', ctrlKey: true, bubbles: true });
   await waitFor(() => expect(matches()).toEqual(['baseline']));
   fireEvent.change(control('Discovery'), { target: { value: 'new' } });
   fireEvent.click(screen.getAllByRole('tab')[1]);
@@ -1097,7 +1097,7 @@ it('date/discovery controls are compact independent drafts, validate ranges, App
   fireEvent.click(screen.getAllByRole('tab')[0]);
   await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe('panel-date-test'));
   expect((control('Discovery') as HTMLSelectElement).value).toBe('new');
-  expect((control('From') as HTMLInputElement).value).toBe('2001-01-01');
+  expect((control('From date') as HTMLInputElement).value).toBe('2001-01-01');
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
   await screen.findByLabelText('Language');
   fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'pl' } });
@@ -1106,8 +1106,8 @@ it('date/discovery controls are compact independent drafts, validate ranges, App
   await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe('panel-date-test'));
   expect((control('Odkrycie') as HTMLSelectElement).value).toBe('new');
   expect(matches()).toEqual(['baseline']);
-  expect(control('Data publikacji')).toBeDefined(); expect(control('Do (cały dzień)')).toBeDefined();
-  fireEvent.change(control('Od'), { target: { value: '2001-01-02' } });
+  expect(control('Data publikacji')).toBeDefined(); expect(control('Data Do')).toBeDefined();
+  fireEvent.change(control('Data Od'), { target: { value: '2001-01-02' } });
   expect(screen.getByRole('alert').textContent).toContain('Data Od musi');
 });
 

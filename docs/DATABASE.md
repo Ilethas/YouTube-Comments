@@ -1,8 +1,25 @@
 # Database and durable data
 
+## Schema 12 usability settings (ADR 0026)
+
+Migration 12 rebuilds only preferences, explicitly copying every existing column,
+value and constraint while permitting translation_target=custom. Nullable
+custom_translation_target retains the last saved code independently of app/presets.
+Shared renderer/main syntax validation precedes atomic code plus activation writes;
+failures retain committed values, and Custom cannot activate without a valid code.
+Fresh profiles still follow application language. Both fields enter backup/restore.
+Historical schemas 1–11 retain exact validation, pre-migration snapshots and staged
+upgrades; unknown/modified/newer schemas still fail closed. No discussion/workspace/
+collapse/Undo tables are rebuilt by migration 12.
+
+Saved draft/applied publication JSON optionally adds semantic fromTime/toTime HH:mm.
+Old date-only JSON stays valid. Bounded shape validation permits invalid semantic
+drafts for correction; Apply checks real dates/times/ranges/DST. UTC bounds and result
+IDs never persist. See [ADR 0026](decisions/0026-custom-translation-reader-minutes-and-layout.md).
+
 ## Selection preferences and Undo metadata (schema 11, ADR 0024)
 
-Current schema is 11. Checked preferences add selection_controls (on-demand default,
+Current schema is 12. Schema 11 added checked selection_controls (on-demand default,
 or always) and include_collapsed_in_prefix (boolean, default 1). Selected ID sets,
 visual range anchors and selection-mode flags remain renderer/session-only.
 The existing durable navigation selected_comment_id is a different identity.
@@ -131,7 +148,7 @@ workspace/content/history. Helper selections already store paths only; tested
 versus untested is probe evidence, not a new durable configuration field.
 
 
-SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 11 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW. [ADR 0014](decisions/0014-main-owned-helper-settings.md) adds separate profile-local helper selections.
+SQLite is the durable store for valuable discussion and manual processing data. Main-owned built-in `node:sqlite` now uses schema 12 with ordered transactional migrations. ADRs [0002](decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](decisions/0004-durable-observation-merge.md), [0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md) and [0006](decisions/0006-compact-reader-and-persistent-tabs.md) describe persistence, normalized history, live acquisition and the bounded tab workspace. [ADR 0011](decisions/0011-virtualized-overview-and-durable-new.md) adds explicit attempt order and derived durable NEW. [ADR 0014](decisions/0014-main-owned-helper-settings.md) adds separate profile-local helper selections.
 
 The implementation below is deliberately small. Later sections describe the broader conceptual target and must not be read as implemented tables/features. Read the [domain model](DOMAIN_MODEL.md) for meanings and [architecture](ARCHITECTURE.md) for ownership.
 

@@ -222,6 +222,25 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
   INSERT INTO seen_operation_entries SELECT * FROM saved_seen_entries;
   DROP TABLE saved_seen_entries;
   DROP TABLE saved_seen_operations;
+`) }, { version: 12, apply: db => db.exec(`
+  CREATE TABLE preferences_next (
+    id INTEGER PRIMARY KEY CHECK(id = 1),
+    locale TEXT CHECK(locale IN ('en','pl')),
+    appearance TEXT NOT NULL CHECK(appearance IN ('system','light','dark')),
+    translation_target TEXT NOT NULL DEFAULT 'app'
+      CHECK(translation_target IN ('app','en','pl','de','fr','es','it','pt','ja','ko','zh-CN','custom')),
+    selection_controls TEXT NOT NULL DEFAULT 'on-demand' CHECK(selection_controls IN ('on-demand','always')),
+    include_collapsed_in_prefix INTEGER NOT NULL DEFAULT 1 CHECK(include_collapsed_in_prefix IN (0,1)),
+    custom_translation_target TEXT CHECK(custom_translation_target IS NULL OR (
+      length(custom_translation_target) BETWEEN 2 AND 35
+      AND custom_translation_target NOT GLOB '*[^A-Za-z0-9-]*'
+      AND lower(custom_translation_target) <> 'auto')),
+    CHECK(translation_target <> 'custom' OR custom_translation_target IS NOT NULL)
+  ) STRICT;
+  INSERT INTO preferences_next (id,locale,appearance,translation_target,selection_controls,include_collapsed_in_prefix)
+    SELECT id,locale,appearance,translation_target,selection_controls,include_collapsed_in_prefix FROM preferences;
+  DROP TABLE preferences;
+  ALTER TABLE preferences_next RENAME TO preferences;
 `) }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 

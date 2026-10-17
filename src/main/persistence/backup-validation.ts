@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { migrations, migrateDatabase, schemaVersion } from './migrations';
 import { isSaveDiscussionViewRequest } from '../../domain/discussion-view';
+import { normalizeTranslationCode } from '../../shared/preferences';
 
 export type BackupValidationReason = 'INVALID_BACKUP' | 'NEWER_BACKUP' | 'OLDER_BACKUP';
 export class BackupValidationError extends Error {
@@ -27,7 +28,7 @@ function requireEmpty(db: DatabaseSync, sql: string): void {
 
 /** Read-only validation uses only application-authored SQL. Unknown tables,
  * indexes, views and triggers are rejected before any staged migration runs.
- * Schemas 1–11 are recognized; only the staged copy may subsequently migrate. */
+ * Schemas 1–12 are recognized; only the staged copy may subsequently migrate. */
 export function validateBackup(file: string): number {
   let db: DatabaseSync | undefined;
   try {
@@ -41,6 +42,11 @@ export function validateBackup(file: string): number {
     if (integrity.length !== 1 || integrity[0].integrity_check !== 'ok') throw new BackupValidationError('INVALID_BACKUP');
     requireEmpty(db, 'PRAGMA foreign_key_check');
     if (db.prepare('SELECT count(*) AS n FROM preferences WHERE id=1').get()?.n !== 1) throw new BackupValidationError('INVALID_BACKUP');
+    if (version >= 12) {
+      const preferences = db.prepare('SELECT * FROM preferences WHERE id=1').get();
+      const code = preferences?.custom_translation_target;
+      if (code !== null && normalizeTranslationCode(code) !== code || preferences?.translation_target === 'custom' && code === null) throw new BackupValidationError('INVALID_BACKUP');
+    }
     requireEmpty(db, 'SELECT 1 FROM comments c LEFT JOIN comment_state s ON c.id=s.comment_id WHERE s.comment_id IS NULL LIMIT 1');
     if (version >= 3 && db.prepare('SELECT count(*) AS n FROM workspace WHERE id=1').get()?.n !== 1) throw new BackupValidationError('INVALID_BACKUP');
     if (version >= 2) {
