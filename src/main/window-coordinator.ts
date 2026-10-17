@@ -1,3 +1,5 @@
+import { sharedCommitChannel } from '../shared/reader-sync';
+import type { SharedCommit } from '../shared/reader-sync';
 import type { BrowserWindow, IpcMainInvokeEvent, WebContents, WebFrameMain } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { createApplicationWindow } from './application-window';
@@ -107,15 +109,17 @@ export class WindowCoordinator {
     return undefined;
   }
 
-  /** Existing single-window progress delivery; cross-window events belong to M2. */
-  sendAcquisitionProgress(value: AcquisitionNotification): void {
+  /** Send only to current authenticated documents. A dead/throwing recipient
+   * cannot interrupt delivery to peers or a committed repository mutation. */
+  private fanout(channel: string, value: SharedCommit | AcquisitionNotification): void {
     for (const record of this.records.values()) {
-      if (record.caller && this.live(record, record.caller)) {
-        record.window.webContents.send(acquisitionProgressChannel, value);
-        return;
-      }
+      try {
+        if (record.caller && this.live(record, record.caller)) record.window.webContents.send(channel, value);
+      } catch { /* Destruction may race the final send. */ }
     }
   }
+  sendSharedCommit(value: SharedCommit): void { this.fanout(sharedCommitChannel, value); }
+  sendAcquisitionProgress(value: AcquisitionNotification): void { this.fanout(acquisitionProgressChannel, value); }
 
   get size(): number { return this.records.size; }
 }

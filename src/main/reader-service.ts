@@ -1,11 +1,12 @@
+import type { SharedCommit, SharedSnapshot, SharedItemSnapshot, SharedMetadata } from '../shared/reader-sync';
 import type { ReaderCallerContext } from './caller-context';
 import { isCancelAcquisitionRequest } from '../shared/acquisition';
 import type { AcquisitionNotification, AcquisitionProgress } from '../shared/acquisition';
-import { isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshRequest, isTabRequest, isMoveTabRequest, isBulkSeenRequest, isHelperRequest, isCommentActionRequest } from '../shared/reader-api';
+import { isUndoSeenRequest, isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshRequest, isTabRequest, isMoveTabRequest, isBulkSeenRequest, isHelperRequest, isCommentActionRequest } from '../shared/reader-api';
 import type { AcquisitionResult, ReaderOperation, ReaderState, Result } from '../shared/reader-api';
 import type { SeenMutationResult, SeenUndoResult } from '../domain/seen-operation';
 import type { Preferences } from '../shared/preferences';
-import { ReaderRepository, MissingCommentError, NotRemovableError, InvalidSeenTargetError, InvalidDiscussionViewError, InvalidPreferenceError } from './persistence/reader-repository';
+import { ReaderRepository, UndoConflictError, MissingCommentError, NotRemovableError, InvalidSeenTargetError, InvalidDiscussionViewError, InvalidPreferenceError } from './persistence/reader-repository';
 import { isSetDiscussionCollapseRequest } from '../domain/discussion-collapse';
 import { isSaveDiscussionViewRequest } from '../domain/discussion-view';
 import { UnsupportedSchemaError } from './persistence/migrations';
@@ -35,11 +36,14 @@ export interface DataBackupOptions {
   readonly restart: () => void;
   readonly checkpoint?: RestoreCheckpoint;
 }
-type ServiceValue = ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | AcquisitionResult | HelperStatus | DataBackupResult | string | null;
+type ServiceValue = SharedSnapshot | SharedItemSnapshot | SharedMetadata | ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | AcquisitionResult | HelperStatus | DataBackupResult | string | null;
 
 /** Small use-case boundary: validate before touching persistence; failures carry
  * stable codes. Diagnostics are reported only on the privileged side. */
 export class ReaderService {
+  private readonly helperEvidence = new Map<string, string>();
+  private readonly commitObservers = new Set<(commit: SharedCommit) => void>();
+  onSharedCommit(listener: (commit: SharedCommit) => void): () => void { this.commitObservers.add(listener); return () => { this.commitObservers.delete(listener); }; }
   private repository?: ReaderRepository;
   private acquisition?: AcquisitionService;
   private helpers?: HelperSettingsService;
@@ -65,6 +69,9 @@ export class ReaderService {
   private initializeStorage(): void {
     try {
       this.repository = this.open();
+      this.repository.onCommit(commit => {
+        for (const listener of this.commitObservers) { try { listener(commit); } catch { /* Lost recipients do not affect commits. */ } }
+      });
       this.helpers = new HelperSettingsService(this.repository, this.helperOptions);
       this.acquisition = new AcquisitionService(this.repository, this.languages,
         this.extract ?? createLiveExtractor({ resolve: this.helpers.resolve, execute: this.helperOptions.execute }), this.notifyProgress);
@@ -88,6 +95,8 @@ export class ReaderService {
   dispatch(operation: 'getHelperStatus' | 'clearHelper', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<HelperStatus>>;
   dispatch(operation: 'chooseHelper', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<HelperStatus | null>>;
   dispatch(operation: 'openSource' | 'openCommentAction', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<null>>;
+  dispatch(operation: 'getSharedSnapshot', args: readonly unknown[], caller?: ReaderCallerContext): Result<SharedSnapshot | SharedItemSnapshot>;
+  dispatch(operation: 'getSharedMetadata', args: readonly unknown[], caller?: ReaderCallerContext): Result<SharedMetadata>;
   dispatch(operation: 'getAcquisitionProgress', args: readonly unknown[], caller?: ReaderCallerContext): Result<AcquisitionProgress | null>;
   dispatch(operation: 'cancelAcquisition', args: readonly unknown[], caller?: ReaderCallerContext): Result<null>;
   dispatch(operation: 'saveDiscussionView' | 'setDiscussionCollapse', args: readonly unknown[], caller?: ReaderCallerContext): Result<null>;
@@ -96,6 +105,17 @@ export class ReaderService {
   dispatch(operation: 'openThumbnail', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<null>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[], caller?: ReaderCallerContext): Result<ServiceValue> | Promise<Result<ServiceValue>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[], caller?: ReaderCallerContext): Result<ServiceValue> | Promise<Result<ServiceValue>> {
+    const shared = ['bootstrap', 'toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'removeLibraryItem',
+      'openStoredItem', 'activateTab', 'closeTab', 'openLibrary', 'openSettings', 'moveTab', 'acquire', 'refresh',
+      'chooseHelper', 'clearHelper', 'saveDiscussionView', 'setDiscussionCollapse'].includes(operation);
+    const attach = (result: Result<ServiceValue>): Result<ServiceValue> => {
+      const stamp = shared && (result.ok || result.error.code === 'UNDO_CONFLICT') ? result.sync ?? this.repository?.latestCommit() ?? this.repository?.stamp() : undefined;
+      return stamp ? { ...result, sync: stamp } : result;
+    };
+    const result = this.execute(operation, args, caller);
+    return result instanceof Promise ? result.then(attach) : attach(result);
+  }
+  private execute(operation: ReaderOperation, args: readonly unknown[], caller?: ReaderCallerContext): Result<ServiceValue> | Promise<Result<ServiceValue>> {
     if (operation === 'createBackup' || operation === 'restoreBackup') {
       if (args.length !== 0) return Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
       if (this.dataPending || this.stopping || this.restartPending) return Promise.resolve({ ok: false, error: { code: 'DATA_BUSY' } });
@@ -118,7 +138,14 @@ export class ReaderService {
       const kind = args[0].kind;
       const pending = operation === 'getHelperStatus' ? this.helpers.getStatus(kind)
         : operation === 'chooseHelper' ? this.helpers.choose(kind, caller) : this.helpers.clear(kind);
-      return pending.catch(error => { this.diagnose(error); return { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }; });
+      return pending.then(result => {
+        if (result.ok && result.value) {
+          const evidence = JSON.stringify(result.value), previous = this.helperEvidence.get(kind);
+          if (operation === 'getHelperStatus' && previous !== undefined && evidence !== previous) this.repository?.invalidateHelperStatus();
+          this.helperEvidence.set(kind, evidence);
+        }
+        return result;
+      }).catch(error => { this.diagnose(error); return { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }; });
     }
     if (operation === 'acquire' || operation === 'refresh') {
       if (args.length !== 1 || (operation === 'acquire' ? !isAcquireRequest(args[0]) : !isRefreshRequest(args[0]))) {
@@ -134,27 +161,31 @@ export class ReaderService {
       return operation === 'acquire' && isAcquireRequest(args[0]) ? this.acquisition.acquire(args[0].url)
         : isRefreshRequest(args[0]) ? this.acquisition.refresh(args[0].itemId) : Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
     }
-    if ((['bootstrap', 'openLibrary', 'openSettings'].includes(operation) && args.length !== 0)
+    if ((['bootstrap', 'getSharedMetadata', 'openLibrary', 'openSettings'].includes(operation) && args.length !== 0)
       || (operation === 'setDiscussionCollapse' && (args.length !== 1 || !isSetDiscussionCollapseRequest(args[0])))
       || (operation === 'saveDiscussionView' && (args.length !== 1 || !isSaveDiscussionViewRequest(args[0])))
       || (operation === 'toggleSeen' && (args.length !== 1 || !isToggleSeenRequest(args[0])))
       || (operation === 'bulkSeen' && (args.length !== 1 || !isBulkSeenRequest(args[0])))
-      || (['openStoredItem', 'removeLibraryItem', 'undoSeen'].includes(operation) && (args.length !== 1 || !isRefreshRequest(args[0])))
+      || (operation === 'getSharedSnapshot' && (args.length > 1 || args.length === 1 && !isRefreshRequest(args[0])))
+      || (operation === 'undoSeen' && (args.length !== 1 || !isUndoSeenRequest(args[0])))
+      || (['openStoredItem', 'removeLibraryItem'].includes(operation) && (args.length !== 1 || !isRefreshRequest(args[0])))
       || (['activateTab', 'closeTab'].includes(operation) && (args.length !== 1 || !isTabRequest(args[0])))
       || (operation === 'moveTab' && (args.length !== 1 || !isMoveTabRequest(args[0])))
       || (operation === 'updatePreferences' && (args.length !== 1 || !isPreferenceChange(args[0])))) {
       return { ok: false, error: { code: 'INVALID_REQUEST' } };
     }
-    if (operation === 'bootstrap' && !this.repository && this.failure === 'STORAGE_UNAVAILABLE') this.initializeStorage();
+    if ((operation === 'bootstrap' || operation === 'getSharedSnapshot') && !this.repository && this.failure === 'STORAGE_UNAVAILABLE') this.initializeStorage();
     if (!this.repository) return { ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } };
     try {
-      let value: ReaderState | SeenMutationResult | Preferences | WorkspaceState | null;
-      if (operation === 'bootstrap') value = this.repository.bootstrap(this.languages);
+      let value: SharedSnapshot | SharedItemSnapshot | SharedMetadata | ReaderState | SeenMutationResult | Preferences | WorkspaceState | null;
+      if (operation === 'getSharedSnapshot') value = args.length === 1 && isRefreshRequest(args[0]) ? this.repository.itemSnapshot(args[0].itemId) : { ...this.repository.stamp(), state: this.repository.bootstrap(this.languages) };
+      else if (operation === 'getSharedMetadata') value = { ...this.repository.stamp(), preferences: this.repository.preferences(this.languages), workspace: this.repository.workspace() };
+      else if (operation === 'bootstrap') value = this.repository.bootstrap(this.languages);
       else if (operation === 'setDiscussionCollapse' && isSetDiscussionCollapseRequest(args[0])) value = this.repository.setDiscussionCollapse(args[0]);
       else if (operation === 'saveDiscussionView' && isSaveDiscussionViewRequest(args[0])) value = this.repository.saveDiscussionView(args[0]);
       else if (operation === 'toggleSeen' && isToggleSeenRequest(args[0])) value = this.repository.toggleSeen(args[0]);
       else if (operation === 'bulkSeen' && isBulkSeenRequest(args[0])) value = this.repository.bulkSeen(args[0]);
-      else if (operation === 'undoSeen' && isRefreshRequest(args[0])) value = this.repository.undoSeen(args[0].itemId);
+      else if (operation === 'undoSeen' && isUndoSeenRequest(args[0])) value = this.repository.undoSeen(args[0].itemId, args[0].expectedOperationId);
       else if (operation === 'updatePreferences' && isPreferenceChange(args[0])) value = this.repository.updatePreferences(args[0], this.languages);
       else if (operation === 'removeLibraryItem' && isRefreshRequest(args[0])) {
         const itemId = args[0].itemId;
@@ -171,8 +202,8 @@ export class ReaderService {
       else return { ok: false, error: { code: 'INVALID_REQUEST' } };
       return { ok: true, value };
     } catch (error) {
-      this.diagnose(error);
-      return { ok: false, error: { code: error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError || error instanceof InvalidSeenTargetError || error instanceof InvalidDiscussionViewError || error instanceof InvalidPreferenceError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
+      if (!(error instanceof UndoConflictError)) this.diagnose(error);
+      return { ok: false, error: { code: error instanceof UndoConflictError ? 'UNDO_CONFLICT' : error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError || error instanceof InvalidSeenTargetError || error instanceof InvalidDiscussionViewError || error instanceof InvalidPreferenceError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
     }
   }
   private async thumbnail(operation: 'getThumbnail' | 'checkThumbnail' | 'openThumbnail', args: readonly unknown[]): Promise<Result<string | null>> {

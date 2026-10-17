@@ -1,3 +1,4 @@
+import { required } from '../renderer/testing/required';
 import { mkdtemp, readFile, writeFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -59,7 +60,7 @@ it('explicit selected/prefix snapshots remain exact while source Refresh is pend
   const after = refreshed.value.state.comments[itemId];
   expect(after.filter(comment => ids.includes(comment.id)).every(comment => comment.seen)).toBe(true);
   expect(after.find(comment => !ids.includes(comment.id))?.seen).toBe(false);
-  expect(service.dispatch('undoSeen', [{ itemId }])).toMatchObject({ ok: true, value: { restored: ids.length, skipped: 0 } });
+  expect(service.dispatch('undoSeen', [{ itemId, expectedOperationId: required(repository.bootstrap(['en']).seenUndo[itemId]).id }])).toMatchObject({ ok: true, value: { restored: ids.length, skipped: 0 } });
 });
 
 it.each(['failed', 'timeout', 'nonzero'] as const)('failed %s identity probe blocks invocation as an invalid/unavailable helper', async status => {
@@ -93,7 +94,7 @@ it('video fixture passes trusted builder, adapter, ingestion, repeat merge, seen
   const command = execute.mock.calls[1][0];
   expect(command.executable).toBe(path.join(directory, 'yt-dlp.exe'));
   expect(command.arguments).toEqual(['--ignore-config', '--no-plugin-dirs', '--no-playlist', '--skip-download', '--dump-single-json', '--write-comments', '--socket-timeout', '15', '--retries', '2', '--extractor-retries', '2', '--', videoUrl]);
-  service.dispatch('toggleSeen', [{ itemId, commentId: initial[0].id, subtree: false }]);
+  service.dispatch('toggleSeen', [{ itemId, commentId: initial[0].id, subtree: false, seen: true }]);
   // Second observation omits old comments, adds a new one and updates one remote text.
   const rows = payload.comments as Record<string, unknown>[];
   payload.comments = [{ ...rows[0], text: 'Updated remote text' }, { id: 'new-live-comment', text: 'New comment', parent: 'root' }];
@@ -128,7 +129,7 @@ it('single lock rejects overlap while seen and preferences still succeed, readin
   await vi.waitFor(() => expect(finish).toBeDefined());
   expect(await service.dispatch('acquire', [{ url: postUrl }])).toEqual({ ok: false, error: { code: 'ACQUISITION_BUSY' } });
   expect(await service.dispatch('refresh', [{ itemId }])).toEqual({ ok: false, error: { code: 'ACQUISITION_BUSY' } });
-  expect(service.dispatch('toggleSeen', [{ itemId, commentId: id, subtree: false }]).ok).toBe(true);
+  expect(service.dispatch('toggleSeen', [{ itemId, commentId: id, subtree: false, seen: true }]).ok).toBe(true);
   expect(service.dispatch('updatePreferences', [{ locale: 'pl' }]).ok).toBe(true);
   finish?.();
   const result = await pending;

@@ -1,3 +1,4 @@
+import { displayedToggle, displayedUndo } from '../testing/displayed-seen';
 import { downgradeSelectionFixture } from './testing/schema-10';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import * as filesystem from 'node:fs/promises';
@@ -56,8 +57,8 @@ function completeState() {
   repo().ingest({ provenance: next.provenance, coverage: { kind: 'failed', reason: 'test-failure' }, issues: [] }, { sourceKind: 'youtube-video', sourceId: required(next.item).sourceId });
   repo().bulkSeen({ itemId, seen: true, target: { kind: 'all' } });
   const comments = repo().bootstrap(['en']).comments[itemId];
-  repo().toggleSeen({ itemId, commentId: comments[0].id, subtree: false });
-  repo().toggleSeen({ itemId, commentId: comments[0].id, subtree: false });
+  displayedToggle(repo(), { itemId, commentId: comments[0].id, subtree: false });
+  displayedToggle(repo(), { itemId, commentId: comments[0].id, subtree: false });
   repo().saveDiscussionView({ itemId, draft: { ...defaultQuery, text: 'unsaved draft differs' }, applied: { ...defaultQuery, seen: 'seen' },
     sort: 'latest-activity', anchor: { commentId: comments[1].id, offset: -12.5 }, selected: comments[2].id });
   repo().setDiscussionCollapse({ itemId, kind: 'all', collapsed: true });
@@ -75,13 +76,13 @@ it('backs up every authoritative table and restores exact data, Undo revisions, 
   const item = completeState(), before = rows(file), bytes = readFileSync(file), snapshot = path.join(root, 'snapshot.sqlite');
   await repo().createBackup(snapshot);
   expect(rows(snapshot)).toEqual(before); expect(readFileSync(file)).toEqual(bytes); expect(validateBackup(snapshot)).toBe(12);
-  repo().updatePreferences({ appearance: 'light' }, ['en']); repo().undoSeen(item); repo().changeWorkspace('closeTab', 'settings');
+  repo().updatePreferences({ appearance: 'light' }, ['en']); displayedUndo(repo(), item); repo().changeWorkspace('closeTab', 'settings');
   const changed = rows(file), directory = await prepareRestore(snapshot, file);
   await repo().createBackup(path.join(directory, 'safety.sqlite')); close();
   await installRestore(file, directory); expect(await recoverProfile(file)).toBe('restored');
   expect(rows(file)).toEqual(before); expect(rows(path.join(directory, 'safety.sqlite'))).toEqual(changed);
   repository = ReaderRepository.open(file);
-  expect(repo().undoSeen(item)).toMatchObject({ skipped: 1 });
+  expect(displayedUndo(repo(), item)).toMatchObject({ skipped: 1 });
   repo().removeLibraryItem(item, ['en']); expect(repo().bootstrap(['en']).items.some(row => row.id === item)).toBe(false);
 });
 

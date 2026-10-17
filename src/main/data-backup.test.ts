@@ -47,13 +47,13 @@ it('requires payload-free semantic intents and respects cancelled Save/Open/conf
 });
 it('commits earlier seen/view writes before backup, rejects stale writes and concurrent operations', async () => {
   start();
-  service.dispatch('toggleSeen', [{ itemId: 'video-demo', commentId: 'v1', subtree: false }]);
+  service.dispatch('toggleSeen', [{ itemId: 'video-demo', commentId: 'v1', subtree: false, seen: false }]);
   service.dispatch('saveDiscussionView', [{ itemId: 'video-demo', draft: { ...defaultQuery, text: 'draft' }, applied: defaultQuery,
     sort: 'newest', anchor: { commentId: 'v1', offset: 22 }, selected: 'v2' }]);
   let choose!: (file: string) => void;
   vi.mocked(dialogs.save).mockImplementationOnce(() => new Promise(resolve => { choose = resolve; }));
   const operation = service.dispatch('createBackup', []);
-  expect(service.dispatch('toggleSeen', [{ itemId: 'video-demo', commentId: 'v1', subtree: false }])).toMatchObject({ error: { code: 'DATA_BUSY' } });
+  expect(service.dispatch('toggleSeen', [{ itemId: 'video-demo', commentId: 'v1', subtree: false, seen: false }])).toMatchObject({ error: { code: 'DATA_BUSY' } });
   expect(await service.dispatch('restoreBackup', [])).toMatchObject({ error: { code: 'DATA_BUSY' } });
   await vi.waitFor(() => expect(choose).toBeTypeOf('function')); choose(path.join(root, 'snapshot.sqlite')); await operation;
   const snapshot = ReaderRepository.open(path.join(root, 'snapshot.sqlite'));
@@ -76,7 +76,7 @@ it.each(['staged', 'safety'])('keeps current data usable after failure at %s bef
   await service.dispatch('createBackup', []); const previous = readFileSync(file);
   expect(await service.dispatch('restoreBackup', [])).toMatchObject({ error: { code: 'RESTORE_FAILED' } });
   expect(readFileSync(file)).toEqual(previous); expect(service.dispatch('bootstrap', []).ok).toBe(true);
-  expect(service.dispatch('toggleSeen', [{ itemId: 'video-demo', commentId: 'v1', subtree: false }]).ok).toBe(true);
+  expect(service.dispatch('toggleSeen', [{ itemId: 'video-demo', commentId: 'v1', subtree: false, seen: false }]).ok).toBe(true);
   expect(restart).not.toHaveBeenCalled();
 });
 it('aborts when safety snapshot fails without closing or replacing the current connection', async () => {
@@ -102,7 +102,7 @@ it('settles active acquisition and blocks stale IPC until restart, with a separa
   expect(await service.dispatch('createBackup', [])).toMatchObject({ error: { code: 'DATA_BUSY' } });
   const restored = await service.dispatch('restoreBackup', []);
   expect(restored, diagnostics.map(error => error instanceof Error ? error.stack : String(error)).join('\n')).toMatchObject({ value: { status: 'restarting' } }); await acquisition;
-  expect(service.dispatch('toggleSeen', [{ itemId: 'video-demo', commentId: 'v1', subtree: false }])).toMatchObject({ error: { code: 'DATA_BUSY' } });
+  expect(service.dispatch('toggleSeen', [{ itemId: 'video-demo', commentId: 'v1', subtree: false, seen: false }])).toMatchObject({ error: { code: 'DATA_BUSY' } });
   await vi.waitFor(() => expect(restart).toHaveBeenCalledOnce());
   const directory = path.join(recoveryDirectory(file), readdirSync(recoveryDirectory(file))[0]);
   expect(validateBackup(path.join(directory, 'safety.sqlite'))).toBe(12); expect(validateBackup(file)).toBe(12);

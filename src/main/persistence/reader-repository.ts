@@ -1,8 +1,9 @@
+import type { SharedChange, SharedCommit, SharedStamp, SharedItemSnapshot } from '../../shared/reader-sync';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { buildCommentTree, toggleSeen } from '../../domain/discussion';
+import { buildCommentTree } from '../../domain/discussion';
 import type { Author, Comment, ContentItem } from '../../domain/discussion';
 import { initialComments, items } from '../../fixtures/discussions';
 import { initialLocale, normalizeTranslationCode } from '../../shared/preferences';
@@ -52,6 +53,7 @@ function remoteEvidence<T extends StoredCommentObservation | StoredContentObserv
 }
 function authorValues(value?: Author) { return [value?.sourceId ?? null, value?.displayName ?? null, value?.handle ?? null]; }
 function booleanValue(value?: boolean) { return value === undefined ? null : Number(value); }
+export class UndoConflictError extends Error {}
 export class MissingCommentError extends Error {}
 export class NotRemovableError extends Error {}
 export class InvalidSeenTargetError extends Error {}
@@ -94,6 +96,39 @@ export function openReaderDatabase(databasePath: string): DatabaseSync {
 /** Main-side SQLite authority. Remote fixture inserts and local state writes are
  * separate operations; no row type or driver handle is exposed through IPC. */
 export class ReaderRepository {
+  readonly profileEpoch = randomUUID();
+  private commitRevision = 0;
+  private readonly observers = new Set<(commit: SharedCommit) => void>();
+  private lastCommit?: SharedCommit;
+  latestCommit(): SharedCommit | undefined { return this.lastCommit; }
+  /** Main observed changed runtime helper evidence. No content/config row changes;
+   * the successful empty outer transaction orders its narrow invalidation. */
+  invalidateHelperStatus(): void { this.commit({ kind: 'helpers' }, () => undefined); }
+  private pendingSeen?: SharedChange;
+  stamp(): SharedStamp { return { profileEpoch: this.profileEpoch, commitRevision: this.commitRevision }; }
+  onCommit(observer: (commit: SharedCommit) => void): () => void { this.observers.add(observer); return () => { this.observers.delete(observer); }; }
+  /** No nested transaction: publish exactly once AFTER the existing outer commit.
+   * Epoch fences restart/reopen, so no historical log or database migration is needed.
+   * Exhaustion fails before writes; observer failure can never change SQL success. */
+  private commit<T>(change: SharedChange | ((value: T) => SharedChange), action: () => T): T {
+    if (this.commitRevision >= Number.MAX_SAFE_INTEGER) throw new Error('Revision exhausted');
+    this.pendingSeen = undefined;
+    let value: T;
+    try { value = transaction(this.db, action); }
+    catch (error) { this.pendingSeen = undefined; throw error; }
+    this.commitRevision++;
+    let detail: SharedChange = { kind: 'watermark' };
+    try { detail = this.pendingSeen ?? (typeof change === 'function' ? change(value) : change); } catch { /* Recovery watermark. */ }
+    this.pendingSeen = undefined;
+    const event: SharedCommit = { ...this.stamp(), change: detail };
+    this.lastCommit = event;
+    for (const observer of this.observers) { try { observer(event); } catch { /* Committed truth survives recipients. */ } }
+    return value;
+  }
+  itemSnapshot(itemId: string): SharedItemSnapshot {
+    const item = this.getStoredItem(itemId) ?? null;
+    return { ...this.stamp(), itemId, item, comments: item ? this.readComments(item) : [], undo: item ? this.seenUndo(itemId) : null, workspace: this.workspace() };
+  }
   private readonly invalidViewDiagnostics = new Set<string>();
   private constructor(private readonly db: DatabaseSync, private readonly ingestion: IngestionDependencies) {}
 
@@ -127,8 +162,10 @@ export class ReaderRepository {
 
   /** Only the main-owned picker service writes paths after validation and probing. */
   setHelperSelection(kind: HelperKind, executable?: string): void {
+    this.commit({ kind: 'helpers' }, () => {
     if (executable === undefined) this.db.prepare('DELETE FROM helper_settings WHERE kind = ?').run(kind);
     else this.db.prepare('INSERT INTO helper_settings VALUES (?,?) ON CONFLICT(kind) DO UPDATE SET executable_path = excluded.executable_path').run(kind, executable);
+    });
   }
 
   /** Explicit seed for genuinely fresh development profiles only; startup owns
@@ -137,7 +174,7 @@ export class ReaderRepository {
    * These are synthetic observations, not a
    * first real acquisition or evidence of source-ID uniqueness. */
   initializeDemo(): void {
-    transaction(this.db, () => {
+    this.commit({ kind: 'watermark' }, () => {
       if (Number(this.db.prepare('SELECT count(*) AS count FROM content_items').get()?.count) !== 0) return;
       const insertItem = this.db.prepare(`INSERT INTO content_items
         (id, position, kind, source_id, title, description, text, author_source_id,
@@ -251,7 +288,7 @@ export class ReaderRepository {
    * Failed normalization records history only, optionally associated with a caller-owned target. */
   ingest(extraction: NormalizedExtraction, target?: AttemptTarget, openTab = false): MergeAttempt {
     const attemptId = this.ingestion.newId(), at = this.ingestion.now();
-    return transaction(this.db, () => {
+    return this.commit((attempt: MergeAttempt) => attempt.outcome === 'accepted' && attempt.itemId ? { kind: 'item', itemId: attempt.itemId } : { kind: 'watermark' }, () => {
       const actualTarget = extraction.item ? { sourceKind: extraction.item.sourceKind, sourceId: extraction.item.sourceId } : target;
       const current = actualTarget ? this.storedDiscussion(actualTarget) : undefined;
       const plan = planObservationMerge(current, extraction, { attemptId, at, newId: this.ingestion.newId, target });
@@ -345,7 +382,7 @@ export class ReaderRepository {
    * ownership validation. No comment/seen/query/history records are changed. */
   setDiscussionCollapse(request: SetDiscussionCollapseRequest): null {
     if (!isSetDiscussionCollapseRequest(request)) throw new InvalidDiscussionViewError();
-    return transaction(this.db, () => {
+    return this.commit({ kind: 'watermark' }, () => {
       if (!this.db.prepare('SELECT 1 FROM content_items WHERE id=?').get(request.itemId)) throw new MissingCommentError();
       if (request.kind === 'comments') {
         const owns = this.db.prepare('SELECT 1 FROM comments WHERE item_id=? AND id=?');
@@ -402,7 +439,7 @@ export class ReaderRepository {
    * Closing a tab never deletes this row; deleting its item cascades it. */
   saveDiscussionView(request: SaveDiscussionViewRequest): null {
     if (!isSaveDiscussionViewRequest(request)) throw new InvalidDiscussionViewError('Invalid view intent');
-    return transaction(this.db, () => {
+    return this.commit({ kind: 'watermark' }, () => {
       if (!this.db.prepare('SELECT 1 FROM content_items WHERE id=?').get(request.itemId)) throw new MissingCommentError('Unknown discussion');
       if (!this.ownsViewIdentities(request)) throw new InvalidDiscussionViewError('Unowned view identity');
       this.db.prepare(`INSERT INTO discussion_view_state VALUES (?,?,?,?,?,?,?)
@@ -440,7 +477,7 @@ export class ReaderRepository {
   /** Intent-only workspace writes never change Library data. */
   changeWorkspace(operation: 'openStoredItem' | 'activateTab' | 'closeTab' | 'openLibrary' | 'openSettings' | 'moveTab',
     identity?: string, toIndex?: number): WorkspaceState {
-    return transaction(this.db, () => {
+    return this.commit({ kind: 'workspace' }, () => {
       const state = this.workspace();
       let next: WorkspaceState;
       if (operation === 'openStoredItem') {
@@ -462,7 +499,7 @@ export class ReaderRepository {
   /** Delete all item-owned rows and its view atomically, with FK enforcement on.
    * The baseline/history cycle requires deferring FK checks until commit. */
   removeLibraryItem(itemId: string, languages: readonly string[]): ReaderState {
-    return transaction(this.db, () => {
+    return this.commit({ kind: 'removed', itemId }, () => {
       const item = this.readItems().find(item => item.id === itemId);
       if (!item) throw new MissingCommentError('Unknown discussion');
       if (!item.removable) throw new NotRemovableError('Discussion removal unavailable');
@@ -482,15 +519,24 @@ export class ReaderRepository {
   /** Read current stored target state and resolve every descendant through the
    * pure domain rule inside ONE transaction. Return only committed state. */
   toggleSeen(request: ToggleSeenRequest): SeenMutationResult {
-    return transaction(this.db, () => {
+    return this.commit({ kind: 'seen-invalidation', itemId: request.itemId }, () => {
       const item = this.readItems().find(item => item.id === request.itemId);
       if (!item) throw new MissingCommentError('Unknown discussion');
       const current = this.readComments(item);
       const clicked = current.find(comment => comment.id === request.commentId);
       if (!clicked) throw new MissingCommentError('Unknown comment');
-      const changed = toggleSeen(current, request.commentId, request.subtree);
-      const targets = changed.filter((comment, index) => comment !== current[index]);
-      return this.assignSeen(current, new Set(targets.map(comment => comment.id)), !clicked.seen, 'subtree', request.subtree);
+      const ids = new Set([clicked.id]);
+      if (request.subtree) {
+        const tree = buildCommentTree(current);
+        const visit = [...tree];
+        while (visit.length) {
+          const node = visit.pop();
+          if (!node) break;
+          if (node.comment.id === clicked.id || node.comment.parentId !== null && ids.has(node.comment.parentId)) ids.add(node.comment.id);
+          visit.push(...node.children);
+        }
+      }
+      return this.assignSeen(current, ids, request.seen, 'subtree', request.subtree);
     });
   }
 
@@ -521,6 +567,7 @@ export class ReaderRepository {
       if (!row) throw new Error('Missing local state');
       if (operationId) insert.run(operationId, comment.itemId, comment.id, row.revision);
     }
+    if (current[0] && changes.length <= 256) this.pendingSeen = { kind: 'seen', itemId: current[0].itemId, values: changes.map(c => ({ id: c.id, seen })), undo: this.seenUndo(current[0].itemId) };
     return { comments: current.map(comment => ids.has(comment.id) && comment.seen !== seen ? { ...comment, seen } : comment),
       targetCount: ids.size, changedCount: changes.length, undo: current[0] ? this.seenUndo(current[0].itemId) : null };
   }
@@ -529,7 +576,7 @@ export class ReaderRepository {
    * transaction. Publication uses precisely the filtering resolver/predicate. */
   bulkSeen(request: BulkSeenRequest, evaluationTime: () => QueryEvaluationTime = () => ({ now: Date.now(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone })): SeenMutationResult {
     if (!isBulkSeenRequest(request)) throw new InvalidSeenTargetError('Invalid seen intent');
-    return transaction(this.db, () => {
+    return this.commit({ kind: 'seen-invalidation', itemId: request.itemId }, () => {
       const item = this.readItems().find(item => item.id === request.itemId);
       if (!item) throw new MissingCommentError('Unknown discussion');
       const current = this.readComments(item), target = request.target;
@@ -550,12 +597,12 @@ export class ReaderRepository {
 
   /** One-shot partial recovery: later revision ownership wins even after a user
    * changes a state away and back. Consume only after all conditional writes. */
-  undoSeen(itemId: string): SeenUndoResult {
-    return transaction(this.db, () => {
+  undoSeen(itemId: string, expectedOperationId: string): SeenUndoResult {
+    return this.commit({ kind: 'seen-invalidation', itemId }, () => {
       const item = this.readItems().find(item => item.id === itemId);
       if (!item) throw new MissingCommentError('Unknown discussion');
       const operation = this.seenUndo(itemId);
-      if (!operation) throw new MissingCommentError('No recoverable operation');
+      if (!operation || operation.id !== expectedOperationId) throw new UndoConflictError('Recovery replaced');
       const entries = this.db.prepare('SELECT comment_id,written_revision FROM seen_operation_entries WHERE operation_id=? AND item_id=?').all(operation.id, itemId);
       const update = this.db.prepare('UPDATE comment_state SET seen=?,revision=revision+1 WHERE comment_id=? AND revision=? AND seen=?');
       let restored = 0;
@@ -568,7 +615,7 @@ export class ReaderRepository {
 
   updatePreferences(change: PreferenceChange, languages: readonly string[]): Preferences {
     if (!isPreferenceChange(change)) throw new InvalidPreferenceError();
-    return transaction(this.db, () => {
+    return this.commit({ kind: 'preferences' }, () => {
       if ('locale' in change) this.db.prepare('UPDATE preferences SET locale = ? WHERE id = 1').run(change.locale);
       else if ('appearance' in change) this.db.prepare('UPDATE preferences SET appearance = ? WHERE id = 1').run(change.appearance);
       else if ('translationTarget' in change) {

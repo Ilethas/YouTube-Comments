@@ -1,3 +1,4 @@
+import type { SharedStamp, SharedCommit, SharedSnapshot, SharedItemSnapshot, SharedMetadata } from './reader-sync';
 import type { AcquisitionNotification, AcquisitionProgress, AcquisitionTimings } from './acquisition';
 import type { Comment, ContentItem } from '../domain/discussion';
 import { normalizeTranslationCode, translationTargets } from './preferences';
@@ -11,10 +12,10 @@ import type { DataBackupResult } from './data-backup';
 
 export type ErrorCode = 'INVALID_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA'
   | 'ACQUISITION_CANCELLED' | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE' | 'NOT_REMOVABLE' | 'SOURCE_OPEN_FAILED' | 'NOT_OPENABLE'
-  | 'TRANSLATION_TOO_LONG' | 'INVALID_BACKUP' | 'NEWER_BACKUP' | 'OLDER_BACKUP' | 'DATA_BUSY' | 'DATA_WRITE_FAILED' | 'RESTORE_FAILED' | 'RECOVERY_REQUIRED';
+  | 'UNDO_CONFLICT' | 'TRANSLATION_TOO_LONG' | 'INVALID_BACKUP' | 'NEWER_BACKUP' | 'OLDER_BACKUP' | 'DATA_BUSY' | 'DATA_WRITE_FAILED' | 'RESTORE_FAILED' | 'RECOVERY_REQUIRED';
 /** Stable codes cross IPC; raw privileged diagnostics never reach the renderer. */
-export type Result<T> = { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly error: { readonly code: ErrorCode } };
+export type Result<T> = { readonly ok: true; readonly value: T; readonly sync?: SharedStamp | SharedCommit }
+  | { readonly ok: false; readonly sync?: SharedStamp | SharedCommit; readonly error: { readonly code: ErrorCode } };
 
 export interface ReaderState {
   /** Items include a main-derived latest accepted discovery attempt; NEW can be
@@ -31,6 +32,7 @@ export interface ToggleSeenRequest {
   readonly itemId: string;
   readonly commentId: string;
   readonly subtree: boolean;
+  readonly seen: boolean;
 }
 export type PreferenceChange = { readonly locale: Locale } | { readonly appearance: Appearance } | { readonly translationTarget: TranslationTarget; readonly customTranslationTarget?: string }
   | { readonly selectionControls: SelectionControls } | { readonly includeCollapsedInPrefix: boolean };
@@ -40,6 +42,7 @@ export interface CommentActionRequest { readonly itemId: string; readonly commen
 export interface AcquireRequest { readonly url: string }
 export interface TabRequest { readonly tabId: string }
 export interface MoveTabRequest extends TabRequest { readonly toIndex: number }
+export interface UndoSeenRequest { readonly itemId: string; readonly expectedOperationId: string }
 export interface RefreshRequest { readonly itemId: string }
 /** Compact acknowledgment, without raw output, process details or provenance. */
 export interface AcquisitionResult {
@@ -52,6 +55,9 @@ export interface AcquisitionResult {
 
 /** Intent-only capabilities. No generic invoke, SQL, executable input or Node handles. */
 export interface ReaderApi {
+  onSharedCommit(listener: (commit: SharedCommit) => void): () => void;
+  getSharedSnapshot(request?: RefreshRequest): Promise<Result<SharedSnapshot | SharedItemSnapshot>>;
+  getSharedMetadata(): Promise<Result<SharedMetadata>>;
   getThumbnail(request: RefreshRequest): Promise<Result<string | null>>;
   checkThumbnail(request: RefreshRequest): Promise<Result<string | null>>;
   openThumbnail(request: RefreshRequest): Promise<Result<null>>;
@@ -70,7 +76,7 @@ export interface ReaderApi {
   bootstrap(): Promise<Result<ReaderState>>;
   toggleSeen(request: ToggleSeenRequest): Promise<Result<SeenMutationResult>>;
   bulkSeen(request: BulkSeenRequest): Promise<Result<SeenMutationResult>>;
-  undoSeen(request: RefreshRequest): Promise<Result<SeenUndoResult>>;
+  undoSeen(request: UndoSeenRequest): Promise<Result<SeenUndoResult>>;
   updatePreferences(change: PreferenceChange): Promise<Result<Preferences>>;
   acquire(request: AcquireRequest): Promise<Result<AcquisitionResult>>;
   refresh(request: RefreshRequest): Promise<Result<AcquisitionResult>>;
@@ -84,6 +90,7 @@ export interface ReaderApi {
 }
 
 export const readerChannels = {
+  getSharedSnapshot: 'reader:shared-snapshot', getSharedMetadata: 'reader:shared-metadata',
   getThumbnail: 'reader:get-thumbnail', checkThumbnail: 'reader:check-thumbnail', openThumbnail: 'reader:open-thumbnail',
   openCommentAction: 'reader:comment-action',
   createBackup: 'reader:create-backup', restoreBackup: 'reader:restore-backup',
@@ -133,8 +140,8 @@ export function isBulkSeenRequest(value: unknown): value is BulkSeenRequest {
 }
 /** Validate untrusted serialized payloads at main, including unexpected fields. */
 export function isToggleSeenRequest(value: unknown): value is ToggleSeenRequest {
-  return exactKeys(value, ['itemId', 'commentId', 'subtree'])
-    && identifier(value.itemId) && identifier(value.commentId) && typeof value.subtree === 'boolean';
+  return exactKeys(value, ['itemId', 'commentId', 'subtree', 'seen'])
+    && identifier(value.itemId) && identifier(value.commentId) && typeof value.subtree === 'boolean' && typeof value.seen === 'boolean';
 }
 export function isPreferenceChange(value: unknown): value is PreferenceChange {
   return (exactKeys(value, ['locale']) && (value.locale === 'en' || value.locale === 'pl'))
@@ -162,4 +169,8 @@ export function isTabRequest(value: unknown): value is TabRequest {
 export function isMoveTabRequest(value: unknown): value is MoveTabRequest {
   return exactKeys(value, ['tabId', 'toIndex']) && identifier(value.tabId)
     && Number.isSafeInteger(value.toIndex) && (value.toIndex as number) >= 0;
+}
+
+export function isUndoSeenRequest(value: unknown): value is UndoSeenRequest {
+  return exactKeys(value, ['itemId', 'expectedOperationId']) && identifier(value.itemId) && identifier(value.expectedOperationId);
 }

@@ -1,3 +1,4 @@
+import { displayedToggle } from '../testing/displayed-seen';
 import { downgradeSelectionFixture } from './testing/schema-10';
 import { evaluateTestQuery } from '../../fixtures/query-testing';
 // eslint-disable-next-line import/no-unresolved
@@ -97,7 +98,7 @@ it('derives latest accepted NEW independently of seen/publication, tied/regressi
   const refresh = repository.ingest(batch(input, [root, { ...root, sourceId: 'old-but-new', publication: oldPublication }]));
   expect(newCohort().map(comment => comment.source.commentId)).toEqual(['old-but-new']);
   const added = newCohort()[0];
-  repository.toggleSeen({ itemId: added.itemId, commentId: added.id, subtree: false });
+  displayedToggle(repository, { itemId: added.itemId, commentId: added.id, subtree: false });
   expect(newCohort()[0].seen).toBe(true);
   const failed: NormalizedExtraction = { provenance: input.provenance, issues: [], coverage: { kind: 'failed', reason: 'parse-failed' } };
   repository.ingest(failed, { sourceKind: input.item.sourceKind, sourceId: input.item.sourceId });
@@ -116,7 +117,7 @@ it('derives latest accepted NEW independently of seen/publication, tied/regressi
   const next = repository.ingest(batch(input, [root, { ...root, sourceId: 'replacement' }]));
   expect(state().items[0].latestAcceptedDiscoveryId).toBe(next.id);
   expect(newCohort().map(comment => comment.source.commentId)).toEqual(['replacement']);
-  repository.toggleSeen({ itemId: added.itemId, commentId: added.id, subtree: false });
+  displayedToggle(repository, { itemId: added.itemId, commentId: added.id, subtree: false });
   expect(newCohort().map(comment => comment.source.commentId)).toEqual(['replacement']);
   repository.ingest(batch(input, [root]));
   expect(newCohort()).toEqual([]); // Existing observations, zero inserts, replace cohort.
@@ -150,7 +151,7 @@ it('schema 4 → 5 freezes existing attempt insertion order transactionally with
 it('evaluates committed refresh rows, preserving absent stored identities and live seen with new unseen matches', () => {
   repository.ingest(fixture());
   const before = comments(), root = required(before.find(comment => comment.parentId === null));
-  repository.toggleSeen({ itemId: root.itemId, commentId: root.id, subtree: false });
+  displayedToggle(repository, { itemId: root.itemId, commentId: root.id, subtree: false });
   const criterion = { ...defaultQuery, seen: 'unseen' as const };
   const old = evaluateTestQuery(queryComments(comments()), criterion);
   repository.ingest(fixture('yt-membership-b'));
@@ -183,7 +184,7 @@ it('persists avatar evidence: lossy refresh preserves known URL, newer observed 
   repository.ingest(batch(input, [first]));
   const id = comments()[0].id;
   expect(comments()[0].author?.avatarUrl).toBe('https://example.invalid/comment-author.png');
-  repository.toggleSeen({ itemId: comments()[0].itemId, commentId: id, subtree: false });
+  displayedToggle(repository, { itemId: comments()[0].itemId, commentId: id, subtree: false });
   for (const reason of ['unavailable', 'lossy-default', 'unreliable', 'invalid', 'unsupported'] as const) {
     repository.ingest(batch(input, [{ ...first, author: { ...first.author, avatarUrl: unknown(reason) } }]));
     expect(comments()[0].author?.avatarUrl).toBe('https://example.invalid/comment-author.png');
@@ -212,7 +213,7 @@ it('establishes an accepted unknown baseline with opaque injected IDs, unseen co
 it('reacquires the same source identities without duplicates and preserves both seen states and first discoveries', () => {
   repository.ingest(fixture());
   const first = comments();
-  repository.toggleSeen({ itemId: first[0].itemId, commentId: first[0].id, subtree: false });
+  displayedToggle(repository, { itemId: first[0].itemId, commentId: first[0].id, subtree: false });
   later(); const second = repository.ingest(fixture());
   expect(second.counts).toMatchObject({ inserted: 0, updated: first.length });
   expect(state().items).toHaveLength(1);
@@ -226,7 +227,7 @@ it('reacquires the same source identities without duplicates and preserves both 
 it.each([['yt-nested-a', 'yt-membership-b'], ['community-thread-a', 'community-membership-b']])('accumulates %s/%s: absent rows are untouched and later discoveries start unseen', (a, b) => {
   const firstInput = fixture(a); repository.ingest(firstInput);
   const first = comments();
-  repository.toggleSeen({ itemId: first[0].itemId, commentId: first[0].id, subtree: true });
+  displayedToggle(repository, { itemId: first[0].itemId, commentId: first[0].id, subtree: true });
   const before = comments(), secondInput = fixture(b); later();
   const result = repository.ingest(secondInput), after = comments();
   for (const previous of before) {
@@ -243,7 +244,7 @@ it.each([['yt-nested-a', 'yt-membership-b'], ['community-thread-a', 'community-m
 it('updates observed text/metadata including trustworthy zero/false/empty while unknown variants preserve every useful field', () => {
   const input = fixture(), first = input.collection.comments[2];
   repository.ingest(batch(input, [{ ...first, text: observed('hello'), likeCount: observed(12), pinned: observed(true), creator: observed(true) }]));
-  const id = comments()[0].id; repository.toggleSeen({ itemId: comments()[0].itemId, commentId: id, subtree: false });
+  const id = comments()[0].id; displayedToggle(repository, { itemId: comments()[0].itemId, commentId: id, subtree: false });
   for (const reason of ['unavailable', 'lossy-default', 'unreliable', 'invalid', 'unsupported'] as const) {
     later(); repository.ingest(batch(input, [{ ...first, text: observed('hello edited'), likeCount: unknown(reason), pinned: unknown(reason), creator: unknown(reason),
       author: { sourceId: unknown(reason), displayName: unknown(reason), handle: unknown(reason), avatarUrl: unknown(reason) }, publication: { instant: unknown(reason), label: unknown(reason), estimated: unknown(reason), precision: 'unknown' } }]));
@@ -273,7 +274,7 @@ it('persists direct-parent evidence and applies Ctrl+click to the complete displ
   repository.ingest(fixture());
   const before = comments(), child = required(before.find(comment => comment.relationship?.kind === 'direct-parent'));
   expect(child.directParentId).toBe(child.parentId); expect(child.parentId).not.toBeNull();
-  const changed = repository.toggleSeen({ itemId: child.itemId, commentId: required(child.parentId), subtree: true }).comments;
+  const changed = displayedToggle(repository, { itemId: child.itemId, commentId: required(child.parentId), subtree: true }).comments;
   expect(changed.find(comment => comment.id === child.id)?.seen).toBe(true);
   expect(walkComments(buildCommentTree(changed))).toHaveLength(before.length);
 });
@@ -295,7 +296,7 @@ it.each(['direct-parent', 'thread-containment'] as const)('keeps an unresolved %
   repository.ingest(batch(input, [{ ...base, sourceId: 'child', relationship }]));
   const first = comments()[0];
   expect(first).toMatchObject({ parentId: null, directParentId: null, relationship, relationshipStatus: 'unresolved' });
-  repository.toggleSeen({ itemId: first.itemId, commentId: first.id, subtree: false });
+  displayedToggle(repository, { itemId: first.itemId, commentId: first.id, subtree: false });
   const before = comments()[0]; later();
   repository.ingest(batch(input, [{ ...base, sourceId: 'missing', relationship: { kind: 'top-level' } }]));
   const child = required(comments().find(comment => comment.id === first.id));
@@ -366,7 +367,7 @@ it('records unavailable collections and empty observations without deleting stor
 
 it('a late database failure rolls back item, comment, local-state inserts and history atomically', () => {
   const input = fixture(), base = input.collection.comments[0]; repository.ingest(batch(input, [base]));
-  repository.toggleSeen({ itemId: comments()[0].itemId, commentId: comments()[0].id, subtree: false });
+  displayedToggle(repository, { itemId: comments()[0].itemId, commentId: comments()[0].id, subtree: false });
   const before = state(), history = repository.history();
   raw().exec(`CREATE TRIGGER fail_merge BEFORE UPDATE ON comments BEGIN SELECT RAISE(ABORT, 'injected merge failure'); END;`);
   later(); expect(() => repository.ingest(batch({ ...input, item: { ...input.item, title: observed('updated title') } }, [
@@ -377,13 +378,13 @@ it('a late database failure rolls back item, comment, local-state inserts and hi
 });
 
 it('merge never writes existing comment_state, even after a local seen edit before ingestion', () => {
-  repository.ingest(fixture()); const first = comments()[0]; repository.toggleSeen({ itemId: first.itemId, commentId: first.id, subtree: false });
+  repository.ingest(fixture()); const first = comments()[0]; displayedToggle(repository, { itemId: first.itemId, commentId: first.id, subtree: false });
   raw().exec(`CREATE TRIGGER forbid_state_update BEFORE UPDATE ON comment_state BEGIN SELECT RAISE(ABORT, 'merge wrote local state'); END;`);
   later(); repository.ingest(fixture()); expect(comments()[0].seen).toBe(true); expect(comments()[1].seen).toBe(false);
 });
 
 it('real-style Community fixture, stable IDs, relationships, history and seen survive close/reopen without demo reset', () => {
-  repository.ingest(fixture('community-thread-a')); const reply = comments()[1]; repository.toggleSeen({ itemId: reply.itemId, commentId: reply.id, subtree: false });
+  repository.ingest(fixture('community-thread-a')); const reply = comments()[1]; displayedToggle(repository, { itemId: reply.itemId, commentId: reply.id, subtree: false });
   later(); repository.ingest(fixture('community-membership-b'));
   const before = state(), history = repository.history();
   handles.splice(handles.indexOf(repository), 1); repository.close(); repository = open(); repository.initializeDemo();
@@ -393,7 +394,7 @@ it('real-style Community fixture, stable IDs, relationships, history and seen su
 it('authoritative relationship changes update display placement while retaining identity and local state', () => {
   const input = fixture(), base = input.collection.comments[0];
   repository.ingest(batch(input, [{ ...base, sourceId: 'root', relationship: { kind: 'top-level' } }, { ...base, sourceId: 'child', relationship: { kind: 'direct-parent', parentSourceId: 'root' } }]));
-  const child = comments()[1]; repository.toggleSeen({ itemId: child.itemId, commentId: child.id, subtree: false });
+  const child = comments()[1]; displayedToggle(repository, { itemId: child.itemId, commentId: child.id, subtree: false });
   later(); repository.ingest(batch(input, [{ ...base, sourceId: 'child', relationship: { kind: 'top-level' }, author: { ...base.author, displayName: observed('renamed'), handle: observed('@changed') } }]));
   expect(comments()[1]).toMatchObject({ id: child.id, parentId: null, directParentId: null, seen: true, author: { displayName: 'renamed', handle: '@changed' }, discovery: { firstDiscoveryId: child.discovery.firstDiscoveryId } });
   repository.ingest(batch(input, [{ ...base, sourceId: 'child', relationship: { kind: 'thread-containment', rootSourceId: 'root' } }]));

@@ -1,5 +1,36 @@
 # Architecture
 
+## Ordered shared replicas (M2, ADR 0028)
+
+Repository outer transactions publish once after COMMIT under a random repository
+profileEpoch and a bounded process-local commitRevision. Comment Undo revisions
+and workspace revisions remain separate. Observer and recipient failures cannot
+change committed success. Schema remains 12; restart/reopen requires a fresh epoch
+and authoritative snapshot rather than a durable event log.
+
+The fixed typed shared notification reaches every M1-authorized document. Small
+seen updates carry at most 256 ID/boolean values plus current Undo. Content/large
+seen/removal changes invalidate one item; preferences/workspace use small metadata;
+view/collapse/history-only writes carry watermarks. No arbitrary subscription bus
+or renderer identity/version authority exists. Preload validates bounded envelopes.
+
+ReaderReplica subscribes before bootstrap, serializes events and command stamps,
+ignores included/old revisions and rejects obsolete epochs. Shared UI fields
+update only through its subscription; command callbacks retain feedback. A 64-envelope bound,
+gaps or scoped reads at a later revision trigger full snapshot recovery. A small
+two-second watermark detects lost final events/subscriptions. Failed reads retain
+acknowledged data. Checkbox intent is captured as an explicit desired state;
+Undo atomically requires the displayed operation ID and conflicts without writes
+if recovery changed. Peer seen updates preserve frozen applied membership/order.
+Peer Refresh reevaluates local applied criteria after content props commit, keeping
+drafts, sort/collapse/selection and anchor semantics. Progress fans out separately
+from committed content. See ADR 0028 for exact limits and response reconciliation.
+
+Production still opens one reader. Test-only second windows share the actual
+service/repository. M3 all-window backup/restore and close/reload queue barriers
+remain absent; current single-renderer safety is retained. No M4 identity migration,
+duplicate views, extra-window UI or transfer is introduced.
+
 ## Secure window coordination (M1, ADR 0027)
 
 `WindowCoordinator` owns application-window registration and renderer lifetimes.
@@ -19,8 +50,8 @@ recovery messages retain separate application-level ownership. One service/repos
 single reader startup, existing profile/order/seeding, thumbnail protocol and packaged
 security remain. Registry removal never shuts down persistence. See
 [ADR 0027](decisions/0027-secure-window-coordination-foundation.md) for exact lifecycle
-and cancellation boundaries. Cross-window synchronization and global drain barriers
-remain M2/M3; persistent windows/views and public additional windows remain later work.
+and cancellation boundaries. Shared synchronization is implemented in M2; global drain barriers
+remain M3; persistent windows/views and public additional windows remain later work.
 
 ## Usability increment (ADR 0026)
 

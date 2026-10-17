@@ -19,22 +19,30 @@ function HelperTool({ kind, api, locale, active }: { kind: HelperKind; api: Read
   const [status, setStatus] = useState<HelperStatus>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<ErrorCode>();
+  const [invalidation, setInvalidation] = useState(0);
+  const generation = useRef(0);
   const checked = useRef(false), busy = useRef(false), mounted = useRef(false);
   async function run(action: () => Promise<Result<HelperStatus | null>>) {
     if (busy.current) return;
+    const accepted = generation.current;
     busy.current = true; setPending(true); setError(undefined);
     try {
       const result = await action();
-      if (!mounted.current) return;
+      if (!mounted.current || accepted !== generation.current) return;
       if (result.ok) { if (result.value) setStatus(result.value); }
       else setError(result.error.code);
     } catch { if (mounted.current) setError('STORAGE_UNAVAILABLE'); }
     finally { busy.current = false; if (mounted.current) setPending(false); }
   }
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => api.onSharedCommit?.(commit => {
+    if (commit.change.kind === 'helpers') {
+      generation.current++; checked.current = false; setStatus(undefined); setInvalidation(value => value + 1);
+    }
+  }), [api]);
   useEffect(() => {
-    if (active && !checked.current) { checked.current = true; void run(() => api.getHelperStatus({ kind })); }
-  }, [active, api, kind]);
+    if (active && !busy.current && !checked.current) { checked.current = true; void run(() => api.getHelperStatus({ kind })); }
+  }, [active, api, kind, invalidation, pending]);
   const environment = status?.mode === 'environment';
   const modeKey = status?.mode === 'environment' ? 'helperEnvironment' : status?.mode === 'configured' ? 'helperCustom' : 'helperAutomatic';
   const stateKey = !status ? 'helperUnchecked' : status.state === 'tested' ? 'helperTested' : status.state === 'untested'

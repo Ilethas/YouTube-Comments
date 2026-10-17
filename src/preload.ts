@@ -1,3 +1,4 @@
+import { sharedCommitChannel } from './shared/reader-sync';
 import { acquisitionProgressChannel } from './shared/acquisition';
 // See the Electron documentation for details on how to use preload scripts:
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
@@ -8,4 +9,8 @@ contextBridge.exposeInMainWorld('reader', createReaderBridge((channel, ...args) 
   const receive = (_event: Electron.IpcRendererEvent, value: unknown) => listener(value);
   ipcRenderer.on(acquisitionProgressChannel, receive);
   return () => { ipcRenderer.removeListener(acquisitionProgressChannel, receive); };
+}, listener => {
+  const receive = (_event: Electron.IpcRendererEvent, value: unknown) => listener(value);
+  ipcRenderer.on(sharedCommitChannel, receive);
+  return () => { ipcRenderer.removeListener(sharedCommitChannel, receive); };
 }));

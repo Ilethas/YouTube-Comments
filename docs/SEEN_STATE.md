@@ -1,5 +1,21 @@
 # Seen state
 
+## Concurrent assignments and shared Undo (M2, ADR 0028)
+
+A checkbox gesture captures "make seen" or "make unseen" from the acknowledged
+displayed state, before asynchronous saving. Two stale replicas choosing Seen
+both assign Seen. Ctrl+checkbox assigns the captured value to the stored subtree.
+Main validates all targets atomically; frozen matching/selected/prefix IDs and
+publication/DST rules stay unchanged. The historical toggleSeen IPC name now
+requires an explicit boolean; old implicit requests reject.
+
+Undo submits the exact operation ID displayed when the command/Ctrl+Z was chosen.
+A replaced/missing operation returns UNDO_CONFLICT, reconciles current availability
+and consumes nothing. Revision-owned partial recovery and away-and-back protection
+remain unchanged. Peer seen changes update counts/checkboxes/unseen navigation
+and ruler/stale indicators without recomputing frozen applied IDs/order. See
+[ADR 0028](decisions/0028-ordered-shared-state-synchronization.md). Production still opens one reader.
+
 ## Explicit selection and reading-prefix assignments (ADR 0024)
 
 Round selection controls do not mean seen and do not alter the navigation identity.

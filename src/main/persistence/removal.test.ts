@@ -1,3 +1,4 @@
+import { displayedToggle } from '../testing/displayed-seen';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -50,7 +51,7 @@ it.each(['real', 'video-demo', 'post-demo'])('removes %s and every owned record,
 });
 it.each(['closed', 'background', 'active-right', 'active-left'] as const)('removes %s real item and every owned record, preserving unrelated data and app tabs', position => {
   const id = insert();
-  repository.toggleSeen({ itemId: id, commentId: repository.bootstrap(['en']).comments[id][0].id, subtree: true });
+  displayedToggle(repository, { itemId: id, commentId: repository.bootstrap(['en']).comments[id][0].id, subtree: true });
   repository.updatePreferences({ locale: 'pl' }, ['en']); repository.updatePreferences({ appearance: 'dark' }, ['en']);
   repository.changeWorkspace('openLibrary'); repository.changeWorkspace('openSettings');
   if (position === 'closed') repository.changeWorkspace('closeTab', discussionTab(id).id);

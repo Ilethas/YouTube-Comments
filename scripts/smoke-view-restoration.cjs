@@ -8,6 +8,7 @@ const { spawn } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 const entry = path.join(__dirname, '../.vite/build/main.js');
 const now = Date.parse('2026-10-14T12:00:00Z');
+let smokeStage = 'launch';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const defaultQuery = { text: '', fields: ['content'], mode: 'text', caseSensitive: false, seen: 'all', publication: { kind: 'all' }, discovery: 'all' };
 const databaseFile = root => path.join(root, 'youtube-comments-development', 'reader.sqlite');
@@ -71,6 +72,7 @@ async function verify(window, root, phase) {
   const panel = "document.querySelector('[role=tabpanel]:not([hidden])')";
   const query = `${panel}.querySelector('.query-controls')`;
   async function wait(expression, label) {
+    smokeStage = label;
     for (let i = 0; i < 400; i++) { if (await js(expression)) return; await pause(25); }
     throw new Error(`Timed out: ${label}`);
   }
@@ -195,7 +197,7 @@ async function verify(window, root, phase) {
 if (process.versions.electron && process.type === 'browser') {
   require('./thumbnail-fixture-network.cjs').installThumbnailNetwork();
   const { app } = require('electron'), root = process.env.YOUTUBE_COMMENTS_DEMO_ROOT, phase = process.env.VIEW_SMOKE_PHASE;
-  const watchdog = setTimeout(() => app.exit(1), 120000); let failed = false;
+  const watchdog = setTimeout(() => { console.error('View restoration timeout at ' + smokeStage); app.exit(1); }, 120000); let failed = false;
   app.on('browser-window-created', (_event, window) => {
     window.hide(); const contents = window.webContents; contents.setBackgroundThrottling(false);
     const load = contents.loadURL.bind(contents);

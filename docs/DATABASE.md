@@ -1,5 +1,12 @@
 # Database and durable data
 
+M2 (ADR 0028) keeps schema **12** and all historical migration/backup rules.
+Repository post-COMMIT publications use a random open-incarnation epoch and a
+bounded process-local revision; neither is a durable content/Undo/workspace
+revision. Restart/reopen reconstructs SQLite state under a fresh epoch. No new
+table or migration is required. Main compares expected Undo operation IDs inside
+the existing transaction before any restoration/consumption.
+
 ## Schema 12 usability settings (ADR 0026)
 
 Migration 12 rebuilds only preferences, explicitly copying every existing column,

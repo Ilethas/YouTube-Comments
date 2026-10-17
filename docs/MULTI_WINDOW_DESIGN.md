@@ -3,7 +3,12 @@
 Research/design, 2026-10-17. **Broader architecture remains proposed.**
 M1 is implemented in [ADR 0027](decisions/0027-secure-window-coordination-foundation.md)
 with one production reader and runtime-only window identities, without a schema
-change. Other milestones below remain unimplemented.
+change. M2 is implemented in
+[ADR 0028](decisions/0028-ordered-shared-state-synchronization.md): process/profile epochs and bounded ordered
+commits, fixed notifications, replica recovery, explicit assignments, expected-ID
+Undo and progress fanout. Its counter is process-local with fresh snapshots across
+epochs; no durable revision table/migration is introduced. Production remains one
+reader. M3-M9 below remain unimplemented; their requirements remain proposals.
 
 **Accepted owner policy, recorded during M1:** native HTML DnD is preferred for
 reorder/attachment. VS Code-style outside drag-end detachment is acceptable for the

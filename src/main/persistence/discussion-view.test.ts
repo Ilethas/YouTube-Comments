@@ -117,7 +117,7 @@ it('narrow IPC rejects unexpected/derived shapes, enums, oversized text, nonfini
     expect(() => repo.saveDiscussionView(invalid)).toThrow(InvalidDiscussionViewError);
   }
   expect(repo.bootstrap(['en']).discussionViews).toEqual({});
-  expect(service.dispatch('saveDiscussionView', [request])).toEqual({ ok: true, value: null });
+  expect(service.dispatch('saveDiscussionView', [request])).toEqual({ ok: true, value: null, sync: repo.latestCommit() });
   expect(service.dispatch('saveDiscussionView', [{ ...request, itemId: 'missing' }])).toEqual({ ok: false, error: { code: 'NOT_FOUND' } });
 });
 

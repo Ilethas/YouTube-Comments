@@ -96,7 +96,7 @@ export class AcquisitionService {
       const state = this.repository.bootstrap(this.languages);
       durations.bootstrapMs = this.clock() - bootstrapStarted;
       const timings: AcquisitionTimings = { targetMs, ...durations, totalMs: this.clock() - started };
-      return { ok: true, value: { operationId, timings, state, summary: {
+      return { ok: true, sync: this.repository.latestCommit() ?? this.repository.stamp(), value: { operationId, timings, state, summary: {
         itemId: attempt.itemId, coverage: attempt.coverage.kind, inserted: attempt.counts.inserted,
         updated: attempt.counts.updated, warnings: attempt.issues.length,
       } } };

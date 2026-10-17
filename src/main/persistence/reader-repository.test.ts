@@ -1,3 +1,4 @@
+import { displayedToggle } from '../testing/displayed-seen';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -72,7 +73,7 @@ it('isolates production/development and requires absolute test/development confi
 
 it('demo initialization is idempotent and never resets seen state or preferences', () => {
   const first = repo(); first.initializeDemo();
-  first.toggleSeen({ itemId: 'video-demo', commentId: 'v1', subtree: false });
+  displayedToggle(first, { itemId: 'video-demo', commentId: 'v1', subtree: false });
   first.updatePreferences({ locale: 'pl' }, ['en']);
   first.updatePreferences({ appearance: 'dark' }, ['en']);
   const before = first.bootstrap(['en']);
@@ -82,7 +83,7 @@ it('demo initialization is idempotent and never resets seen state or preferences
 
 it('ordinary toggle survives reopen and changes only its selected comment', () => {
   const first = repo(); first.initializeDemo();
-  first.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: false });
+  displayedToggle(first, { itemId: 'video-demo', commentId: 'v2', subtree: false });
   const state = reopen(first).bootstrap(['en']);
   expect(state.comments['video-demo']).toMatchObject(initialComments['video-demo'].map(comment => comment.id === 'v2' ? { ...comment, seen: false } : comment));
   expect(state.comments['post-demo']).toMatchObject(initialComments['post-demo']);
@@ -91,7 +92,7 @@ it('ordinary toggle survives reopen and changes only its selected comment', () =
 it.each([['v2', false, ['v2', 'v3', 'v4']], ['v3', true, ['v3', 'v4']]] as const)(
   'subtree %s applies its resulting state atomically across reopen, leaving ancestors/siblings alone', (id, seen, ids) => {
     const first = repo(); first.initializeDemo();
-    first.toggleSeen({ itemId: 'video-demo', commentId: id, subtree: true });
+    displayedToggle(first, { itemId: 'video-demo', commentId: id, subtree: true });
     const state = reopen(first).bootstrap(['en']);
     expect(state.comments['video-demo']).toMatchObject(initialComments['video-demo'].map(comment => ids.some(id => id === comment.id) ? { ...comment, seen } : comment));
     expect(state.comments['post-demo']).toMatchObject(initialComments['post-demo']);
@@ -102,7 +103,7 @@ it('a failed SQLite write after earlier subtree updates rolls back the entire op
   const before = first.bootstrap(['en']);
   raw().exec(`CREATE TRIGGER fail_late BEFORE UPDATE ON comment_state
     WHEN NEW.comment_id = 'v4' BEGIN SELECT RAISE(ABORT, 'injected failure'); END;`);
-  expect(() => first.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: true })).toThrow('injected failure');
+  expect(() => displayedToggle(first, { itemId: 'video-demo', commentId: 'v2', subtree: true })).toThrow('injected failure');
   expect(reopen(first).bootstrap(['en'])).toEqual(before);
 });
 
@@ -159,7 +160,7 @@ it('a real initial-schema collision fails opening without recreating/resetting e
 
 it('a later ordered migration runs only pending versions and preserves the prior committed schema on failure', () => {
   const first = repo(); first.initializeDemo();
-  first.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: false });
+  displayedToggle(first, { itemId: 'video-demo', commentId: 'v2', subtree: false });
   const before = first.bootstrap(['en']);
   const db = raw();
   const earlier = Array.from({ length: schemaVersion }, (_, index) => ({ version: index + 1, apply: () => { throw new Error('Already applied migration must not run'); } }));

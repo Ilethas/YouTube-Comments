@@ -1,3 +1,4 @@
+import { displayedToggle, displayedUndo } from '../testing/displayed-seen';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
@@ -49,10 +50,10 @@ it.each(['selected', 'view-prefix'] as const)('%s boolean assignments target onl
   expect(result.comments.filter(row => ['v1', 'v2', 'v3'].includes(row.id)).every(row => row.seen)).toBe(true);
   expect(result.comments.filter(row => !['v1', 'v2', 'v3'].includes(row.id))).toEqual(before.comments['video-demo'].filter(row => !['v1', 'v2', 'v3'].includes(row.id)));
   expect(repo.bulkSeen(request(true, reason)).undo).toEqual(result.undo);
-  repo.toggleSeen({ itemId: 'video-demo', commentId: 'v3', subtree: false });
-  repo.toggleSeen({ itemId: 'video-demo', commentId: 'v3', subtree: false });
+  displayedToggle(repo, { itemId: 'video-demo', commentId: 'v3', subtree: false });
+  displayedToggle(repo, { itemId: 'video-demo', commentId: 'v3', subtree: false });
   repo.close(); repo = ReaderRepository.open(file);
-  const recovered = repo.undoSeen('video-demo');
+  const recovered = displayedUndo(repo, 'video-demo');
   expect(recovered.skipped).toBe(1); expect(recovered.comments.find(row => row.id === 'v3')?.seen).toBe(true);
   expect(bootstrap().discussionCollapse).toEqual(before.discussionCollapse); expect(repo.history()).toEqual(history);
   expect(bootstrap().comments['post-demo']).toEqual(before.comments['post-demo']);
@@ -82,8 +83,8 @@ it('schema 10 upgrade preserves populated recoverable operations and child entri
   repo.updatePreferences({ translationTarget: 'de' }, ['en']);
   repo.setDiscussionCollapse({ itemId: 'video-demo', kind: 'comments', ids: ['v1'], collapsed: true });
   repo.bulkSeen({ itemId: 'video-demo', seen: true, target: { kind: 'all' } });
-  repo.toggleSeen({ itemId: 'video-demo', commentId: 'v3', subtree: false });
-  repo.toggleSeen({ itemId: 'video-demo', commentId: 'v3', subtree: false });
+  displayedToggle(repo, { itemId: 'video-demo', commentId: 'v3', subtree: false });
+  displayedToggle(repo, { itemId: 'video-demo', commentId: 'v3', subtree: false });
   const before = bootstrap(), history = repo.history(); repo.close();
   const entries = raw(db => { downgradeSelectionFixture(db); return db.prepare('SELECT * FROM seen_operation_entries').all(); });
   expect(entries.length).toBeGreaterThan(0); expect(validateBackup(file)).toBe(10);
@@ -94,7 +95,7 @@ it('schema 10 upgrade preserves populated recoverable operations and child entri
   expect(readFileSync(file)).toEqual(bytes);
   repo = ReaderRepository.open(file); expect(bootstrap()).toEqual(before); expect(repo.history()).toEqual(history);
   raw(db => { expect(db.prepare('SELECT * FROM seen_operation_entries').all()).toEqual(entries); expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]); });
-  expect(repo.undoSeen('video-demo')).toMatchObject({ skipped: 1, restored: entries.length - 1 });
+  expect(displayedUndo(repo, 'video-demo')).toMatchObject({ skipped: 1, restored: entries.length - 1 });
 }, 15000);
 
 it('a failure after rebuilding the Undo parent rolls back preferences, parent, entries, constraints and version together', () => {
@@ -110,7 +111,7 @@ it('a failure after rebuilding the Undo parent rolls back preferences, parent, e
     migrateDatabase(db); expect(db.prepare('SELECT * FROM seen_operation_entries').all()).toEqual(entries);
   });
   expect(validateBackup(file)).toBe(12); repo = ReaderRepository.open(file);
-  expect(repo.undoSeen('video-demo').restored).toBeGreaterThan(0);
+  expect(displayedUndo(repo, 'video-demo').restored).toBeGreaterThan(0);
 });
 
 it('full snapshot restore preserves explicit Undo metadata, both preferences and sparse collapse through restart', async () => {
@@ -123,5 +124,5 @@ it('full snapshot restore preserves explicit Undo metadata, both preferences and
   await repo.createBackup(path.join(stage, 'safety.sqlite')); repo.prepareOffline(); repo.close();
   await installRestore(file, stage); expect(await recoverProfile(file)).toBe('restored');
   repo = ReaderRepository.open(file); expect(bootstrap()).toEqual(before);
-  expect(repo.undoSeen('video-demo').restored).toBeGreaterThan(0);
+  expect(displayedUndo(repo, 'video-demo').restored).toBeGreaterThan(0);
 }, 15000);

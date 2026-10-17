@@ -54,12 +54,12 @@ if (process.versions.electron) {
         const preferences = window.webContents.getLastWebPreferences();
         assert.equal(preferences.sandbox, true); assert.equal(preferences.contextIsolation, true); assert.equal(preferences.nodeIntegration, false);
         const boot = await js('window.reader.bootstrap()'); assert.equal(boot.ok, true); assert.equal(boot.value.items.length, 2);
-        const seen = await js("window.reader.toggleSeen({itemId:'video-demo',commentId:'v1',subtree:false})"); assert.equal(seen.ok, true);
+        const seen = await js("window.reader.toggleSeen({itemId:'video-demo',commentId:'v1',subtree:false,seen:false})"); assert.equal(seen.ok, true);
         const after = await js('window.reader.bootstrap()');
         const ready = loaded(window); window.webContents.reload(); await ready;
         await wait(() => js("!!document.querySelector('.app-shell')"), 'reloaded reader');
         assert.deepEqual((await js('window.reader.bootstrap()')).value, after.value);
-        assert.deepEqual(await js("window.reader.toggleSeen({itemId:'video-demo',commentId:'v1',subtree:false,windowId:'forged'})"), { ok: false, error: { code: 'INVALID_REQUEST' } });
+        assert.deepEqual(await js("window.reader.toggleSeen({itemId:'video-demo',commentId:'v1',subtree:false,seen:false,windowId:'forged'})"), { ok: false, error: { code: 'INVALID_REQUEST' } });
         const expected = window.webContents.getURL();
         await js("window.open('https://example.invalid'); location.href='https://example.invalid'; void 0");
         await pause(100); assert.equal(window.webContents.getURL(), expected); assert.equal(BrowserWindow.getAllWindows().length, 1);

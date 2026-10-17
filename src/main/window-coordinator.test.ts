@@ -64,3 +64,17 @@ it('subframe navigation cannot replace the top-level lease and an incorrect comm
   expect(coordinator.resolveCaller(a.event())).toBeUndefined();
   a.contents.mainFrame.url = url; expect(coordinator.resolveCaller(a.event())).toBeUndefined();
 });
+
+it('fans progress and committed watermarks to every live authorized peer despite a throwing recipient', () => {
+  const coordinator = new WindowCoordinator(url, ''), a = windowFixture(), b = windowFixture(), c = windowFixture();
+  const sendA = vi.fn(() => { throw new Error('Destroyed between check and send'); }), sendB = vi.fn(), sendC = vi.fn();
+  Object.assign(a.contents, { send: sendA }); Object.assign(b.contents, { send: sendB }); Object.assign(c.contents, { send: sendC });
+  for (const entry of [a, b, c]) { coordinator.register(entry.window); entry.commit(); }
+  c.contents.emit('render-process-gone');
+  const progress = { operationId: 'operation', settled: true as const };
+  coordinator.sendAcquisitionProgress(progress);
+  const commit = { profileEpoch: '00000000-0000-0000-0000-000000000001', commitRevision: 1, change: { kind: 'watermark' as const } };
+  coordinator.sendSharedCommit(commit);
+  expect(sendA).toHaveBeenCalledTimes(2); expect(sendB.mock.calls).toEqual([['reader:acquisition-progress', progress], ['reader:shared-commit', commit]]);
+  expect(sendC).not.toHaveBeenCalled();
+});

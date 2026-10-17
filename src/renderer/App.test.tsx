@@ -1,3 +1,4 @@
+import type { SharedChange, SharedCommit } from '../shared/reader-sync';
 import { translator } from './i18n';
 import { required } from './testing/required';
 import { installReaderIntersection } from './testing/reader-layout';
@@ -39,6 +40,11 @@ beforeEach(() => {
     return { ok: true as const, value: state.workspace };
   };
   api = {
+    // Legacy unit transports isolate existing single-window UI behavior. M2's
+    // real transport is exercised in shared-sync and two-window Electron tests.
+    onSharedCommit: undefined as unknown as ReaderApi['onSharedCommit'],
+    getSharedSnapshot: undefined as unknown as ReaderApi['getSharedSnapshot'],
+    getSharedMetadata: undefined as unknown as ReaderApi['getSharedMetadata'],
     getThumbnail: vi.fn(async () => ({ ok: true as const, value: null })),
     checkThumbnail: vi.fn(async () => ({ ok: true as const, value: null })),
     openThumbnail: vi.fn(async () => ({ ok: true as const, value: null })),
@@ -240,7 +246,14 @@ it('activation retains ADR 0009 isolation with a 10k hidden discussion and bound
 
 it('draft, query evaluation, navigation and seen saves in A keep B/C idle; drafts reuse A forest', async () => {
   threeDiscussions(); window.__readerWork = {};
-  await showReader(); window.__readerWork = {};
+  await showReader();
+  // Keep both peers mounted before checking that acknowledged seen/Undo updates
+  // do not change their memoized action callbacks or rebuild hidden readers.
+  for (const id of ['post-demo', 'third-discussion', 'video-demo']) {
+    fireEvent.click(required(document.getElementById(`tab-discussion:${id}`)));
+    await waitFor(() => expect(document.getElementById(`tab-discussion:${id}`)?.getAttribute('aria-selected')).toBe('true'));
+  }
+  window.__readerWork = {};
   fireEvent.change(screen.getByRole('searchbox', { name: 'Search this discussion' }), { target: { value: 'camera' } });
   expect(work()['panel:video-demo']).toBeGreaterThan(0);
   expect(work()['forest:video-demo'] ?? 0).toBe(0);
@@ -1235,4 +1248,91 @@ it('committed Refresh shows non-cancellable Updating view until query settlement
   expect(screen.queryByText('The discussion could not be acquired. Stored comments are unchanged. Check the connection and try again.')).toBeNull();
   expect(api.cancelAcquisition).not.toHaveBeenCalled();
   expect(document.querySelector('.acquisition-completion')?.textContent).toContain('Inserted: 1');
+});
+
+/** A narrow in-memory main transport for component ordering; real IPC and shared
+ * repository coverage lives in smoke-shared-sync and main/shared-sync tests. */
+function installSharedTransport() {
+  const listeners = new Set<(event: SharedCommit) => void>();
+  let commitRevision = 0;
+  const stamp = () => ({ profileEpoch: '00000000-0000-0000-0000-000000000001', commitRevision });
+  api.onSharedCommit = listener => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+  api.getSharedMetadata = async () => ({ ok: true, value: { ...stamp(), preferences: state.preferences, workspace: state.workspace } });
+  api.getSharedSnapshot = async request => ({ ok: true, value: request ? { ...stamp(), itemId: request.itemId,
+    item: state.items.find(i => i.id === request.itemId) ?? null, comments: state.comments[request.itemId] ?? [], undo: state.seenUndo[request.itemId] ?? null, workspace: state.workspace }
+    : { ...stamp(), state } });
+  return (change: SharedChange) => { commitRevision++; for (const listener of listeners) listener({ ...stamp(), change }); };
+}
+it('M2 peer seen updates real controls and counts while applied IDs, draft and sort stay frozen', async () => {
+  const publish = installSharedTransport(); await showReader();
+  fireEvent.change(currentView().getByLabelText('Seen filter'), { target: { value: 'unseen' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  fireEvent.change(currentView().getByLabelText('Sort'), { target: { value: 'newest' } });
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'unapplied draft' } });
+  const previous = appliedRows(), count = currentView().getByText(/Applied:/).textContent;
+  const seen = true, itemId = 'video-demo', id = 'v3';
+  await act(async () => {
+    state = { ...state, comments: { ...state.comments, [itemId]: state.comments[itemId].map(c => c.id === id ? { ...c, seen } : c) } };
+    publish({ kind: 'seen', itemId, values: [{ id, seen }], undo: null });
+  });
+  await waitFor(() => expect(document.getElementById('comment-v3')?.querySelector<HTMLInputElement>('input[type=checkbox]')?.checked).toBe(true));
+  expect(appliedRows()).toEqual(previous); expect(currentView().getByText(/Applied:/).textContent).toBe(count);
+  expect(currentView().getByText(translator('en')('querySeenPending'))).toBeTruthy();
+  expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe('unapplied draft');
+  expect((currentView().getByLabelText('Sort') as HTMLSelectElement).value).toBe('newest');
+});
+it('M2 peer Refresh promotes content props before a fast worker result, retaining the local draft and sort', async () => {
+  state = { ...state, items: state.items.map(i => ({ ...i, latestAcceptedDiscoveryId: 'before' })) };
+  const publish = installSharedTransport(); await showReader();
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'M2 discovery' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'local draft' } });
+  fireEvent.change(currentView().getByLabelText('Sort'), { target: { value: 'newest' } });
+  await act(async () => {
+    const itemId = 'video-demo';
+    state = { ...state, items: state.items.map(i => i.id === itemId ? { ...i, latestAcceptedDiscoveryId: 'after' } : i),
+      comments: { ...state.comments, [itemId]: [...state.comments[itemId], { ...state.comments[itemId][0], id: 'peer-new', parentId: null, text: 'M2 discovery', seen: false }] } };
+    publish({ kind: 'item', itemId });
+  });
+  await waitFor(() => expect(document.getElementById('comment-peer-new')).toBeTruthy());
+  expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe('local draft');
+  expect((currentView().getByLabelText('Sort') as HTMLSelectElement).value).toBe('newest');
+});
+
+it('subtree feedback describes the captured assignment even when a newer shared Undo describes the opposite state', async () => {
+  api.toggleSeen = vi.fn(async () => ({ ok: true as const, value: {
+    comments: state.comments['video-demo'].map(c => ({ ...c, seen: false })), targetCount: 2, changedCount: 2,
+    undo: { ...recovery, id: 'peer-replacement', targetSeen: false },
+  } }));
+  await showReader();
+  fireEvent.click(required(document.getElementById('comment-v3')?.querySelector('input[type=checkbox]')), { ctrlKey: true });
+  await waitFor(() => expect(api.toggleSeen).toHaveBeenCalledWith({ itemId: 'video-demo', commentId: 'v3', subtree: true, seen: true }));
+  expect(await screen.findByText('Marked 2 comments seen.')).toBeTruthy();
+});
+
+it('M2 local checkbox and preference controls use committed notifications while obsolete reply bodies cannot reinstall state', async () => {
+  const publish = installSharedTransport();
+  api.toggleSeen = vi.fn(async request => {
+    const before = state.comments[request.itemId];
+    state = { ...state, comments: { ...state.comments, [request.itemId]: before.map(c => c.id === request.commentId ? { ...c, seen: request.seen } : c) } };
+    publish({ kind: 'seen', itemId: request.itemId, values: [{ id: request.commentId, seen: request.seen }], undo: null });
+    return { ok: true as const, value: { comments: before, changedCount: 1, targetCount: 1, undo: null } };
+  });
+  const open = api.openSettings;
+  api.openSettings = vi.fn(async () => { const result = await open(); publish({ kind: 'workspace' }); return result; });
+  api.updatePreferences = vi.fn(async change => {
+    const before = state.preferences;
+    state = { ...state, preferences: { ...state.preferences, ...change } };
+    publish({ kind: 'preferences' });
+    return { ok: true as const, value: before };
+  });
+  await showReader();
+  fireEvent.click(required(document.getElementById('comment-v3')?.querySelector('input[type=checkbox]')));
+  await waitFor(() => expect(document.getElementById('comment-v3')?.querySelector<HTMLInputElement>('input[type=checkbox]')?.checked).toBe(true));
+  fireEvent.click(required(document.getElementById('settings-toggle')));
+  const appearance = await screen.findByRole('combobox', { name: 'Appearance' });
+  fireEvent.change(appearance, { target: { value: 'dark' } });
+  await waitFor(() => expect(document.documentElement.dataset.appearance).toBe('dark'));
+  await waitFor(() => expect((appearance as HTMLSelectElement).disabled).toBe(false));
+  expect((appearance as HTMLSelectElement).value).toBe('dark');
 });

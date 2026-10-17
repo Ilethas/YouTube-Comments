@@ -68,6 +68,12 @@ async function attach(profile, started, label) {
         throw new Error(`Timed out ${expression}; ${await js('document.body.innerText')}`);
       };
       session.invoke = async (method,payload) => {
+      // Capture the acknowledged descriptor/state before this sequential test intent.
+      if (method === 'toggleSeen' || method === 'undoSeen') {
+        const acknowledged = await session.js(`window.reader.getSharedSnapshot(${JSON.stringify({itemId:payload.itemId})}).then(r=>r.value)`);
+        payload = method === 'toggleSeen' ? { ...payload, seen: !acknowledged.comments.find(c=>c.id===payload.commentId).seen }
+          : { ...payload, expectedOperationId: acknowledged.undo.id };
+      }
         const result = await js(`window.reader.${method}(${payload===undefined?'':JSON.stringify(payload)})`);
         assert.equal(result.ok,true,JSON.stringify(result)); return result.value;
       };

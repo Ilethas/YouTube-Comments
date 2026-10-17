@@ -22,13 +22,26 @@ ADR 0024 adds selection, menus and explicit selected/prefix scopes.
 
 ## Invariants to protect
 
+- [ADR 0028](docs/decisions/0028-ordered-shared-state-synchronization.md) implements
+  M2 with repository post-COMMIT epoch/revisions, bounded fixed notifications,
+  subscribe-first renderer reconciliation and watermark/snapshot recovery. Epochs
+  and commit revisions are runtime-only, distinct from durable comment/workspace
+  revisions; schema stays 12. Checkbox IPC requires an explicit displayed desired
+  state. Undo requires the displayed expectedOperationId and rejects replaced
+  recovery atomically. Peer seen changes keep frozen applied membership/order;
+  accepted Refresh retains local applied criteria/drafts. Progress fans out to
+  all authorized test participants. Production still creates ONE reader. M3's
+  all-participant profile/close/reload drains are absent; do not expose extra
+  production windows or claim multi-window backup safety.
+
 - [ADR 0027](docs/decisions/0027-secure-window-coordination-foundation.md) implements
   M1: one secured application-window factory, main-owned WindowCoordinator runtime
   identities/document leases and once-registered authenticated reader IPC. Native
   dialogs use the captured current caller only; origin loss cancels preflight and
   helper selection, never reparents. Confirmed restore/started backup retain existing
-  app-owned safety/shutdown. Production still opens ONE reader, schema 12. M2/M3
-  synchronization/global barriers and later windows/topology/transfer are not implemented.
+  app-owned safety/shutdown. Production still opens ONE reader, schema 12. M2
+  synchronization is implemented by ADR 0028; M3 global barriers and later
+  windows/topology/transfer are not implemented.
   Native HTML DnD is preferred for future M8; the owner accepts initial outside
   detachment where Escape may create a window. Keep outcome detection separate from
   durable transfer logic; M8 real native input testing remains required.

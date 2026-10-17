@@ -15,10 +15,10 @@ it.each(['openStoredItem', 'removeLibraryItem'] as const)('validates exact %s pa
 });
 it.each([
   null, undefined, [], {}, { itemId: 'video-demo', commentId: 'v1', subtree: 'true' },
-  { itemId: '', commentId: 'v1', subtree: false },
+  { itemId: '', commentId: 'v1', subtree: false, seen: true },
   { itemId: 'video-demo', commentId: 'v1', subtree: false, sql: 'DELETE FROM comments' },
-  { itemId: 'video-demo', commentId: 'v1\0', subtree: false },
-  { itemId: 'x'.repeat(257), commentId: 'v1', subtree: false },
+  { itemId: 'video-demo', commentId: 'v1\0', subtree: false, seen: true },
+  { itemId: 'x'.repeat(257), commentId: 'v1', subtree: false, seen: true },
 ])('rejects malformed seen payload %j before storage', payload => {
   const service = new ReaderService(failedOpen, ['en'], vi.fn());
   expect(service.dispatch('toggleSeen', [payload])).toEqual({ ok: false, error: { code: 'INVALID_REQUEST' } });
@@ -45,7 +45,7 @@ it('returns sanitized stable storage and unsupported-schema failures without pat
 
 it('retries the original storage initialization after an initial open failure and retains the successful repository', () => {
   const state = { items: [], comments: {}, preferences: { locale: 'en', appearance: 'system' } };
-  const repository = { bootstrap: vi.fn(() => state), close: vi.fn() } as unknown as ReaderRepository;
+  const repository = { onCommit: vi.fn(), latestCommit: vi.fn(), stamp: vi.fn(), bootstrap: vi.fn(() => state), close: vi.fn() } as unknown as ReaderRepository;
   const open = vi.fn<() => ReaderRepository>()
     .mockImplementationOnce(failedOpen).mockImplementationOnce(failedOpen).mockReturnValue(repository);
   const diagnose = vi.fn();
@@ -89,7 +89,7 @@ it('does not reopen an unsupported schema, including when a recoverable retry di
 
 it('successful startup opens storage once and subsequent bootstrap requests reuse it', () => {
   const state = { items: [], comments: {}, preferences: { locale: 'pl', appearance: 'dark' } };
-  const repository = { bootstrap: vi.fn(() => state) } as unknown as ReaderRepository;
+  const repository = { onCommit: vi.fn(), latestCommit: vi.fn(), stamp: vi.fn(), bootstrap: vi.fn(() => state) } as unknown as ReaderRepository;
   const open = vi.fn(() => repository);
   const diagnose = vi.fn();
   const service = new ReaderService(open, ['pl'], diagnose);
@@ -101,9 +101,9 @@ it('successful startup opens storage once and subsequent bootstrap requests reus
   expect(diagnose).not.toHaveBeenCalled();
 });
 it('reports failed writes and missing targets as structured errors', () => {
-  const repository = { toggleSeen: vi.fn(() => { throw new Error('private diagnostic'); }) } as unknown as ReaderRepository;
+  const repository = { onCommit: vi.fn(), latestCommit: vi.fn(), stamp: vi.fn(), toggleSeen: vi.fn(() => { throw new Error('private diagnostic'); }) } as unknown as ReaderRepository;
   const service = new ReaderService(() => repository, ['en'], vi.fn());
-  const args = [{ itemId: 'video-demo', commentId: 'v2', subtree: true }];
+  const args = [{ itemId: 'video-demo', commentId: 'v2', subtree: true, seen: true }];
   expect(service.dispatch('toggleSeen', args)).toEqual({ ok: false, error: { code: 'STORAGE_UNAVAILABLE' } });
   repository.toggleSeen = () => { throw new MissingCommentError('not found'); };
   expect(service.dispatch('toggleSeen', args)).toEqual({ ok: false, error: { code: 'NOT_FOUND' } });

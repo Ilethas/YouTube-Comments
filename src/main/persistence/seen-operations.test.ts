@@ -1,3 +1,4 @@
+import { displayedToggle, displayedUndo } from '../testing/displayed-seen';
 import { downgradeSelectionFixture } from './testing/schema-10';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
@@ -47,7 +48,7 @@ it.each(['Europe/Warsaw', 'Asia/Kolkata'])('bulk date/time preview and transacti
   expect(ids).toEqual([before[1].id, before[2].id]);
   const result = repository.bulkSeen({ itemId: 'video-demo', seen: true, target }, evaluation);
   expect(result.targetCount).toBe(ids.length); expect(result.comments).toEqual(before.map(comment => ids.includes(comment.id) ? { ...comment, seen: true } : comment));
-  expect(repository.undoSeen('video-demo').restored).toBe(result.changedCount); expect(rows()).toEqual(before);
+  expect(displayedUndo(repository, 'video-demo').restored).toBe(result.changedCount); expect(rows()).toEqual(before);
 });
 it.each([
   { from: '2026-03-29', fromTime: '02:30' }, { to: '2026-10-25', toTime: '02:30' },
@@ -89,10 +90,10 @@ it.each([true, false])('All assigns %s across stored discussion only; logs chang
     const revisions = new Map(db.prepare('SELECT * FROM comment_state').all().map(row => [row.comment_id, row.revision]));
     for (const comment of before.comments['video-demo']) expect(revisions.get(comment.id)).toBe(comment.seen === seen ? 0 : 1);
   });
-  const undo = repository.undoSeen('video-demo');
+  const undo = displayedUndo(repository, 'video-demo');
   expect(undo).toMatchObject({ restored: result.changedCount, skipped: 0, undo: null });
   expect(rows()).toEqual(before.comments['video-demo']);
-  expect(() => repository.undoSeen('video-demo')).toThrow();
+  expect(() => displayedUndo(repository, 'video-demo')).toThrow();
 });
 
 it('matching is the exact frozen applied set, including stale matches and excluding context/raw-only', () => {
@@ -101,7 +102,7 @@ it('matching is the exact frozen applied set, including stale matches and exclud
   if (!evaluated.ok) throw new Error('query failed');
   const frozen = evaluated.result.activeMatchIds;
   const first = frozen[0];
-  repository.toggleSeen({ itemId: 'video-demo', commentId: first, subtree: false });
+  displayedToggle(repository, { itemId: 'video-demo', commentId: first, subtree: false });
   const before = rows();
   const result = repository.bulkSeen({ itemId: 'video-demo', seen: true, target: { kind: 'matching', ids: frozen } });
   expect(result.targetCount).toBe(frozen.length);
@@ -165,7 +166,7 @@ it('no-op retains recovery; later successful multi command supersedes only its d
 });
 
 it('a multi-target bulk with one actual transition recovers it; one-target commands retain prior undo', () => {
-  bulk(true); repository.toggleSeen({ itemId: 'video-demo', commentId: 'v1', subtree: false });
+  bulk(true); displayedToggle(repository, { itemId: 'video-demo', commentId: 'v1', subtree: false });
   const result = bulk(true);
   expect(result.changedCount).toBe(1); expect(result.undo?.changedCount).toBe(1);
   const previous = result.undo;
@@ -175,26 +176,26 @@ it('a multi-target bulk with one actual transition recovers it; one-target comma
 
 it('mixed subtree recovery restores original mixture and single changed subtree retains prior undo', () => {
   const before = rows();
-  const result = repository.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: true });
+  const result = displayedToggle(repository, { itemId: 'video-demo', commentId: 'v2', subtree: true });
   expect(result.undo?.kind).toBe('subtree'); expect(result.changedCount).toBeGreaterThan(1);
-  expect(repository.undoSeen('video-demo').comments).toEqual(before);
+  expect(displayedUndo(repository, 'video-demo').comments).toEqual(before);
   const previous = bulk(true).undo;
-  repository.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: false });
-  const single = repository.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: true });
+  displayedToggle(repository, { itemId: 'video-demo', commentId: 'v2', subtree: false });
+  const single = displayedToggle(repository, { itemId: 'video-demo', commentId: 'v2', subtree: true });
   expect(single.targetCount).toBe(3); expect(single.changedCount).toBe(1);
   expect(state().seenUndo['video-demo']).toEqual(previous);
 });
 
 it('partial Undo protects later edits, including away-and-back revisions and unrelated edits across restart', () => {
   const before = rows(), result = bulk(true), changed = before.filter(comment => !comment.seen);
-  for (const comment of changed.slice(0, 2)) repository.toggleSeen({ itemId: 'video-demo', commentId: comment.id, subtree: false });
-  repository.toggleSeen({ itemId: 'video-demo', commentId: changed[1].id, subtree: false });
+  for (const comment of changed.slice(0, 2)) displayedToggle(repository, { itemId: 'video-demo', commentId: comment.id, subtree: false });
+  displayedToggle(repository, { itemId: 'video-demo', commentId: changed[1].id, subtree: false });
   const unrelated = required(before.find(comment => comment.seen));
-  repository.toggleSeen({ itemId: 'video-demo', commentId: unrelated.id, subtree: false });
+  displayedToggle(repository, { itemId: 'video-demo', commentId: unrelated.id, subtree: false });
   repository.changeWorkspace('closeTab', 'discussion:video-demo'); reopen();
   expect(state().seenUndo['video-demo']).toEqual(result.undo);
   repository.changeWorkspace('openStoredItem', 'video-demo');
-  const undo = repository.undoSeen('video-demo');
+  const undo = displayedUndo(repository, 'video-demo');
   expect(undo).toMatchObject({ restored: result.changedCount - 2, skipped: 2, undo: null });
   expect(undo.comments.find(comment => comment.id === changed[0].id)?.seen).toBe(false);
   expect(undo.comments.find(comment => comment.id === changed[1].id)?.seen).toBe(true);
@@ -204,8 +205,8 @@ it('partial Undo protects later edits, including away-and-back revisions and unr
 
 it('all-stale Undo succeeds and consumes recovery without overwriting later state', () => {
   const before = rows(), result = bulk(true);
-  for (const comment of before.filter(comment => !comment.seen)) repository.toggleSeen({ itemId: 'video-demo', commentId: comment.id, subtree: false });
-  const undo = repository.undoSeen('video-demo');
+  for (const comment of before.filter(comment => !comment.seen)) displayedToggle(repository, { itemId: 'video-demo', commentId: comment.id, subtree: false });
+  const undo = displayedUndo(repository, 'video-demo');
   expect(undo).toMatchObject({ restored: 0, skipped: result.changedCount, undo: null });
   expect(undo.comments).toEqual(before);
 });
@@ -216,7 +217,7 @@ it.each(['update', 'entry', 'undo'] as const)('late %s failure rolls back states
     : phase === 'undo' ? "CREATE TRIGGER fail_state BEFORE UPDATE ON comment_state WHEN NEW.comment_id=(SELECT comment_id FROM seen_operation_entries ORDER BY comment_id DESC LIMIT 1) BEGIN SELECT RAISE(ABORT,'injected'); END" : "CREATE TRIGGER fail_state BEFORE UPDATE ON comment_state WHEN NEW.comment_id='v4' BEGIN SELECT RAISE(ABORT,'injected'); END"));
   const revisions = raw(db => db.prepare('SELECT * FROM comment_state').all());
   const entries = raw(db => db.prepare('SELECT * FROM seen_operation_entries').all());
-  expect(() => phase === 'undo' ? repository.undoSeen('video-demo') : bulk(false)).toThrow('injected');
+  expect(() => phase === 'undo' ? displayedUndo(repository, 'video-demo') : bulk(false)).toThrow('injected');
   expect(state()).toEqual(before);
   expect(raw(db => db.prepare('SELECT * FROM comment_state').all())).toEqual(revisions);
   expect(raw(db => db.prepare('SELECT * FROM seen_operation_entries').all())).toEqual(entries);
@@ -240,7 +241,7 @@ it('Refresh preserves ownership and later discoveries are outside earlier bulk/U
   expect(state().seenUndo[id]).toEqual(result.undo);
   const newComment = required(state().comments[id].find(comment => comment.source.commentId === 'post-operation-comment'));
   expect(newComment.seen).toBe(false);
-  expect(repository.undoSeen(id)).toMatchObject({ restored: result.changedCount, skipped: 0 });
+  expect(displayedUndo(repository, id)).toMatchObject({ restored: result.changedCount, skipped: 0 });
   expect(state().comments[id].filter(comment => comment.id !== newComment.id)).toEqual(before.map(comment => ({ ...comment, discovery: required(state().comments[id].find(row => row.id === comment.id)).discovery })));
   bulk(true, id); repository.removeLibraryItem(id, ['en']);
   raw(db => {

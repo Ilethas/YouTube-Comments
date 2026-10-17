@@ -160,7 +160,7 @@ if (process.versions.electron) {
         const itemId = repo.ingest(normalizeYtDlp(JSON.stringify(raw), template.context), undefined, true).itemId;
         repo.ingest(normalizeYtDlp(JSON.stringify({ ...raw, comments }), template.context));
         for (const row of repo.bootstrap(['en']).comments[itemId].filter((_, i) => [0, 1, 4, 5, 6, 12].includes(i)))
-          repo.toggleSeen({ itemId, commentId: row.id, subtree: false });
+          repo.toggleSeen({ itemId, commentId: row.id, subtree: false, seen: !row.seen });
         for (const [id, title, count] of [['ReadmeDemo2', 'Building a bookshelf — demo discussion', 12], ['ReadmeDemo3', 'A walk through the old town — demo discussion', 8], ['ReadmeDemo4', 'Recording room sound — demo discussion', 16]]) {
           repo.ingest(normalizeYtDlp(JSON.stringify({ ...raw, id, title, comments: comments.slice(0, count) }), template.context));
         }

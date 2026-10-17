@@ -72,6 +72,12 @@ if (process.versions.electron && process.type === 'browser') {
     await wait("document.querySelector('.app-shell') !== null");
     console.log(`Backup Electron ${phase} startup ready: ${(performance.now() - processStarted).toFixed(1)} ms`);
     const invoke = async (name, payload) => {
+      // Capture the acknowledged descriptor/state before this sequential test intent.
+      if (name === 'toggleSeen' || name === 'undoSeen') {
+        const acknowledged = await js(`window.reader.getSharedSnapshot(${JSON.stringify({itemId:payload.itemId})}).then(r=>r.value)`);
+        payload = name === 'toggleSeen' ? { ...payload, seen: !acknowledged.comments.find(c=>c.id===payload.commentId).seen }
+          : { ...payload, expectedOperationId: acknowledged.undo.id };
+      }
       const result = await js(`window.reader.${name}(${payload === undefined ? '' : JSON.stringify(payload)})`);
       assert.equal(result.ok, true, JSON.stringify(result)); return result.value;
     };

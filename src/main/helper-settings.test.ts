@@ -1,3 +1,4 @@
+import { displayedUndo } from './testing/displayed-seen';
 import { downgradeSelectionFixture } from './persistence/testing/schema-10';
 import { mkdtemp, writeFile, readFile, rm, mkdir } from 'node:fs/promises';
 import os from 'node:os';
@@ -159,7 +160,7 @@ it('schema-6 migration preserves all content, state, history, workspace and dura
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   } finally { db.close(); }
   reopen(); expect(repository.bootstrap(['en'])).toEqual(before); expect(repository.history()).toEqual(history);
-  expect(repository.undoSeen('video-demo').restored).toBeGreaterThan(0);
+  expect(displayedUndo(repository, 'video-demo').restored).toBeGreaterThan(0);
 });
 
 it('ReaderService uses the newly selected/reset executable for later acquisition/Refresh without restart', async () => {

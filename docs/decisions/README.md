@@ -1,9 +1,13 @@
 # Decisions and open questions
 
+[ADR 0028](0028-ordered-shared-state-synchronization.md) implements M2 ordered
+shared synchronization with schema 12 and one production reader. M3 lifecycle
+barriers and later view/window UI remain pending.
+
 [ADR 0027](0027-secure-window-coordination-foundation.md) implements M1 secured
 window coordination and authenticated native-dialog origins with one production
 reader and no schema change. It records the accepted provisional HTML dragging
-policy; actual gestures and M2–M9 remain outside this increment.
+policy; actual gestures and M3–M9 remain outside the current implementation.
 
 [ADR 0026](0026-custom-translation-reader-minutes-and-layout.md) adds schema-12
 atomic custom translation, shared reader/bulk publication minutes, an activity-only
@@ -225,3 +229,5 @@ Prefer small records about significant decisions, such as SQLite integration, pa
 - [0011 — Virtualized overview ruler and durable NEW](0011-virtualized-overview-and-durable-new.md): accepted; schema-5 attempt order and latest accepted post-baseline cohort, applied-view live unseen/restrictive active matches/NEW, height geometry, pixel bands/three SVG lanes, virtual pointer/keyboard reveal and 10k/50k DOM evidence. Q-05/Q-12 reduced; Q-21 remains open.
 
 - [0012 — Publication-date and latest-discovery filters](0012-publication-date-and-latest-discovery-filters.md): accepted; system-zone whole-day boundaries, captured clock, rolling presets, missing/estimated evidence, deterministic worker payload and durable NEW filter. Q-03 closed; Q-05 only arbitrary historical windows. Future date bulk must reuse these semantics.
+
+- [0028 - Ordered shared-state synchronization](0028-ordered-shared-state-synchronization.md): implemented awaiting review; M2 only, schema 12, epoch/ordered post-commit notifications, bounded replica recovery, explicit checkbox assignment, guarded shared Undo, progress fanout and test-only second renderers. M3 global lifecycle barriers remain pending.

@@ -1,7 +1,8 @@
+import { ReaderReplica } from './reader-replica';
 import { AcquisitionStatus } from './AcquisitionStatus';
 import { useAcquisitionProgress } from './use-acquisition-progress';
 import type { AcquisitionProgress } from '../shared/acquisition';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AcquisitionResult, ErrorCode, ReaderApi, ReaderState, Result } from '../shared/reader-api';
 import { TranslationSettings } from './TranslationSettings';
 import type { TranslationTarget, Appearance, SelectionControls } from '../shared/preferences';
@@ -24,7 +25,9 @@ import type { SeenFeedback } from './BulkSeenControls';
 import { ExternalTools } from './ExternalTools';
 import { DataBackups } from './DataBackups';
 
-export function App({ api = window.reader }: { api?: ReaderApi }) {
+export function App({ api: transport = window.reader }: { api?: ReaderApi }) {
+  const replica = useMemo(() => typeof transport.onSharedCommit === 'function' ? new ReaderReplica(transport) : undefined, [transport]);
+  const api = replica?.api ?? transport;
   const [state, setState] = useState<ReaderState>();
   const [error, setError] = useState<string>();
   const [attempt, setAttempt] = useState(0);
@@ -41,16 +44,16 @@ export function App({ api = window.reader }: { api?: ReaderApi }) {
       } catch { if (!cancelled) setError('STORAGE_UNAVAILABLE'); }
     }
     void load();
-    return () => { cancelled = true; };
-  }, [api, attempt]);
-  if (state) return <Reader initialState={state} api={api} />;
+    return () => { cancelled = true; replica?.stop(); };
+  }, [api, attempt, replica]);
+  if (state) return <Reader initialState={state} api={api} replica={replica} />;
   return <div className="startup-state" role={error ? 'alert' : 'status'}>
     <p>{t(error === 'UNSUPPORTED_SCHEMA' ? 'unsupportedSchema' : error ? 'loadError' : 'loading')}</p>
     {error === 'STORAGE_UNAVAILABLE' && <button onClick={() => setAttempt(value => value + 1)}>{t('retry')}</button>}
   </div>;
 }
 
-function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderApi }) {
+function Reader({ initialState, api, replica }: { initialState: ReaderState; api: ReaderApi; replica?: ReaderReplica }) {
   const views = useDiscussionViews({ collapse: initialState.discussionCollapse, saveCollapse: request => api.setDiscussionCollapse(request), saved: initialState.discussionViews, save: request => api.saveDiscussionView(request) });
   const [items, setItems] = useState(initialState.items);
   const [locale, setLocale] = useState<Locale>(initialState.preferences.locale);
@@ -77,7 +80,9 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   const removedIds = useRef(new Set<string>());
   // Acknowledged presentation snapshot. SQLite owns all durable state.
   const [comments, setComments] = useState(initialState.comments);
+  const displayedComments = useRef(comments); displayedComments.current = comments;
   const [seenUndo, setSeenUndo] = useState(initialState.seenUndo);
+  const displayedUndo = useRef(seenUndo); displayedUndo.current = seenUndo;
   const [seenFeedback, setSeenFeedback] = useState<Readonly<Record<string, SeenFeedback>>>({});
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const acknowledgedUndo = useRef(new Map<string, SeenMutationResult['undo']>());
@@ -99,6 +104,58 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
   const dataBusy = useRef(false);
   const afterData = useRef(new Set<() => void>());
   const acknowledgedSeen = useRef(new Map<string, boolean>());
+  const sharedState = useRef(initialState);
+  const sharedRefreshes = useRef(new Map<string, Promise<void>>());
+  const pendingSharedRefresh = useRef(new Map<string, { run: () => void; cancel: () => void }>());
+  useLayoutEffect(() => {
+    if (!replica) return;
+    let deferred = false, disposed = false;
+    const apply = (next: ReaderState) => {
+      if (disposed) return;
+      if (dataBusy.current) {
+        if (!deferred) { deferred = true; afterData.current.add(() => { deferred = false; apply(replica.current); }); }
+        return;
+      }
+      const previous = sharedState.current;
+      sharedState.current = next;
+      for (const item of previous.items) if (!next.items.some(i => i.id === item.id)) {
+        removedIds.current.add(item.id); views.remove(item.id); pendingSharedRefresh.current.get(item.id)?.cancel(); pendingSharedRefresh.current.delete(item.id); sharedRefreshes.current.delete(item.id);
+      }
+      for (const item of next.items) {
+        const before = previous.items.find(i => i.id === item.id);
+        if (before && before.latestAcceptedDiscoveryId !== item.latestAcceptedDiscoveryId && views.has(item.id)) {
+          // Promote content props before publishing a new worker result. A
+          // synchronous external-store render with old props would otherwise
+          // cache a projection that omits newly discovered comment identities.
+          pendingSharedRefresh.current.get(item.id)?.cancel();
+          let settle: () => void = () => undefined;
+          const task = new Promise<void>(resolve => { settle = resolve; });
+          sharedRefreshes.current.set(item.id, task);
+          pendingSharedRefresh.current.set(item.id, { cancel: settle, run: () => {
+            void views.refresh(item.id, next.comments[item.id], item).then(settle, settle);
+          } });
+          void task.then(() => { if (sharedRefreshes.current.get(item.id) === task) sharedRefreshes.current.delete(item.id); });
+        }
+        else if (previous.comments[item.id] !== next.comments[item.id]) {
+          const seen = new Map(previous.comments[item.id]?.map(c => [c.id, c.seen]));
+          if (next.comments[item.id]?.some(c => seen.get(c.id) !== c.seen)) views.seenChanged(item.id);
+        }
+      }
+      setItems(next.items); setComments(next.comments); setSeenUndo(next.seenUndo);
+      setWorkspace(next.workspace);
+      setLocale(next.preferences.locale); setAppearance(next.preferences.appearance);
+      setTranslationTarget(next.preferences.translationTarget); setCustomTranslationTarget(next.preferences.customTranslationTarget);
+      setSelectionControls(next.preferences.selectionControls); setIncludeCollapsedInPrefix(next.preferences.includeCollapsedInPrefix);
+    };
+    const unsubscribe = replica.subscribe(apply);
+    apply(replica.current);
+    return () => { disposed = true; unsubscribe(); };
+  }, [replica, views]);
+  useLayoutEffect(() => {
+    const pending = [...pendingSharedRefresh.current.values()];
+    pendingSharedRefresh.current.clear();
+    for (const refresh of pending) refresh.run();
+  }, [comments, items]);
   const acquire = useCallback(async function acquire(action: () => Promise<Result<AcquisitionResult>>, refresh = false) {
     if (acquisitionBusy.current || dataBusy.current) return;
     if (activeDiscussion.current) void views.flush(activeDiscussion.current);
@@ -110,24 +167,25 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     setCancelledKind(undefined); setCompletion(undefined);
     setAcquisitionStatus(undefined);
     try {
-      const result = await action();
+      let result = await action();
       // A cancelled/failed preflight must still deliver an acquisition accepted
       // while the native dialog was open. A committed restore never releases
       // this barrier: the new process owns all subsequent presentation state.
       while (dataBusy.current) await new Promise<void>(resolve => afterData.current.add(resolve));
+      if (result.ok && replica) result = { ...result, value: { ...result.value, state: replica.current } };
       if (result.ok) {
-        setItems(result.value.state.items.filter(item => !removedIds.current.has(item.id)));
-        const mergedComments = Object.fromEntries(Object.entries(result.value.state.comments).filter(([id]) => !removedIds.current.has(id)).map(([id, rows]) => [id,
+        if (!replica) setItems(result.value.state.items.filter(item => !removedIds.current.has(item.id)));
+        const mergedComments = replica?.current.comments ?? Object.fromEntries(Object.entries(result.value.state.comments).filter(([id]) => !removedIds.current.has(id)).map(([id, rows]) => [id,
           rows.map(comment => ({ ...comment, seen: acknowledgedSeen.current.get(comment.id) ?? comment.seen }))]));
-        setComments(mergedComments);
-        setSeenUndo(Object.fromEntries(Object.entries(result.value.state.seenUndo).filter(([id]) => !removedIds.current.has(id))
+        if (!replica) setComments(mergedComments);
+        if (!replica) setSeenUndo(Object.fromEntries(Object.entries(result.value.state.seenUndo).filter(([id]) => !removedIds.current.has(id))
           .map(([id, undo]) => [id, acknowledgedUndo.current.has(id) ? acknowledgedUndo.current.get(id) ?? null : undo])));
         const refreshedId = result.value.summary.itemId;
         if (mergedComments[refreshedId]) {
           setUpdatingView({ operationId: result.value.operationId, kind: refresh ? 'refresh' : 'acquire',
             sourceKind: result.value.state.items.find(item => item.id === refreshedId)?.sourceKind === 'youtube-community-post' ? 'youtube-community-post' : 'youtube-video',
             stage: 'saving', startedAt: Date.now() - result.value.timings.totalMs, cancellable: false });
-          await views.refresh(refreshedId, mergedComments[refreshedId], result.value.state.items.find(item => item.id === refreshedId));
+          await (replica ? sharedRefreshes.current.get(refreshedId) : views.refresh(refreshedId, mergedComments[refreshedId], result.value.state.items.find(item => item.id === refreshedId)));
           setUpdatingView(undefined);
         }
         setCompletion({ summary: result.value.summary, timings: result.value.timings });
@@ -138,8 +196,9 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       else setAcquisitionError(result.error.code);
     } catch { setAcquisitionError('ACQUISITION_FAILED'); }
     finally { acquisitionBusy.current = false; setAcquiring(undefined); setUpdatingView(undefined); }
-  }, [api, views]);
+  }, [api, views, replica]);
   function acceptWorkspace(value: WorkspaceState) {
+    if (replica) return;
     setWorkspace(current => value.revision >= current.revision ? value : current);
   }
   async function workspaceAction(action: () => Promise<Result<WorkspaceState>>, focusId?: string) {
@@ -225,7 +284,9 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
 
   const refreshItem = useCallback((itemId: string) => { void acquire(() => api.refresh({ itemId }), true); }, [acquire, api]);
   const acceptSeen = useCallback((itemId: string, value: SeenMutationResult) => {
-    if (removedIds.current.has(itemId)) return;
+    // Production shared values enter only through the replica subscription.
+    // Command callbacks retain feedback without reinstalling an older value.
+    if (replica || removedIds.current.has(itemId)) return;
     const seen = new Map(value.comments.map(comment => [comment.id, comment.seen]));
     if (acquisitionBusy.current) {
       for (const [id, state] of seen) acknowledgedSeen.current.set(id, state);
@@ -237,11 +298,12 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       return next === comment.seen ? comment : { ...comment, seen: next };
     }) }));
     if (value.changedCount) views.seenChanged(itemId);
-  }, [views]);
+  }, [views, replica]);
   const toggleComment = useCallback((itemId: string, commentId: string, subtree: boolean) => {
-    void save(() => api.toggleSeen({ itemId, commentId, subtree }), value => {
+    const seen = !displayedComments.current[itemId]?.find(c => c.id === commentId)?.seen;
+    void save(() => api.toggleSeen({ itemId, commentId, subtree, seen }), value => {
       acceptSeen(itemId, value);
-      if (subtree && value.changedCount > 1) setSeenFeedback(current => ({ ...current, [itemId]: { kind: 'marked', count: value.changedCount, seen: value.undo?.targetSeen } }));
+      if (subtree && value.changedCount > 1) setSeenFeedback(current => ({ ...current, [itemId]: { kind: 'marked', count: value.changedCount, seen } }));
     }, itemId);
   }, [api, save, acceptSeen]);
   const bulkSeen = useCallback(async (request: BulkSeenRequest) => {
@@ -253,7 +315,9 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
     return success;
   }, [api, save, acceptSeen]);
   const undoSeen = useCallback((itemId: string) => {
-    void save(() => api.undoSeen({ itemId }), value => {
+    const expectedOperationId = displayedUndo.current[itemId]?.id;
+    if (!expectedOperationId) return;
+    void save(() => api.undoSeen({ itemId, expectedOperationId }), value => {
       acceptSeen(itemId, value);
       setSeenFeedback(current => ({ ...current, [itemId]: { kind: 'undo', count: value.restored, skipped: value.skipped } }));
     }, itemId).then(success => { if (!success) setSeenFeedback(current => ({ ...current, [itemId]: { kind: 'error' } })); });
@@ -374,27 +438,27 @@ function Reader({ initialState, api }: { initialState: ReaderState; api: ReaderA
       <div className="preferences">
         <label>{t('language')}<select value={locale} disabled={saving} onChange={event => {
           const next = event.target.value as Locale;
-          void save(() => api.updatePreferences({ locale: next }), value => setLocale(value.locale));
+          void save(() => api.updatePreferences({ locale: next }), value => { if (!replica) setLocale(value.locale); });
         }}>
           <option value="en">{t('en')}</option><option value="pl">{t('pl')}</option>
         </select></label>
         <label>{t('appearance')}<select value={appearance} disabled={saving} onChange={event => {
           const next = event.target.value as Appearance;
-          void save(() => api.updatePreferences({ appearance: next }), value => setAppearance(value.appearance));
+          void save(() => api.updatePreferences({ appearance: next }), value => { if (!replica) setAppearance(value.appearance); });
         }}>
           {(['system', 'light', 'dark'] as const).map(value => <option key={value} value={value}>{t(value)}</option>)}
         </select></label>
         <TranslationSettings preferences={{ translationTarget, customTranslationTarget }} locale={locale} disabled={saving}
           save={change => save(() => api.updatePreferences(change), value => {
-            setTranslationTarget(value.translationTarget); setCustomTranslationTarget(value.customTranslationTarget);
+            if (!replica) { setTranslationTarget(value.translationTarget); setCustomTranslationTarget(value.customTranslationTarget); }
           })} />
         <label>{t('selectionControls')}<select value={selectionControls} disabled={saving} onChange={event => {
           const next = event.target.value as SelectionControls;
-          void save(() => api.updatePreferences({ selectionControls: next }), value => setSelectionControls(value.selectionControls));
+          void save(() => api.updatePreferences({ selectionControls: next }), value => { if (!replica) setSelectionControls(value.selectionControls); });
         }}><option value="on-demand">{t('selectionOnDemand')}</option><option value="always">{t('selectionAlways')}</option></select></label>
         <label><input type="checkbox" checked={includeCollapsedInPrefix} disabled={saving} onChange={event => {
           const next = event.target.checked;
-          void save(() => api.updatePreferences({ includeCollapsedInPrefix: next }), value => setIncludeCollapsedInPrefix(value.includeCollapsedInPrefix));
+          void save(() => api.updatePreferences({ includeCollapsedInPrefix: next }), value => { if (!replica) setIncludeCollapsedInPrefix(value.includeCollapsedInPrefix); });
         }} />{t('includeCollapsedInPrefix')}</label>
       </div>
         <p className="reader-help">{t('translationPrivacy')}</p>

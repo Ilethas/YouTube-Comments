@@ -1,9 +1,12 @@
 # Multi-window readiness audit
 
-Follow-up: M1 is now implemented by
+Follow-up: M2 ordered shared synchronization is implemented by
+[ADR 0028](decisions/0028-ordered-shared-state-synchronization.md). Schema remains 12 and production still opens one reader.
+M3 lifecycle barriers and M4+ identities/features are not implemented.
+M1 is implemented by
 [ADR 0027](decisions/0027-secure-window-coordination-foundation.md). The audit below
 remains the historical baseline; its mutable-mainWindow findings describe the
-pre-M1 source. Public startup still creates one reader; M2–M9 remain future work.
+pre-M1 source. Public startup still creates one reader; M3–M9 remain future work.
 
 Research date: 2026-10-17 (Europe/Warsaw). Source baseline:
 `bc5493801d499d99b8c6214b3a94550500f9ec63`, schema **12**, Electron **44.4.5**,

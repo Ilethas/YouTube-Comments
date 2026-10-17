@@ -53,7 +53,12 @@ if (process.versions.electron) {
       contents.sendInputEvent({ type: 'mouseUp', ...point, button: buttonName, clickCount: 1, modifiers }); await pause(80);
     }
     async function menu(index) {
-      await js(`${article(index)}.focus({preventScroll:true})`); await key('F10', ['shift']); await wait("!!document.querySelector('[role=menu]')");
+      // A retained row may already exist inside a hidden discussion while the
+      // ordered workspace acknowledgment is still being reconciled.
+      await wait(`${panel}?.contains(${article(index)}) && !document.querySelector('.tabs button:disabled')`);
+      await js(`${article(index)}.focus({preventScroll:true})`);
+      await wait(`document.activeElement===${article(index)}`);
+      await key('F10', ['shift']); await wait("!!document.querySelector('[role=menu]')");
     }
     async function confirm() { await button('Continue', "document.querySelector('dialog[open]')"); await wait("!document.querySelector('dialog[open]')"); }
     async function undo() {

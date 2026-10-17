@@ -1,3 +1,4 @@
+import { displayedToggle, displayedUndo } from '../testing/displayed-seen';
 import { downgradeSelectionFixture } from './testing/schema-10';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
@@ -109,15 +110,15 @@ it('migration failure rolls back only schema 10 and preserves the prior profile'
 
 it('stored subtree/matching bulk and revision-safe Undo include hidden descendants with no expansion writes', () => {
   all(true); const initial = repo.bootstrap(['en']), collapse = state();
-  repo.toggleSeen({ itemId: 'video-demo', commentId: 'v1', subtree: true });
+  displayedToggle(repo, { itemId: 'video-demo', commentId: 'v1', subtree: true });
   expect(state()).toEqual(collapse);
   const after = repo.bootstrap(['en']);
   expect(after.comments['video-demo'].filter(row => row.parentId === 'v1').every(row => row.seen === required(after.comments['video-demo'].find(row => row.id === 'v1')).seen)).toBe(true);
   const undo = after.seenUndo['video-demo'];
-  if (undo) repo.undoSeen('video-demo');
+  if (undo) displayedUndo(repo, 'video-demo');
   repo.bulkSeen({ itemId: 'video-demo', seen: true, target: { kind: 'matching', ids: ['v1', 'v2', 'v3'] } });
   expect(repo.bootstrap(['en']).comments['video-demo'].filter(row => ['v1', 'v2', 'v3'].includes(row.id)).every(row => row.seen)).toBe(true);
-  repo.undoSeen('video-demo'); expect(state()).toEqual(collapse);
+  displayedUndo(repo, 'video-demo'); expect(state()).toEqual(collapse);
   expect(repo.bootstrap(['en']).comments['video-demo'].map(row => row.id)).toEqual(initial.comments['video-demo'].map(row => row.id));
 });
 

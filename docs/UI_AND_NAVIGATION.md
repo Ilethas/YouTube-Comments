@@ -617,3 +617,17 @@ clearing row measurements; native browser anchoring is disabled only for panels
 containing thumbnails to avoid a second correction. Image responses are scoped to
 the mounted canonical discussion and invalidated on deactivation/unmount. Avatars
 retain their separate anonymous remote-image/fallback policy.
+
+## M2 shared replicas
+
+Production still has one reader; authorized test renderers share ordered committed
+content/preferences/workspace/seen/Undo. ReaderReplica merges notifications and
+command stamps through one bounded reconciliation path, with authoritative gap
+recovery. Peer seen changes preserve frozen applied IDs/order and local reading
+intent. Accepted peer Refresh re-evaluates that session's own applied criteria
+while keeping its draft, sort and collapse/anchor behavior. Content props commit
+before refreshed worker results. Local Refresh retains Updating view until worker
+settlement. Removal disposes sessions and rejects historical replies/snapshots.
+Mounted custom translation inputs follow shared code when untouched and retain an
+edited local draft until Save. See ADR 0028; M3 global lifecycle barriers and all
+public additional-window/duplicate-view UI remain outside this milestone.

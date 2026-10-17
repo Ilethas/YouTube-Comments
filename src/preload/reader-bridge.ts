@@ -1,11 +1,16 @@
+import { isSharedCommit } from '../shared/reader-sync';
 import { isAcquisitionNotification } from '../shared/acquisition';
 import { readerChannels } from '../shared/reader-api';
 import type { ReaderApi } from '../shared/reader-api';
 
 /** The transport stays private to preload. Renderer receives intent methods only. */
 export function createReaderBridge(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>,
-  subscribe: (listener: (value: unknown) => void) => () => void = () => () => undefined): ReaderApi {
+  subscribe: (listener: (value: unknown) => void) => () => void = () => () => undefined,
+  sharedSubscribe: (listener: (value: unknown) => void) => () => void = () => () => undefined): ReaderApi {
   return Object.freeze({
+    onSharedCommit: listener => sharedSubscribe(value => { if (isSharedCommit(value)) listener(value); }),
+    getSharedSnapshot: request => (request === undefined ? invoke(readerChannels.getSharedSnapshot) : invoke(readerChannels.getSharedSnapshot, request)) as ReturnType<ReaderApi['getSharedSnapshot']>,
+    getSharedMetadata: () => invoke(readerChannels.getSharedMetadata) as ReturnType<ReaderApi['getSharedMetadata']>,
     getThumbnail: request => invoke(readerChannels.getThumbnail, request) as ReturnType<ReaderApi['getThumbnail']>,
     checkThumbnail: request => invoke(readerChannels.checkThumbnail, request) as ReturnType<ReaderApi['checkThumbnail']>,
     openThumbnail: request => invoke(readerChannels.openThumbnail, request) as ReturnType<ReaderApi['openThumbnail']>,

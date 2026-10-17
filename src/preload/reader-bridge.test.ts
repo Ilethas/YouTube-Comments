@@ -6,7 +6,7 @@ import { defaultQuery } from '../domain/discussion-query';
 it('exposes only explicit intent and progress methods without a generic privileged transport', async () => {
   const invoke = vi.fn(async () => ({ ok: true, value: {} }));
   const api = createReaderBridge(invoke);
-  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'getThumbnail', 'moveTab', 'onAcquisitionProgress', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences']);
+  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'moveTab', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   await api.getHelperStatus({ kind: 'yt-dlp' });
   await api.chooseHelper({ kind: 'post-archiver' });
   await api.clearHelper({ kind: 'yt-dlp' });
@@ -14,7 +14,7 @@ it('exposes only explicit intent and progress methods without a generic privileg
   await api.openCommentAction({ itemId: 'stored-item', commentId: 'stored-comment', action: 'translate' });
   await api.openSource({ itemId: 'stored-item' });
   await api.bootstrap();
-  await api.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: true });
+  await api.toggleSeen({ itemId: 'video-demo', commentId: 'v2', subtree: true, seen: true });
   await api.updatePreferences({ appearance: 'system' });
   await api.acquire({ url: 'https://www.youtube.com/watch?v=abcdefghijk' });
   await api.refresh({ itemId: 'stored-item' });
@@ -26,7 +26,7 @@ it('exposes only explicit intent and progress methods without a generic privileg
   await api.moveTab({ tabId: 'library', toIndex: 0 });
   await api.removeLibraryItem({ itemId: 'stored-item' });
   await api.bulkSeen({ itemId: 'stored-item', seen: true, target: { kind: 'all' } });
-  await api.undoSeen({ itemId: 'stored-item' });
+  await api.undoSeen({ itemId: 'stored-item', expectedOperationId: 'operation' });
   expect(invoke.mock.calls).toEqual([
     [readerChannels.getHelperStatus, { kind: 'yt-dlp' }],
     [readerChannels.chooseHelper, { kind: 'post-archiver' }],
@@ -34,7 +34,7 @@ it('exposes only explicit intent and progress methods without a generic privileg
     [readerChannels.openCommentAction, { itemId: 'stored-item', commentId: 'stored-comment', action: 'translate' }],
     [readerChannels.openSource, { itemId: 'stored-item' }],
     [readerChannels.bootstrap],
-    [readerChannels.toggleSeen, { itemId: 'video-demo', commentId: 'v2', subtree: true }],
+    [readerChannels.toggleSeen, { itemId: 'video-demo', commentId: 'v2', subtree: true, seen: true }],
     [readerChannels.updatePreferences, { appearance: 'system' }],
     [readerChannels.acquire, { url: 'https://www.youtube.com/watch?v=abcdefghijk' }],
     [readerChannels.refresh, { itemId: 'stored-item' }],
@@ -46,7 +46,7 @@ it('exposes only explicit intent and progress methods without a generic privileg
     [readerChannels.moveTab, { tabId: 'library', toIndex: 0 }],
     [readerChannels.removeLibraryItem, { itemId: 'stored-item' }],
     [readerChannels.bulkSeen, { itemId: 'stored-item', seen: true, target: { kind: 'all' } }],
-    [readerChannels.undoSeen, { itemId: 'stored-item' }],
+    [readerChannels.undoSeen, { itemId: 'stored-item', expectedOperationId: 'operation' }],
   ]);
   const intent = { itemId: 'stored-item', draft: defaultQuery, applied: defaultQuery, sort: 'original' as const, anchor: { commentId: null, offset: 0 }, selected: null };
   await api.setDiscussionCollapse({ itemId: 'stored-item', kind: 'all', collapsed: true });

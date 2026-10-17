@@ -1,9 +1,15 @@
 # Documentation map
 
+[ADR 0028](decisions/0028-ordered-shared-state-synchronization.md) implements M2: ordered shared
+commit notifications, bounded renderer reconciliation, explicit checkbox
+assignments, guarded shared Undo and global acquisition progress fanout. Schema
+stays 12, production stays one reader, and M3 lifecycle barriers remain pending.
+The two-renderer test interface is confined to disposable Electron harnesses.
+
 [ADR 0027](decisions/0027-secure-window-coordination-foundation.md) implements M1:
 main-owned window registration/document leases, one secured factory, authenticated
 IPC caller context and originating native dialogs. Production still opens one
-reader, with schema 12. M2–M9 remain future work. The owner accepts provisional
+reader, with schema 12. M3–M9 remain future work. The owner accepts provisional
 HTML DnD outside detachment where Escape may detach; M8 native testing is pending.
 
 [M0 drag feasibility](MULTI_WINDOW_M0_FEASIBILITY.md) records the isolated two-window

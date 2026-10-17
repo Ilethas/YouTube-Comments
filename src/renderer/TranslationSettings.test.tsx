@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { TranslationSettings } from './TranslationSettings';
@@ -46,4 +46,26 @@ it('saved custom code survives Custom → preset → Custom and failed saves ret
   await waitFor(() => expect(screen.queryByLabelText('Google Translate code')).toBeNull());
   fireEvent.change(screen.getByLabelText('Translation target language'), { target: { value: 'custom' } });
   await waitFor(() => expect((screen.getByLabelText('Google Translate code') as HTMLInputElement).value).toBe('uk'));
+});
+
+it('peer custom activation updates an untouched mounted draft and preserves a locally edited draft', () => {
+  const save = vi.fn(async () => true), t = translator('en');
+  const view = render(<TranslationSettings preferences={{ translationTarget: 'app' }} locale="en" disabled={false} save={save} />);
+  view.rerender(<TranslationSettings preferences={{ translationTarget: 'custom', customTranslationTarget: 'uk-UA' }} locale="en" disabled={false} save={save} />);
+  expect((screen.getByLabelText(t('customTargetCode')) as HTMLInputElement).value).toBe('uk-UA');
+  fireEvent.change(screen.getByLabelText(t('customTargetCode')), { target: { value: 'pt-BR' } });
+  view.rerender(<TranslationSettings preferences={{ translationTarget: 'custom', customTranslationTarget: 'nl' }} locale="en" disabled={false} save={save} />);
+  expect((screen.getByLabelText(t('customTargetCode')) as HTMLInputElement).value).toBe('pt-BR');
+  expect(save).not.toHaveBeenCalled();
+});
+
+it('a late custom Save acknowledgment follows the newer committed target instead of reinstating its old draft', async () => {
+  let finish: (value: boolean) => void = () => undefined;
+  const save = vi.fn(() => new Promise<boolean>(resolve => { finish = resolve; })), t = translator('en');
+  const view = render(<TranslationSettings preferences={{ translationTarget: 'custom', customTranslationTarget: 'uk' }} locale="en" disabled={false} save={save} />);
+  fireEvent.change(screen.getByLabelText(t('customTargetCode')), { target: { value: 'uk-UA' } });
+  fireEvent.click(screen.getByRole('button', { name: t('customTargetSave') }));
+  view.rerender(<TranslationSettings preferences={{ translationTarget: 'custom', customTranslationTarget: 'fr' }} locale="en" disabled={false} save={save} />);
+  await act(async () => finish(true));
+  expect((screen.getByLabelText(t('customTargetCode')) as HTMLInputElement).value).toBe('fr');
 });

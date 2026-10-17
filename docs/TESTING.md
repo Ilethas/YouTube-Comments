@@ -1,5 +1,110 @@
 # Testing strategy
 
+## Ordered shared synchronization (M2, 2026-10-18, ADR 0028)
+
+M2 keeps schema **12** and one production reader. Epochs/commit revisions are
+runtime-only; no database migration, table or historical-validator change is
+required. All execution uses generated OS-temp profiles, never the owner's
+production data or Setup.exe. No commit/push/publishing action is performed.
+
+New deterministic coverage exercises post-commit order and rollback silence,
+throwing observers/recipients, two independent replicas, explicit same-state
+assignments, delayed replies, exact Undo conflicts and partial away-and-back
+recovery, duplicate/reorder/gap/overflow/bootstrap races, lost subscription
+watermarks, reload/reopen epochs, frozen views, peer Refresh projection ordering,
+mounted custom-target drafts, accepted-content waiting through DATA_BUSY, and
+exact/forged/oversized notification rejection.
+Historical migration, backup validation/safety/recovery, per-comment revision and
+50k bulk/Undo suites remain enabled. Existing sequential gesture fixtures now
+capture explicit desired states and expected recovery descriptors. Command callbacks
+supply feedback only for the production shared fields; the replica subscription
+owns their UI updates. Component tests exercise obsolete reply bodies and mounted
+B/C reader isolation, with stable captured checkbox/Undo callbacks.
+
+An intermediate concurrent stress run passed all assertions but reported a Vitest
+worker RPC onTaskUpdate timeout. The isolated final full run above exits zero with
+no unhandled errors; no test deadline or assertion was relaxed.
+
+`npm.cmd run test:shared-sync` runs two real secured renderers with the built App,
+preload subscriptions and authenticated IPC, sharing one service/repository. It
+checks live checkbox/stale-filter behavior with frozen memberships, an actual UI
+checkbox response delayed past a peer assignment, a real Ctrl+Z request delayed
+before main compares its displayed operation ID, mounted Settings custom-code
+synchronization, reload, progress fanout/current query, peer ingestion, deletion
+past a delayed UI Refresh reply and acquisition completion after origin death.
+It checks schema 12 and SQLite integrity after exit. The M1 harness independently
+retains its actual built-entry assertion that production creates exactly one reader.
+
+The existing single-renderer backup/restore harnesses continue to test local
+preflight/drains and offline safety. **No M3 all-window drain/close/reload barrier
+or multi-window backup safety is claimed.** Additional production windows,
+duplicate-view identities, native dragging and installer lifecycle are outside M2.
+The final deterministic run passes **979 tests in 78 files**, adding 27 tests to
+M1's 952/76 baseline (129.49 s). Typecheck and lint pass without warnings. The
+production renderer build and verified Windows x64 package/ZIP build pass; the
+ZIP contains the validated complete 73-file application runtime. Presentation
+verification passes 11 local README links, four PNGs and seven ICO frames.
+
+The large saved-view write phase was additionally instrumented during debugging:
+**one** bootstrap profile snapshot served repeated workspace and ten view/seen
+saves. Replies preceding event delivery use the same compact commit envelope;
+they do not trigger repeated profile clones. All seven saved-view phases pass.
+Full bootstrap/recovery still clones the profile (Q-21): the aggregate 60k startup
+measured about 25.3 s under concurrent regression load. This is a scaling limit,
+not a claim of M9 performance work. A fast-worker peer Refresh regression now
+checks that new content props commit before the refreshed result projection.
+
+The final `npm.cmd run test:packaged` passes using the unmodified extracted ZIP
+EXE and an independent isolated Windows production environment. It checks native
+Save/Open/cancel/confirm/acknowledgment dialogs, backup, actual app.relaunch to a
+new extracted-EXE PID, exact all-table restoration, an independent safety snapshot,
+restart/Undo/views and launch of the copied out/ EXE. Renderer Node globals remain
+absent and isolated preload remains enabled. The owned root was
+`reader-packaged-vSV8ik`. Optional live helper checks were not configured; no
+Setup/install/update/uninstall action was executed.
+
+The focused final backup/restore Electron harness passes its large-profile round
+trip and both previous/candidate crash-recovery scenarios. The confirmed restore
+operation took about 18.1 s; fresh-process table comparison, safety equality,
+recovery artifacts, durable Undo and known-invalid backup rejection pass. Its
+explicit test gestures retrieve only the item snapshot/Undo descriptor, avoiding
+extra full-Library reads introduced by the new assignment/expected-ID contracts.
+
+The focused final M2 Electron run passes with root `reader-m2-DJYnNN`, including
+concurrent same-state assignments and a participant reloading during acquisition.
+The 10k/50k selection harness passes all write/restart phases after waiting for
+active panel membership and actual focus before native F10. Existing hidden rows
+are not evidence that a tab activation has finished; no deadline/assertion was
+relaxed. Native menus, frozen scopes, selection, prefixes, floating controls,
+Polish/dark/zoom and bounded DOM/ruler checks remain in place.
+
+All **eleven Electron harnesses pass across the main sequence and focused reruns**:
+general reader/helpers, seven-phase view restoration, large backup/restore plus
+both crash-recovery scenarios, reader actions, collapse, selection, Library/removal
+usability, thumbnails, usability/schema-11 migration, M1 and M2. The final remaining
+five-harness sequential runner exits zero. The earlier aggregate stopped on the
+selection harness's hidden-row readiness assumption; the corrected native-input
+harness passes at both scales, with all original assertions retained. This is
+individual/targeted validation evidence, not a claim that the earlier stopped
+aggregate command exited zero.
+
+| Final check | Result |
+| --- | --- |
+| Full Vitest | 979/979 tests, 78/78 files, exit 0; 129.49 s, no unhandled errors |
+| Typecheck / lint | Exit 0; no lint warnings |
+| Renderer production build | Exit 0; 488.14 kB JS, 21.13 kB CSS, unchanged 2.60 kB worker |
+| Windows x64 `make:zip` | Exit 0; 73 validated runtime files / 385,948,360 bytes; ZIP 158,331,500 bytes |
+| Electron harnesses | All eleven pass across runs, including corrected 10k/50k selection and real two-renderer M2 |
+| Extracted-EXE `test:packaged` | Exit 0; native dialogs, exact backup/restore/safety and real relaunch |
+| Presentation / diff check | Exit 0; README links/PNGs/ICO verified; no whitespace errors |
+
+The general harness retains its existing Native Copy **UNVERIFIED** result when
+current clipboard formats cannot be safely snapshotted; that check preserves the
+clipboard. Selection still separately verifies native plain-text Copy/Ctrl+C.
+Non-failing GPU shutdown diagnostics and the M1 intentional stale-frame lifetime
+warning may appear. Optional live helper/network and installed Squirrel lifecycle
+checks were not run. No installer or public multi-window feature is exercised.
+
 ## Secure window foundation (M1, 2026-10-17, ADR 0027)
 
 The full Vitest suite passes **952 tests in 76 files** (24 additional tests).

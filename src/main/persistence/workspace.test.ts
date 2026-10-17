@@ -1,3 +1,4 @@
+import { displayedToggle } from '../testing/displayed-seen';
 import { downgradeSelectionFixture } from './testing/schema-10';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
@@ -26,7 +27,7 @@ const state = () => repository.bootstrap(['en']);
 function restart() { repository.close(); repository = ReaderRepository.open(file); }
 
 it('closes without deleting or changing comments, seen, preferences or history, then reopens the same identity', () => {
-  repository.toggleSeen({ itemId: 'video-demo', commentId: 'v1', subtree: false });
+  displayedToggle(repository, { itemId: 'video-demo', commentId: 'v1', subtree: false });
   const before = state(), history = repository.history();
   repository.changeWorkspace('closeTab', discussionTab('video-demo').id);
   restart();
@@ -79,7 +80,7 @@ it('acquiring a closed existing URL reopens one tab using existing state; Refres
   const first = await service.dispatch('acquire', [{ url }]);
   if (!first.ok) throw new Error('Expected acquisition');
   const id = first.value.summary.itemId, comment = first.value.state.comments[id][0];
-  repository.toggleSeen({ itemId: id, commentId: comment.id, subtree: false });
+  displayedToggle(repository, { itemId: id, commentId: comment.id, subtree: false });
   repository.changeWorkspace('closeTab', discussionTab(id).id);
   const second = await service.dispatch('acquire', [{ url }]);
   if (!second.ok) throw new Error('Expected reopen');
@@ -103,7 +104,7 @@ function removeAttemptOrder(db: DatabaseSync) {
 }
 
 it('schema 2 migration opens stored items and preserves every existing row including old avatar-less JSON', () => {
-  repository.toggleSeen({ itemId: 'post-demo', commentId: state().comments['post-demo'][0].id, subtree: false });
+  displayedToggle(repository, { itemId: 'post-demo', commentId: state().comments['post-demo'][0].id, subtree: false });
   repository.updatePreferences({ locale: 'pl' }, ['en']);
   repository.close();
   const db = new DatabaseSync(file);

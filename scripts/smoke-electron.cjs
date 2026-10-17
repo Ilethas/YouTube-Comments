@@ -134,7 +134,7 @@ async function verifyWindow(window, nativeTheme) {
         for (const choice of [undefined, path.join(helpers,'missing.exe'), path.join(helpers,'incompatible.exe'), path.join(helpers,`chosen-${kind}.exe`)]) {
           helperChoices.push(choice);
           const result = await js(`window.reader.chooseHelper({kind:${JSON.stringify(kind)}})`);
-          if (choice === undefined) assert.deepEqual(result, {ok:true,value:null});
+          if (choice === undefined) { assert.equal(result.ok,true); assert.equal(result.value,null); assert.ok(result.sync.profileEpoch); }
           else if (choice.endsWith('missing.exe')) assert.deepEqual(result, {ok:false,error:{code:'HELPER_UNAVAILABLE'}});
           else if (choice.endsWith('incompatible.exe')) assert.deepEqual(result, {ok:false,error:{code:'HELPER_UNAVAILABLE'}});
           else { assert.equal(result.value.mode,'configured'); assert.equal(result.value.path,choice); assert.equal(result.value.state,'untested'); }
@@ -283,7 +283,7 @@ async function verifyWindow(window, nativeTheme) {
   await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .query-controls') !== null", 'bootstrap');
   await verifyHelperSettings();
   if (phase === 'environment') return;
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'getThumbnail', 'moveTab', 'onAcquisitionProgress', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences']);
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'moveTab', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   assert.deepEqual(await js("window.reader.acquire({url:'https://www.youtube.com/watch?v=abcdefghijk',executable:'evil'})"),
     { ok: false, error: { code: 'INVALID_REQUEST' } });
   assert.deepEqual(await js("window.reader.refresh({itemId:'video-demo',url:'https://example.com'})"),
