@@ -17,3 +17,8 @@ export function resolveDatabasePath(profile: DatabaseProfile): string {
   const name = profile.mode === 'development' ? 'youtube-comments-development' : 'youtube-comments-production';
   return path.join(profile.appData, name, 'reader.sqlite');
 }
+
+/** Sibling presentation cache follows exactly the database profile isolation. */
+export function resolveThumbnailDirectory(profile: DatabaseProfile): string {
+  return path.join(path.dirname(resolveDatabasePath(profile)), 'thumbnails');
+}

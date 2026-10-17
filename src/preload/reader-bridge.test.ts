@@ -6,7 +6,7 @@ import { defaultQuery } from '../domain/discussion-query';
 it('exposes only explicit intent and progress methods without a generic privileged transport', async () => {
   const invoke = vi.fn(async () => ({ ok: true, value: {} }));
   const api = createReaderBridge(invoke);
-  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'moveTab', 'onAcquisitionProgress', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences']);
+  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'getThumbnail', 'moveTab', 'onAcquisitionProgress', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   await api.getHelperStatus({ kind: 'yt-dlp' });
   await api.chooseHelper({ kind: 'post-archiver' });
   await api.clearHelper({ kind: 'yt-dlp' });
@@ -55,6 +55,8 @@ it('exposes only explicit intent and progress methods without a generic privileg
   expect(invoke).toHaveBeenLastCalledWith(readerChannels.saveDiscussionView, intent);
   await api.createBackup(); await api.restoreBackup();
   expect(invoke.mock.calls.slice(-2)).toEqual([[readerChannels.createBackup], [readerChannels.restoreBackup]]);
+  await api.getThumbnail({ itemId: 'stored-item' }); await api.checkThumbnail({ itemId: 'stored-item' }); await api.openThumbnail({ itemId: 'stored-item' });
+  expect(invoke.mock.calls.slice(-3)).toEqual([[readerChannels.getThumbnail, { itemId: 'stored-item' }], [readerChannels.checkThumbnail, { itemId: 'stored-item' }], [readerChannels.openThumbnail, { itemId: 'stored-item' }]]);
 });
 
 it('progress subscription validates exact payloads and returns transport cleanup', async () => {

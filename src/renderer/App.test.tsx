@@ -39,6 +39,9 @@ beforeEach(() => {
     return { ok: true as const, value: state.workspace };
   };
   api = {
+    getThumbnail: vi.fn(async () => ({ ok: true as const, value: null })),
+    checkThumbnail: vi.fn(async () => ({ ok: true as const, value: null })),
+    openThumbnail: vi.fn(async () => ({ ok: true as const, value: null })),
     setDiscussionCollapse: vi.fn(async () => ({ ok: true as const, value: null })),
     openCommentAction: vi.fn(async () => ({ ok: true as const, value: null })),
     createBackup: vi.fn(async () => ({ ok: true as const, value: { status: 'cancelled' as const } })),

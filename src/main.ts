@@ -1,11 +1,12 @@
 import { acquisitionProgressChannel, isAcquisitionNotification } from './shared/acquisition';
-import { app, BrowserWindow, shell, dialog, clipboard } from 'electron';
+import { app, BrowserWindow, shell, dialog, clipboard, protocol, nativeImage } from 'electron';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { ReaderRepository } from './main/persistence/reader-repository';
-import { resolveDatabasePath } from './main/persistence/profile';
+import { resolveDatabasePath, resolveThumbnailDirectory } from './main/persistence/profile';
+import { ThumbnailCache } from './main/thumbnail-cache';
 import { ReaderService } from './main/reader-service';
 import { registerReaderIpc } from './main/reader-ipc';
 import { createHelperPicker } from './main/helper-picker';
@@ -20,6 +21,7 @@ import identity from './shared/application-identity.json';
 if (!started) startReader();
 
 function startReader() {
+  protocol.registerSchemesAsPrivileged([{ scheme: 'reader-thumbnail', privileges: { standard: true, secure: true, supportFetchAPI: false } }]);
   if (process.platform === 'win32') app.setAppUserModelId(identity.appUserModelId);
 
   // A privileged, explicit demo root also permits testing the packaged artifact
@@ -27,6 +29,7 @@ function startReader() {
   const demoRoot = process.env.YOUTUBE_COMMENTS_DEMO_ROOT;
   const mode = !app.isPackaged || demoRoot !== undefined ? 'development' : 'production';
   const databasePath = resolveDatabasePath({ mode, appData: demoRoot ?? app.getPath('appData') });
+  const thumbnailDirectory = resolveThumbnailDirectory({ mode, appData: demoRoot ?? app.getPath('appData') });
   app.setPath('userData', path.dirname(databasePath));
   let mainWindow: BrowserWindow | undefined;
   let service: ReaderService;
@@ -91,7 +94,19 @@ function startReader() {
       const contents = mainWindow?.webContents;
       if (contents && !contents.isDestroyed() && contents.mainFrame.url === documentUrl && isAcquisitionNotification(value))
         contents.send(acquisitionProgressChannel, value);
-    }, { databasePath, dialogs: createDataBackupDialogs(() => mainWindow), restart: () => { app.relaunch(); app.quit(); } }, text => clipboard.writeText(text));
+    }, { databasePath, dialogs: createDataBackupDialogs(() => mainWindow), restart: () => { app.relaunch(); app.quit(); } }, text => clipboard.writeText(text), {
+      cache: new ThumbnailCache(thumbnailDirectory, { decode: bytes => {
+        const image = nativeImage.createFromBuffer(bytes);
+        return image.isEmpty() ? undefined : image.getSize();
+      } }), openPath: file => shell.openPath(file),
+    });
+    protocol.handle('reader-thumbnail', async request => {
+      try {
+        const image = request.method === 'GET' ? await service.thumbnailImage(request.url) : undefined;
+        return image ? new Response(new Uint8Array(image.bytes), { headers: { 'Content-Type': image.mime, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } })
+          : new Response(null, { status: 404 });
+      } catch { return new Response(null, { status: 404 }); }
+    });
     registerReaderIpc(service, () => mainWindow, documentUrl);
     createWindow();
     if (recovery && mainWindow) void dialog.showMessageBox(mainWindow, { type: 'info', message: backupText(profileLocale)[recovery] });

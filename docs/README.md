@@ -1,5 +1,10 @@
 # Documentation map
 
+[ADR 0025](decisions/0025-persistent-video-thumbnails.md) adds optional cached video
+header thumbnails, inline expansion and explicit OS image-viewer opening. Cache
+bytes are profile-local presentation data excluded from SQLite backups; source
+selection, security, freshness and offline behavior are documented there.
+
 The [project README](../README.md) covers Windows ZIP setup, external helper
 installation, basic use and real [Electron screenshots](screenshots/reader-light.png).
 The icon and screenshot capture workflow is described in [Testing](TESTING.md#readme-screenshots-and-application-icon-2026-10-16).

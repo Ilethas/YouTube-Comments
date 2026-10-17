@@ -4,6 +4,8 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  expandThumbnail: 'Expand thumbnail', shrinkThumbnail: 'Shrink thumbnail', openThumbnail: 'Open in image viewer',
+  thumbnailMenu: 'Thumbnail actions', thumbnailOpenFailed: 'Could not open the cached image. Try again.',
   selectionControls: "Comment selection controls",
   selectionOnDemand: "Show only in selection mode",
   selectionAlways: "Always show",
@@ -157,6 +159,8 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  expandThumbnail: 'Powiększ miniaturę', shrinkThumbnail: 'Pomniejsz miniaturę', openThumbnail: 'Otwórz w przeglądarce obrazów',
+  thumbnailMenu: 'Działania miniatury', thumbnailOpenFailed: 'Nie udało się otworzyć zapisanego obrazu. Spróbuj ponownie.',
   selectionControls: "Kontrolki zaznaczania komentarzy",
   selectionOnDemand: "Pokazuj tylko w trybie zaznaczania",
   selectionAlways: "Zawsze pokazuj",

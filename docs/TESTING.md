@@ -1,5 +1,90 @@
 # Testing strategy
 
+## Persistent video thumbnails (2026-10-17)
+
+[ADR 0025](decisions/0025-persistent-video-thumbnails.md) keeps schema 11 and
+adds an independent profile-owned presentation cache. The final full suite passes
+**865 tests in 70 files**, including **38 focused thumbnail tests**. Typecheck,
+lint (no warnings), renderer production build and validated Windows x64 application
+packaging pass. `git diff --check` passes. No dependencies, installer behavior,
+production profile data or version metadata were changed.
+
+Focused deterministic coverage includes real yt-dlp metadata field shapes,
+missing/invalid metadata and source identities, quality/fallback ordering,
+demo/post exclusion, first download/cache hit/restart, development/production
+directory isolation, 24-hour conditional checks and 304, changed bytes at the
+same URL (including a valid resolution reduction), offline/partial failure retention, concurrent per-video coalescing and
+global concurrency, MIME/signature/size/decode rejection, timeout/retry bounds,
+redirect/DNS restrictions, persistent negative backoff (including equal clocks),
+removal/reference cleanup, tampered/missing files and restore identity mismatch.
+Service tests prove exact identity-only payloads, main-owned file resolution,
+explicit mocked shell opening, no automatic shell calls, capability revocation,
+unchanged comment state and successful source Refresh despite failed image checks.
+The existing all-channel IPC suite includes the new commands' sender/frame checks.
+
+Component checks cover placement, no reserved image space on missing/decode
+failure, click/native-keyboard toggles, EN/PL labels and menus, stale-response
+discarding, and one image for 10k/50k virtualized discussions without query/seen/
+session mutations or redundant rerender fetches. Existing virtual-reader sorting,
+restoration, collapse and navigation regressions continue to pass.
+
+`node scripts/smoke-thumbnails.cjs` exercises built main/preload/renderer entries,
+the actual secure image protocol/CSP and Electron native decoder in an owned
+temporary profile. First download, restart without a download, expired offline
+cache, invalid images, 360px/full-column sizing, aspect ratio, native Enter/Space,
+visible focus, context menu, English/light and Polish/dark, narrow 720px window
+at 125% zoom, long-reader comment offsets, bounded row DOM, unchanged stored
+comments/items and cache exclusion from a real SQLite backup pass. Existing
+real-video identities are seeded as offline reconstructed discussions; comments
+are never reacquired by thumbnail handling. HTTP responses and `shell.openPath`
+are controlled by the harness. Live YouTube availability and launching the actual
+OS image viewer remain **UNVERIFIED**. No installer was executed.
+
+The full `npm.cmd run test:electron` passes, including built-entry restarts,
+view restoration, backup/restore/recovery, reader actions, collapse, 10k/50k
+selection, development/disposable-production Library removal, and thumbnails.
+All existing offline
+Electron harnesses now block thumbnail networking in a harness-only module.
+The original helper smoke's fake child implements `kill()`, with a watchdog kept
+through quit and explicit error reporting, so shutdown cannot enter a blocking
+native error dialog when the test aborts an outstanding fake helper probe.
+One existing native Copy check reports UNVERIFIED because the current Windows
+clipboard contains formats Electron cannot snapshot; its contents are preserved.
+The existing non-failing GPU shutdown diagnostic can still appear.
+
+Limitations: no live HTTP/OS-viewer acceptance, no cache quota/crash-orphan sweep,
+IPv4-only network retrieval (cached images still work without it), and image
+formats also depend on the platform native decoder. No thumbnail timing claim is
+made for owner hardware; deterministic 10k/50k checks establish bounded rendering
+and independence from comment count rather than a new timing budget.
+
+### Thumbnail milestone file inventory
+
+- Source selection/fixtures: `src/domain/video-thumbnail.ts`,
+  `src/domain/video-thumbnail.test.ts`, `src/main/extractors/yt-dlp.ts`,
+  `src/fixtures/thumbnail-image.ts`.
+- Cache/network/service: `src/main/thumbnail-cache.ts`,
+  `src/main/thumbnail-image.ts`, `src/main/thumbnail-network.ts`,
+  `src/main/thumbnail-cache.test.ts`, `src/main/thumbnail-network.test.ts`,
+  `src/main/thumbnail-service.test.ts`, `src/main/reader-service.ts`,
+  `src/main/persistence/profile.ts`, `src/main/persistence/reader-repository.ts`,
+  `src/main.ts`, `src/main/squirrel-startup.test.ts`.
+- Renderer/bridge: `src/renderer/VideoThumbnail.tsx`,
+  `src/renderer/VideoThumbnail.test.tsx`, `src/renderer/DiscussionPanel.tsx`,
+  `src/renderer/VirtualCommentList.tsx`, `src/renderer/CommentContextMenu.tsx`,
+  `src/renderer/i18n.ts`, `src/renderer/App.test.tsx`, `src/index.css`,
+  `src/shared/reader-api.ts`, `src/preload/reader-bridge.ts`,
+  `src/preload/reader-bridge.test.ts`, `index.html`.
+- Harnesses: `package.json`, `scripts/smoke-thumbnails.cjs`,
+  `scripts/thumbnail-fixture-network.cjs`, `scripts/smoke-electron.cjs`,
+  `scripts/smoke-view-restoration.cjs`, `scripts/smoke-backup-restore.cjs`,
+  `scripts/smoke-reader-actions.cjs`, `scripts/smoke-collapse.cjs`,
+  `scripts/smoke-selection.cjs`, `scripts/smoke-reader-usability.cjs`.
+- Documentation: `AGENTS.md`, `docs/README.md`, `docs/HOW_IT_WORKS.md`,
+  `docs/ARCHITECTURE.md`, `docs/EXTRACTORS.md`, `docs/UI_AND_NAVIGATION.md`,
+  `docs/DATABASE.md`, `docs/TESTING.md`, `docs/decisions/README.md`,
+  `docs/decisions/0025-persistent-video-thumbnails.md`.
+
 ## Reader usability: removable demos, menu activity and floating controls (2026-10-17)
 
 This increment keeps schema 11 and existing main-owned mutation/confirmation/Undo

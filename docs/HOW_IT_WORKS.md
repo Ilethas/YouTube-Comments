@@ -113,3 +113,22 @@ only the ancestors needed to reveal the target, and remember that expansion.
 Collapsing a selected reply keeps its logical selection. If your reading anchor is
 hidden, scrolling restores its visible collapsed ancestor. No expansion action
 marks comments seen. See [ADR 0023](decisions/0023-persistent-thread-collapse-and-virtual-navigation.md).
+
+
+## Video header thumbnails
+
+A saved real video can show an optional thumbnail above its title. Comments open
+immediately; obtaining an image never runs the comment extractor. Click the image
+(or press Enter/Space on it) to expand to the reading column; activate again to
+shrink to about 360px. It keeps all image content within a 16:9 box and fits narrow
+windows. Expansion lasts only while that discussion stays mounted.
+
+Right-click the loaded image for **Open in image viewer** (Polish: **Otwórz w
+przeglądarce obrazów**). Only choosing that action opens the cached local image in
+your OS default viewer. Image downloads and tab activation never open a viewer.
+
+The last valid image survives restart and works offline. Images are checked in the
+background after a day, or independently during source Refresh. Failures retain
+the cached image; missing/undecodable images leave no blank area or broken icon.
+Posts and synthetic demos do not request video thumbnails. This presentation cache
+is separate from SQLite and is not included in database backups. See ADR 0025.

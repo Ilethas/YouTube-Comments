@@ -21,6 +21,7 @@ function data(file) {
   } finally { db.close(); }
 }
 if (process.versions.electron && process.type === 'browser') {
+  require('./thumbnail-fixture-network.cjs').installThumbnailNetwork();
   const { app, dialog } = require('electron');
   const root = process.env.YOUTUBE_COMMENTS_DEMO_ROOT, phase = process.env.BACKUP_SMOKE_PHASE;
   const snapshot = path.join(root, 'snapshot.sqlite'), checkpoint = path.join(root, 'snapshot.json');

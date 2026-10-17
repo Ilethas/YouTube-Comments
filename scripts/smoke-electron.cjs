@@ -280,7 +280,7 @@ async function verifyWindow(window, nativeTheme) {
   await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .query-controls') !== null", 'bootstrap');
   await verifyHelperSettings();
   if (phase === 'environment') return;
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'moveTab', 'onAcquisitionProgress', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences']);
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'getThumbnail', 'moveTab', 'onAcquisitionProgress', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   assert.deepEqual(await js("window.reader.acquire({url:'https://www.youtube.com/watch?v=abcdefghijk',executable:'evil'})"),
     { ok: false, error: { code: 'INVALID_REQUEST' } });
   assert.deepEqual(await js("window.reader.refresh({itemId:'video-demo',url:'https://example.com'})"),
@@ -736,6 +736,7 @@ async function verifyWindow(window, nativeTheme) {
 }
 
 if (process.versions.electron && process.type === 'browser') {
+  require('./thumbnail-fixture-network.cjs').installThumbnailNetwork();
   // Test-only process injection before the built entry imports node:child_process.
   // No fake-execution switch or generic process capability is shipped in the app.
   const childProcess = require('node:child_process');
@@ -748,7 +749,7 @@ if (process.versions.electron && process.type === 'browser') {
     if (path.dirname(file) !== helpers) return originalSpawn(file, args, options);
     assert.equal(options.shell, false);
     helperExecutions.push({file,probe:args.includes('--version')});
-    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: () => true });
     setTimeout(() => {
       let code = 0;
       if (args.includes('--version')) child.stdout.emit('data', Buffer.from(path.basename(file) === 'incompatible.exe' ? 'unsupported' : path.basename(file).includes('yt-dlp')
@@ -780,6 +781,7 @@ if (process.versions.electron && process.type === 'browser') {
     return child;
   };
   const { app, nativeTheme, dialog, shell } = require('electron');
+  process.on('uncaughtException', error => { console.error(error); app.exit(1); });
   shell.openExternal = async url => { browserDestinations.push(url); };
   // Test-only main native-dialog seam; the renderer never supplies selected paths.
   dialog.showOpenDialog = async (parent, options) => {
@@ -789,6 +791,7 @@ if (process.versions.electron && process.type === 'browser') {
     const selected=helperChoices.shift(); return {canceled:selected===undefined,filePaths:selected ? [selected] : []};
   };
   const watchdog = setTimeout(() => { console.error('Electron smoke timed out'); app.exit(1); }, 30000);
+  app.on('will-quit', () => clearTimeout(watchdog));
   let rendererFailed = false;
   app.on('browser-window-created', (_event, window) => {
     window.hide();
@@ -798,7 +801,6 @@ if (process.versions.electron && process.type === 'browser') {
     });
     window.webContents.once('did-finish-load', () => {
       verifyWindow(window, nativeTheme).then(() => {
-        clearTimeout(watchdog);
         assert.equal(rendererFailed, false, 'Renderer/preload errors during smoke check');
         app.quit();
       }).catch(error => { console.error(error); clearTimeout(watchdog); app.exit(1); });

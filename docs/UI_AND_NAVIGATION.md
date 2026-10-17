@@ -319,7 +319,7 @@ never indicate seen state. Compact 32px avatars, bylines and multiline bodies st
 
 Avatars use only usable HTTPS URLs, anonymous CORS, no-referrer, lazy loading,
 async decoding and fixed dimensions. Empty alt text avoids duplicating the byline;
-load/CORS failure falls back to initials. There is no image cache or authenticated
+load/CORS failure falls back to initials. There is no avatar cache or authenticated
 loading, and source text never becomes HTML/SVG markup.
 
 The compact URL form accepts supported public video/individual-post URLs; Enter
@@ -568,3 +568,29 @@ criteria and restores sort/anchor. Query errors retain their own feedback. Compl
 shows inserted/updated/warnings and total main seconds. User cancellation is neutral:
 "Refresh cancelled. Saved discussion was unchanged." Failure remains the existing
 localized stable error. No stale busy surface remains after settlement.
+
+
+## Optional video header thumbnail (ADR 0025)
+
+A cached image occupies its own row immediately after Video/status/Refresh and
+before the title, aligned with the title. Default width is 360px with max-width
+100%; activation toggles to full reading-column width. A 16:9 box uses contain,
+never crops or distorts the image, and changes size immediately. Missing/loading/
+failed-decoding images reserve no space. The button has visible focus, aria-expanded
+and localized Expand thumbnail / Shrink thumbnail (Powiększ miniaturę / Pomniejsz
+miniaturę) actions. Native Enter/Space toggles without document-wide shortcuts.
+Expansion is local to the mounted discussion.
+
+Right-click or the focused control's Context Menu / Shift+F10 key opens the existing
+focus-managed menu with Open in image viewer / Otwórz w przeglądarce obrazów.
+Main resolves the actual cached image by item identity and opens it only on explicit
+activation. A failure has localized, nonintrusive feedback. There is no modal or
+additional reader window, folder/file browser, playback, or automatic navigation.
+
+Image changes remain inside the header component. Existing comment projections,
+selection, filters, drafts, sorting, collapse and seen are untouched. Header-only
+height changes retain the virtual reader's current comment identity/offset without
+clearing row measurements; native browser anchoring is disabled only for panels
+containing thumbnails to avoid a second correction. Image responses are scoped to
+the mounted canonical discussion and invalidated on deactivation/unmount. Avatars
+retain their separate anonymous remote-image/fallback policy.

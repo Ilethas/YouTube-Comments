@@ -15,8 +15,8 @@ export interface CommentMenuItem {
 }
 /** Small focus-managed menu. Text is captured at invocation; focusing menu items
  * never substitutes full-comment text for the explicit Copy selection command. */
-export function CommentContextMenu({ target, items, locale, dismiss }: {
-  target: CommentMenuTarget; items: readonly CommentMenuItem[]; locale: Locale; dismiss: () => void;
+export function CommentContextMenu({ target, items, locale, dismiss, label }: {
+  target: CommentMenuTarget; items: readonly CommentMenuItem[]; locale: Locale; dismiss: () => void; label?: string;
 }) {
   const menu = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(() => items.findIndex(item => !item.disabled));
@@ -56,7 +56,7 @@ export function CommentContextMenu({ target, items, locale, dismiss }: {
       if (restore.current && target.origin.isConnected && !target.origin.closest('[hidden]')) focusPreservingText(target.origin);
     };
   }, [target]);
-  return createPortal(<div ref={menu} role="menu" aria-label={translator(locale)('commentMenu')} className="comment-context-menu"
+  return createPortal(<div ref={menu} role="menu" aria-label={label ?? translator(locale)('commentMenu')} className="comment-context-menu"
     style={position} onContextMenu={event => event.preventDefault()} onMouseDown={event => event.preventDefault()}
     onKeyDown={event => {
       if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); event.stopPropagation(); dismiss(); return; }

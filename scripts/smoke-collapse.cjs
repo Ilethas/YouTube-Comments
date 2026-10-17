@@ -9,6 +9,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const database = root => path.join(root, 'youtube-comments-development', 'reader.sqlite');
 
 if (process.versions.electron) {
+  require('./thumbnail-fixture-network.cjs').installThumbnailNetwork();
   const { app } = require('electron');
   const root = process.env.YOUTUBE_COMMENTS_DEMO_ROOT, phase = process.env.COLLAPSE_SMOKE_PHASE;
   const fixture = JSON.parse(fs.readFileSync(path.join(root, 'fixture.json'), 'utf8'));

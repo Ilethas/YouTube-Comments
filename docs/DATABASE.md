@@ -367,3 +367,27 @@ preserves content, seen revisions, history, workspace, preferences and durable U
 Selections survive restart and local discussion removal, and remain independent in
 development/production/test profiles. The table never enters discussion or Preferences
 DTOs; only narrow Settings path/status evidence is returned through validated IPC.
+
+
+## Thumbnail cache is excluded from snapshots (ADR 0025)
+
+No thumbnail migration is required: normalized image URLs/dimensions fit existing
+item remote JSON. Actual raster bytes and HTTP validators live only in the
+main-owned `<profile>/thumbnails` directory beside `reader.sqlite`. Development
+and production keep distinct directories under the existing explicit path policy;
+explicit test database paths likewise use their own sibling cache. Installation
+and source directories are never cache destinations.
+
+Cache naming is `<videoId>.json` plus `<videoId>-<SHA256>.<jpg|png|webp>`; identity
+is canonical YouTube video identity, never titles or internal item IDs. Atomic
+content/manifest writes preserve the prior valid image. Database backup/restore
+covers SQLite alone, so snapshots neither grow with images nor depend on them.
+After restore, canonical identity must match before a cached image can be delivered;
+an internal item-ID match grants nothing. Missing images may download again.
+
+Library deletion commits before best-effort removal of an unreferenced video's
+cache. A remaining stored video reference protects it, and cleanup failure never
+rolls back deletion. Successful replacements remove obsolete versions best-effort.
+There is no cache quota or crash-orphan sweep in this milestone; cache files are
+regenerable, never authoritative comment evidence. See ADR 0025 for freshness,
+negative backoff and validation limits.

@@ -6,6 +6,9 @@ import type { ReaderApi } from '../shared/reader-api';
 export function createReaderBridge(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>,
   subscribe: (listener: (value: unknown) => void) => () => void = () => () => undefined): ReaderApi {
   return Object.freeze({
+    getThumbnail: request => invoke(readerChannels.getThumbnail, request) as ReturnType<ReaderApi['getThumbnail']>,
+    checkThumbnail: request => invoke(readerChannels.checkThumbnail, request) as ReturnType<ReaderApi['checkThumbnail']>,
+    openThumbnail: request => invoke(readerChannels.openThumbnail, request) as ReturnType<ReaderApi['openThumbnail']>,
     openCommentAction: request => invoke(readerChannels.openCommentAction, request) as ReturnType<ReaderApi['openCommentAction']>,
     createBackup: () => invoke(readerChannels.createBackup) as ReturnType<ReaderApi['createBackup']>,
     restoreBackup: () => invoke(readerChannels.restoreBackup) as ReturnType<ReaderApi['restoreBackup']>,

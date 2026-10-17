@@ -40,7 +40,7 @@ it.each(['--squirrel-install', '--squirrel-updated', '--squirrel-uninstall', '--
 it('registers ordinary ZIP/first-run startup with fixed identity and established profile', async () => {
   const on = vi.fn(), setPath = vi.fn(), setAppUserModelId = vi.fn();
   vi.doMock('electron-squirrel-startup', () => ({ default: false }));
-  vi.doMock('electron', () => ({ app: { isPackaged: true, getPath: () => path.resolve('isolated-roaming'), setPath, setAppUserModelId, on } }));
+  vi.doMock('electron', () => ({ protocol: { registerSchemesAsPrivileged: vi.fn() }, app: { isPackaged: true, getPath: () => path.resolve('isolated-roaming'), setPath, setAppUserModelId, on } }));
   vi.stubGlobal('MAIN_WINDOW_VITE_NAME', 'main_window'); vi.stubGlobal('MAIN_WINDOW_VITE_DEV_SERVER_URL', undefined);
   vi.stubEnv('YOUTUBE_COMMENTS_DEMO_ROOT', undefined);
   try {

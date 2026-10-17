@@ -52,6 +52,9 @@ export interface AcquisitionResult {
 
 /** Intent-only capabilities. No generic invoke, SQL, executable input or Node handles. */
 export interface ReaderApi {
+  getThumbnail(request: RefreshRequest): Promise<Result<string | null>>;
+  checkThumbnail(request: RefreshRequest): Promise<Result<string | null>>;
+  openThumbnail(request: RefreshRequest): Promise<Result<null>>;
   openCommentAction(request: CommentActionRequest): Promise<Result<null>>;
   createBackup(): Promise<Result<DataBackupResult>>;
   restoreBackup(): Promise<Result<DataBackupResult>>;
@@ -81,6 +84,7 @@ export interface ReaderApi {
 }
 
 export const readerChannels = {
+  getThumbnail: 'reader:get-thumbnail', checkThumbnail: 'reader:check-thumbnail', openThumbnail: 'reader:open-thumbnail',
   openCommentAction: 'reader:comment-action',
   createBackup: 'reader:create-backup', restoreBackup: 'reader:restore-backup',
   getAcquisitionProgress: 'reader:acquisition-current', cancelAcquisition: 'reader:cancel-acquisition',

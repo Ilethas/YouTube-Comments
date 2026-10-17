@@ -1,6 +1,18 @@
-import type { CommentObservation, ContentObservation, NormalizationIssue, NormalizedExtraction, PublicationObservation } from '../../domain/extraction-observation';
+import type { CommentObservation, ContentObservation, NormalizationIssue, NormalizedExtraction, PublicationObservation, ImageObservation, ObservedField } from '../../domain/extraction-observation';
 import { avatar, authorHandle, booleanValue, canonicalUrl, countValue, coverage, decode, failed, field, identity, object, observed, relationshipIssues, stringValue, unknown } from './normalization';
 import type { CaptureContext } from './normalization';
+import { isVideoThumbnailUrl } from '../../domain/video-thumbnail';
+
+function thumbnails(raw: Record<string, unknown>): ObservedField<readonly ImageObservation[]> {
+  const candidates = Array.isArray(raw.thumbnails) ? raw.thumbnails.slice(0, 100) : [];
+  const images: ImageObservation[] = [];
+  for (const entry of [...candidates, { url: raw.thumbnail }]) {
+    if (!object(entry) || !isVideoThumbnailUrl(entry.url, String(raw.id))) continue;
+    const dimension = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 8192 ? observed(value) : unknown<number>();
+    if (!images.some(image => image.url === entry.url)) images.push({ url: entry.url, width: dimension(entry.width), height: dimension(entry.height) });
+  }
+  return images.length ? observed(images) : unknown();
+}
 
 function publication(raw: Record<string, unknown>, location: string, issues: NormalizationIssue[], comment: boolean): PublicationObservation {
   const seconds = field(raw.timestamp, (value): value is number => typeof value === 'number' && Number.isFinite(value) && Math.abs(value * 1000) <= 8640000000000000, `${location}.timestamp`, issues);
@@ -38,7 +50,7 @@ export function normalizeYtDlp(json: string, context: CaptureContext): Normalize
       avatarUrl: unknown('unsupported'),
     },
     publication: publication(raw, '$', issues, false),
-    images: unknown('unsupported'), links: unknown('unsupported'),
+    images: thumbnails(raw), links: unknown('unsupported'),
     likeCount: field(raw.like_count, countValue, '$.likes', issues),
     // After fetching this may be extracted count, not the original remote total.
     reportedCommentCount: raw.comment_count === undefined ? unknown() : unknown('unreliable'),

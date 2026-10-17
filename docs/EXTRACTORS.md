@@ -212,3 +212,22 @@ Community cleanup remains awaited in finally. A Cancel acknowledgment is intent 
 fully settled cancellation waits for the original operation. No raw paths/commands,
 stderr, cookies or process handles enter progress payloads. Detailed safe timings return
 with successful acknowledgments, without SQLite timing records or raw-output retention.
+
+
+## Video thumbnail evidence (ADR 0025)
+
+The single-video yt-dlp JSON fields `thumbnail` and `thumbnails` now populate the
+existing normalized item `images` observation. Retain usable HTTPS i.ytimg.com
+individual video-thumbnail variants whose path matches the validated video ID;
+width/height are optional observed positive bounded integers. Missing/invalid
+metadata stays unknown, preserving older good observations on merge. No schema
+change or binary image payload is introduced. Existing sanitized fixtures omit
+these fields; new deterministic tests reconstruct the upstream-verified field
+shape rather than claiming a new live capture.
+
+The presentation service ranks metadata and canonical maxresdefault/hq720/sddefault/
+hqdefault fallbacks. Actual MIME, signatures, dimensions and decoding determine
+availability and reject tiny missing-image placeholders. It can obtain images for
+older stored videos using their canonical identity alone, without invoking yt-dlp,
+reacquiring comments or using a YouTube API key. The helper still downloads no
+images. Posts/demo discussions remain excluded. See [ADR 0025](decisions/0025-persistent-video-thumbnails.md).

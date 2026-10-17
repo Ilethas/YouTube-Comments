@@ -193,6 +193,7 @@ async function verify(window, root, phase) {
 }
 
 if (process.versions.electron && process.type === 'browser') {
+  require('./thumbnail-fixture-network.cjs').installThumbnailNetwork();
   const { app } = require('electron'), root = process.env.YOUTUBE_COMMENTS_DEMO_ROOT, phase = process.env.VIEW_SMOKE_PHASE;
   const watchdog = setTimeout(() => app.exit(1), 120000); let failed = false;
   app.on('browser-window-created', (_event, window) => {

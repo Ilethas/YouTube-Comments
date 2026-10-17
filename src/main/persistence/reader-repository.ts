@@ -171,6 +171,10 @@ export class ReaderRepository {
     return this.readItems(itemId)[0];
   }
 
+  hasVideoReference(sourceId: string): boolean {
+    return !!this.db.prepare("SELECT 1 FROM content_items WHERE kind='video' AND source_id=? LIMIT 1").get(sourceId);
+  }
+
   /** Indexed ownership lookup for explicit actions; no forest/bootstrap per click. */
   getActionComment(item: ContentItem, commentId: string): ActionComment | undefined {
     const row = this.db.prepare('SELECT id, item_id, source_comment_id, author_source_id, author_display_name, author_handle, text FROM comments WHERE item_id=? AND id=?').get(item.id, commentId);

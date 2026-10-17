@@ -22,6 +22,16 @@ ADR 0024 adds selection, menus and explicit selected/prefix scopes.
 
 ## Invariants to protect
 
+- [ADR 0025](docs/decisions/0025-persistent-video-thumbnails.md) adds optional
+  profile-owned video thumbnails without schema changes or comment reacquisition.
+  Main owns approved HTTPS retrieval, bounded raster validation, atomic disk cache,
+  conditional freshness and opaque image-protocol capabilities. Cache bytes live
+  beside SQLite and are excluded from backups. Renderer requests item identity
+  only; explicit thumbnail menu activation alone may call main-owned shell.openPath.
+  Preserve canonical-video association through restore/removal, quiet offline
+  fallback, mounted-local expansion and virtual comment anchors. No demo/post
+  image requests, arbitrary file/URL bridge or additional application window.
+
 - [ADR 0024](docs/decisions/0024-comment-selection-context-menus-and-view-prefix-seen.md)
   adds schema-11 selection visibility and include-collapsed-prefix preferences,
   session-only per-discussion bulk ID sets, accessible context menus and confirmed

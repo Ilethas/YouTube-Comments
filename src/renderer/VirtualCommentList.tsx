@@ -147,6 +147,10 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
 
   const pendingAnchor = useRef<ReaderScrollAnchor>();
   const previousWidth = useRef(0);
+  const previousMargin = useRef<number>();
+  const layoutData = useRef({ rows, revision: scrollRequest?.revision });
+  layoutData.current = { rows, revision: scrollRequest?.revision };
+  const previousRevision = useRef(scrollRequest?.revision);
   useLayoutEffect(() => {
     const panel = getScrollElement(), element = list.current;
     if (!panel || !element) return;
@@ -154,6 +158,17 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
       const width = element.getBoundingClientRect().width;
       if (!width || !panel.clientHeight) return;
       const margin = element.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop;
+      // Capture against the previous coordinate cache. The new DOM margin is
+      // already visible here, so captureAnchor would subtract the new header.
+      // Restore after scrollMargin updates, allowing ordinary row measurements
+      // to settle without invalidating any of them for a header-only change.
+      if (previousMargin.current !== undefined && margin !== previousMargin.current && previousWidth.current === width && panel.scrollTop >= previousMargin.current
+        && previousRevision.current === layoutData.current.revision && element.closest('.reading-column')?.querySelector('.video-thumbnail-row')) {
+        const row = virtualizer.getVirtualItemForOffset(panel.scrollTop);
+        if (row && layoutData.current.rows[row.index]) pendingAnchor.current = { id: layoutData.current.rows[row.index].id, offset: panel.scrollTop - row.start };
+      }
+      previousMargin.current = margin;
+      previousRevision.current = layoutData.current.revision;
       if (previousWidth.current && previousWidth.current !== width) pendingAnchor.current = capture.current();
       if (previousWidth.current !== width) { previousWidth.current = width; virtualizer.measure(); }
       const column = element.closest('.reading-column'), rect = panel.getBoundingClientRect();
@@ -175,7 +190,7 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
     const index = anchor.id === undefined ? undefined : indexById.get(anchor.id);
     if (index === undefined) return;
     return restoreMeasuredAnchor(index, anchor.offset);
-  }, [geometry.width, indexById, virtualizer]);
+  }, [geometry.width, geometry.margin, indexById, virtualizer]);
 
   // Anchor restoration differs from index centering: retain the intra-row offset
   // while estimates become actual heights. Reconcile only this resolved data row.

@@ -1,5 +1,9 @@
 # Decisions and open questions
 
+[ADR 0025](0025-persistent-video-thumbnails.md) implements optional persistent
+video thumbnails, main-owned bounded retrieval/cache, opaque image delivery,
+inline expansion and explicit OS-viewer action without schema changes.
+
 [ADR 0024](0024-comment-selection-context-menus-and-view-prefix-seen.md)
 implements session-only per-discussion bulk selection, explicit visual ranges,
 accessible context menus and confirmed inclusive applied/sorted reading prefixes.

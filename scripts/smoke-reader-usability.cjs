@@ -10,6 +10,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const database = (root, production = false) => path.join(root, production ? 'youtube-comments-production' : 'youtube-comments-development', 'reader.sqlite');
 
 if (process.versions.electron) {
+  require('./thumbnail-fixture-network.cjs').installThumbnailNetwork();
   const { app } = require('electron');
   const root = process.env.USABILITY_ROOT, phase = process.env.USABILITY_PHASE;
   const production = phase.startsWith('production');

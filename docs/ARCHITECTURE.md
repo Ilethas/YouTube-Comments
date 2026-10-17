@@ -450,3 +450,29 @@ Electron serialization/transfer is not separately measurable here. Timings are r
 with successful results and never persisted. Full pre-Refresh bootstrap and post-merge
 bootstrap remain intentionally measured rather than redesigned; Q-21 is independent.
 See [ADR 0018](decisions/0018-acquisition-progress-and-safe-cancellation.md).
+
+
+## Profile-owned video thumbnails (ADR 0025)
+
+`ThumbnailCache` is a main-owned best-effort service independent of ingestion and
+comment sessions. It uses normalized yt-dlp image evidence and validated video-ID
+fallbacks, with bounded HTTPS retrieval, connection-time public IPv4 validation,
+manual approved redirects, finite deadlines/retries, MIME/signature/dimension and
+native decoder checks. Up to two network jobs run concurrently, coalesced per
+canonical video; no comment-dependent work or extractor invocation occurs.
+
+The typed bridge exposes get/check/open-thumbnail requests containing only itemId.
+Existing exact-shape/window/frame/document authorization applies to all three.
+`reader-thumbnail://cache/<opaque UUID>` serves validated raster bytes, checks
+current canonical item ownership, never reveals paths and has no generic fetch
+capability. CSP permits that image scheme; sandbox/context isolation/navigation
+and the single-window architecture remain intact. Only explicit context-menu
+activation can resolve a regular cache file and call main-owned `shell.openPath`.
+
+The cache is a `thumbnails` sibling of the database resolved by the explicit
+profile policy. Immutable content files and atomic metadata replacement retain
+old good bytes on failure. Cached display is followed by asynchronous 24-hour
+conditional revalidation; source Refresh can force it independently, with a
+15-minute failure backoff. Image failure cannot change acquisition results or
+comment/seen/discovery/query state. See [ADR 0025](decisions/0025-persistent-video-thumbnails.md)
+for limits, naming, restore/removal ownership and cache lifetime.

@@ -25,6 +25,8 @@ import { BackupValidationError } from './persistence/backup-validation';
 import { validateBackupDestination } from './persistence/sqlite-backup';
 import { installRestore, prepareRestore } from './persistence/profile-restore';
 import type { RestoreCheckpoint } from './persistence/profile-restore';
+import { randomUUID } from 'node:crypto';
+import type { ThumbnailCache, CachedThumbnail } from './thumbnail-cache';
 
 export interface DataBackupOptions {
   readonly databasePath: string;
@@ -32,7 +34,7 @@ export interface DataBackupOptions {
   readonly restart: () => void;
   readonly checkpoint?: RestoreCheckpoint;
 }
-type ServiceValue = ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | AcquisitionResult | HelperStatus | DataBackupResult | null;
+type ServiceValue = ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | AcquisitionResult | HelperStatus | DataBackupResult | string | null;
 
 /** Small use-case boundary: validate before touching persistence; failures carry
  * stable codes. Diagnostics are reported only on the privileged side. */
@@ -44,6 +46,7 @@ export class ReaderService {
   private dataPending?: Promise<Result<DataBackupResult>>;
   private stopping = false;
   private restartPending = false;
+  private thumbnailGrants = new Map<string, { itemId: string; value: CachedThumbnail }>();
   constructor(private readonly open: () => ReaderRepository, private readonly languages: readonly string[],
     private readonly diagnose: (error: unknown) => void = console.error,
     private readonly extract?: ExtractLive,
@@ -51,7 +54,8 @@ export class ReaderService {
     private readonly openBrowser?: (url: string) => Promise<void>,
     private readonly notifyProgress: (value: AcquisitionNotification) => void = () => undefined,
     private readonly dataOptions?: DataBackupOptions,
-    private readonly copyText?: (text: string) => void | Promise<void>) {
+    private readonly copyText?: (text: string) => void | Promise<void>,
+    private readonly thumbnails?: { cache: ThumbnailCache; openPath: (file: string) => Promise<string> }) {
     this.initializeStorage();
   }
 
@@ -85,6 +89,8 @@ export class ReaderService {
   dispatch(operation: 'cancelAcquisition', args: readonly unknown[]): Result<null>;
   dispatch(operation: 'saveDiscussionView' | 'setDiscussionCollapse', args: readonly unknown[]): Result<null>;
   dispatch(operation: 'createBackup' | 'restoreBackup', args: readonly unknown[]): Promise<Result<DataBackupResult>>;
+  dispatch(operation: 'getThumbnail' | 'checkThumbnail', args: readonly unknown[]): Promise<Result<string | null>>;
+  dispatch(operation: 'openThumbnail', args: readonly unknown[]): Promise<Result<null>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ServiceValue> | Promise<Result<ServiceValue>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[]): Result<ServiceValue> | Promise<Result<ServiceValue>> {
     if (operation === 'createBackup' || operation === 'restoreBackup') {
@@ -102,6 +108,7 @@ export class ReaderService {
     }
     if (operation === 'openSource') return this.openSource(args);
     if (operation === 'openCommentAction') return this.openCommentAction(args);
+    if (operation === 'getThumbnail' || operation === 'checkThumbnail' || operation === 'openThumbnail') return this.thumbnail(operation, args);
     if (operation === 'getHelperStatus' || operation === 'chooseHelper' || operation === 'clearHelper') {
       if (args.length !== 1 || !isHelperRequest(args[0])) return Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
       if (!this.helpers) return Promise.resolve({ ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } });
@@ -115,6 +122,12 @@ export class ReaderService {
         return Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
       }
       if (!this.acquisition) return Promise.resolve({ ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } });
+      if (operation === 'refresh' && isRefreshRequest(args[0])) {
+        try {
+          const item = this.repository?.getStoredItem(args[0].itemId);
+          if (item) void this.thumbnails?.cache.check(item, true).catch(() => undefined);
+        } catch { /* Presentation lookup must never fail comment Refresh. */ }
+      }
       return operation === 'acquire' && isAcquireRequest(args[0]) ? this.acquisition.acquire(args[0].url)
         : isRefreshRequest(args[0]) ? this.acquisition.refresh(args[0].itemId) : Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
     }
@@ -145,6 +158,8 @@ export class ReaderService {
         const item = this.repository.bootstrap(this.languages).items.find(item => item.id === itemId);
         if (item && this.acquisition?.owns(item.sourceKind, item.sourceId)) return { ok: false, error: { code: 'ACQUISITION_BUSY' } };
         value = this.repository.removeLibraryItem(args[0].itemId, this.languages);
+        for (const [token, grant] of this.thumbnailGrants) if (grant.itemId === itemId) this.thumbnailGrants.delete(token);
+        if (item?.kind === 'video') void this.thumbnails?.cache.remove(item.sourceId, () => !this.repository || this.repository.hasVideoReference(item.sourceId)).catch(() => undefined);
       }
       else if (operation === 'openStoredItem' && isRefreshRequest(args[0])) value = this.repository.changeWorkspace(operation, args[0].itemId);
       else if ((operation === 'activateTab' || operation === 'closeTab') && isTabRequest(args[0])) value = this.repository.changeWorkspace(operation, args[0].tabId);
@@ -156,6 +171,42 @@ export class ReaderService {
       this.diagnose(error);
       return { ok: false, error: { code: error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError || error instanceof InvalidSeenTargetError || error instanceof InvalidDiscussionViewError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
     }
+  }
+  private async thumbnail(operation: 'getThumbnail' | 'checkThumbnail' | 'openThumbnail', args: readonly unknown[]): Promise<Result<string | null>> {
+    if (args.length !== 1 || !isRefreshRequest(args[0])) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+    const itemId = args[0].itemId;
+    try {
+      const item = this.repository?.getStoredItem(itemId);
+      if (!item) return { ok: false, error: { code: 'NOT_FOUND' } };
+      if (!this.thumbnails) return { ok: true, value: null };
+      const value = await (operation === 'checkThumbnail' ? this.thumbnails.cache.check(item) : this.thumbnails.cache.cached(item));
+      const current = this.repository?.getStoredItem(itemId);
+      if (!current || current.sourceId !== item.sourceId || current.kind !== 'video' || current.isDemo) return { ok: true, value: null };
+      if (!value) return operation === 'openThumbnail' ? { ok: false, error: { code: 'NOT_OPENABLE' } } : { ok: true, value: null };
+      if (operation === 'openThumbnail') {
+        const image = await this.thumbnails.cache.read(value);
+        if (!image) return { ok: false, error: { code: 'NOT_OPENABLE' } };
+        if (await this.thumbnails.openPath(image.file)) return { ok: false, error: { code: 'SOURCE_OPEN_FAILED' } };
+        return { ok: true, value: null };
+      }
+      for (const [token, grant] of this.thumbnailGrants) if (grant.itemId === itemId && grant.value.digest === value.digest && grant.value.videoId === value.videoId) return { ok: true, value: `reader-thumbnail://cache/${token}` };
+      // Bounded runtime capabilities; no disk paths, remote URLs or binary IPC.
+      for (const [token, grant] of this.thumbnailGrants) if (grant.itemId === itemId) this.thumbnailGrants.delete(token);
+      const oldest = this.thumbnailGrants.keys().next().value;
+      if (this.thumbnailGrants.size >= 256 && oldest) this.thumbnailGrants.delete(oldest);
+      const token = randomUUID(); this.thumbnailGrants.set(token, { itemId, value });
+      return { ok: true, value: `reader-thumbnail://cache/${token}` };
+    } catch { return { ok: false, error: { code: operation === 'openThumbnail' ? 'SOURCE_OPEN_FAILED' : 'NOT_OPENABLE' } }; }
+  }
+  /** Opaque image-only protocol capability, rechecked against current stored
+   * canonical identity on every read (including removal/restore races). */
+  async thumbnailImage(url: string): Promise<{ bytes: Buffer; mime: string } | undefined> {
+    const token = /^reader-thumbnail:\/\/cache\/([a-f0-9-]{36})$/.exec(url)?.[1];
+    const grant = token ? this.thumbnailGrants.get(token) : undefined;
+    if (!grant || this.stopping || this.restartPending || this.dataPending) return undefined;
+    const item = this.repository?.getStoredItem(grant.itemId);
+    if (!item || item.kind !== 'video' || item.isDemo || item.sourceKind !== 'youtube-video' || item.sourceId !== grant.value.videoId) return undefined;
+    return this.thumbnails?.cache.read(grant.value);
   }
   private async runDataOperation(operation: 'createBackup' | 'restoreBackup'): Promise<Result<DataBackupResult>> {
     const options = this.dataOptions, repository = this.repository;
@@ -181,7 +232,7 @@ export class ReaderService {
       // renderer queues were flushed before invocation; now settle all children
       // and any earlier helper selection before the safety snapshot.
       settled = true;
-      await Promise.all([this.acquisition?.close(), this.helpers?.shutdown()]);
+      await Promise.all([this.acquisition?.close(), this.helpers?.shutdown(), this.thumbnails?.cache.settle()]);
       await repository.createBackup(path.join(directory, 'safety.sqlite'));
       await options.checkpoint?.('safety');
       repository.prepareOffline(); repository.close(); this.repository = undefined; closed = true;
@@ -256,7 +307,7 @@ export class ReaderService {
   async shutdown(): Promise<void> {
     this.stopping = true;
     await this.dataPending;
-    await Promise.all([this.acquisition?.close(), this.helpers?.shutdown()]);
+    await Promise.all([this.acquisition?.close(), this.helpers?.shutdown(), this.thumbnails?.cache.shutdown()]);
     this.repository?.close(); this.repository = undefined;
   }
 }

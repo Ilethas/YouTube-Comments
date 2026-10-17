@@ -11,6 +11,7 @@ const sourceId = 'UgxActionComment0123456789';
 const channelId = 'UC' + 'a'.repeat(22);
 
 if (process.versions.electron) {
+  require('./thumbnail-fixture-network.cjs').installThumbnailNetwork();
   const { app, shell } = require('electron');
   const opened = [];
   shell.openExternal = async url => { opened.push(url); };
