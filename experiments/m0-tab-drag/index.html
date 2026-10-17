@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M0 fake tab experiment</title><link rel="stylesheet" href="style.css">
+<script defer src="renderer.js"></script></head>
+<body><h1 id="title">M0 fake tabs</h1>
+<p>Isolated experiment. No reader, SQLite or application profile.</p>
+<label>Technique <select id="mode"><option value="pointer">Pointer capture + main coordination</option><option value="html">Native HTML drag + opaque token</option></select></label>
+<button id="reset" type="button">Reset fake tabs</button>
+<button id="show-a" type="button">Show/focus Window A</button>
+<p class="warning">Pointer cross-window moves use geometry only: occlusion is UNKNOWN.
+Outside release is logged; no new window is created. HTML dragend none never detaches.</p>
+<div id="strip" role="group" aria-label="Fake tab drag strip"></div>
+<p id="status" role="status"></p>
+<details><summary>Native window diagnostics (main-owned)</summary><pre id="native-windows"></pre></details>
+<details><summary>Manual use and test controls</summary>
+<p>Drag with the primary mouse button. Start slowly in HTML mode so token preparation can finish.
+Escape in either experiment window cancels when delivered. Blur is recorded; pointer release after blur is inconclusive.
+Use Alt+F4 to close a participant, or its native minimize button. Relaunch after closing either window.</p>
+<button id="lose" type="button">Release source pointer capture after 3 seconds</button>
+<p>Click this, then start a pointer drag and hold it for 3 seconds to exercise lost capture.</p>
+<button id="close-self" type="button">Close this window after 3 seconds</button>
+<button id="close-peer" type="button">Close other window after 3 seconds</button>
+<button id="minimize-peer" type="button">Minimize other window after 3 seconds</button>
+<p>Click a timer, promptly start a drag and keep holding. These actions affect only the two fake windows. Relaunch after a close.</p>
+</details>
+<p id="runtime"></p><p id="evidence"></p>
+<h2>Recent evidence (full NDJSON in the run directory)</h2><pre id="log"></pre>
+</body></html>

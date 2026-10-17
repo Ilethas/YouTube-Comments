@@ -1,0 +1,9 @@
+:root { color-scheme: dark; font: 14px/1.45 system-ui, sans-serif; background: #17212d; color: #e5edf5; }
+body { margin: 18px; } h1 { font-size: 22px; margin: 0 0 8px; } h2 { font-size: 15px; }
+button, select { font: inherit; padding: 7px 10px; background: #263747; color: inherit; border: 1px solid #71879b; border-radius: 4px; }
+button:focus-visible, select:focus-visible { outline: 2px solid #71d9cc; outline-offset: 2px; }
+#strip { display: flex; gap: 6px; padding: 14px; min-height: 44px; border: 2px solid #71d9cc; background: #101922; }
+#strip button { min-width: 64px; cursor: grab; user-select: none; touch-action: none; }
+#strip[data-dragging=true] { border-style: dashed; }
+.warning { color: #f5cf8b; } #status { min-height: 2.8em; } #runtime, #evidence { overflow-wrap: anywhere; font-size: 12px; }
+pre { max-height: 250px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.4 Consolas, monospace; }

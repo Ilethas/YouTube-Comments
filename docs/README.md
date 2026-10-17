@@ -1,5 +1,11 @@
 # Documentation map
 
+[M0 drag feasibility](MULTI_WINDOW_M0_FEASIBILITY.md) records the isolated two-window
+fake-tab experiment, automated evidence and pending native Windows checklist.
+Full browser-like desktop dragging remains unproven; production multi-window
+implementation has not started. See the [audit](MULTI_WINDOW_AUDIT.md) and
+[proposed design](MULTI_WINDOW_DESIGN.md) for the separately scoped milestones.
+
 [ADR 0026](decisions/0026-custom-translation-reader-minutes-and-layout.md) adds
 schema-12 custom translation targets, optional reader publication minutes shared
 with bulk resolution, steady loading rotation under reduced motion, title-first
