@@ -129,6 +129,7 @@ exports.run = async ({ app, records, model, log, a, b, root, expectedURL }) => {
   assert.equal(await js(a, `window.open('https://example.invalid') === null`), true);
   const count = records.size;
   assert.equal(count, 2);
+  await require('./vscode-smoke.cjs').run({ a, b, model, log, js, until, evidence, start });
   await start();
   assert.equal((await js(a, 'window.m0.closePeerLater()')).ok, true);
   assert.equal((await js(a, 'window.m0.closeSelfLater()')).ok, false, 'only one timer per initiating window');

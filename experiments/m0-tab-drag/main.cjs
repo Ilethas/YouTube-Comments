@@ -32,7 +32,8 @@ let sequence = 0, model, previousCursor = '', previousCandidate = '';
 const started = process.hrtime.bigint();
 function log(data) {
   // Fixed event vocabulary, fake IDs and numeric evidence only; no OS payload text.
-  const entry = { seq: ++sequence, ms: Number(process.hrtime.bigint() - started) / 1e6, ...data };
+  const entry = { seq: ++sequence, ms: Number(process.hrtime.bigint() - started) / 1e6,
+    dragId: model?.active?.dragId ?? null, ...data };
   if (sequence <= 100_000) fs.appendFileSync(path.join(root, 'events.ndjson'), JSON.stringify(entry) + '\n');
   else if (sequence === 100_001) fs.appendFileSync(path.join(root, 'events.ndjson'), '{"type":"log-cap-reached-relaunch-required"}\n');
   tail.push(entry); if (tail.length > 35) tail.shift();
@@ -126,7 +127,26 @@ function dispatch(r, request) {
       log({ type: 'drop-evidence', target: r.id, slot: q.slot, local: q.local, trusted: q.trusted, eligible: !!eligible, ...cursorEvidence() });
       result = !!eligible && model.drop(r.id, q.token, q.slot); break;
     }
-    case 'end': result = model.end(r.id, q.token, q.reason); break;
+    case 'end': {
+      if (model.active?.mode === 'vscode' && q.reason.startsWith('dragend-')) {
+        const cursor = cursorEvidence();
+        const focused = [...records.values()].find(record => !record.closed && record.window.isFocused());
+        const focusedWindowContainsCursor = !!focused && focused.window.isVisible() && contains(focused.window.getBounds(), cursor.dip);
+        // DIP/native bounds are deliberately used instead of mixing DOM screen
+        // coordinates with main cursor coordinates. Rectangles are hints only.
+        const eligibleWindowRects = [...records.values()].filter(record => !record.closed &&
+          record.window.isVisible() && !record.window.isMinimized() && contains(record.window.getBounds(), cursor.dip)).map(record => record.id);
+        result = model.finishVscode(r.id, q.token, { cursor, focusedWindowContainsCursor,
+          focusedWindow: focused?.id ?? null, eligibleWindowRects, terminal: q.reason });
+      } else result = model.end(r.id, q.token, q.reason);
+      break;
+    }
+    case 'track-drag': {
+      result = model.trackDrag(r.id, q.dragId, q.event);
+      log({ type: 'vscode-track-evidence', window: r.id, dragId: q.dragId, event: q.event,
+        local: q.local, trusted: q.trusted, accepted: result });
+      break;
+    }
     case 'layout':
       // Actual zoom belongs to main. Reject renderer claims which disagree.
       if (Math.abs(q.zoom - r.contents.getZoomFactor()) > 0.001) return { ok: false, error: 'ZOOM_MISMATCH' };
@@ -138,6 +158,7 @@ function dispatch(r, request) {
       log({ ...q, kind: undefined, type: `dom-${q.type}`, window: r.id });
       // Retain blur evidence rather than pretending an outside Escape is visible.
       if (['blur', 'visibility-hidden'].includes(q.type)) model.interrupt(r.id);
+      if (q.type === 'keydown-escape' && model.active?.mode === 'vscode') model.endAny('cancelled-dom-escape');
       break;
   }
   broadcast(); return { ok: true, value: result };

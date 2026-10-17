@@ -4,6 +4,14 @@
 [audit](MULTI_WINDOW_AUDIT.md) and [proposed design](MULTI_WINDOW_DESIGN.md).
 This is a feasibility report, not a production architecture ADR or M1 implementation.
 
+**Owner evidence update:** the M0.5 task reports genuine Windows HTML attachment
+and occlusion passes, pointer geometry failure under Notepad, acceptable native
+drag visuals and continuing dragend-none ambiguity. The original execution ledger
+below remains historical. See [M0.5](MULTI_WINDOW_M0_5_FEASIBILITY.md) for those
+owner-reported findings, the pinned VS Code study and the third experimental mode.
+Desktop-detach/cancellation feasibility remains unresolved; no Codex native pass
+is implied.
+
 ## Finding and acceptance status
 
 **Full browser-like dragging using ordinary Electron on Windows remains unproven.**

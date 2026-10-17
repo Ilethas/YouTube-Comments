@@ -5,6 +5,7 @@ const MIME = 'application/x-youtube-comments-m0-tab';
 const api = window.m0;
 const strip = document.getElementById('strip');
 const mode = document.getElementById('mode');
+const usesHtml = technique => technique === 'html' || technique === 'vscode';
 let state, gesture, rendered = '', lastMove = 0;
 const okay = promise => promise.catch(error => { document.getElementById('status').textContent = `Harness error: ${error.message}`; });
 function signal(type, event, detail = '') {
@@ -24,6 +25,7 @@ function render(next) {
   const tabs = next.windows[next.ownId]?.tabs ?? [];
   const key = JSON.stringify([tabs, next.mode]);
   mode.value = next.mode;
+  document.getElementById('vscode-warning').hidden = next.mode !== 'vscode';
   document.getElementById('title').textContent = `M0 fake tabs — Window ${next.ownId}`;
   document.getElementById('runtime').textContent = JSON.stringify(next.runtime);
   document.getElementById('evidence').textContent = next.evidenceFile;
@@ -33,11 +35,11 @@ function render(next) {
   document.getElementById('log').textContent = next.tail.map(e => JSON.stringify(e)).join('\n');
   strip.dataset.dragging = String(next.active?.stage === 'dragging');
   // Keep the source node mounted during the OS HTML drag loop.
-  if (key !== rendered && !(gesture?.mode === 'html' && gesture.starting)) {
+  if (key !== rendered && !(usesHtml(gesture?.mode) && gesture.starting)) {
     rendered = key;
     strip.replaceChildren(...tabs.map(tab => {
       const button = document.createElement('button'); button.type = 'button';
-      button.textContent = tab; button.dataset.tab = tab; button.draggable = next.mode === 'html';
+      button.textContent = tab; button.dataset.tab = tab; button.draggable = usesHtml(next.mode);
       return button;
     }));
     requestAnimationFrame(layout);
@@ -96,7 +98,7 @@ strip.addEventListener('pointerup', event => {
   signal('pointerup', event, event.pointerType || 'unknown');
   const g = gesture;
   if (!g) return;
-  if (g.mode === 'html') { if (!g.starting) endGesture('buttons-lost'); return; }
+  if (usesHtml(g.mode)) { if (!g.starting) endGesture('buttons-lost'); return; }
   g.releasing = true;
   // Preserve request order if release beats asynchronous token preparation.
   okay((g.starting || g.ready).then(() => {
@@ -114,7 +116,7 @@ for (const type of ['gotpointercapture', 'lostpointercapture', 'pointercancel'])
 strip.addEventListener('dragstart', event => {
   signal('dragstart', event);
   const g = gesture;
-  if (!g || g.mode !== 'html' || !g.token || !event.target.closest('[data-tab]')) {
+  if (!g || !usesHtml(g.mode) || !g.token || !event.target.closest('[data-tab]')) {
     event.preventDefault(); endGesture('start-not-ready'); return;
   }
   // DataTransfer must be populated synchronously. Never await inside dragstart.
@@ -124,14 +126,14 @@ strip.addEventListener('dragstart', event => {
   g.starting = api.start(g.token, 0); okay(g.starting);
 });
 for (const type of ['dragenter', 'dragover', 'dragleave']) strip.addEventListener(type, event => {
-  if (state.mode !== 'html' || !event.dataTransfer.types.includes(MIME)) return;
+  if (!usesHtml(state.mode) || !event.dataTransfer.types.includes(MIME)) return;
   event.preventDefault(); event.dataTransfer.dropEffect = 'move';
-  if (type !== 'dragover' || performance.now() - lastMove > 100) {
+  if (state.mode === 'vscode' || type !== 'dragover' || performance.now() - lastMove > 100) {
     signal(type, event, event.dataTransfer.dropEffect); lastMove = performance.now();
   }
 });
 strip.addEventListener('drop', event => {
-  if (state.mode !== 'html' || !event.dataTransfer.types.includes(MIME)) return;
+  if (!usesHtml(state.mode) || !event.dataTransfer.types.includes(MIME)) return;
   event.preventDefault(); signal('drop', event, event.dataTransfer.dropEffect);
   const value = event.dataTransfer.getData(MIME);
   const mids = [...strip.children].map(child => { const r = child.getBoundingClientRect(); return r.left + r.width / 2; });
@@ -142,6 +144,23 @@ strip.addEventListener('dragend', event => {
   signal('dragend', event, event.dataTransfer.dropEffect);
   endGesture(event.dataTransfer.dropEffect === 'none' ? 'dragend-none' : 'dragend-move');
 });
+
+// VS Code tracks window-wide capture-phase dragover/dragleave, including bodies
+// outside tab strips. IPC here replaces its BroadcastDataChannel: main derives
+// the reporting window and correlates hints to a non-authorizing drag generation.
+// Do not preventDefault on a window body: it is not an eligible drop recipient.
+for (const [type, eventName] of [['dragover', 'over'], ['dragleave', 'leave'], ['drop', 'drop']]) {
+  window.addEventListener(type, event => {
+    if (state?.mode !== 'vscode' || !state.active || !event.dataTransfer?.types.includes(MIME)) return;
+    okay(api.trackDrag(state.active.dragId, eventName, { x: event.clientX, y: event.clientY }, event.isTrusted));
+  }, true);
+}
+strip.addEventListener('drag', event => {
+  if (gesture?.mode === 'vscode') signal('drag', event);
+});
+window.addEventListener('pointerup', event => {
+  if (state?.mode === 'vscode') signal('window-pointerup', event, event.pointerType || 'unknown');
+}, true);
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') { signal('keydown-escape', event); endGesture('escape'); }
 });

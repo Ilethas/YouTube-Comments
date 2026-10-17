@@ -6,11 +6,12 @@
 <script defer src="renderer.js"></script></head>
 <body><h1 id="title">M0 fake tabs</h1>
 <p>Isolated experiment. No reader, SQLite or application profile.</p>
-<label>Technique <select id="mode"><option value="pointer">Pointer capture + main coordination</option><option value="html">Native HTML drag + opaque token</option></select></label>
+<label>Technique <select id="mode"><option value="pointer">Pointer capture + main coordination</option><option value="html">Native HTML drag + opaque token</option><option value="vscode">VS Code-inspired guarded probe (M0.5)</option></select></label>
 <button id="reset" type="button">Reset fake tabs</button>
 <button id="show-a" type="button">Show/focus Window A</button>
 <p class="warning">Pointer cross-window moves use geometry only: occlusion is UNKNOWN.
 Outside release is logged; no new window is created. HTML dragend none never detaches.</p>
+<p id="vscode-warning" hidden>VS Code-inspired mode attaches using HTML drop. Outside endings only report whether upstream-style guards would open a window. This is an ambiguous candidate, never proof of desktop release; the source stays owned and no third window opens.</p>
 <div id="strip" role="group" aria-label="Fake tab drag strip"></div>
 <p id="status" role="status"></p>
 <details><summary>Native window diagnostics (main-owned)</summary><pre id="native-windows"></pre></details>

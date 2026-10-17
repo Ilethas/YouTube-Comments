@@ -1,8 +1,11 @@
 # M0 Windows native input checklist
 
-Current status of **every native case below: Requires owner/manual verification**.
-No personally verified native pass is recorded by Codex. The automated smoke is
-separate evidence. Use physical mouse input, not DevTools dispatch, CDP, scripts,
+The original M0 checklist/blank ledger below is retained as historical evidence.
+The owner has since reported native HTML attachment/occlusion passes and pointer
+occlusion failure; see [M0.5 evidence](../../docs/MULTI_WINDOW_M0_5_FEASIBILITY.md#evidence-carried-forward).
+Every **new M0.5** native case is **REQUIRES OWNER VERIFICATION**. No personally
+verified native pass is recorded by Codex. The automated smoke is separate
+evidence. Use physical mouse input, not DevTools dispatch, CDP, scripts,
 Electron sendInputEvent, remote input automation or the `--smoke` option.
 
 ## Setup and evidence
@@ -131,3 +134,70 @@ retain the failure logs. Do not convert `dragend none`, lost capture, cursor
 position or timeout into detach. The next decision is a separately authorized
 narrow Windows input/window-hit-test investigation versus an owner-approved change
 in drag UX. No native bridge or reduced requirement is authorized by this checklist.
+
+## M0.5 VS Code-inspired guarded probe A-K
+
+This is the new strategy's bounded test plan; earlier M0 observations do not count
+as its native pass. Status for every row: **REQUIRES OWNER VERIFICATION**.
+
+1. Run `node experiments/m0-tab-drag/launch.cjs` without `--smoke`. Confirm A/B
+   visible and available; use V01–V05 if necessary. Select **VS Code-inspired
+   guarded probe (M0.5)**, and verify the warning that no third window will open.
+   Arrange both strips side by side and fully visible. Keep the printed owned
+   run directory; record Electron/Chromium/Windows and real display scales.
+2. Reset before each trial. Press primary mouse on A-1 and pause about 250ms to
+   allow token preparation, then drag. Repeat A→B and B→A where applicable.
+   Emptying/moving fake tabs is volatile; there is never reader data. Relaunch
+   after a participant closes. Existing pointer/HTML modes remain available for
+   targeted comparison; do not switch strategies during a trial.
+3. Record **ground truth separately**: what physical button/key was pressed or
+   released, which app owned keyboard focus, cursor surface, trial ID, direction
+   and real monitor scales. Do not feed a ground-truth label into the detector.
+   Preserve raw `events.ndjson`; identify seq ranges and dragId. The log's seq/ms
+   is main receipt order, not an OS-global event order. Record any lost/not-delivered
+   keys or stalled dragend as missing evidence, not successful cancellation.
+4. Record native outcome and detector classification separately. No transfer or
+   new window on an outside end is expected safety behavior, **not a successful
+   desktop-detachment implementation**. `upstreamWouldOpen=true` only reports the
+   inspected guard result, never proof of release or where Windows dropped.
+5. Bound the run: interleave **20 C and 20 D trials**, then **10 E trials**. For A,
+   B and F–K, use five repetitions per available direction/configuration. Missing
+   equipment or an OS operation that cannot be performed gets **Not tested**.
+   Preserve failures; do not keep retrying until only passing samples remain.
+
+| Case | Exact physical test | Evidence / expected safe behavior |
+| --- | --- | --- |
+| A — Reorder | Drag A-1 after A-3 and release in the strip; drag back before A-2. | One `APPLICATION_DROP_COMMITTED` per recipient drop; each fake ID appears once, no new window. Record native ghost/cursor as visuals only. |
+| B — Attach | Drag from A to B's visible strip, hover for one second, release; reverse. Repeat end/middle slots. | Capture-phase `vscode-window-track` over/drop, eligible `drop-evidence`, then one `vscode-html-target-drop`. Token is consumed once. Source node remains until native dragend; late dragend must not detach. |
+| C — Desktop release | With source keyboard focus, drag onto clearly empty exposed desktop, hold one second, release primary mouse **without Escape**. | Record source `dom-drag`, app leave/global/per-window hints, `dom-dragend`, main cursor/focus and `vscode-detach-assessment`. Source stays put. Record whether candidate=true or a guard suppresses it; neither proves release. |
+| D — Escape over desktop | Use the same desktop spot/path as C. Keep primary held, press Escape, wait one second, then release primary. Do not click elsewhere until evidence is recorded. | Compare with paired C. If Escape is delivered, expect terminal `CANCELLED_ESCAPE_OBSERVED`; no later button release/end may move anything. If Escape is not delivered, record the actual assessment/missing terminal, especially a candidate identical to C. |
+| E — Escape with external keyboard focus | Begin the same drag, Alt+Tab to Notepad/Explorer so it owns keyboard focus, move/keep cursor over desktop, press Escape while primary remains held, wait one second, then release. Return only after the trial. | Record actual focus/Alt/Tab/key/capture/end delivery. A silent Escape is not a release. If Windows cancels drag during Alt+Tab before Escape, record that sequence rather than calling the intended Escape scenario a pass. |
+| F — External surface | Drag over File Explorer client area and release. Repeat over Notepad client area and title bar, including prohibited-cursor areas. | No app recipient drop, no transfer/new window. Record if `upstreamWouldOpen` matches C despite a different surface. External dropEffect none/move cannot prove desktop release. |
+| G — Covered destination | Cover B's strip fully with Notepad; keep A visible. Drag A-1 and release at covered B strip coordinates. | No B recipient drop or ownership move. Compare real window tracking with `eligibleWindowRects` hints. A rectangle hit is not actual z-order evidence. If tracker says no app over but rectangle includes B, retain both observations. |
+| H — Taskbar | Drag from source and release over empty Windows taskbar space, then over a taskbar app button if acceptable. | No transfer/new window. Record any taskbar preview/focus changes and whether end guards look identical to C/F. |
+| I — Alt+Tab | Hold drag, Alt+Tab away and back without Escape; repeat releasing while external app is focused. | Main/DOM focus signals and eventual terminal classification; blur is uncertainty, not release/cancel proof. A later explicit app drop may commit if the token remains valid; lifecycle cancellation is terminal. |
+| J — Displays/DPI | Repeat C/D and B in both directions across available physical 100/125/150/200% display pairs; include a negative-origin display if already configured. | Record DOM screen/client data, cursor DIP/physical/roundtrip, focused native bounds, matching display and exact terminal sequence. Browser zoom/emulation is not mixed-DPI evidence. Unavailable pairs get Not tested. Wrong slot/target or mismatched cancellation is Failed. |
+| K — Lifecycle | From A schedule Close other, promptly drag from A and hold past three seconds. Relaunch; schedule Close this from A and repeat. For target minimize schedule Minimize other in A. For source minimize, schedule Minimize other in B, then immediately start the drag in A. | Compare scheduled/fired timestamps with native drag termination. Closing/minimizing either participant cancels; no phantom tab/window. If the OS drag loop delays the scheduled action until after termination, mark concurrent lifecycle scenario Not tested. Peer remains usable; relaunched windows remain equal. |
+
+For C/D/E the primary question is whether **all** runs expose an independent,
+reliable cancellation/release distinction, including delayed button release after
+Escape. `dragend none`, source `drag` buttons, missing keydown, timeout, lost
+capture and cursor movement alone are not that distinction. If traces overlap,
+record **Failed as a desktop-detachment discriminator**, while also recording
+that preserving ownership passed its safety requirement.
+
+Record each result using:
+
+| Date / observer | Run / seq range / dragId | Case / repetition / mode | Ground truth / keyboard focus / surface | Monitors/scales | Exact delivered event sequence | Classification / upstreamWouldOpen | Ownership/window result | Native status / safety status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| — | — | New A–K pending | — | — | — | — | — | REQUIRES OWNER VERIFICATION |
+
+Use **Personally verified native pass** only for behavior you physically
+observed; **Owner-reported native pass** records the earlier findings supplied
+to Codex. Other statuses remain Automated pass, Failed, Not tested and Requires
+owner/manual verification. Never promote a synthetic result to a native pass.
+
+Stop after the bounded matrix. If ambiguous cases remain, return the trace ranges
+for a platform/UX decision. Do not treat continued heuristic tuning, timed detach,
+phantom auxiliary windows or a native move loop as an automatically authorized
+next step. No production data, Setup.exe or new native dependency is involved.

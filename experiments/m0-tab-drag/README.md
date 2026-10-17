@@ -50,6 +50,23 @@ synchronously into a custom MIME format; no labels, paths, files or content are
 included. Pointer mode captures the source strip and main samples cursor DIP at
 10 Hz for diagnostics and again when processing a delivered release.
 
+The third option is **VS Code-inspired guarded probe (M0.5)**. It shares the
+native HTML/token attachment adapter and adds window-wide capture-phase drag
+tracking through authenticated main IPC. For an outside end it logs
+`vscode-detach-assessment`, including `upstreamWouldOpen`, focused-window native
+containment, eligible rectangle hints, source focus loss and a classification.
+These are observations, not a positive desktop-release detector. This mode
+**never moves an outside-ended tab or creates a third window**, even when the
+upstream-style guards would allow one. Source ownership and exactly-once token
+consumption are retained. DropEffect none/move, missing Escape, timeout, lost
+capture, tracker booleans and cursor position are never sufficient detachment proof.
+
+See the [M0.5 source study/report](../../docs/MULTI_WINDOW_M0_5_FEASIBILITY.md) for
+the pinned VS Code implementation and the [exact A–K test plan](MANUAL_CHECKLIST.md#m05-vs-code-inspired-guarded-probe-a-k).
+The owner has now reported real M0 HTML attachment/occlusion passes and a pointer
+occlusion failure. Those findings are recorded separately from new M0.5 checks;
+we have not inferred native correctness of the new strategy from them.
+
 Pointer cross-window placement is intentionally an **experimental geometric
 transfer**. Its outcome explicitly says `unverified-occlusion`: another application's
 covering window is invisible to this test's hit test. Overlapping app strips are
@@ -69,6 +86,7 @@ Automated checks (separate from the unchanged production test discovery):
 
 ```powershell
 node --test experiments/m0-tab-drag/model.test.cjs
+node --test experiments/m0-tab-drag/vscode.test.cjs
 node experiments/m0-tab-drag/launch.cjs --smoke
 ```
 
@@ -103,6 +121,8 @@ production WindowCoordinator or M7 transfer implementation.
 | `preload.cjs` | Frozen named harness intents and stripped subscription events |
 | `model.cjs` | Deterministic fake-placement/token/outcome logic, validation and geometry |
 | `model.test.cjs` | Node test runner coverage without Electron or production modules |
+| `vscode.test.cjs` | Focused M0.5 tracker, ambiguous outcomes and ownership safety checks |
 | `index.html`, `renderer.js`, `style.css` | Fake strips, the two gesture adapters, recent evidence |
 | `smoke.cjs` | Explicitly automated Electron wiring checks, loaded only with `--smoke` |
+| `vscode-smoke.cjs` | M0.5 synthetic DOM/IPC continuation invoked by the existing smoke |
 | `MANUAL_CHECKLIST.md` | Native Windows procedure and blank evidence ledger |

@@ -18,14 +18,17 @@ const reasons = ['escape', 'pointercancel', 'lostpointercapture', 'buttons-lost'
 const signals = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel',
   'gotpointercapture', 'lostpointercapture', 'keydown-escape', 'blur', 'focus',
   'visibility-hidden', 'visibility-visible', 'pagehide', 'dragstart', 'dragenter',
-  'dragover', 'dragleave', 'drop', 'dragend', 'secondary-button'];
+  'dragover', 'dragleave', 'drop', 'dragend', 'drag', 'window-pointerup', 'secondary-button'];
 
 /** Exact bounded harness-only messages. No paths, URLs, channels or window IDs. */
 function validRequest(r) {
   if (!r || typeof r !== 'object') return false;
   switch (r.kind) {
     case 'snapshot': case 'reset': case 'show-a': return exact(r, ['kind']);
-    case 'mode': return exact(r, ['kind', 'mode']) && ['pointer', 'html'].includes(r.mode);
+    case 'mode': return exact(r, ['kind', 'mode']) && ['pointer', 'html', 'vscode'].includes(r.mode);
+    case 'track-drag': return exact(r, ['kind', 'dragId', 'event', 'local', 'trusted']) &&
+      Number.isSafeInteger(r.dragId) && r.dragId > 0 && ['over', 'leave', 'drop'].includes(r.event) &&
+      point(r.local) && typeof r.trusted === 'boolean';
     case 'schedule': return exact(r, ['kind', 'action']) && ['close-self', 'close-peer', 'minimize-peer'].includes(r.action);
     case 'prepare': return exact(r, ['kind', 'tab']) && typeof r.tab === 'string' && /^[AB]-[1-3]$/.test(r.tab);
     case 'start': return exact(r, ['kind', 'token', 'distance']) && token(r.token) && finite(r.distance) && r.distance >= 0;
@@ -73,7 +76,7 @@ function candidatesAt(windows, cursor) {
 class Experiment {
   constructor({ now = Date.now, issueToken, emit = () => {} }) {
     this.now = now; this.issueToken = issueToken; this.emit = emit;
-    this.mode = 'pointer'; this.active = null; this.reset();
+    this.mode = 'pointer'; this.active = null; this.nextDragId = 0; this.reset();
   }
   reset() {
     this.endAny('reset');
@@ -81,10 +84,18 @@ class Experiment {
   }
   snapshot() {
     return { mode: this.mode, windows: Object.fromEntries(this.windows),
-      active: this.active && { source: this.active.source, tab: this.active.tab, stage: this.active.stage, interrupted: this.active.interrupted } };
+      active: this.active && { source: this.active.source, tab: this.active.tab, stage: this.active.stage,
+        mode: this.active.mode, dragId: this.active.dragId, interrupted: this.active.interrupted,
+        overWindows: [...this.active.overWindows], upstreamDraggedOver: this.active.upstreamDraggedOver } };
   }
   endAny(outcome) {
-    if (this.active) this.emit({ type: 'outcome', outcome, source: this.active.source, tab: this.active.tab });
+    if (this.active) this.emit({ type: 'outcome', outcome, source: this.active.source, tab: this.active.tab,
+      dragId: this.active.dragId, ...(this.active.mode === 'vscode' ? {
+        // Historical renderer cleanup also uses reason='escape'. Only an actual
+        // delivered key signal from main/DOM gets the observed-Escape label.
+        classification: ['cancelled-main-escape', 'cancelled-dom-escape'].includes(outcome)
+          ? 'CANCELLED_ESCAPE_OBSERVED' : 'CANCELLED_OR_AMBIGUOUS_NO_TRANSFER',
+      } : {}) });
     this.active = null;
   }
   current(value) {
@@ -97,7 +108,8 @@ class Experiment {
     this.endAny('superseded-preparation');
     const value = this.issueToken();
     if (!token(value)) throw new Error('Invalid token factory');
-    this.active = { token: value, source, tab, mode: this.mode, stage: 'prepared',
+    this.active = { token: value, source, tab, mode: this.mode, stage: 'prepared', dragId: ++this.nextDragId,
+      overWindows: new Set(), upstreamDraggedOver: false,
       sourceRevision: this.windows.get(source).revision, expires: this.now() + TTL, interrupted: false };
     return value;
   }
@@ -120,7 +132,8 @@ class Experiment {
     const adjusted = from === to && slot > oldIndex ? slot - 1 : slot;
     to.tabs.splice(adjusted, 0, a.tab);
     from.revision++; if (to !== from) to.revision++;
-    this.emit({ type: 'outcome', outcome, source: a.source, target, tab: a.tab, slot: adjusted });
+    this.emit({ type: 'outcome', outcome, source: a.source, target, tab: a.tab, slot: adjusted, dragId: a.dragId,
+      ...(a.mode === 'vscode' ? { classification: 'APPLICATION_DROP_COMMITTED' } : {}) });
     this.active = null; return true;
   }
   release(source, value, evidence, candidates) {
@@ -138,10 +151,43 @@ class Experiment {
   }
   drop(target, value, slot) {
     const a = this.current(value);
-    if (!a || a.mode !== 'html' || a.stage !== 'dragging') return false;
+    if (!a || !['html', 'vscode'].includes(a.mode) || a.stage !== 'dragging') return false;
     // A Chromium drop is a distinct target-delivered signal. Source blur alone
     // does not invalidate it; terminal Escape/capture cancellation does.
-    return this.move(a, target, slot, 'html-target-drop');
+    return this.move(a, target, slot, a.mode === 'vscode' ? 'vscode-html-target-drop' : 'html-target-drop');
+  }
+  /** Main authenticates the recipient. dragId correlates hover, never authorizes a move.
+   * This intentionally records VS Code's last-over/last-leave boolean as well as
+   * per-window hints. Neither is a native topmost-window or cancellation oracle.
+   */
+  trackDrag(window, dragId, event) {
+    this.current('');
+    const a = this.active;
+    if (!a || a.mode !== 'vscode' || a.stage !== 'dragging' || a.dragId !== dragId || !this.windows.has(window)) return false;
+    if (event === 'over') a.overWindows.add(window);
+    else if (event === 'leave') a.overWindows.delete(window);
+    if (event !== 'drop') a.upstreamDraggedOver = event === 'over';
+    this.emit({ type: 'vscode-window-track', window, event, dragId, overWindows: [...a.overWindows],
+      upstreamDraggedOver: a.upstreamDraggedOver, trackerIsHeuristic: true });
+    return true;
+  }
+  /** Observe what the inspected upstream guards WOULD allow, without taking them
+   * as proof of release. The same input can describe Escape or an external app.
+   * This bounded strategy never creates a window or moves an outside-ended tab.
+   */
+  finishVscode(source, value, evidence) {
+    const a = this.current(value);
+    if (!a || a.source !== source || a.mode !== 'vscode' || a.stage !== 'dragging') return false;
+    const wouldOpen = !a.upstreamDraggedOver && !evidence.focusedWindowContainsCursor;
+    const classification = wouldOpen
+      ? (a.interrupted ? 'AMBIGUOUS_OUTSIDE_AFTER_FOCUS_LOSS' : 'AMBIGUOUS_OUTSIDE_CANDIDATE')
+      : 'WORKBENCH_GUARD_SUPPRESSES_CANDIDATE';
+    this.emit({ type: 'vscode-detach-assessment', dragId: a.dragId, source, tab: a.tab,
+      classification, upstreamWouldOpen: wouldOpen, overWindows: [...a.overWindows],
+      upstreamDraggedOver: a.upstreamDraggedOver, interrupted: a.interrupted, ...evidence,
+      desktopReleaseProven: false, externalDestination: 'unknown', action: 'preserve-source-no-window' });
+    this.emit({ type: 'outcome', outcome: 'vscode-outside-end-preserved', classification, dragId: a.dragId, source, tab: a.tab });
+    this.active = null; return true;
   }
   end(source, value, reason) {
     const a = this.current(value);

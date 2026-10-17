@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('m0', Object.freeze({
   reset: () => ipcRenderer.invoke('m0:request', { kind: 'reset' }),
   showWindowA: () => ipcRenderer.invoke('m0:request', { kind: 'show-a' }),
   mode: mode => ipcRenderer.invoke('m0:request', { kind: 'mode', mode }),
+  trackDrag: (dragId, event, local, trusted) => ipcRenderer.invoke('m0:request', { kind: 'track-drag', dragId, event, local, trusted }),
   closeSelfLater: () => ipcRenderer.invoke('m0:request', { kind: 'schedule', action: 'close-self' }),
   closePeerLater: () => ipcRenderer.invoke('m0:request', { kind: 'schedule', action: 'close-peer' }),
   minimizePeerLater: () => ipcRenderer.invoke('m0:request', { kind: 'schedule', action: 'minimize-peer' }),
