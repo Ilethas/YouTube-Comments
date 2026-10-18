@@ -1,10 +1,18 @@
 # Documentation map
 
+[ADR 0031](decisions/0031-independent-duplicate-discussion-tabs.md) implements M5: independent duplicate video/Community discussion tabs inside
+one native window. Semantic source queues checkpoint before atomic copying;
+versioned scoped hydration precedes mount; DOM IDs and interactions belong to the
+view. Shared content/seen/Undo/Refresh remain item-owned. Schema stays **13**.
+See [UI](UI_AND_NAVIGATION.md) for Duplicate versus Library Open/resume policy and
+[testing](TESTING.md) for the current evidence. M6-M9 remain future work.
+
+
 [ADR 0030](decisions/0030-persistent-window-topology-and-view-instances.md) implements
 M4: schema **13**, persistent windows and opaque discussion tab/view instances,
 per-window topology, independent intent/collapse CAS and owned dormant resume
 pointers. Migration preserves exact schema-12 topology and optional state for every
-stored item. Production still opens one reader; M5-M7 remain future work. See
+stored item. Production still opens one reader; M5 is implemented above; M6-M7 remain future work. See
 [testing](TESTING.md) for the final 1,031-test, 14-harness and packaged-EXE evidence.
 
 [ADR 0029](decisions/0029-global-profile-and-window-lifecycle-safety.md) implements
@@ -23,7 +31,7 @@ The two-renderer test interface is confined to disposable Electron harnesses.
 [ADR 0027](decisions/0027-secure-window-coordination-foundation.md) implements M1:
 main-owned window registration/document leases, one secured factory, authenticated
 IPC caller context and originating native dialogs. Production still opens one
-reader, with schema 12 at that milestone. M5-M9 remain future work. The owner accepts provisional
+reader, with schema 12 at that milestone. M5 is implemented above; M6-M9 remain future work. The owner accepts provisional
 HTML DnD outside detachment where Escape may detach; M8 native testing is pending.
 
 [M0 drag feasibility](MULTI_WINDOW_M0_FEASIBILITY.md) records the isolated two-window

@@ -230,6 +230,19 @@ export class DiscussionViewSession {
     this.readerSettled();
     return Promise.all([this.saveQueue?.flush(), this.collapseQueue?.flush()]).then(() => undefined);
   }
+  /** Settle accepted evaluation and both writers at the semantic capture point.
+   * A shared Refresh can finish while a save is awaiting its acknowledgment. */
+  async checkpointForDuplicate(): Promise<boolean> {
+    do {
+      if (this.state.pending) await new Promise<void>(resolve => {
+        const unsubscribe = this.subscribe(() => { if (!this.state.pending) { unsubscribe(); resolve(); } });
+      });
+      if (this.disposed || this.draining) return false;
+      await this.flush();
+      if (this.disposed || this.draining || this.state.saveFailed || this.state.collapseSaveFailed) return false;
+    } while (this.state.pending || this.saveQueue?.dirty || this.collapseQueue?.dirty);
+    return true;
+  }
   /** Freeze asynchronous timers before waiting for accepted worker intent. The
    * checkpoint uses the captured logical anchor, never an unmount side effect. */
   freeze(capture = true): void {
@@ -318,7 +331,7 @@ export class DiscussionViewSession {
     } else this.state = { ...this.state, pending: false, error: outcome.error };
     this.changed();
   }
-  dispose(): void { this.disposed = true; this.generation++; this.saveQueue?.dispose(); this.collapseQueue?.dispose(); this.executor.dispose(); }
+  dispose(): void { this.state = { ...this.state, pending: false }; this.changed(); this.disposed = true; this.generation++; this.saveQueue?.dispose(); this.collapseQueue?.dispose(); this.executor.dispose(); }
 }
 
 /** Restore top explicitly; otherwise use displayed identities in current sorted

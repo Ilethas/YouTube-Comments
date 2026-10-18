@@ -1,5 +1,24 @@
 # Architecture
 
+## Independent duplicate discussion tabs (M5)
+
+[ADR 0031](decisions/0031-independent-duplicate-discussion-tabs.md) enables multiple independent discussion views inside the one production
+native window, using schema 13. Main allocates a new owned instance after source
+queues settle and source/topology CAS checks succeed. The semantic copy and
+placement/activation/resume update commit atomically. New views hydrate through a
+versioned, single-view read before M2 publishes their topology; ordinary duplicate
+notifications do not reload unrelated comments. Existing sessions never rehydrate.
+
+ViewId owns the query executor/result, drafts/applied criteria, sort/collapse,
+viewport/selection, save queues and local interactions. ItemId retains shared
+comments, seen/revisions, source/NEW/history and one guarded Undo. Refresh fans out
+to each instantiated view's own applied query. Namespaced article/description IDs,
+owned-panel reveal checks and explicit active state prevent focus/thumbnail work
+from targeting hidden copies. M3 drains all instantiated views and forbids duplicate
+creation during its global barrier. Native windows/geometry/transfer remain M6-M8.
+Historical milestone sections below keep their original scope.
+
+
 ## Persistent window and view identities (M4, ADR 0030)
 
 The current schema is **13**. Main owns one repository/service and still constructs
@@ -24,7 +43,7 @@ legacy discussions and every authoritative shared field. Historical backup shape
 verified safety and staged upgrades remain exact. See
 [ADR 0030](decisions/0030-persistent-window-topology-and-view-instances.md) and
 [DATABASE](DATABASE.md) for tables, constraints and mapping. No native geometry is
-recorded. M5 owns duplicate UI and descendant DOM namespaces; M6 owns extra native
+recorded. M5 duplicate UI and descendant DOM namespaces are implemented above; M6 owns extra native
 windows and full restore policy; M7 owns transfer. The following milestone sections
 retain their historical scope and are superseded here for identity/schema details.
 
@@ -83,7 +102,7 @@ from committed content. See ADR 0028 for exact limits and response reconciliatio
 
 Production still opens one reader. Test-only second windows share the actual
 service/repository. M3 adds all-window backup/restore and close/reload queue barriers
-as described above. M4 supplies persistent identity separately; duplicate UI,
+as described above. M4 supplies persistent identity and M5 supplies duplicate UI;
 extra-window UI and transfer remain later milestones.
 
 ## Secure window coordination (M1, ADR 0027)
@@ -255,7 +274,7 @@ persisted sort, restores displayed selection without DOM focus, and resolves the
 anchor by application ID/index plus row offset. Navigation and ruler share the same
 sorted data projection. No result ID arrays, measurements or geometry persist.
 
-One asynchronous serialized/coalesced queue per discussion writes complete current
+One asynchronous serialized/coalesced queue per discussion view writes complete current
 intent through `saveDiscussionView`, with debounce for drafts/scroll and prompt
 Apply/sort/selection saves. Switch/close flush useful anchors. Failed acknowledgments
 stay dirty for retry and show localized feedback while reading remains available.

@@ -13,7 +13,13 @@ const channelId = 'UC' + 'a'.repeat(22);
 
 if (process.versions.electron) {
   require('./thumbnail-fixture-network.cjs').installThumbnailNetwork();
-  const { app, shell } = require('electron');
+  const { app, shell, ipcMain } = require('electron');
+  const rejected = [], handle = ipcMain.handle.bind(ipcMain);
+  ipcMain.handle = (channel, handler) => handle(channel, async (...args) => {
+    const result = await handler(...args);
+    if (result?.ok === false) { rejected.push({ channel, code: result.error?.code }); if (rejected.length > 12) rejected.shift(); }
+    return result;
+  });
   const opened = [];
   shell.openExternal = async url => { opened.push(url); };
   const root = process.env.YOUTUBE_COMMENTS_DEMO_ROOT;
@@ -21,9 +27,16 @@ if (process.versions.electron) {
   // Large-profile bootstrap/clone time is measured separately (Q-21). This is a
   // hang guard, consistent with the existing large backup/restoration harnesses.
   const watchdog = setTimeout(() => { console.error('Reader action smoke timed out at '+step); app.exit(1); }, 180000);
+  app.on('will-quit', () => clearTimeout(watchdog));
   app.on('browser-window-created', (_event, window) => {
     window.hide(); const contents = window.webContents; contents.setBackgroundThrottling(false);
-    contents.once('did-finish-load', () => verify().then(() => { clearTimeout(watchdog); app.quit(); }).catch(error => {
+    contents.once('did-finish-load', () => verify().then(() => {
+      step = 'controlled Quit'; app.quit();
+      setTimeout(async () => {
+        try { console.error('Reader action Quit did not finish', { rejected, lifecycle: await contents.executeJavaScript('window.reader.lifecycle.current()'), alerts: await contents.executeJavaScript('Array.from(document.querySelectorAll("[role=alert]")).map(e=>e.textContent)') }); } catch { /* Process may already be closing. */ }
+        app.exit(1);
+      }, 25000);
+    }).catch(error => {
       // Assertions never print captured URLs or translated text.
       console.error('Reader action smoke:', error.message.split('\n')[0]);
       console.error(error.stack.split('\n').filter(line=>line.trimStart().startsWith('at ')).slice(0,2).join('\n'));
@@ -40,7 +53,7 @@ if (process.versions.electron) {
       const before = await js('window.reader.bootstrap().then(r=>r.ok ? {ok:true,value:{items:r.value.items,preferences:r.value.preferences,comments:Object.fromEntries(Object.entries(r.value.comments).map(([id,rows])=>[id,rows.slice(0,4)]))}} : r)'); assert.equal(before.ok, true);
       const item = before.value.items.find(item => item.sourceId === 'VidDemo_001');
       const comment = before.value.comments[item.id].find(comment => comment.source.commentId === sourceId);
-      const article = `document.getElementById(${JSON.stringify('comment-'+encodeURIComponent(comment.id))})`;
+      const article = `Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(comment.id)})`;
       const seen = () => {
         // Main-side test inspection only. Never expose SQL to the renderer or
         // repeatedly serialize the complete 50k bootstrap just to check four rows.
@@ -72,6 +85,10 @@ if (process.versions.electron) {
         assert.equal(before.value.preferences.appearance,'dark');
         await js('document.getElementById("settings-toggle").click()');
         await wait("document.querySelectorAll('.preferences select')[2]?.value==='de'", 'restored German preference');
+        // Finish the Settings activation and its lazy helper probes before this clean-Quit assertion.
+        // Accepted queued mutation drains are exercised separately by the M3 Quit harness.
+        await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+        await wait("!document.querySelector('.tabs button:disabled') && !document.querySelector('.helper-tool[aria-busy=true]')", 'Settings acknowledgments settled');
         assert.equal(opened.length,0); console.log('Reader action restart PASS: persisted German target, Polish/dark, no automatic browser request'); return;
       }
       async function activate(selector) {

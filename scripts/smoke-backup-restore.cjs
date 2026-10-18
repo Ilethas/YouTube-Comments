@@ -74,12 +74,12 @@ if (process.versions.electron && process.type === 'browser') {
     console.log(`Backup Electron ${phase} startup ready: ${(performance.now() - processStarted).toFixed(1)} ms`);
     const invoke = async (name, payload) => {
       if (['saveDiscussionView','setDiscussionCollapse'].includes(name)) {
-        const state = (await js('window.reader.bootstrap()')).value;
+        const state = (await js('window.reader.getSharedMetadata()')).value;
         const id = viewId(state,payload.itemId), { itemId: _item, ...intent } = payload;
         payload = { ...intent, viewId: id, expectedRevision: state.viewInstances[id][name==='saveDiscussionView'?'intentRevision':'collapseRevision'] };
       }
       if (['openLibrary','openSettings','openStoredItem','activateTab','closeTab','moveTab'].includes(name)) {
-        const state = (await js('window.reader.bootstrap()')).value;
+        const state = (await js('window.reader.getSharedMetadata()')).value;
         payload = { ...payload, expectedRevision: state.workspace.revision };
       }
       // Capture the acknowledged descriptor/state before this sequential test intent.
@@ -142,18 +142,21 @@ if (process.versions.electron && process.type === 'browser') {
       await invoke('setDiscussionCollapse', { itemId: 'video-demo', kind: 'all', collapsed: phase === 'seed' });
       if (phase === 'seed') await invoke('setDiscussionCollapse', { itemId: 'video-demo', kind: 'comments', ids: ['v1'], collapsed: false });
       await invoke('toggleSeen', { itemId: 'video-demo', commentId: 'v1', subtree: false });
-      await invoke('undoSeen', { itemId: 'post-demo' }); await invoke('closeTab', { tabId: viewId((await js('window.reader.bootstrap()')).value, 'post-demo') });
+      await invoke('undoSeen', { itemId: 'post-demo' }); await invoke('closeTab', { tabId: viewId((await js('window.reader.getSharedMetadata()')).value, 'post-demo') });
       await invoke('updatePreferences', { appearance: 'light' });
       const state = await metadata(), removable = state.items.find(item => item.removable && !item.isDemo);
       if (removable) await remove(removable.id);
       fs.writeFileSync(path.join(root, 'previous.json'), JSON.stringify(data(database(root))));
+      console.log('Backup restore mutations prepared');
       confirmation = false; const before = data(database(root));
       assert.equal((await invoke('restoreBackup')).status, 'cancelled'); assert.deepEqual(data(database(root)), before);
+      console.log('Backup restore cancellation verified');
       confirmation = true;
       fs.writeFileSync(path.join(root, 'bad.sqlite'), 'not SQLite'); openSource = path.join(root, 'bad.sqlite');
       const invalid = await js('window.reader.restoreBackup()'); assert.equal(invalid.error.code, 'INVALID_BACKUP');
       await wait("!document.querySelector('.app-shell').inert");
       assert.deepEqual(data(database(root)), before); openSource = snapshot;
+      console.log('Backup invalid candidate rejected; starting confirmed restore');
       const begin = performance.now();
       await invoke('restoreBackup');
       const operationMs = performance.now() - begin;

@@ -1,5 +1,16 @@
 # Multi-window readiness audit
 
+**M5 progress, 2026-10-18:** [ADR 0031](decisions/0031-independent-duplicate-discussion-tabs.md) implements explicit independent Duplicate Tab
+within one native window, source semantic checkpoint/copy with fresh evaluation,
+dynamic scoped hydration, view-owned DOM/accessibility identity and active-work
+gating. Shared item seen/Undo/Refresh/removal retain M2/M3/M4 contracts. Schema is
+**13**; native production startup remains one reader. Library Open follows the
+local resume pointer with deterministic first-open fallback. M6 native windows/
+restore-set/geometry, M7 transfer, M8 native dragging and M9 aggregate scale/release
+remain future work. Earlier audit findings and milestone ledgers below are
+historical; current verification is in [TESTING](TESTING.md).
+
+
 **M4 progress, 2026-10-18:** persistent window/tab/view topology and the preserving
 schema-12 to 13 migration are implemented in
 [ADR 0030](decisions/0030-persistent-window-topology-and-view-instances.md).
@@ -7,7 +18,7 @@ Production still opens one reader. Intent and collapse use separate CAS lanes;
 closed instances have retained ownership and explicit per-window resume pointers.
 M2/M3 now scope test participants to independent persistent windows/views.
 No native geometry evidence or full restore-set policy is recorded; M5 duplicate
-UI, M6 native windows/geometry and M7 transfer remain unimplemented. Historical
+UI is implemented above. M6 native windows/geometry and M7 transfer remain unimplemented. Historical
 audit/proposal findings below retain their original dates; see [TESTING](TESTING.md)
 for the final 1,031-test, 14-harness and extracted-EXE verification. M4 awaits review.
 
@@ -16,11 +27,11 @@ Follow-up: M2 ordered shared synchronization is implemented by
 [ADR 0028](decisions/0028-ordered-shared-state-synchronization.md). Schema remains 12 and production still opens one reader.
 M3 lifecycle barriers are implemented by
 [ADR 0029](decisions/0029-global-profile-and-window-lifecycle-safety.md).
-M4 identities are implemented by ADR 0030; M5+ features remain future work.
+M4 identities are implemented by ADR 0030; M5 is implemented above; M6+ features remain future work.
 M1 is implemented by
 [ADR 0027](decisions/0027-secure-window-coordination-foundation.md). The audit below
 remains the historical baseline; its mutable-mainWindow findings describe the
-pre-M1 source. Public startup still creates one reader; M5-M9 remain future work.
+pre-M1 source. Public startup still creates one reader; M5 is implemented above; M6-M9 remain future work.
 
 Research date: 2026-10-17 (Europe/Warsaw). Source baseline:
 `bc5493801d499d99b8c6214b3a94550500f9ec63`, schema **12**, Electron **44.4.5**,

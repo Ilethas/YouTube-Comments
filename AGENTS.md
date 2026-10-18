@@ -33,7 +33,7 @@ ADR 0024 adds selection, menus and explicit selected/prefix scopes.
   IDs cannot grant ownership. Topology uses CAS; intent and collapse use separate
   CAS lanes, including M3 sealed checkpoints. M2 epochs/commit revisions and all
   shared item/seen/history/Undo semantics remain. Production opens ONE reader;
-  no Duplicate/New Window UI. M5 owns duplicate UI/descendant DOM namespaces, M6
+  M5 adds Duplicate Tab and per-view descendant DOM namespaces (ADR 0031), with no New Window UI. M6 owns
   restore-set/geometry/monitor policy and M7 atomic transfer/generation handoff.
 
 - [ADR 0029](docs/decisions/0029-global-profile-and-window-lifecycle-safety.md)
@@ -44,8 +44,8 @@ ADR 0024 adds selection, menus and explicit selected/prefix scopes.
   rows when clean. Initial native Close retains authority until successful drain;
   failed or later-cancelled close must stay usable. A crash/uncontrolled reload
   retains only committed data. Production still opens ONE reader. M4 now scopes test renderers to separate
-  persisted windows and independently owned discussion views. Do not claim
-  independent duplicate views, full session/geometry restoration or monitor safety.
+  persisted windows and independently owned discussion views. M5 adds independent
+  duplicates (ADR 0031); do not claim full session/geometry restoration or monitor safety.
 
 - [ADR 0028](docs/decisions/0028-ordered-shared-state-synchronization.md) implements
   M2 with repository post-COMMIT epoch/revisions, bounded fixed notifications,
@@ -179,5 +179,8 @@ ADR 0024 adds selection, menus and explicit selected/prefix scopes.
 - Keep AI summarization, sentiment, automatic translation, posting/replying, likes/subscriptions, account integration, and other unrelated features outside the current scope.
 
 ## Useful commands at this milestone
+
+After a Forge build, `npm.cmd run test:m5` runs the disposable duplicate-tab,
+two-renderer, restart and backup/restore harness. It is also in `test:electron`.
 
 `npm test` runs deterministic domain/localization/component, IPC, packaging-check and temporary SQLite tests (Node 24.13+). `npm run typecheck` and `npm run lint` check source. `npm run build:renderer` builds the renderer only. `npm.cmd run package -- --platform=win32 --arch=x64` produces and validates a fresh application; `npm.cmd run make -- --platform=win32 --arch=x64 --targets=@electron-forge/maker-zip` also creates/verifies the ZIP. `npm.cmd run make:squirrel` builds only Squirrel Setup/full NuGet/RELEASES; `npm.cmd run make:zip` builds only ZIP. `npm run verify:artifacts -- --squirrel` inspects both distributions without executing an installer. `npm run test:packaged` tests the extracted unmodified EXE with disposable data/native dialogs/actual relaunch; optional installed-helper live checks are documented in PACKAGING. `npm run test:electron` verifies built-entry IPC/persistence across disposable restarts. `npm start` uses isolated development data. On restricted PowerShell use `npm.cmd`. See [testing status](docs/TESTING.md). Do not install a stack or implement features merely to validate documentation.

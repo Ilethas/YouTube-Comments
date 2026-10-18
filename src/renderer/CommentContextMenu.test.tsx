@@ -39,3 +39,13 @@ it('one active item follows genuine pointer movement and keyboard focus, skips d
   expect(dismiss).toHaveBeenCalledTimes(3);
   view.unmount(); origin.remove();
 });
+
+it.each(['reader-panel', 'tabs'])('a menu anchored in %s ignores sibling-reader scrolling and dismisses only when its own origin moves', ownerClass => {
+  const owner = document.createElement('div'), sibling = document.createElement('main'), origin = document.createElement('button');
+  owner.className = ownerClass; sibling.className = 'reader-panel'; sibling.hidden = true; owner.append(origin); document.body.append(owner, sibling);
+  const dismiss = vi.fn();
+  const view = render(<CommentContextMenu target={{ id: 'view-owned', x: 10, y: 20, origin, selectionText: '' }} items={[{ label: 'Action', icon: 'copy', run: vi.fn() }]} locale="en" dismiss={dismiss} />);
+  fireEvent.scroll(sibling); expect(dismiss).not.toHaveBeenCalled();
+  fireEvent.scroll(owner); expect(dismiss).toHaveBeenCalledOnce();
+  view.unmount(); owner.remove(); sibling.remove();
+});

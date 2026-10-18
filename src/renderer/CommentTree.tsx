@@ -10,6 +10,7 @@ import { CommentAction } from './CommentActions';
 import type { OpenCommentAction } from './CommentActions';
 
 interface Props {
+  viewId?: string;
   isDemo?: boolean;
   bulkSelected?: boolean;
   showSelection?: boolean;
@@ -33,11 +34,11 @@ interface Props {
 }
 
 /** Stable application-owned reveal target; no source IDs or selector interpolation. */
-export const commentTargetId = (id: string) => `comment-${encodeURIComponent(id)}`;
+export const commentTargetId = (id: string, viewId?: string) => `comment-${viewId ? `${encodeURIComponent(viewId)}:` : ''}${encodeURIComponent(id)}`;
 
 /** A single measured reader article; React never recursively constructs replies. */
-export const CommentArticle = memo(function CommentArticle({ isDemo = false, bulkSelected = false, showSelection = false, onSelect, descendantCount = 0, hiddenUnseen = 0, hiddenMatches = 0, collapsed = false, onCollapse, comment, locale, disabled, onToggle, onAction, role, rawHit, selected, hasChildren, isNew = false, now = demoNow }: Props) {
-  recordRenderWork('comment', comment.itemId);
+export const CommentArticle = memo(function CommentArticle({ viewId, isDemo = false, bulkSelected = false, showSelection = false, onSelect, descendantCount = 0, hiddenUnseen = 0, hiddenMatches = 0, collapsed = false, onCollapse, comment, locale, disabled, onToggle, onAction, role, rawHit, selected, hasChildren, isNew = false, now = demoNow }: Props) {
+  recordRenderWork('comment', viewId ?? comment.itemId);
   const t = translator(locale);
   const author = comment.author?.displayName ?? comment.author?.handle ?? t('unknownAuthor');
   const time = comment.publishedAt ? publicationTime(comment.publishedAt, locale, now) : undefined;
@@ -49,7 +50,7 @@ export const CommentArticle = memo(function CommentArticle({ isDemo = false, bul
   const timeHelp = time ? approximate ? t('approximateTime', { time: time.exact }) : time.exact : displayedTime;
   const timeContent = time ? <time dateTime={comment.publishedAt} title={timeHelp} aria-label={timeHelp}>{displayedTime}</time>
     : <span className="muted">{comment.publication?.label.status === 'observed' ? comment.publication.label.value : t('unknownTime')}</span>;
-  return <article id={commentTargetId(comment.id)} data-view-role={role} data-selected={selected} data-bulk-selected={bulkSelected} tabIndex={-1}
+  return <article id={commentTargetId(comment.id, viewId)} data-domain-comment-id={comment.id} data-view-role={role} data-selected={selected} data-bulk-selected={bulkSelected} tabIndex={-1}
     className={`comment ${comment.seen ? 'is-seen' : 'is-unseen'} ${hasChildren ? 'has-replies' : ''}`} aria-label={author}>
     {showSelection && <button type="button" className="selection-circle" aria-pressed={bulkSelected} disabled={disabled}
       aria-label={t('selectComment', { author })} title={t('selectComment', { author })}

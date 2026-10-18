@@ -1,5 +1,11 @@
 # Decisions and open questions
 
+[ADR 0031: Independent duplicate discussion tabs](0031-independent-duplicate-discussion-tabs.md)
+implements M5 on schema 13 within one native window. It records semantic copy/fresh
+evaluation, dynamic hydration, DOM namespaces, last-used local Open/resume,
+shared Refresh/Undo and M2/M3/M4 interactions. M6-M9 remain future work.
+
+
 [ADR 0029](0029-global-profile-and-window-lifecycle-safety.md) implements M3 global
 profile and native lifecycle barriers, bounded pre-registered mutation/drain leases,
 reconciled release and terminal restore fencing. Schema stays 12 and production

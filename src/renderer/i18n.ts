@@ -4,6 +4,8 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  duplicateTab: 'Duplicate Tab', tabActions: 'Tab actions', tabActionsHint: 'Tab actions: right-click or Shift+F10',
+  discussionInstance: '{title} \u00b7 {number}',
   profileQuiescing: 'Finishing saved changes. Please wait…',
   profileReconcileFailed: 'Saved changes could not be synchronized. Retry before continuing.',
   profileDrainFailed: 'Changes could not be safely saved. The operation stopped and the window stayed open. Retry saving, then close or try the operation again.',
@@ -168,6 +170,8 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  duplicateTab: 'Duplikuj kartę', tabActions: 'Działania karty', tabActionsHint: 'Działania karty: prawy przycisk lub Shift+F10',
+  discussionInstance: '{title} \u00b7 {number}',
   profileQuiescing: 'Kończenie zapisu zmian. Proszę czekać…',
   profileReconcileFailed: 'Nie udało się zsynchronizować zapisanych zmian. Ponów przed kontynuowaniem.',
   profileDrainFailed: 'Nie udało się bezpiecznie zapisać zmian. Operacja została zatrzymana, a okno pozostało otwarte. Ponów zapis, a potem zamknij okno lub ponów operację.',

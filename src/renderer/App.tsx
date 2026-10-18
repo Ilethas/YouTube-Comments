@@ -69,6 +69,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const activeDiscussion = useRef<string>();
   const activeTab = workspace.tabs.find(tab => tab.id === activeId);
   activeDiscussion.current = activeTab?.kind === 'discussion' ? activeTab.id : undefined;
+  const [cloning, setCloning] = useState(false);
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const workspaceBusy = useRef(false);
   const [showAcquisition, setShowAcquisition] = useState(false);
@@ -114,6 +115,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const profileController = useRef<RendererProfileLifecycle>();
   const [releaseFailed, setReleaseFailed] = useState(false);
   const otherSaveFailed = useRef(false);
+  useLayoutEffect(() => { if (shell.current) shell.current.inert = profileBusy || cloning; }, [profileBusy, cloning]);
   useLayoutEffect(() => { if (profileBusy) profileOverlay.current?.focus({ preventScroll: true }); }, [profileBusy]);
   const afterData = useRef(new Set<() => void>());
   const acknowledgedSeen = useRef(new Map<string, boolean>());
@@ -154,6 +156,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
           if (next.comments[item.id]?.some(c => seen.get(c.id) !== c.seen)) views.seenChanged(item.id);
         }
       }
+      views.hydrate(next);
       setItems(next.items); setComments(next.comments); setSeenUndo(next.seenUndo);
       setWorkspace(next.workspace);
       setLocale(next.preferences.locale); setAppearance(next.preferences.appearance);
@@ -234,6 +237,24 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   }
   function activate(tabId: string, focus = false) {
     void workspaceAction(() => api.activateTab({ tabId, expectedRevision: workspace.revision }), focus ? tabId : undefined);
+  }
+  async function duplicate(sourceViewId: string) {
+    if (workspaceBusy.current || dataBusy.current) return;
+    setCloning(true);
+    try {
+      await workspaceAction(async () => {
+        const version = await views.prepareDuplicate(sourceViewId);
+        if (dataBusy.current) return { ok: false, error: { code: 'DATA_BUSY' } };
+        // An unvisited source already has acknowledged database intent.
+        const instance = version ?? initialState.viewInstances[sourceViewId];
+        if (!instance) return { ok: false, error: { code: 'NOT_FOUND' } };
+        const result = await api.duplicateTab({ sourceViewId, expectedRevision: workspace.revision,
+          intentRevision: instance.intentRevision, collapseRevision: instance.collapseRevision });
+        if (!result.ok) return result;
+        if (!removedIds.current.has(result.value.view.instance.itemId)) views.hydrateView(result.value.view);
+        return { ...result, value: result.value.workspace };
+      }, '@active');
+    } finally { setCloning(false); }
   }
   function close(tabId: string) {
     const tab = workspace.tabs.find(tab => tab.id === tabId);
@@ -482,10 +503,12 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       label={tab => {
         if (tab.kind !== 'discussion') return t(tab.kind);
         const item = items.find(item => item.id === tab.itemId);
-        return item ? itemLabel(item) : t('itemNotFound');
+        const siblings = workspace.tabs.filter(t => t.kind === 'discussion' && t.itemId === tab.itemId);
+        const title = item ? itemLabel(item) : t('itemNotFound');
+        return siblings.length > 1 ? t('discussionInstance', { title, number: siblings.findIndex(t => t.id === tab.id) + 1 }) : title;
       }}
       icon={tab => tab.kind === 'discussion' ? items.find(item => item.id === tab.itemId)?.kind ?? 'video' : tab.kind}
-      activate={activate} close={close}
+      activate={activate} close={close} duplicate={id => { void duplicate(id); }}
       move={(tabId, toIndex) => { void workspaceAction(() => api.moveTab({ tabId, toIndex, expectedRevision: workspace.revision })); }} />
     {saveError && <div className="save-error" role="alert">{t('saveError')}</div>}
     {!workspace.tabs.length && <main className="empty-workspace"><h1>{t('emptyWorkspace')}</h1><p>{t(items.length ? 'reopenHelp' : 'empty')}</p>
@@ -560,7 +583,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       cancel={() => setRemoving(undefined)} remove={() => { void removeItem(); }} />}
     {openItems.map(({ tab, item }) => <main key={tab.id} id={`panel-${tab.id}`} data-item-id={item.id} data-view-id={tab.id} role="tabpanel" aria-labelledby={`tab-${tab.id}`}
       className="reader-panel" hidden={activeId !== tab.id} tabIndex={0}>
-      {(activeId === tab.id || views.has(tab.id)) && <DiscussionPanel item={item} comments={comments[item.id]} session={views.get(tab.id, comments[item.id], item.id)}
+      {(activeId === tab.id || views.has(tab.id)) && <DiscussionPanel viewId={tab.id} active={activeId === tab.id} item={item} comments={comments[item.id]} session={views.get(tab.id, comments[item.id], item.id)}
         selectionControls={selectionControls} includeCollapsedInPrefix={includeCollapsedInPrefix}
         locale={locale} saving={saving && savingItemId === item.id} refreshDisabled={!!acquiring || !!progress}
         coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onAction={openCommentAction} onToggle={toggleComment}

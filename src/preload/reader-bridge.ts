@@ -11,7 +11,7 @@ export function createReaderBridge(rawInvoke: (channel: string, ...args: unknown
   sharedSubscribe: (listener: (value: unknown) => void) => () => void = () => () => undefined,
   profileSubscribe?: (listener: (value: unknown) => void) => () => void): ReaderApi {
   const pending = new Set<Promise<unknown>>();
-  const tracked = new Set<string>(['toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'openStoredItem', 'activateTab', 'closeTab', 'openLibrary', 'openSettings', 'moveTab', 'removeLibraryItem', 'chooseHelper', 'clearHelper', 'getHelperStatus'].map(key => readerChannels[key as keyof typeof readerChannels]));
+  const tracked = new Set<string>(['duplicateTab', 'toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'openStoredItem', 'activateTab', 'closeTab', 'openLibrary', 'openSettings', 'moveTab', 'removeLibraryItem', 'chooseHelper', 'clearHelper', 'getHelperStatus'].map(key => readerChannels[key as keyof typeof readerChannels]));
   const invoke = (channel: string, ...args: unknown[]) => {
     const task = rawInvoke(channel, ...args);
     if (tracked.has(channel)) { pending.add(task); void task.then(() => pending.delete(task), () => pending.delete(task)); }
@@ -36,6 +36,8 @@ export function createReaderBridge(rawInvoke: (channel: string, ...args: unknown
     ...(lifecycle ? { lifecycle } : {}),
     onSharedCommit: listener => sharedSubscribe(value => { if (isSharedCommit(value)) listener(value); }),
     getSharedSnapshot: request => (request === undefined ? invoke(readerChannels.getSharedSnapshot) : invoke(readerChannels.getSharedSnapshot, request)) as ReturnType<ReaderApi['getSharedSnapshot']>,
+    getDiscussionView: request => invoke(readerChannels.getDiscussionView, request) as ReturnType<ReaderApi['getDiscussionView']>,
+    duplicateTab: request => invoke(readerChannels.duplicateTab, request) as ReturnType<ReaderApi['duplicateTab']>,
     getSharedMetadata: () => invoke(readerChannels.getSharedMetadata) as ReturnType<ReaderApi['getSharedMetadata']>,
     getThumbnail: request => invoke(readerChannels.getThumbnail, request) as ReturnType<ReaderApi['getThumbnail']>,
     checkThumbnail: request => invoke(readerChannels.checkThumbnail, request) as ReturnType<ReaderApi['checkThumbnail']>,

@@ -252,3 +252,25 @@ it('Refresh projects the newly committed durable cohort rather than a cached NEW
   await session.apply(comments, true, { ...dateTestItem, latestAcceptedDiscoveryId: 'zero-insert' });
   expect(session.state.result.matchCount).toBe(0);
 });
+
+it('duplicate checkpoint includes semantic changes accepted while the preceding save acknowledgment is delayed', async () => {
+  let finish!: (value: { ok: true; value: null }) => void;
+  const save = vi.fn(async () => ({ ok: true as const, value: null }));
+  save.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const session = new DiscussionViewSession(rows, executor(), undefined, undefined, { save });
+  session.edit({ ...session.state.draft, text: 'first draft' });
+  const checkpoint = session.checkpointForDuplicate(); expect(save).toHaveBeenCalledOnce();
+  session.edit({ ...session.state.draft, text: 'latest accepted draft' });
+  finish({ ok: true, value: null }); expect(await checkpoint).toBe(true);
+  expect(save).toHaveBeenCalledTimes(2); expect(session.persistentIntent().draft.text).toBe('latest accepted draft');
+  session.dispose();
+});
+it('duplicate checkpoint refuses failed persistence, a global freeze and removal during an accepted worker', async () => {
+  const save = vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } }));
+  const session = new DiscussionViewSession(rows, executor(), undefined, undefined, { save });
+  session.edit({ ...session.state.draft, text: 'dirty' }); expect(await session.checkpointForDuplicate()).toBe(false);
+  session.freeze(); expect(await session.checkpointForDuplicate()).toBe(false); session.dispose();
+  const pending = executor(); pending.evaluate.mockImplementation(() => new Promise(() => undefined));
+  const removed = new DiscussionViewSession(rows, pending); void removed.apply(rows);
+  const checkpoint = removed.checkpointForDuplicate(); removed.dispose(); expect(await checkpoint).toBe(false);
+});

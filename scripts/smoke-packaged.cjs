@@ -234,13 +234,13 @@ async function run() {
   assert.equal(await session.js(`!!document.querySelector('${panel} .action-permalink')`),false,'Sanitized non-YouTube fixture IDs never become fabricated permalinks');
   const before=(await session.invoke('bootstrap')).comments[itemId];
   const target=before.find(c=>c.parentId===null && before.some(child=>child.parentId===c.id)); assert.ok(target);
-  await session.js(`document.getElementById(${JSON.stringify('comment-'+encodeURIComponent(target.id))}).querySelector('.comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,button:0,ctrlKey:true,shiftKey:true}))`);
+  await session.js(`Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(target.id)}).querySelector('.comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,button:0,ctrlKey:true,shiftKey:true}))`);
   await pause(100); assert.deepEqual((await session.invoke('bootstrap')).comments[itemId],before,'Former Ctrl+Shift row action never marks');
-  await session.js(`document.getElementById(${JSON.stringify('comment-'+encodeURIComponent(target.id))}).querySelector('input').dispatchEvent(new MouseEvent('click',{bubbles:true,button:0,ctrlKey:true}))`);
+  await session.js(`Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(target.id)}).querySelector('input').dispatchEvent(new MouseEvent('click',{bubbles:true,button:0,ctrlKey:true}))`);
   await session.wait(`window.reader.bootstrap().then(r=>r.value.comments[${JSON.stringify(itemId)}].find(c=>c.id===${JSON.stringify(target.id)}).seen===true)`);
   boot=await session.invoke('bootstrap'); assert.ok(boot.seenUndo[itemId]);
   assert.equal(boot.comments[itemId].filter(c=>c.parentId===target.id).every(c=>c.seen),true);
-  await session.js(`document.getElementById(${JSON.stringify('comment-'+encodeURIComponent(target.id))}).querySelector('.seen-control input').click()`);
+  await session.js(`Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(target.id)}).querySelector('.seen-control input').click()`);
   await session.wait(`window.reader.bootstrap().then(r=>r.value.comments[${JSON.stringify(itemId)}].find(c=>c.id===${JSON.stringify(target.id)}).seen===false)`);
   assert.equal((await session.invoke('bootstrap')).comments[itemId].filter(c=>c.parentId===target.id).every(c=>c.seen),true,'Checkbox changes only its comment');
   // Invalid atomic target cannot partially mutate state.
@@ -248,7 +248,7 @@ async function run() {
   const invalid=await session.js(`window.reader.bulkSeen(${JSON.stringify({itemId,seen:false,target:{kind:'matching',ids:[target.id,'missing']}})})`);
   assert.equal(invalid.ok,false); assert.deepEqual(tables(database),saved);
   const child=before.find(comment=>comment.parentId===target.id); assert.ok(child);
-  for(const id of [target.id,child.id]) await session.js(`document.getElementById(${JSON.stringify('comment-'+encodeURIComponent(id))}).querySelector('.selection-circle').click()`);
+  for(const id of [target.id,child.id]) await session.js(`Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(id)}).querySelector('.selection-circle').click()`);
   await session.js(`Array.from(document.querySelectorAll('${panel} .selection-toolbar button')).find(b=>b.textContent.trim()==='Mark selected unread').click()`);
   await session.wait("!!document.querySelector('dialog[open]')");
   await session.js("document.querySelector('dialog[open] .dialog-actions button:last-child').click()");
@@ -289,7 +289,7 @@ async function run() {
   const beforeReconstruction=boot.comments[itemId];
   await session.js(`${tabElement(itemId)}.click()`);
   await session.wait(`document.querySelector('${panel} .discussion-sort select')?.value==='newest' && document.querySelector('${panel} input[name=publication-from]')?.value==='2026-01-01' && document.querySelector('${panel} .discussion-ruler')?.dataset.newCount==='1'`);
-  await session.wait(`document.getElementById(${JSON.stringify('comment-'+encodeURIComponent(boot.discussionViews[viewId(boot,itemId)].selected))})?.dataset.selected==='true'`);
+  await session.wait(`Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(boot.discussionViews[viewId(boot,itemId)].selected)})?.dataset.selected==='true'`);
   assert.deepEqual((await session.invoke('bootstrap')).comments[itemId],beforeReconstruction,'Restart reconstruction never writes seen');
   await session.invoke('undoSeen',{itemId});
   assert.equal((await session.invoke('bootstrap')).seenUndo[itemId],null);

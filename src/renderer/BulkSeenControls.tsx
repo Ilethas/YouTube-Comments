@@ -1,5 +1,5 @@
 import { ActionIcon } from './ActionIcon';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Comment } from '../domain/discussion';
 import type { BulkSeenRequest, BulkSeenTarget, SeenUndoDescriptor } from '../domain/seen-operation';
@@ -16,15 +16,16 @@ type Scope = 'all' | 'matching' | 'after' | 'before' | 'between';
 export function BulkConfirmation({ locale, title, description, pending, error, confirm, cancel }: {
   locale: Locale; title?: string; description: string; pending: boolean; error?: string; confirm: () => void; cancel: () => void;
 }) {
+  const titleId = useId(), descriptionId = useId();
   const dialog = useRef<HTMLDialogElement>(null), t = translator(locale);
   useEffect(() => {
     const element = dialog.current, previous = document.activeElement as HTMLElement | null;
     element?.showModal(); element?.querySelector('button')?.focus();
     return () => { element?.close(); if (previous?.isConnected) previous.focus(); };
   }, []);
-  return createPortal(<dialog ref={dialog} className="removal-dialog" aria-labelledby="bulk-title" aria-describedby="bulk-description"
+  return createPortal(<dialog ref={dialog} className="removal-dialog" aria-labelledby={titleId} aria-describedby={descriptionId}
     onCancel={event => { event.preventDefault(); if (!pending) cancel(); }}>
-    <h2 id="bulk-title">{t('bulkConfirmTitle')}</h2>{title && <p className="remove-item-title">{title}</p>}<p id="bulk-description">{description}</p>
+    <h2 id={titleId}>{t('bulkConfirmTitle')}</h2>{title && <p className="remove-item-title">{title}</p>}<p id={descriptionId}>{description}</p>
     <p>{t('bulkRecoveryHelp')}</p>{error && <p role="alert">{error}</p>}
     <div className="dialog-actions"><button autoFocus disabled={pending} onClick={cancel}><ActionIcon name="cancel" />{t('cancel')}</button>
       <button disabled={pending} onClick={confirm}>{t('bulkExecute')}</button></div>

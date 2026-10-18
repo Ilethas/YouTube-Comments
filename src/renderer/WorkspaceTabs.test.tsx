@@ -174,3 +174,20 @@ it('Escape suppression lasts until delayed release; keyboard clicks and a fresh 
   fireEvent.pointerDown(closeButton, { button: 0 }); fireEvent.click(closeButton, { detail: 1 });
   expect(close).toHaveBeenCalledExactlyOnceWith('library');
 });
+
+it.each(['en', 'pl'] as const)('discussion-only duplication is discoverable by pointer and keyboard in %s', locale => {
+  const duplicate = vi.fn();
+  render(<WorkspaceTabs workspace={workspace} locale={locale} disabled={false} duplicate={duplicate}
+    label={tab => tab.kind === 'discussion' ? tab.itemId : tab.kind} icon={tab => tab.kind === 'discussion' ? 'video' : tab.kind} move={move} activate={activate} close={close} />);
+  for (const kind of ['library', 'settings']) {
+    const tab = document.getElementById('tab-' + kind); if (!tab) throw new Error('Missing singleton');
+    fireEvent.contextMenu(tab); fireEvent.keyDown(tab, { key: 'F10', shiftKey: true }); expect(screen.queryByRole('menu')).toBeNull();
+  }
+  const source = document.getElementById('tab-test-view-a'); if (!source) throw new Error('Missing source');
+  fireEvent.keyDown(source, { key: 'F10', shiftKey: true });
+  const command = screen.getByRole('menuitem', { name: locale === 'en' ? 'Duplicate Tab' : 'Duplikuj kart\u0119' });
+  expect(document.activeElement).toBe(command); fireEvent.keyDown(command, { key: 'Enter' });
+  expect(duplicate).toHaveBeenLastCalledWith('test-view-a');
+  fireEvent.contextMenu(source); fireEvent.click(screen.getByRole('menuitem')); expect(duplicate).toHaveBeenCalledTimes(2);
+  expect(activate).not.toHaveBeenCalled(); expect(move).not.toHaveBeenCalled();
+});

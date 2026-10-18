@@ -1,11 +1,22 @@
 # Multiple equal windows: proposed architecture
 
+**M5 progress, 2026-10-18:** [ADR 0031](decisions/0031-independent-duplicate-discussion-tabs.md) implements explicit independent Duplicate Tab
+within one native window, source semantic checkpoint/copy with fresh evaluation,
+dynamic scoped hydration, view-owned DOM/accessibility identity and active-work
+gating. Shared item seen/Undo/Refresh/removal retain M2/M3/M4 contracts. Schema is
+**13**; native production startup remains one reader. Library Open follows the
+local resume pointer with deterministic first-open fallback. M6 native windows/
+restore-set/geometry, M7 transfer, M8 native dragging and M9 aggregate scale/release
+remain future work. Earlier audit findings and milestone ledgers below are
+historical; current verification is in [TESTING](TESTING.md).
+
+
 **M4 progress, 2026-10-18:** schema 13 and persistent window/tab/view identities
 are implemented in [ADR 0030](decisions/0030-persistent-window-topology-and-view-instances.md).
 The migration preserves all legacy items, exact open topology, dormant resume
 identities and optional reading/collapse records. Intent and collapse use separate
-CAS counters. Production still opens one reader; M5 duplicate UI, M6 native
-windows/geometry/session policy and M7 transfer remain future work. The broader
+CAS counters. Production still opens one reader; M5 duplicate UI is implemented
+above. M6 native windows/geometry/session policy and M7 transfer remain future work. The broader
 proposal below retains its historical design context.
 
 Research/design, 2026-10-17. **Broader architecture remains proposed.**
@@ -18,7 +29,7 @@ Undo and progress fanout. Its counter is process-local with fresh snapshots acro
 epochs; no durable revision table/migration is introduced. Production remains one
 reader. M3 global lifecycle safety is implemented in
 [ADR 0029](decisions/0029-global-profile-and-window-lifecycle-safety.md), without
-a schema change. M4 is implemented separately by ADR 0030; M5-M9 remain proposals.
+a schema change. M4 is implemented separately by ADR 0030; M5 is implemented above; M6-M9 remain proposals.
 
 **Accepted owner policy, recorded during M1:** native HTML DnD is preferred for
 reorder/attachment. VS Code-style outside drag-end detachment is acceptable for the
@@ -680,7 +691,7 @@ next; no milestone is permission to execute an installer or valuable profile.
 | M2 shared mutation synchronization, foundation / L | ReaderService/repository versioned commits; shared DTO/preload events; renderer replica reducer; progress fanout; guarded Undo and chosen seen assignment contract | Small revision metadata migration only if needed, with safety/backup support. U/DB ordering/dedupe/gaps/retry/removal/Undo tests and existing renderer semantics. E test-only second replica/window verifies events without shipping new-window UI. Exit: late snapshots cannot regress committed data; no generic IPC bridge. |
 | M3 global lifecycle barriers, foundation / XL | ProfileOperationCoordinator; ReaderService data operations; renderer drain/close leases; main shutdown/close/reload | Normally no new content schema. Deterministic participant race/failure tests, E 2-window preflight/crash/relaunch fixtures, all existing backup recovery cases. Exit: no stale saves across restore and no lost accepted queues on intentional close; one-window product still works. |
 | M4 window/view persistence migration, foundation / L | domain workspace/view/collapse contracts; migrations/repository/backup-validation; new topology/session tables and mapping | Forward-only next schema; fully populated v12 + historical staged backups; injected failure/rollback, children/custom target equality. E restart legacy open AND closed views with unchanged semantics. Exit: current single-window UI uses unique tab/view instances, no data reset. M1–M3 contracts settled first. |
-| M5 independent duplicate views, feature / L | App mapping/useDiscussionViews; session queues; panel/description/comment ID namespaces; Library Open/Duplicate commands | Per-view schema from M4; no duplicate content tables. C/U same-item independence, workers/focus/temp selection; E 2 duplicate video/post tabs, independent anchor/collapse/query restart. Exit: duplicate normal tabs never auto-merge and shared mutations synchronize. |
+| M5 independent duplicate views, implemented (ADR 0031) | App mapping/useDiscussionViews; session queues; panel/description/comment ID namespaces; Library Open/Duplicate commands | Schema 13, atomic semantic clone, scoped hydration before mount, independent same-item sessions and shared mutation fanout. Deterministic/React and actual Electron restart/backup evidence is recorded in TESTING.md. |
 | M6 equal windows + geometry restoration, feature / L | WindowCoordinator + screen adapter; window menu/new command; scoped bootstrap/window tab commands, per-window singletons | Persist restore set/normal bounds/last active with validated absent-geometry fallback. U geometry/close policy; DB topology constraints; E 3 equal windows/last close/quit/restart; N mixed monitors and unplug. Exit: no special primary, reachable restored windows and one service. |
 | M7 explicit transfer/merge protocol, feature / L | TabTransferCoordinator/repository transaction/handoff; keyboard Move to window/new; source/target renderer generation fences | Placement/lease revisions from M4; tokens/transient frozen state not durable. U/DB/C atomic move/merge/rollback/late save; E close/crash both sides with live selection/query/scroll. Exit: exactly one durable owner at every crash point, correct special merge, no normal merge. |
 | M8 drag adapter, feature / XL | useTabStrip/WorkspaceTabs and chosen M0 main/native adapter; accessible announcements/focus; packaging only if native adapter required | No further content schema. E/N genuine detach desktop/attach/reorder/cancel mixed DPI/occlusion; all M7 protocol tests retained. Exit: all drag requirements actually met, not substituted by explicit menu commands. |

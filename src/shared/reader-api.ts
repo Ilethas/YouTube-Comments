@@ -1,4 +1,4 @@
-import type { SharedStamp, SharedCommit, SharedSnapshot, SharedItemSnapshot, SharedMetadata } from './reader-sync';
+import type { SharedStamp, SharedCommit, SharedSnapshot, SharedItemSnapshot, SharedMetadata, SharedViewSnapshot } from './reader-sync';
 import type { AcquisitionNotification, AcquisitionProgress, AcquisitionTimings } from './acquisition';
 import type { Comment, ContentItem } from '../domain/discussion';
 import { normalizeTranslationCode, translationTargets } from './preferences';
@@ -46,6 +46,13 @@ export interface TopologyRequest { readonly expectedRevision: number }
 export interface OpenStoredItemRequest extends RefreshRequest, TopologyRequest {}
 export interface TabRequest extends TopologyRequest { readonly tabId: string }
 export interface MoveTabRequest extends TabRequest { readonly toIndex: number }
+/** Source lane versions fence saves accepted between flushing and duplication. */
+export interface DuplicateTabRequest extends TopologyRequest {
+  readonly sourceViewId: string;
+  readonly intentRevision: number;
+  readonly collapseRevision: number;
+}
+export interface DuplicateTabResult { readonly workspace: WorkspaceState; readonly view: SharedViewSnapshot }
 export interface UndoSeenRequest { readonly itemId: string; readonly expectedOperationId: string }
 export interface RefreshRequest { readonly itemId: string }
 /** Compact acknowledgment, without raw output, process details or provenance. */
@@ -62,6 +69,8 @@ export interface ReaderApi {
   readonly lifecycle?: import('./profile-operation').ProfileLifecycleApi;
   onSharedCommit(listener: (commit: SharedCommit) => void): () => void;
   getSharedSnapshot(request?: RefreshRequest): Promise<Result<SharedSnapshot | SharedItemSnapshot>>;
+  getDiscussionView(request: { readonly viewId: string }): Promise<Result<SharedViewSnapshot>>;
+  duplicateTab(request: DuplicateTabRequest): Promise<Result<DuplicateTabResult>>;
   getSharedMetadata(): Promise<Result<SharedMetadata>>;
   getThumbnail(request: RefreshRequest): Promise<Result<string | null>>;
   checkThumbnail(request: RefreshRequest): Promise<Result<string | null>>;
@@ -95,6 +104,7 @@ export interface ReaderApi {
 }
 
 export const readerChannels = {
+  getDiscussionView: 'reader:discussion-view', duplicateTab: 'reader:duplicate-tab',
   getSharedSnapshot: 'reader:shared-snapshot', getSharedMetadata: 'reader:shared-metadata',
   getThumbnail: 'reader:get-thumbnail', checkThumbnail: 'reader:check-thumbnail', openThumbnail: 'reader:open-thumbnail',
   openCommentAction: 'reader:comment-action',
@@ -185,4 +195,13 @@ export function isTopologyRequest(value: unknown): value is TopologyRequest {
 }
 export function isOpenStoredItemRequest(value: unknown): value is OpenStoredItemRequest {
   return exactKeys(value, ['itemId', 'expectedRevision']) && identifier(value.itemId) && isRevision(value.expectedRevision);
+}
+
+export function isViewRequest(value: unknown): value is { readonly viewId: string } {
+  return exactKeys(value, ['viewId']) && identifier(value.viewId);
+}
+export function isDuplicateTabRequest(value: unknown): value is DuplicateTabRequest {
+  return exactKeys(value, ['sourceViewId', 'expectedRevision', 'intentRevision', 'collapseRevision'])
+    && identifier(value.sourceViewId) && isRevision(value.expectedRevision)
+    && isRevision(value.intentRevision) && isRevision(value.collapseRevision);
 }

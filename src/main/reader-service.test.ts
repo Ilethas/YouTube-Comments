@@ -118,3 +118,11 @@ it.each(['activateTab', 'closeTab', 'moveTab'] as const)('validates exact tab pa
 it.each(['openLibrary', 'openSettings'] as const)('requires an exact topology CAS payload for %s', operation => {
   expect(new ReaderService(failedOpen, ['en'], vi.fn()).dispatch(operation, [{}])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
 });
+
+it('validates narrow duplicate and hydration intents before accessing persistence', () => {
+  const service = new ReaderService(failedOpen, ['en'], vi.fn());
+  const valid = { sourceViewId: 'view-a', expectedRevision: 0, intentRevision: 0, collapseRevision: 0 };
+  for (const request of [null, {}, { ...valid, windowId: 'forged' }, { ...valid, newViewId: 'forged' }, { ...valid, expectedRevision: -1 }, { ...valid, intentRevision: NaN }, { ...valid, itemId: 'item-a' }]) expect(service.dispatch('duplicateTab', [request])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
+  expect(service.dispatch('duplicateTab', [valid, valid])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
+  for (const request of [null, {}, { viewId: '' }, { viewId: 'a', windowId: 'forged' }]) expect(service.dispatch('getDiscussionView', [request])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
+});

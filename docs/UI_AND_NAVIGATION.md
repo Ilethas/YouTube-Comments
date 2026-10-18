@@ -1,5 +1,29 @@
 # UI and navigation
 
+## Duplicate discussion tabs (M5)
+
+Right-click a discussion tab, or focus it and use Shift+F10 / the context-menu key,
+then choose **Duplicate Tab** (Polish: **Duplikuj kartę**). The new independent
+view appears immediately after its source, becomes active and receives tab focus.
+Library and Settings remain singletons. Copies show a strip-order ordinal after
+the underlying title; the content title itself is unchanged.
+
+The copy starts with the source's acknowledged semantic draft/applied query,
+sort, logical anchor/offset, navigation selection and collapse choices. It performs
+a fresh evaluation with current comments/seen/NEW and a fresh clock, so its initial
+matches may differ from the source's frozen result. Temporary selection, menus,
+text selection and header expansion are local. A failed source save prevents
+creation. Each mounted view retains its state when another tab becomes active.
+
+Library Open prefers the last-used local instance when open, otherwise the first
+open copy in strip order. With none open, it resumes the local last-used dormant
+instance, creating one only when necessary. Close removes placement, never content
+or siblings. Removal deletes every copy. Shared seen and guarded Undo update all
+copies; Apply affects one view, and accepted Refresh evaluates every instantiated
+view using its own applied criteria while preserving its draft. Existing tab drag,
+Alt+arrows, roving focus, F3/Shift+F3 and Ctrl+Z remain. See [ADR 0031](decisions/0031-independent-duplicate-discussion-tabs.md).
+
+
 ## Reader usability (ADR 0026)
 
 Video headers order actions/status/Refresh, title with source-opening button,
@@ -25,7 +49,7 @@ reduced motion, with existing text, elapsed time and completion/cancellation beh
 
 ## Comment selection and menus (ADR 0024)
 
-Bulk selection is a separate session-only ID set per discussion; F3's navigation
+Bulk selection is a separate session-only ID set per discussion view; F3's navigation
 selection and persisted reading identity stay independent. Round buttons toggle
 membership (plain/Ctrl); Shift on a circle adds an inclusive range in current
 visible applied/sorted/collapsed order, including offscreen rows. Body/text Shift
@@ -299,8 +323,9 @@ view state, OS hotkeys or platform policy is introduced by this UX increment.
 
 ## Implemented acquisition controls
 
-[ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) implements one
-ordered workspace of singleton discussion, Library and Settings tabs. Every kind
+[ADR 0007](decisions/0007-unified-workspace-and-library-removal.md) introduced the
+unified workspace. M4/M5 now use an ordered list of discussion view instances and
+singleton Library and Settings tabs. Every kind
 can close, move and become active. App launch actions activate an existing view
 or append a closed one. None is pinned or reserves a slot. Inline SVG icons,
 truncated titles and separate close buttons keep horizontal tabs compact;
@@ -310,7 +335,7 @@ Pointer dragging previews order with feedback and commits only its final slot.
 Alt+Left/Right on a focused tab reorders it without changing active identity;
 Arrow/Home/End activate/focus. Closing active chooses immediately right, otherwise
 left, otherwise empty. Closing background preserves active. Open/active/order
-persist in schema 4; acquisition opens its singleton discussion and Refresh does
+persist in schema 13; acquisition uses the local Library Open policy and Refresh does
 not alter workspace. Revision checks preserve newer local workspace acknowledgments.
 
 Library is a full workspace view of all stored discussions, including closed ones,
@@ -320,7 +345,7 @@ covers video title, post text, author display name and handle, independent of UI
 language. It is not discussion comment search. Remove from Library opens a modal
 confirmation describing permanent local comment/seen/history deletion and no
 effect on YouTube. Cancel is initially focused; Escape cancels unless a write is
-pending. Success updates Library and removes the discussion's view with ordinary
+pending. Success updates Library and removes all of the discussion's view instances with ordinary
 neighbor rules; failure retains the item. Synthetic demo removal is unavailable
 with an explanation. Main rejects removal while that source is being acquired/
 refreshed; wait and retry. Library removal has no Undo or remote deletion; seen-state Undo is separate.
@@ -364,7 +389,7 @@ save/acquisition responses without overwriting newly merged membership/remote te
 
 Use browser-like tabs for opened YouTube videos, individual Community Posts, Library and Settings. The principal loop is **acquire → persist → refresh → identify what changed → read in context → manually mark processed → search/filter/navigate**. This is a persistent discussion inbox, so reopening the application must restore useful reading state instead of discarding it like a temporary download.
 
-Workspace IDs/order/active selection and independent discussion view intent now restore. The current and future concepts are:
+Workspace IDs/order/active selection and independent discussion view intent now restore. Each reading view owns its anchor, query, sort, collapse and navigation selection; the referenced content and seen state are shared. The concepts are:
 
 | State | Purpose |
 | --- | --- |
@@ -372,10 +397,10 @@ Workspace IDs/order/active selection and independent discussion view intent now 
 | Scroll anchor | Stable comment application ID + row-relative offset; null means header/top. |
 | Draft and applied filters/search | Separate semantic intent; freshly reconstruct applied results at restart. |
 | Sorting | Preserve the organization of top-level conversations. |
-| Expanded/collapsed replies | Future only; collapse is not implemented and no expansion state is stored. |
+| Expanded/collapsed replies | Persist the view's sparse collapse default/exceptions (ADRs 0023/0030/0031). |
 | Selected/navigation comment | Restore the current location for keyboard reading. |
 
-Open item IDs, tab order and active ID now survive restart through SQLite. ADR 0017 implements every current view concept in the table; expansion and optional badge details remain future scope. Seen belongs to shared comments, not tabs. Opening an already open item activates its single existing tab; reopening a closed item reuses its stored identity/state.
+Opaque tab/view IDs, tab order and active ID survive restart through SQLite. ADRs 0017/0023/0030/0031 implement the reading concepts above; optional badge details remain future scope. Seen belongs to shared comments. Library Open activates the local last-used open instance, with first strip-order fallback, or resumes its retained dormant view when none is open. Explicit Duplicate always creates a fresh view identity.
 
 Restart is a fresh applied-query reconstruction boundary: current durable comments/seen/NEW are evaluated with the existing resolver/worker and fresh now/system IANA zone. Draft criteria are never promoted silently. A saved Unseen match marked seen before quit may stop matching after restart; seenStale starts false. Result ID arrays and old numeric date bounds are never persisted. After sorting, restore a displayed anchor/row offset, otherwise displayed selection, otherwise first restrictive match in current sorted order, otherwise start. An explicit header anchor restores top. Restore selection only if displayed, without DOM focus. Failed restoration shows a localized message and unrestricted session result, with saved applied criteria as draft for retry; the original durable applied criteria remain until a successful explicit Apply/Refresh. See [database](DATABASE.md) and [seen state](SEEN_STATE.md).
 
@@ -383,7 +408,7 @@ A tab may show an unseen-comment count. If provided, define whether it counts th
 
 ## The comment reader
 
-ADR 0017 uses one serialized full-view queue per discussion: 400 ms idle for draft
+ADR 0017 uses one serialized full-view queue per discussion view: 400 ms idle for draft
 bursts, 50 ms for successful Apply/sort/selection, and 250 ms scroll idle followed
 by a 50 ms coalesced save. Explicit navigation captures after settling. Tab switch,
 background/active close and acquisition activation flush useful current anchors.

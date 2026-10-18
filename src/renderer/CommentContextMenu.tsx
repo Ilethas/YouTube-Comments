@@ -43,7 +43,13 @@ export function CommentContextMenu({ target, items, locale, dismiss, label }: {
       if (!element.contains(event.target as Node)) { restore.current = false; close.current(); }
     };
     const invalidate = () => { restore.current = false; close.current(); };
-    const scroll = (event: Event) => { if (!element.contains(event.target as Node)) invalidate(); };
+    const scroll = (event: Event) => {
+      const scrolled = event.target;
+      // Only an ancestor's scroll moves this origin. A sibling reader (including
+      // a hidden duplicate) must not dismiss another view's menu or a tab menu.
+      if (scrolled instanceof Node && (element.contains(scrolled) || !scrolled.contains(target.origin))) return;
+      invalidate();
+    };
     const panel = target.origin.closest<HTMLElement>('.reader-panel');
     const observer = new MutationObserver(() => { if (!target.origin.isConnected || panel?.hidden) invalidate(); });
     if (panel) observer.observe(panel, { attributes: true, attributeFilter: ['hidden'], childList: true, subtree: true });

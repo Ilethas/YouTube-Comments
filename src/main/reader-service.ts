@@ -1,9 +1,9 @@
-import type { SharedCommit, SharedSnapshot, SharedItemSnapshot, SharedMetadata } from '../shared/reader-sync';
+import type { SharedCommit, SharedSnapshot, SharedItemSnapshot, SharedMetadata, SharedViewSnapshot } from '../shared/reader-sync';
 import type { ReaderCallerContext } from './caller-context';
 import { isCancelAcquisitionRequest } from '../shared/acquisition';
 import type { AcquisitionNotification, AcquisitionProgress } from '../shared/acquisition';
-import { isTopologyRequest, isOpenStoredItemRequest, isUndoSeenRequest, isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshRequest, isTabRequest, isMoveTabRequest, isBulkSeenRequest, isHelperRequest, isCommentActionRequest } from '../shared/reader-api';
-import type { AcquisitionResult, ReaderOperation, ReaderState, Result } from '../shared/reader-api';
+import { isDuplicateTabRequest, isViewRequest, isTopologyRequest, isOpenStoredItemRequest, isUndoSeenRequest, isPreferenceChange, isToggleSeenRequest, isAcquireRequest, isRefreshRequest, isTabRequest, isMoveTabRequest, isBulkSeenRequest, isHelperRequest, isCommentActionRequest } from '../shared/reader-api';
+import type { DuplicateTabResult, AcquisitionResult, ReaderOperation, ReaderState, Result } from '../shared/reader-api';
 import type { SeenMutationResult, SeenUndoResult } from '../domain/seen-operation';
 import type { Preferences } from '../shared/preferences';
 import { ReaderRepository, StateConflictError, ViewOwnershipError, UndoConflictError, MissingCommentError, NotRemovableError, InvalidSeenTargetError, InvalidDiscussionViewError, InvalidPreferenceError } from './persistence/reader-repository';
@@ -38,7 +38,7 @@ export interface DataBackupOptions {
   readonly restart: () => void;
   readonly checkpoint?: RestoreCheckpoint;
 }
-type ServiceValue = SharedSnapshot | SharedItemSnapshot | SharedMetadata | ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | AcquisitionResult | HelperStatus | DataBackupResult | string | null;
+type ServiceValue = DuplicateTabResult | SharedViewSnapshot | SharedSnapshot | SharedItemSnapshot | SharedMetadata | ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | AcquisitionResult | HelperStatus | DataBackupResult | string | null;
 
 /** Small use-case boundary: validate before touching persistence; failures carry
  * stable codes. Diagnostics are reported only on the privileged side. */
@@ -126,6 +126,8 @@ export class ReaderService {
   dispatch(operation: 'chooseHelper', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<HelperStatus | null>>;
   dispatch(operation: 'openSource' | 'openCommentAction', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<null>>;
   dispatch(operation: 'getSharedSnapshot', args: readonly unknown[], caller?: ReaderCallerContext): Result<SharedSnapshot | SharedItemSnapshot>;
+  dispatch(operation: 'duplicateTab', args: readonly unknown[], caller?: ReaderCallerContext): Result<DuplicateTabResult>;
+  dispatch(operation: 'getDiscussionView', args: readonly unknown[], caller?: ReaderCallerContext): Result<SharedViewSnapshot>;
   dispatch(operation: 'getSharedMetadata', args: readonly unknown[], caller?: ReaderCallerContext): Result<SharedMetadata>;
   dispatch(operation: 'getAcquisitionProgress', args: readonly unknown[], caller?: ReaderCallerContext): Result<AcquisitionProgress | null>;
   dispatch(operation: 'cancelAcquisition', args: readonly unknown[], caller?: ReaderCallerContext): Result<null>;
@@ -135,7 +137,7 @@ export class ReaderService {
   dispatch(operation: 'openThumbnail', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<null>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[], caller?: ReaderCallerContext): Result<ServiceValue> | Promise<Result<ServiceValue>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[], caller?: ReaderCallerContext): Result<ServiceValue> | Promise<Result<ServiceValue>> {
-    const shared = ['bootstrap', 'toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'removeLibraryItem',
+    const shared = ['duplicateTab', 'bootstrap', 'toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'removeLibraryItem',
       'openStoredItem', 'activateTab', 'closeTab', 'openLibrary', 'openSettings', 'moveTab', 'acquire', 'refresh',
       'chooseHelper', 'clearHelper', 'saveDiscussionView', 'setDiscussionCollapse'].includes(operation);
     const attach = (result: Result<ServiceValue>): Result<ServiceValue> => {
@@ -152,7 +154,7 @@ export class ReaderService {
       this.dataPending = this.runDataOperation(operation, caller).finally(() => { this.dataPending = undefined; });
       return this.dataPending;
     }
-    const read = ['getAcquisitionProgress', 'getSharedSnapshot', 'getSharedMetadata', 'bootstrap'].includes(operation);
+    const read = ['getAcquisitionProgress', 'getSharedSnapshot', 'getSharedMetadata', 'getDiscussionView', 'bootstrap'].includes(operation);
     if (this.stopping || this.restartPending || !read && !checkpoint && (this.lifecycle ? this.lifecycle.blocks(caller) : this.dataPending)) return { ok: false, error: { code: 'DATA_BUSY' } };
     if (operation === 'getAcquisitionProgress') return args.length === 0
       ? { ok: true, value: this.acquisition?.current() ?? null } : { ok: false, error: { code: 'INVALID_REQUEST' } };
@@ -193,6 +195,8 @@ export class ReaderService {
         : isRefreshRequest(args[0]) ? this.acquisition.refresh(args[0].itemId, caller) : Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
     }
     if ((['bootstrap', 'getSharedMetadata'].includes(operation) && args.length !== 0)
+      || (operation === 'duplicateTab' && (args.length !== 1 || !isDuplicateTabRequest(args[0])))
+      || (operation === 'getDiscussionView' && (args.length !== 1 || !isViewRequest(args[0])))
       || (operation === 'setDiscussionCollapse' && (args.length !== 1 || !isSetDiscussionCollapseRequest(args[0])))
       || (operation === 'saveDiscussionView' && (args.length !== 1 || !isSaveDiscussionViewRequest(args[0])))
       || (operation === 'toggleSeen' && (args.length !== 1 || !isToggleSeenRequest(args[0])))
@@ -212,9 +216,11 @@ export class ReaderService {
     try {
       if (caller && !caller.isCurrent()) throw new ViewOwnershipError();
       const windowId = caller?.windowId ?? this.repository.initialWindowId();
-      let value: SharedSnapshot | SharedItemSnapshot | SharedMetadata | ReaderState | SeenMutationResult | Preferences | WorkspaceState | null;
+      let value: DuplicateTabResult | SharedViewSnapshot | SharedSnapshot | SharedItemSnapshot | SharedMetadata | ReaderState | SeenMutationResult | Preferences | WorkspaceState | null;
       if (operation === 'getSharedSnapshot') value = args.length === 1 && isRefreshRequest(args[0]) ? this.repository.itemSnapshot(args[0].itemId, windowId) : { ...this.repository.stamp(), state: this.repository.bootstrap(this.languages, windowId) };
       else if (operation === 'getSharedMetadata') value = { ...this.repository.stamp(), preferences: this.repository.preferences(this.languages), workspace: this.repository.workspace(windowId), viewInstances: this.repository.viewInstances(windowId) };
+      else if (operation === 'duplicateTab' && isDuplicateTabRequest(args[0])) value = this.repository.duplicateTab(args[0], windowId);
+      else if (operation === 'getDiscussionView' && isViewRequest(args[0])) value = this.repository.viewSnapshot(windowId, args[0].viewId);
       else if (operation === 'bootstrap') value = this.repository.bootstrap(this.languages, windowId);
       else if (operation === 'setDiscussionCollapse' && isSetDiscussionCollapseRequest(args[0])) value = this.repository.setDiscussionCollapse(args[0], windowId);
       else if (operation === 'saveDiscussionView' && isSaveDiscussionViewRequest(args[0])) value = this.repository.saveDiscussionView(args[0], windowId);

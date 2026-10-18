@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import { CommentContextMenu } from './CommentContextMenu';
+import type { CommentMenuTarget } from './CommentContextMenu';
 import type { WorkspaceState, WorkspaceTab } from '../domain/workspace';
 import { useTabStrip } from './use-tab-strip';
 import { translator, Locale } from './i18n';
@@ -13,26 +16,42 @@ interface Props {
   icon: (tab: WorkspaceTab) => 'video' | 'post' | 'library' | 'settings';
   activate: (id: string, focus?: boolean) => void;
   close: (id: string) => void;
+  duplicate?: (sourceViewId: string) => void;
   move: (id: string, toIndex: number) => void;
 }
 
 /** Pointer capture keeps internal dragging separate from external drop data.
  * Preview is local; only pointer-up commits one final index. Alt+arrows reorder. */
-export function WorkspaceTabs({ workspace, locale, disabled, label, icon, activate, close, move }: Props) {
+export function WorkspaceTabs({ workspace, locale, disabled, label, icon, activate, close, move, duplicate }: Props) {
   const t = translator(locale);
+  const [menu, setMenu] = useState<CommentMenuTarget>();
+  useEffect(() => { setMenu(undefined); }, [workspace.revision, disabled]);
+  function openMenu(id: string, origin: HTMLElement, x: number, y: number) {
+    if (disabled || !duplicate) return;
+    setMenu({ id, origin, x, y, selectionText: '' });
+  }
   const { strip, dragging, shown, suppressClick, begin, newPress, pointerMove, pointerUp, pointerCancel, lostCapture } = useTabStrip(workspace, disabled, move, activate);
-  return <div ref={strip} className="tabs" role="tablist" aria-label={t('discussions')} aria-describedby="tab-reorder-help"
+  return <><div ref={strip} className="tabs" role="tablist" aria-label={t('discussions')} aria-describedby="tab-reorder-help"
     onPointerDownCapture={newPress} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerCancel} onLostPointerCapture={lostCapture}
     onClickCapture={event => { if (suppressClick.current && event.detail > 0) { event.preventDefault(); event.stopPropagation(); } }}>
     <span id="tab-reorder-help" className="visually-hidden">{reorderHelp(locale)}</span>
     {shown.tabs.map((tab, index) => <div key={tab.id} className="tab" role="presentation" data-tab-id={tab.id} data-tab-item-id={tab.kind === 'discussion' ? tab.itemId : undefined}
       data-active={workspace.activeTabId === tab.id} data-dragging={dragging === tab.id}>
       <button role="tab" id={`tab-${tab.id}`} aria-controls={`panel-${tab.kind === 'discussion' ? tab.id : tab.kind}`}
+        aria-haspopup={tab.kind === 'discussion' && duplicate ? 'menu' : undefined}
+        onContextMenu={event => {
+          if (tab.kind !== 'discussion' || !duplicate) return;
+          event.preventDefault(); openMenu(tab.id, event.currentTarget, event.clientX, event.clientY);
+        }}
         disabled={disabled} aria-selected={workspace.activeTabId === tab.id} tabIndex={workspace.activeTabId === tab.id ? 0 : -1}
-        aria-label={`${t(icon(tab))}: ${label(tab)}`} title={`${t(icon(tab))}: ${label(tab)} · ${reorderHelp(locale)}`}
+        aria-label={`${t(icon(tab))}: ${label(tab)}`} title={`${t(icon(tab))}: ${label(tab)} · ${reorderHelp(locale)}${tab.kind === 'discussion' && duplicate ? ` \u00b7 ${t('tabActionsHint')}` : ''}`}
         onClick={event => { if (!suppressClick.current || event.detail === 0) activate(tab.id); }}
         onPointerDown={event => begin(tab.id, index, event)}
         onKeyDown={event => {
+          if (tab.kind === 'discussion' && duplicate && (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey)) {
+            event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect();
+            openMenu(tab.id, event.currentTarget, rect.left, rect.bottom); return;
+          }
           if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
             event.preventDefault();
             const next = index + (event.key === 'ArrowLeft' ? -1 : 1);
@@ -50,5 +69,6 @@ export function WorkspaceTabs({ workspace, locale, disabled, label, icon, activa
         title={workspace.activeTabId === tab.id ? shortcutHint(locale, 'close-tab', t('closeTab', { title: label(tab) })) : t('closeTab', { title: label(tab) })}
         onClick={() => close(tab.id)}><ActionIcon name="cancel" /></button>
     </div>)}
-  </div>;
+  </div>{menu && duplicate && !disabled && <CommentContextMenu target={menu} locale={locale} label={t('tabActions')} dismiss={() => setMenu(undefined)}
+    items={[{ label: t('duplicateTab'), icon: 'copy', run: () => duplicate(menu.id) }]} />}</>;
 }

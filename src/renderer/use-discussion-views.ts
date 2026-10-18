@@ -24,6 +24,26 @@ export function useDiscussionViews(options?: { readonly collapse?: ReaderState['
     });
   }, []);
   return useMemo(() => ({
+    /** Only future sessions consume seeds. Acknowledgments never rehydrate a live view. */
+    hydrate(state: Pick<ReaderState, 'viewInstances' | 'discussionViews' | 'discussionCollapse'>) {
+      if (initial.current) initial.current = { ...initial.current, instances: state.viewInstances, saved: state.discussionViews, collapse: state.discussionCollapse };
+    },
+    hydrateView(seed: import('../shared/reader-sync').SharedViewSnapshot) {
+      const configuration = initial.current;
+      if (!configuration || sessions.current.has(seed.viewId)) return;
+      const prior = configuration.instances?.[seed.viewId];
+      if (prior && (prior.intentRevision > seed.instance.intentRevision || prior.collapseRevision > seed.instance.collapseRevision)) return;
+      initial.current = { ...configuration, instances: { ...configuration.instances, [seed.viewId]: seed.instance },
+        saved: seed.intent ? { ...configuration.saved, [seed.viewId]: seed.intent } : configuration.saved,
+        collapse: seed.collapse ? { ...configuration.collapse, [seed.viewId]: seed.collapse } : configuration.collapse };
+    },
+    async prepareDuplicate(id: string) {
+      const session = sessions.current.get(id);
+      if (session && !await session.checkpointForDuplicate()) throw new Error('Source checkpoint failed');
+      if (session && sessions.current.get(id) !== session) throw new Error('Source removed');
+      const version = revisions.current.get(id) ?? initial.current?.instances?.[id];
+      return version && ('intent' in version ? { intentRevision: version.intent, collapseRevision: version.collapse } : version);
+    },
     get(id: string, comments: readonly Comment[], itemId: string) {
       let session = sessions.current.get(id);
       if (session && itemIds.current.get(id) !== itemId) throw new Error('View item identity changed');

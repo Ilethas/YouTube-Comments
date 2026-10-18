@@ -1,5 +1,106 @@
 # Testing strategy
 
+## Independent duplicate discussion tabs (M5, 2026-10-18, ADR 0031)
+
+Current schema remains **13**. Production opens **one native reader window**.
+[ADR 0031](decisions/0031-independent-duplicate-discussion-tabs.md) records Duplicate
+versus Library Open, semantic copy/fresh evaluation, dynamic scoped hydration,
+view-owned DOM identities and the unchanged M2/M3/M4 safety boundaries. All profiles
+below are newly owned OS-temp data or independently redirected disposable Windows
+environments. No owner production profile, Setup, installation, commit or publishing.
+
+The M5 increment adds **26 deterministic tests** to the reviewed M4 baseline.
+Eleven repository cases cover unique adjacent/active instances, exact source
+preservation, independent zero CAS lanes, copied semantic/collapse state and later
+independent changes, stale topology/intent/collapse, wrong owners/singletons/dormant
+sources, deterministic local resume, cascaded removal, absent optional rows,
+multiple never-merged copies, copy/COMMIT rollback and verified backup/staged restore.
+Existing historical migration/rollback and exact backup validation remain enabled.
+
+Seven real React/App tests use temporary SQLite, ReaderService, the real bridge and
+M2 replica with a deterministic jsdom query executor. They mount two views of the
+SAME item, check unique IDs/owned ARIA references, source checkpoint failure,
+fresh seen-sensitive clone results versus frozen source membership, independent
+filters/sort/collapse/temporary selection, F3/reverse focus, anchors and menu
+ownership, shared seen/guarded Undo/removal, narrow hydration and stale worker
+completion. A delayed successful duplicate reply after removal cannot resurrect
+either panel. A separate real virtualizer test mounts two same-item **50k-comment**
+panels, bounds each mounted article set below 35, retains independent header
+expansion, and verifies only the active view issues thumbnail work. Menu tests
+exclude Library/Settings in EN/PL and show that sibling reader scrolling cannot
+dismiss an active comment menu or a tab menu. Checkpoint tests include changes
+accepted during a delayed acknowledgment, failed saves, global freeze and deletion
+during a pending worker. Existing M1/M2/M3 tests retain their negative cases.
+
+`npm.cmd run test:m5` runs `scripts/smoke-duplicate-tabs.cjs`: actual built React,
+preload, IPC, dedicated query workers, secured WindowCoordinator and one shared
+SQLite service. Main-only fixture acquisition/dialog/restart seams are explicit;
+there is no shipped test capability. Video and Community fixtures are duplicated
+through the tab menu. A 400-root video extension exercises virtual anchors and
+different same-item navigation selections. The workflow checks independent draft/
+applied/sort/collapse state, independent navigation selections and fresh reconstruction,
+reorder/close/local dormant resume, shared seen/exact-ID Undo, per-view Refresh,
+two authorized test renderers and foreign-view attacks, verified duplicate backup,
+sealed-barrier rejection, two real subsequent process starts, full restore and
+removal of every same-item instance. Backup and final live checkpoints are compared
+separately: a later legitimate anchor checkpoint is not mistaken for snapshot data.
+
+The strengthened **production-entry** M3 Quit harness creates a duplicate, edits
+both UI drafts, holds a real checkbox acknowledgment, stages Ctrl+Z, requests Quit
+twice and holds the first sealed drain acknowledgment. SQLite stays open and the
+window stays alive until release. The queued Undo drains exactly once; both drafts,
+protected later seen revision and consumed recovery are checked after actual exit.
+Production-entry M1/M4 checks continue to assert exactly one native reader.
+
+| Check | Executed result |
+| --- | --- |
+| Full Vitest | **1,057/1,057 tests, 84/84 files PASS**, native exit 0, 143.91 s. |
+| Typecheck / lint | PASS, no diagnostics or lint findings. |
+| Production Windows x64 application / ZIP | PASS, native exit 0; fresh main/preload/renderer/worker, runtime/ASAR/fuses, 73 application files (**385,994,196 bytes**), **158,343,476-byte** ZIP; 24.46 s. |
+| Targeted M5 actual Electron | PASS, native exit 0: write, restart, restored; virtual anchors, independent selected comments, shared updates, two authorized renderers and removal. |
+| Full `npm.cmd run test:electron` | **All 15 harnesses PASS** in one final combined invocation, native exit 0, including M1/M2, both M3 harnesses, all M4 migration phases and all three M5 phases. |
+| `npm.cmd run test:packaged` | PASS, native exit 0: unmodified extracted ZIP EXE, real native backup/restore dialogs, exact all-table restoration/independent safety, real app.relaunch, ASAR worker/preload/fuses, independently redirected disposable production environments. |
+| Presentation validation | PASS: 11 README links/anchors, four decoded screenshots and seven CRC-checked ICO frames. |
+| Guidance links / whitespace | PASS: 494 relative local links in changed guidance/Markdown files; `git diff --check`, native exit 0. |
+
+The final Electron invocation runs `smoke-electron`, `smoke-view-restoration`,
+`smoke-backup-restore`, `smoke-reader-actions`, `smoke-collapse`, `smoke-selection`,
+`smoke-reader-usability`, `smoke-thumbnails`, `smoke-usability-milestone`,
+`smoke-window-coordination`, `smoke-shared-sync`, `smoke-profile-lifecycle`,
+`smoke-profile-quit`, `smoke-m4-migration` and `smoke-duplicate-tabs`. It retains the
+60k combined backup profile, both forced rename-gap recoveries, 10k/50k selection
+and native text/keyboard/zoom checks. Electron is **44.4.5**, embedded Node
+**24.21.0**, SQLite **3.53.4**. The final M5 root was `reader-m5-electron-vLNjfB`;
+the extracted-EXE root was `reader-packaged-azBoqE`. Optional live helper acquisition
+was not configured or run. The native restore actually relaunched the extracted
+EXE from PID **54068** into PID **29560**. Raw `.m5-*.log` and `.packaging-diagnostics/` files are
+ignored local diagnostics; this ledger records the durable results.
+
+The final large restore phase completed in 113,796.5 ms including its many test
+mutations/cancellation/invalid-candidate assertions; confirmed restore itself took
+20,645.4 ms. These are host/load observations, not latency acceptance budgets.
+Expected malformed-backup, wrong-owner, forced-crash and Chromium shutdown
+diagnostics are distinguished from failed assertions. No unresolved M5 test
+failure remains. M5 is complete and awaiting owner review.
+
+Intermediate verification found and corrected legacy item-only DOM selectors and
+the exact preload capability allowlists. The larger M5 workflow exposed global
+scroll dismissal of a tab menu; dismissal now follows only scrolling ancestors of
+its origin. A reader-actions harness race requested Quit before lazy Settings
+helper probes settled; M3 correctly rejected their late requests with DATA_BUSY and
+kept the window usable. That clean-Quit harness now waits for Settings acknowledgments
+and retains its watchdog through shutdown; queued-work Quit remains tested separately.
+An overlapping large-backup run hit its existing deadline. Sequential verification
+retains the original deadline and complete all-table/safety/crash assertions; small
+CAS lookups in that harness now use existing metadata rather than cloning unrelated
+60k-comment snapshots. These are harness changes, not production extraction/query
+optimizations or relaxed drain deadlines.
+
+Aggregate multi-window memory/IPC/latency budgets remain M9/Q-21. M6 native restore
+sets/geometry/monitors, M7 transfer and M8 native dragging remain unimplemented.
+No public release, signing or genuine installed Squirrel lifecycle is claimed.
+Historical milestone results below retain their original schema/date and scope.
+
 ## Persistent topology and independent views (M4, 2026-10-18, ADR 0030)
 
 Current schema is **13**; production still opens **one reader**. All verification
@@ -83,9 +184,10 @@ then asserts continued authority and successful retry. It uses the existing boun
 wait helper and retains the safety assertions. No live YouTube request is needed for this milestone;
 optional installed-helper live acquisition and installer lifecycle were not run.
 
-M5 duplicate UI/descendant DOM namespaces, M6 public native windows/restore policy/
-geometry/physical monitors and M7 ownership transfer remain unimplemented and
-unverified. M4 does not claim multi-monitor safety or full native session restoration.
+M4 did not implement duplicate UI/descendant DOM namespaces; M5 above now does.
+M6 public native windows/restore policy/geometry/physical monitors and M7 ownership
+transfer remain unimplemented and unverified. M4/M5 do not claim multi-monitor
+safety or full native session restoration.
 
 
 ## Global profile/window lifecycle safety (M3, 2026-10-18, ADR 0029)

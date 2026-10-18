@@ -22,6 +22,7 @@ import type { SelectionControls } from '../shared/preferences';
 import { VideoThumbnail } from './VideoThumbnail';
 
 interface Props {
+  viewId?: string;
   active?: boolean;
   selectionControls?: SelectionControls;
   includeCollapsedInPrefix?: boolean;
@@ -54,8 +55,8 @@ function VideoDescription({ id, text, locale }: { id: string; text: string; loca
 
 /** Mounted content is independent of its workspace visibility wrapper.
  * Session notifications update only this discussion; draft edits reuse the forest. */
-export const DiscussionPanel = memo(function DiscussionPanel({ active = true, selectionControls = 'on-demand', includeCollapsedInPrefix = true, item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onOpenSource, onToggle, onAction, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
-  recordRenderWork('panel', item.id);
+export const DiscussionPanel = memo(function DiscussionPanel({ viewId, active = true, selectionControls = 'on-demand', includeCollapsedInPrefix = true, item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onOpenSource, onToggle, onAction, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
+  recordRenderWork('panel', viewId ?? item.id);
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const [menu, setMenu] = useState<CommentMenuTarget>();
   const dismissMenu = useCallback(() => setMenu(undefined), []);
@@ -79,7 +80,7 @@ export const DiscussionPanel = memo(function DiscussionPanel({ active = true, se
             <div className="item-title"><h1>{item.kind === 'video' ? item.title : item.author?.displayName ?? t('unknownAuthor')}</h1>
               {!item.isDemo && onOpenSource && <SourceAction itemId={item.id} locale={locale} open={onOpenSource} />}</div>
             {item.kind === 'video' && <VideoThumbnail key={`${item.id}:${item.sourceId}`} item={item} locale={locale} active={active} />}
-            {item.kind === 'video' ? item.description && <VideoDescription id={item.id} text={item.description} locale={locale} /> : <p className="post-text">{item.text}</p>}
+            {item.kind === 'video' ? item.description && <VideoDescription id={viewId ?? item.id} text={item.description} locale={locale} /> : <p className="post-text">{item.text}</p>}
             <div className="item-meta"><strong>{item.author?.displayName ?? t('unknownAuthor')}</strong>
               {item.author?.handle && <span>{item.author.handle}</span>}
               {time && <time dateTime={item.publishedAt} title={time.exact} tabIndex={0} aria-label={time.exact}>{time.relative}</time>}
@@ -102,7 +103,7 @@ export const DiscussionPanel = memo(function DiscussionPanel({ active = true, se
             <DiscussionActions item={item} comments={comments} session={session} locale={locale} disabled={saving}
               includeCollapsedInPrefix={includeCollapsedInPrefix} menu={active ? menu : undefined} dismissMenu={dismissMenu}
               onAction={onAction} execute={onBulk} modalChanged={onBulkModal} />
-            <VirtualCommentList itemId={item.id} isDemo={item.isDemo} comments={comments} result={view.result} selected={view.selected} session={session} scrollRequest={view.scrollRequest}
+            <VirtualCommentList viewId={viewId} active={active} itemId={item.id} isDemo={item.isDemo} comments={comments} result={view.result} selected={view.selected} session={session} scrollRequest={view.scrollRequest}
               showSelection={selectionControls === 'always' || view.selectionMode} bulkSelected={view.bulkSelected} onContextMenu={setMenu}
               locale={locale} disabled={saving} onToggle={toggle} onAction={onAction} now={now} newIds={newIds} />
           </section>

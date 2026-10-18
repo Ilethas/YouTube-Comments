@@ -116,10 +116,10 @@ async function verify(window, root, phase) {
     assert.equal(await js(`${panel}.querySelector('.discussion-sort select').value`), expected.sort);
     const geometry = await js(`(() => {const panel=${panel},row=panel.querySelector('[data-comment-id="${expected.anchor.commentId}"]');
       return {rows:panel.querySelectorAll('article.comment').length,rulerNodes:panel.querySelector('.discussion-ruler').querySelectorAll('*').length,
-        selected:panel.querySelector('[data-selected=true]')?.id,focus:document.activeElement?.matches('article.comment'),
+        selected:panel.querySelector('[data-selected=true]')?.dataset.domainCommentId,focus:document.activeElement?.matches('article.comment'),
         offset:row ? panel.getBoundingClientRect().top-row.getBoundingClientRect().top : null,scroll:panel.scrollTop};})()`);
     assert.ok(geometry.rows < 50); assert.ok(geometry.rulerNodes < 10); assert.equal(geometry.focus, false, 'Restored selection never takes browser focus');
-    assert.equal(geometry.selected, `comment-${expected.selected}`); assert.ok(geometry.scroll > 100000);
+    assert.equal(geometry.selected, expected.selected); assert.ok(geometry.scroll > 100000);
     assert.ok(geometry.offset !== null && Math.abs(geometry.offset - expected.anchor.offset) < 2, `Anchor offset: ${JSON.stringify(geometry)} vs ${expected.anchor.offset}`);
     assert.equal(await js(`${panel}.querySelector('.discussion-ruler').dataset.matchCount`), String(count));
     return geometry;
@@ -132,7 +132,7 @@ async function verify(window, root, phase) {
       assert.equal(await js('document.querySelectorAll("article.comment").length'), 0);
       await open(10000); await control('[name=seen]', 'unseen'); await apply();
       await control('.discussion-sort select', 'newest'); await distant();
-      const marked = await js(`(() => {const article=Array.from(${panel}.querySelectorAll('article.comment')).find(row=>row.dataset.selected!=='true'); article.querySelector('.seen-control input').click(); return article.id.slice(8);})()`);
+      const marked = await js(`(() => {const article=Array.from(${panel}.querySelectorAll('article.comment')).find(row=>row.dataset.selected!=='true'); article.querySelector('.seen-control input').click(); return article.dataset.domainCommentId;})()`);
       await wait(`!${panel}.querySelector('.seen-control input:disabled')`, 'seen saved');
       await control('.query-search input', 'microphone'); await settle();
       assert.equal(await js(`${panel}.querySelector('.discussion-ruler').dataset.matchCount`), '10000', 'Seen changes leave in-session applied view stale');
@@ -150,10 +150,10 @@ async function verify(window, root, phase) {
       await activate('restoration-10000'); await settle();
       const small = await assertView('restoration-10000', expected.views['restoration-10000'], 9999);
       assert.equal(await js(`${panel}.querySelector('.query-status').textContent.includes('Seen changes saved')`), false);
-      assert.equal(await js(`document.getElementById('comment-${expected.marked}') !== null`), false, 'Fresh flat Unseen result removes the durable seen row');
+      assert.equal(await js(`document.querySelector('[role=tabpanel]:not([hidden]) [data-domain-comment-id=\"${expected.marked}\"]') !== null`), false, 'Fresh flat Unseen result removes the durable seen row');
       const selected = expected.views['restoration-10000'].selected, index = Number(selected.split('-').at(-1));
       await js(`${panel}.dispatchEvent(new KeyboardEvent('keydown',{key:'F3',bubbles:true}))`);
-      await wait(`${panel}.querySelector('[data-selected=true]')?.id==='comment-restoration-10000-${index - 1}'`, 'F3 continues in restored Newest order');
+      await wait(`${panel}.querySelector('[data-selected=true]')?.dataset.domainCommentId==='restoration-10000-${index - 1}'`, 'F3 continues in restored Newest order');
       await settle();
       await js(`${tabElement('restoration-10000')}.nextElementSibling.click()`);
       await wait(`!${tabElement('restoration-10000')}`, 'close'); await library();

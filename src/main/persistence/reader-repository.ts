@@ -1,4 +1,4 @@
-import type { SharedChange, SharedCommit, SharedStamp, SharedItemSnapshot } from '../../shared/reader-sync';
+import type { SharedChange, SharedCommit, SharedStamp, SharedItemSnapshot, SharedViewSnapshot } from '../../shared/reader-sync';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -8,7 +8,7 @@ import type { Author, Comment, ContentItem } from '../../domain/discussion';
 import { initialComments, items } from '../../fixtures/discussions';
 import { initialLocale, normalizeTranslationCode } from '../../shared/preferences';
 import type { Preferences } from '../../shared/preferences';
-import type { PreferenceChange, ReaderState, ToggleSeenRequest } from '../../shared/reader-api';
+import type { PreferenceChange, ReaderState, ToggleSeenRequest, DuplicateTabRequest, DuplicateTabResult } from '../../shared/reader-api';
 import { migrateDatabase, transaction } from './migrations';
 import { establishSyntheticHistory } from './synthetic-history';
 import type { AuthorObservation, ContentObservation, CommentObservation, NormalizedExtraction } from '../../domain/extraction-observation';
@@ -397,9 +397,9 @@ export class ReaderRepository {
     if (!this.db.prepare(`UPDATE discussion_views SET ${column}=${column}+1 WHERE view_id=? AND ${column}=?`).run(viewId, expected).changes) throw new StateConflictError('Stale view');
     return itemId;
   }
-  private discussionCollapse(windowId: string): ReaderState['discussionCollapse'] {
+  private discussionCollapse(windowId: string, viewId: string | null = null): ReaderState['discussionCollapse'] {
     const states: Record<string, DiscussionCollapse> = {};
-    for (const row of this.db.prepare(`SELECT c.* FROM view_collapse c JOIN tab_instances t ON t.id=c.view_id WHERE t.owner_window_id=?`).all(windowId)) {
+    for (const row of this.db.prepare(`SELECT c.* FROM view_collapse c JOIN tab_instances t ON t.id=c.view_id WHERE t.owner_window_id=? AND (? IS NULL OR c.view_id=?)`).all(windowId, viewId, viewId)) {
       if (row.default_collapsed !== 0 && row.default_collapsed !== 1) continue;
       const overrides = this.db.prepare('SELECT o.comment_id FROM view_collapse_overrides o JOIN comments c ON c.id=o.comment_id AND c.item_id=o.item_id WHERE o.view_id=? AND o.item_id=? ORDER BY o.comment_id').all(row.view_id, row.item_id);
       states[String(row.view_id)] = { defaultCollapsed: row.default_collapsed === 1, overrides: overrides.map(o => String(o.comment_id)) };
@@ -437,9 +437,9 @@ export class ReaderRepository {
     const owns = this.db.prepare('SELECT 1 FROM comments WHERE item_id=? AND id=?');
     return [request.anchor.commentId, request.selected].every(id => id === null || !!owns.get(itemId, id));
   }
-  private discussionViews(windowId: string): ReaderState['discussionViews'] {
+  private discussionViews(windowId: string, viewId: string | null = null): ReaderState['discussionViews'] {
     const views: [string, DiscussionViewIntent][] = [];
-    for (const row of this.db.prepare(`SELECT v.* FROM discussion_view_intent v JOIN tab_instances t ON t.id=v.view_id WHERE t.owner_window_id=?`).all(windowId)) {
+    for (const row of this.db.prepare(`SELECT v.* FROM discussion_view_intent v JOIN tab_instances t ON t.id=v.view_id WHERE t.owner_window_id=? AND (? IS NULL OR v.view_id=?)`).all(windowId, viewId, viewId)) {
       try {
         const request: unknown = { viewId: row.view_id, expectedRevision: 0, draft: JSON.parse(String(row.draft_query_json)), applied: JSON.parse(String(row.applied_query_json)),
           sort: row.sort, anchor: { commentId: row.anchor_comment_id, offset: row.anchor_offset }, selected: row.selected_comment_id };
@@ -466,6 +466,35 @@ export class ReaderRepository {
       this.invalidViewDiagnostics.delete(request.viewId); return null;
     });
   }
+  /** Scoped hydration is authorized even for an owned dormant instance. */
+  viewSnapshot(windowId: string, viewId: string): SharedViewSnapshot {
+    const itemId = this.ownedView(windowId, viewId);
+    const row = this.db.prepare('SELECT intent_revision,collapse_revision FROM discussion_views WHERE view_id=?').get(viewId);
+    if (!row) throw new ViewOwnershipError();
+    return { ...this.stamp(), viewId, instance: { itemId, intentRevision: Number(row.intent_revision), collapseRevision: Number(row.collapse_revision) },
+      intent: this.discussionViews(windowId, viewId)[viewId], collapse: this.discussionCollapse(windowId, viewId)[viewId] };
+  }
+  /** Copy acknowledged semantic SQL rows and place a new identity in ONE commit.
+   * Fresh zero CAS lanes belong exclusively to the newly allocated instance. */
+  duplicateTab(request: DuplicateTabRequest, windowId = this.initialWindowId()): DuplicateTabResult {
+    const viewId = this.commit({ kind: 'workspace' }, () => {
+      const itemId = this.ownedView(windowId, request.sourceViewId), state = this.workspace(windowId);
+      if (state.revision !== request.expectedRevision) throw new StateConflictError('Stale topology');
+      const index = state.tabs.findIndex(t => t.id === request.sourceViewId && t.kind === 'discussion');
+      if (index < 0) throw new ViewOwnershipError('Source must be open');
+      const source = this.viewSnapshot(windowId, request.sourceViewId);
+      if (source.instance.intentRevision !== request.intentRevision || source.instance.collapseRevision !== request.collapseRevision) throw new StateConflictError('Stale source');
+      const id = randomUUID();
+      this.db.prepare("INSERT INTO tab_instances VALUES (?,?,'discussion',?)").run(id, windowId, itemId);
+      this.db.prepare('INSERT INTO discussion_view_intent SELECT ?,item_id,draft_query_json,applied_query_json,sort,anchor_comment_id,anchor_offset,selected_comment_id FROM discussion_view_intent WHERE view_id=?').run(id, request.sourceViewId);
+      this.db.prepare('INSERT INTO view_collapse SELECT ?,item_id,default_collapsed FROM view_collapse WHERE view_id=?').run(id, request.sourceViewId);
+      this.db.prepare('INSERT INTO view_collapse_overrides SELECT ?,item_id,comment_id FROM view_collapse_overrides WHERE view_id=?').run(id, request.sourceViewId);
+      const tabs = [...state.tabs]; tabs.splice(index + 1, 0, discussionTab(id, itemId));
+      this.writeWorkspace(windowId, { tabs, activeTabId: id, revision: state.revision + 1 });
+      return id;
+    });
+    return { workspace: this.workspace(windowId), view: this.viewSnapshot(windowId, viewId) };
+  }
   workspace(windowId = this.initialWindowId()): WorkspaceState {
     const row = this.db.prepare('SELECT active_tab_id,topology_revision FROM app_windows WHERE id=?').get(windowId);
     if (!row) throw new ViewOwnershipError('Unknown window');
@@ -479,6 +508,8 @@ export class ReaderRepository {
     const insert = this.db.prepare('INSERT INTO window_tabs VALUES (?,?,?,?)');
     state.tabs.forEach((tab, position) => insert.run(windowId, tab.id, tab.kind, position));
     this.db.prepare('UPDATE app_windows SET active_tab_id=?,topology_revision=? WHERE id=?').run(state.activeTabId, state.revision, windowId);
+    const active = state.tabs.find(t => t.id === state.activeTabId);
+    if (active?.kind === 'discussion') this.db.prepare('INSERT INTO item_resume_view VALUES (?,?,?) ON CONFLICT(window_id,item_id) DO UPDATE SET view_id=excluded.view_id').run(windowId, active.itemId, active.id);
     return state;
   }
   private resumeTab(windowId: string, itemId: string): WorkspaceTab {
@@ -491,7 +522,10 @@ export class ReaderRepository {
     return discussionTab(id, itemId);
   }
   private openWorkspaceItem(windowId: string, itemId: string): WorkspaceState {
-    const state = this.workspace(windowId), existing = state.tabs.find(tab => tab.kind === 'discussion' && tab.itemId === itemId);
+    const state = this.workspace(windowId);
+    const recent = this.db.prepare('SELECT view_id FROM item_resume_view WHERE window_id=? AND item_id=?').get(windowId, itemId);
+    const candidates = state.tabs.filter(tab => tab.kind === 'discussion' && tab.itemId === itemId);
+    const existing = candidates.find(tab => tab.id === recent?.view_id) ?? candidates[0];
     const next = openWorkspaceTab(state, existing ?? this.resumeTab(windowId, itemId));
     return next === state ? state : this.writeWorkspace(windowId, next);
   }

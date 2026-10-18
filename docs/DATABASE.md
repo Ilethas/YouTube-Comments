@@ -1,5 +1,23 @@
 # Database and durable data
 
+## M5 duplication on schema 13
+
+[ADR 0031](decisions/0031-independent-duplicate-discussion-tabs.md) uses the existing M4 tables without a schema migration. One transaction
+allocates a new discussion tab/view identity, copies optional intent/collapse rows,
+inserts its placement after the owned source, activates it, advances topology CAS
+and updates the local resume pointer. Source intent/collapse CAS counters must
+also equal the acknowledged values; new counters start at zero. Source rows and
+shared content/seen/Undo/history are untouched. Copy/COMMIT failure rolls back all
+structural and seed changes and emits no commit event. Optional absence survives.
+
+Activation updates item_resume_view per window/item. Library Open uses that pointer
+if open, first strip-order copy if the pointer is dormant but siblings are open,
+and the retained pointer if no sibling is open. Closing retains all private rows;
+item removal cascades all copies. Verified backups include open/dormant instances,
+placements/active tab, independent intent/collapse and resume identities. Historical
+migrations 1-12 and preserving migration 13 remain unchanged.
+
+
 ## Persistent topology and view ownership (schema 13, M4)
 
 [ADR 0030](decisions/0030-persistent-window-topology-and-view-instances.md) is the
@@ -33,7 +51,7 @@ collide on a shared version. Main derives the window from its document registry
 and authenticates view ownership, including M3 checkpoints. Runtime M2 epochs and
 commit revisions remain separate. No native geometry or restore set is invented;
 M6 can add optional metadata without a destructive topology change. Startup still
-opens only the initial persisted reader. M5/M6/M7 remain future work.
+opens only the initial persisted reader. M5 is implemented above; M6/M7 remain future work.
 
 
 M3 adds runtime-only global profile/window lifecycle coordination, with no schema

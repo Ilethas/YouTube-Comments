@@ -34,7 +34,7 @@ if (process.versions.electron) {
       throw new Error(`Timed out: ${expression}`);
     }
     const button = (label, scope = panel) => js(`Array.from(${scope}.querySelectorAll('button')).find(b=>b.textContent.trim()===${JSON.stringify(label)}).click()`);
-    const article = index => `document.getElementById(${JSON.stringify('comment-' + fixture.ids[index])})`;
+    const article = index => `Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(fixture.ids[index])})`;
     const circle = index => `${article(index)}.querySelector('.selection-circle')`;
     const inspect = sql => {
       const db = new DatabaseSync(database(root), { readOnly: true });

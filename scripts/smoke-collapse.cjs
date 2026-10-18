@@ -62,12 +62,12 @@ if (process.versions.electron) {
       await wait(`${panel}.querySelector('.discussion-ruler').dataset.matchCount==='2'`);
       assert.equal(await count(), 2);
       await js(`${panel}.dispatchEvent(new KeyboardEvent('keydown',{key:'F3',bubbles:true}))`);
-      await wait(`${panel}.querySelector('[data-selected=true]')?.id===${JSON.stringify('comment-' + fixture.firstMatch)}`);
+      await wait(`${panel}.querySelector('[data-selected=true]')?.dataset.domainCommentId===${JSON.stringify(fixture.firstMatch)}`);
       await pause(200); assert.equal(await visibleSelected(), true);
       assert.equal(await js(`${panel}.querySelector('.query-navigation span').textContent`), '1 / 2');
       assert.equal(persisted().overrides.length, 19, 'Only first target ancestors expand');
       await js(`${panel}.dispatchEvent(new KeyboardEvent('keydown',{key:'F3',shiftKey:true,bubbles:true}))`);
-      await wait(`${panel}.querySelector('[data-selected=true]')?.id===${JSON.stringify('comment-' + fixture.lastMatch)}`);
+      await wait(`${panel}.querySelector('[data-selected=true]')?.dataset.domainCommentId===${JSON.stringify(fixture.lastMatch)}`);
       assert.equal(await js(`${panel}.querySelector('.query-navigation span').textContent`), '2 / 2');
       await click('Collapse all'); assert.equal(await count(), 2);
       await click('Previous unseen');
@@ -75,12 +75,12 @@ if (process.versions.electron) {
       await pause(200); assert.equal(await visibleSelected(), true);
       await click('Collapse all');
       await js(`(()=>{const r=${panel}.querySelector('.discussion-ruler'),b=r.getBoundingClientRect(),y=Number(/M13,([\\d.]+)/.exec(r.querySelector('.ruler-new').getAttribute('d'))[1]);r.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:b.left+14,clientY:b.top+y+1}));})()`);
-      await wait(`${panel}.querySelector('[data-selected=true]')?.id===${JSON.stringify('comment-' + fixture.lastMatch)}`);
+      await wait(`${panel}.querySelector('[data-selected=true]')?.dataset.domainCommentId===${JSON.stringify(fixture.lastMatch)}`);
       await pause(200); assert.equal(await visibleSelected(), true);
       await click('Collapse all');
       // Keyboard NEW-lane End+Enter reveals the same hidden exact target.
       for (const key of ['ArrowRight','ArrowRight','End','Enter']) await js(`${panel}.querySelector('.discussion-ruler').dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true}))`);
-      await wait(`${panel}.querySelector('[data-selected=true]')?.id===${JSON.stringify('comment-' + fixture.lastMatch)}`);
+      await wait(`${panel}.querySelector('[data-selected=true]')?.dataset.domainCommentId===${JSON.stringify(fixture.lastMatch)}`);
       await click('Collapse all'); await pause(400);
       assert.deepEqual(seen(), originalSeen);
       await js("document.getElementById('settings-toggle').click()");

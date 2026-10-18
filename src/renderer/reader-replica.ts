@@ -136,6 +136,21 @@ export class ReaderReplica {
     }, error => { this.running = undefined; throw error; });
     return this.running;
   }
+  /** Hydrate new instances BEFORE publishing topology. Ordinary duplicate events
+   * read only the new semantic view, never a Library-sized comment snapshot. */
+  private async hydrateNewViews(state: ReaderState, stamp: SharedStamp): Promise<ReaderState | undefined> {
+    const previous = this.snapshot?.state.viewInstances ?? {};
+    const newIds = Object.keys(state.viewInstances).filter(id => !previous[id]);
+    const seeds = await Promise.all(newIds.map(viewId => this.transport.getDiscussionView({ viewId })));
+    let discussionViews = state.discussionViews, discussionCollapse = state.discussionCollapse;
+    for (let index = 0; index < seeds.length; index++) {
+      const seed = seeds[index];
+      if (!seed.ok || seed.value.viewId !== newIds[index] || seed.value.profileEpoch !== stamp.profileEpoch || seed.value.commitRevision !== stamp.commitRevision) return;
+      if (seed.value.intent) discussionViews = { ...discussionViews, [seed.value.viewId]: seed.value.intent };
+      if (seed.value.collapse) discussionCollapse = { ...discussionCollapse, [seed.value.viewId]: seed.value.collapse };
+    }
+    return { ...state, discussionViews, discussionCollapse };
+  }
   private async run(): Promise<void> {
     const incarnation = this.incarnation;
     while (!this.stopped && (this.recover || this.queue.length)) {
@@ -196,7 +211,10 @@ export class ReaderReplica {
         if (this.stopped || incarnation !== this.incarnation) return;
         state = { ...state, preferences: result.value.preferences, workspace: result.value.workspace, viewInstances: result.value.viewInstances };
       }
-      this.snapshot = { profileEpoch: event.profileEpoch, commitRevision: event.commitRevision, state };
+      const hydrated = await this.hydrateNewViews(state, event);
+      if (!hydrated) { this.recover = true; continue; }
+      if (this.stopped || incarnation !== this.incarnation) return;
+      this.snapshot = { profileEpoch: event.profileEpoch, commitRevision: event.commitRevision, state: hydrated };
       this.publish(change);
     }
   }

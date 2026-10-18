@@ -23,6 +23,8 @@ export const completeReaderLimit = 200;
 const noNewIds: ReadonlySet<string> = new Set();
 
 interface Props {
+  viewId?: string;
+  active?: boolean;
   isDemo?: boolean;
   showSelection?: boolean;
   bulkSelected?: ReadonlySet<string>;
@@ -61,16 +63,16 @@ export function ReaderRails({ row }: { row: ReaderRow }) {
 
 /** Renderer-only geometry over complete application-data membership. Header and
  * query controls share the existing panel scrollbar, outside this measured list. */
-export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = false, showSelection = false, bulkSelected = noNewIds, onContextMenu, itemId, comments, result, selected, scrollRequest, session,
+export const VirtualCommentList = memo(function VirtualCommentList({ viewId, active = true, isDemo = false, showSelection = false, bulkSelected = noNewIds, onContextMenu, itemId, comments, result, selected, scrollRequest, session,
   locale, disabled, now, onToggle, onAction, overscan = readerOverscan, newIds = noNewIds }: Props) {
   const list = useRef<HTMLOListElement>(null);
   const sort = session.state.sort;
   const collapse = session.state.collapse;
   const presentation = useMemo(() => {
-    recordRenderWork('forest', itemId);
-    recordRenderWork('tree', itemId);
+    recordRenderWork('forest', viewId ?? itemId);
+    recordRenderWork('tree', viewId ?? itemId);
     return session.displayed(comments);
-  }, [comments, result, sort, collapse, session, itemId]);
+  }, [comments, result, sort, collapse, session, itemId, viewId]);
   const { rows, indexById } = presentation;
   const toggleCollapse = useCallback((id: string) => {
     const state = session.state.collapse;
@@ -138,7 +140,7 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
   }, [virtualizer]);
   const captureAnchor = useCallback((): ReaderScrollAnchor | undefined => {
     const panel = getScrollElement(), element = list.current;
-    if (!panel || !element) return;
+    if (!panel || !element || panel.hidden) return;
     // Query status/header reflow can precede ResizeObserver. Translate the known
     // list origin into cached virtual coordinates before resolving identity;
     // never discover targets by scanning mounted rows.
@@ -154,14 +156,14 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
   useLayoutEffect(() => session.attachReader(() => capture.current()), [session]);
   useLayoutEffect(() => {
     const panel = getScrollElement();
-    if (!panel) return;
+    if (!panel || !active) return;
     let timer: ReturnType<typeof setTimeout>;
     const idle = () => { clearTimeout(timer); timer = setTimeout(() => session.readerSettled(), scrollSaveDelay); };
     panel.addEventListener('scroll', idle, { passive: true });
     // Explicit reveal may already be at its destination and emit no scroll event.
     idle();
     return () => { clearTimeout(timer); panel.removeEventListener('scroll', idle); };
-  }, [session, getScrollElement, scrollRequest?.revision]);
+  }, [session, getScrollElement, scrollRequest?.revision, active]);
 
   const pendingAnchor = useRef<ReaderScrollAnchor>();
   const previousWidth = useRef(0);
@@ -203,12 +205,12 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
   }, [getScrollElement, virtualizer]);
 
   useLayoutEffect(() => {
-    if (!pendingAnchor.current) return;
+    if (!active || !pendingAnchor.current) return;
     const anchor = pendingAnchor.current; pendingAnchor.current = undefined;
     const index = anchor.id === undefined ? undefined : indexById.get(anchor.id);
     if (index === undefined) return;
     return restoreMeasuredAnchor(index, anchor.offset);
-  }, [geometry.width, geometry.margin, indexById, virtualizer]);
+  }, [geometry.width, geometry.margin, indexById, virtualizer, active]);
 
   // Anchor restoration differs from index centering: retain the intra-row offset
   // while estimates become actual heights. Reconcile only this resolved data row.
@@ -233,6 +235,7 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
   // Language can alter wrapped badges/metadata, including cached offscreen rows.
   const previousLayout = useRef({ locale, showSelection });
   useLayoutEffect(() => {
+    if (!active) return;
     if (previousLayout.current.locale === locale && previousLayout.current.showSelection === showSelection) return;
     previousLayout.current = { locale, showSelection };
     const anchor = capture.current();
@@ -243,23 +246,24 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
     const index = anchor?.id === undefined ? undefined : indexById.get(anchor.id);
     const cancelRestore = index !== undefined && anchor ? restoreMeasuredAnchor(index, anchor.offset) : undefined;
     return () => { cancelMeasurement(); cancelRestore?.(); };
-  }, [locale, showSelection, virtualizer, indexById, measureMountedRows]);
+  }, [locale, showSelection, virtualizer, indexById, measureMountedRows, active]);
   useLayoutEffect(() => {
     // Clearing the cache does not itself resize a DOM box. Rows whose height
     // stays unchanged during reflow may emit no ResizeObserver entry, so restore
     // their actual measurements explicitly before painting estimated positions.
+    if (!active) return;
     return measureMountedRows();
-  }, [geometry.width, locale, measureMountedRows]);
+  }, [geometry.width, locale, measureMountedRows, active]);
   useLayoutEffect(() => {
-    if (focusedId === undefined || indexById.has(focusedId)) return;
+    if (!active || focusedId === undefined || indexById.has(focusedId)) return;
     // Explicit Apply can remove the focused row. Return focus to its reader
     // rather than leave keyboard navigation on the document body.
     setFocusedId(undefined);
     getScrollElement()?.focus({ preventScroll: true });
-  }, [focusedId, indexById, getScrollElement]);
+  }, [focusedId, indexById, getScrollElement, active]);
   const handledRequest = useRef<number>();
   useLayoutEffect(() => {
-    if (!scrollRequest || handledRequest.current === scrollRequest.revision) return;
+    if (!active || !scrollRequest || handledRequest.current === scrollRequest.revision) return;
     handledRequest.current = scrollRequest.revision;
     const panel = getScrollElement();
     if (!panel) return;
@@ -272,8 +276,9 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
     // Final lookup is for this exact already-resolved ID, never target discovery.
     let frame = 0, attempts = 0;
     const finish = () => {
-      const article = document.getElementById(commentTargetId(targetId));
-      if (!article) { if (++attempts < 120) frame = requestAnimationFrame(finish); return; }
+      const article = document.getElementById(commentTargetId(targetId, viewId));
+      if (panel.hidden) return;
+      if (!article || !panel.contains(article)) { if (++attempts < 120) frame = requestAnimationFrame(finish); return; }
       if (scrollRequest.kind === 'navigate') {
         article.scrollIntoView({ block: 'center', behavior: 'auto' });
         article.focus({ preventScroll: true });
@@ -281,7 +286,7 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
     };
     frame = requestAnimationFrame(finish);
     return () => cancelAnimationFrame(frame);
-  }, [scrollRequest, indexById, presentation, virtualizer, getScrollElement]);
+  }, [scrollRequest, indexById, presentation, virtualizer, getScrollElement, viewId, active]);
   const items = virtualizer.getVirtualItems();
   const totalSize = virtualizer.getTotalSize();
   const measurements = virtualizer.measurementsCache;
@@ -311,7 +316,7 @@ export const VirtualCommentList = memo(function VirtualCommentList({ isDemo = fa
         aria-posinset={item.index + 1} aria-setsize={rows.length}
         className="comment-branch virtual-comment" style={{ transform: `translateY(${item.start - geometry.margin}px)`, '--reader-indent': readerIndentCss(row.depth) } as CSSProperties}>
         <ReaderRails row={presentation.collapsed.has(row.id) ? { ...row, hasChildren: false } : row} />
-        <CommentArticle comment={row.comment} role={row.role} rawHit={row.rawHit} hasChildren={row.hasChildren} selected={selected === row.id}
+        <CommentArticle viewId={viewId} comment={row.comment} role={row.role} rawHit={row.rawHit} hasChildren={row.hasChildren} selected={selected === row.id}
           showSelection={showSelection} bulkSelected={bulkSelected.has(row.id)} onSelect={selectBulk}
           descendantCount={presentation.summaries.get(row.id)?.descendants} hiddenUnseen={presentation.collapsed.has(row.id) ? presentation.summaries.get(row.id)?.unseen : 0} hiddenMatches={presentation.collapsed.has(row.id) ? presentation.summaries.get(row.id)?.matches : 0} collapsed={presentation.collapsed.has(row.id)}
           onCollapse={toggleCollapse}

@@ -60,7 +60,7 @@ if (process.versions.electron) {
     const ready = window => wait(() => js(window, "!!document.querySelector('.comment')"), 'real reader');
     await Promise.all([ready(a), ready(b)]);
     for (const window of [a, b]) await js(window, "window.m2Events=[];window.m2Progress=[];window.reader.onSharedCommit(e=>window.m2Events.push(e));window.reader.onAcquisitionProgress(e=>window.m2Progress.push(e));void 0");
-    const checkbox = "document.getElementById('comment-v3')?.querySelector('input[type=checkbox]')";
+    const checkbox = "document.querySelector('[role=tabpanel]:not([hidden]) [data-domain-comment-id=\"v3\"]')?.querySelector('input[type=checkbox]')";
     // Apply seen filtering in both real readers, then preserve their membership.
     for (const window of [a, b]) {
       await js(window, "const s=document.querySelector('select[name=seen]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,'unseen');s.dispatchEvent(new Event('change',{bubbles:true}));void 0");

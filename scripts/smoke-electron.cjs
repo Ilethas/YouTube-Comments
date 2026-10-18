@@ -285,7 +285,7 @@ async function verifyWindow(window, nativeTheme) {
   await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .query-controls') !== null", 'bootstrap');
   await verifyHelperSettings();
   if (phase === 'environment') return;
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'getAcquisitionProgress', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'lifecycle', 'moveTab', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences']);
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'createBackup', 'duplicateTab', 'getAcquisitionProgress', 'getDiscussionView', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'lifecycle', 'moveTab', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences']);
   assert.deepEqual(await js('Object.keys(window.reader.lifecycle).sort()'), ['ack', 'command', 'current', 'onEvent', 'plan', 'refuse', 'resume', 'settleAccepted', 'stage', 'submit']);
   assert.deepEqual(await js("window.reader.acquire({url:'https://www.youtube.com/watch?v=abcdefghijk',executable:'evil'})"),
     { ok: false, error: { code: 'INVALID_REQUEST' } });
@@ -385,7 +385,7 @@ async function verifyWindow(window, nativeTheme) {
       await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-controls button[type=submit]').click()");
       await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .query-status').textContent.includes('Obliczanie')", 'worker applied');
     }
-    const visibleMatches = () => js("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) [data-view-role=match]'), row => row.id)");
+    const visibleMatches = () => js("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) [data-view-role=match]'), row => 'comment-'+encodeURIComponent(row.dataset.domainCommentId))");
     async function dateControl(name, value) {
       const selector = `[role=tabpanel]:not([hidden]) [name=${name}]`;
       await js(`(() => {const input=document.querySelector(${JSON.stringify(selector)});
@@ -483,10 +483,10 @@ async function verifyWindow(window, nativeTheme) {
       await js(`document.querySelector('[role=tabpanel]:not([hidden]) .discussion-ruler').dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true,cancelable:true}))`);
       await pause(30);
     }
-    await waitFor(`document.activeElement.id === ${JSON.stringify('comment-' + encodeURIComponent(discovered.id))}`, 'Ruler reveals NEW target');
+    await waitFor(`document.activeElement.dataset.domainCommentId === ${JSON.stringify(discovered.id)}`, 'Ruler reveals NEW target');
     assert.deepEqual(await snapshot(), beforeRuler, 'Ruler navigation never saves seen');
-    await js(`document.getElementById(${JSON.stringify('comment-' + encodeURIComponent(discovered.id))}).querySelector('input').click()`);
-    await waitFor(`document.getElementById(${JSON.stringify('comment-' + encodeURIComponent(discovered.id))}).querySelector('input').checked && !document.querySelector('input[type=checkbox]:disabled')`, 'NEW marked seen');
+    await js(`Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(discovered.id)}).querySelector('input').click()`);
+    await waitFor(`Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(discovered.id)}).querySelector('input').checked && !document.querySelector('input[type=checkbox]:disabled')`, 'NEW marked seen');
     assert.equal(await js("document.querySelectorAll('[role=tabpanel]:not([hidden]) .new-badge').length"), 1, 'Seen NEW remains NEW');
     await applyQuery();
     assert.deepEqual(await visibleMatches(), ['comment-' + encodeURIComponent(discovered.id)], 'Seen NEW still matches discovery-only');
@@ -616,32 +616,32 @@ async function verifyWindow(window, nativeTheme) {
     await draftQuery(''); await applyQuery();
     // Restore starting live state using ordinary acknowledged clicks.
     for (const row of bulkOriginal.comments[video.id]) if ((await snapshot()).comments[video.id].find(comment=>comment.id===row.id).seen !== row.seen) {
-      await js(`document.getElementById(${JSON.stringify('comment-' + encodeURIComponent(row.id))}).querySelector('input').click()`);
+      await js(`Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(row.id)}).querySelector('input').click()`);
       await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input:disabled')", 'restore verification row');
     }
     // Mixed Ctrl+click subtree is recoverable through the established gesture.
     await js(`${tabElement('video-demo')}.click()`);
     await waitFor("document.querySelector('[role=tabpanel]:not([hidden])').dataset.itemId==='video-demo'", 'demo subtree');
-    await js("document.getElementById('comment-v3').querySelector('input').click()");
-    await waitFor("document.getElementById('comment-v3').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'mixed subtree preparation');
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) [data-domain-comment-id=\"v3\"]').querySelector('input').click()");
+    await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) [data-domain-comment-id=\"v3\"]').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'mixed subtree preparation');
     const mixed = await snapshot();
-    await js("document.getElementById('comment-v2').querySelector('input').dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}))");
-    await waitFor("document.getElementById('comment-v2').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'mixed subtree assignment');
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) [data-domain-comment-id=\"v2\"]').querySelector('input').dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}))");
+    await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) [data-domain-comment-id=\"v2\"]').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'mixed subtree assignment');
     assert.deepEqual((await undoUi()).comments,mixed.comments,'Undo restores mixed subtree');
     const rowBefore = await snapshot();
     for (const modifiers of [{}, {shiftKey:true}, {shiftKey:true,ctrlKey:true}]) {
-      await js(`document.querySelector('#comment-v2 .comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,...${JSON.stringify(modifiers)}}))`);
+      await js(`document.querySelector('[data-domain-comment-id=v2] .comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,...${JSON.stringify(modifiers)}}))`);
       await pause(30); assert.deepEqual(await snapshot(),rowBefore,'Row clicks never mark or replace recovery');
     }
     const selectionBefore = await snapshot();
-    assert.equal(await js("(() => {const text=document.querySelector('#comment-v2 .comment-text'),range=document.createRange();range.selectNodeContents(text);getSelection().removeAllRanges();getSelection().addRange(range);return !getSelection().isCollapsed;})()"),true,'Smoke has an active text selection');
-    await js("document.querySelector('#comment-v2 .comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true,ctrlKey:true}))");
+    assert.equal(await js("(() => {const text=document.querySelector('[data-domain-comment-id=v2] .comment-text'),range=document.createRange();range.selectNodeContents(text);getSelection().removeAllRanges();getSelection().addRange(range);return !getSelection().isCollapsed;})()"),true,'Smoke has an active text selection');
+    await js("document.querySelector('[data-domain-comment-id=v2] .comment-text').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true,ctrlKey:true}))");
     await pause(30); assert.deepEqual(await snapshot(),selectionBefore,'Selected text never changes seen');
     await js('getSelection().removeAllRanges()');
     // Real Chromium mouse selection and Shift extension, beyond DOM range tests.
     window.showInactive();
-    await js("document.querySelector('#comment-v2 .comment-text').scrollIntoView({block:'center'})");
-    const selectionPoint = await js("(() => {const r=document.querySelector('#comment-v2 .comment-text').getBoundingClientRect();return {x:Math.round(r.left+5),y:Math.round(r.top+7)};})()");
+    await js("document.querySelector('[data-domain-comment-id=v2] .comment-text').scrollIntoView({block:'center'})");
+    const selectionPoint = await js("(() => {const r=document.querySelector('[data-domain-comment-id=v2] .comment-text').getBoundingClientRect();return {x:Math.round(r.left+5),y:Math.round(r.top+7)};})()");
     contents.sendInputEvent({type:'mouseDown',...selectionPoint,button:'left',clickCount:1});
     contents.sendInputEvent({type:'mouseMove',x:selectionPoint.x+80,y:selectionPoint.y});
     contents.sendInputEvent({type:'mouseUp',x:selectionPoint.x+80,y:selectionPoint.y,button:'left',clickCount:1});
@@ -649,7 +649,7 @@ async function verifyWindow(window, nativeTheme) {
     contents.sendInputEvent({type:'mouseDown',x:selectionPoint.x+130,y:selectionPoint.y,button:'left',clickCount:1,modifiers:['shift']});
     contents.sendInputEvent({type:'mouseUp',x:selectionPoint.x+130,y:selectionPoint.y,button:'left',clickCount:1,modifiers:['shift']});
     await pause(50); assert.deepEqual(await snapshot(),selectionBefore,'Native Shift selection extension never marks seen');
-    const cross = await js("(() => {const a=document.querySelector('#comment-v2 strong'),b=document.querySelector('#comment-v3 .comment-text'),x=a.getBoundingClientRect(),y=b.getBoundingClientRect();return {start:{x:Math.round(x.left+2),y:Math.round(x.top+6)},end:{x:Math.round(y.left+100),y:Math.round(y.top+7)}};})()");
+    const cross = await js("(() => {const a=document.querySelector('[data-domain-comment-id=v2] strong'),b=document.querySelector('[data-domain-comment-id=v3] .comment-text'),x=a.getBoundingClientRect(),y=b.getBoundingClientRect();return {start:{x:Math.round(x.left+2),y:Math.round(x.top+6)},end:{x:Math.round(y.left+100),y:Math.round(y.top+7)}};})()");
     contents.sendInputEvent({type:'mouseDown',...cross.start,button:'left',clickCount:1});
     contents.sendInputEvent({type:'mouseMove',...cross.end});
     contents.sendInputEvent({type:'mouseUp',...cross.end,button:'left',clickCount:1});
@@ -663,17 +663,17 @@ async function verifyWindow(window, nativeTheme) {
     } else console.log('Native Copy UNVERIFIED: current Windows clipboard contains formats Electron cannot snapshot; clipboard preserved.');
     assert.deepEqual(await snapshot(),selectionBefore,'Cross-element selection and copy never mark');
     await js('getSelection().removeAllRanges()'); window.hide();
-    const hit = await js("(() => {const label=document.querySelector('#comment-v2 .seen-control'),r=label.getBoundingClientRect();label.querySelector('input').focus();return {width:r.width,height:r.height,focused:document.activeElement===label.querySelector('input'),outline:getComputedStyle(label).outlineWidth};})()");
+    const hit = await js("(() => {const label=document.querySelector('[data-domain-comment-id=v2] .seen-control'),r=label.getBoundingClientRect();label.querySelector('input').focus();return {width:r.width,height:r.height,focused:document.activeElement===label.querySelector('input'),outline:getComputedStyle(label).outlineWidth};})()");
     assert.ok(hit.width>=32 && hit.height>=32); assert.equal(hit.focused,true); assert.equal(hit.outline,'2px');
-    await js("document.getElementById('comment-v3').querySelector('input').click()");
-    await waitFor("!document.getElementById('comment-v3').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'restore demo');
+    await js("document.querySelector('[role=tabpanel]:not([hidden]) [data-domain-comment-id=\"v3\"]').querySelector('input').click()");
+    await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) [data-domain-comment-id=\"v3\"]').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'restore demo');
     await js(`${tabElement(video.id)}.click()`);
     await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').dataset.itemId==='${video.id}'`, 'restart recovery preparation');
     assert.deepEqual((await snapshot()).comments,bulkOriginal.comments);
     const restartOperation = await bulkUi('all',true);
     const laterEdit = bulkOriginal.comments[video.id].find(comment=>!comment.seen);
-    await js(`document.getElementById(${JSON.stringify('comment-' + encodeURIComponent(laterEdit.id))}).querySelector('input').click()`);
-    await waitFor(`!document.getElementById(${JSON.stringify('comment-' + encodeURIComponent(laterEdit.id))}).querySelector('input').checked && !document.querySelector('.seen-control input:disabled')`, 'later manual edit before restart');
+    await js(`Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(laterEdit.id)}).querySelector('input').click()`);
+    await waitFor(`!Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(laterEdit.id)}).querySelector('input').checked && !document.querySelector('.seen-control input:disabled')`, 'later manual edit before restart');
     assert.ok(restartOperation.seenUndo[video.id].changedCount > 1);
     fs.writeFileSync(path.join(root,'seen-before.json'),JSON.stringify(bulkOriginal));
     state = await snapshot();

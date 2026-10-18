@@ -87,3 +87,23 @@ it.each([10000, 50000])('one header image for %i comments preserves projections,
   expect(api.getThumbnail).toHaveBeenCalledTimes(1); expect(api.checkThumbnail).toHaveBeenCalledTimes(1);
   session.dispose();
 });
+
+it('two same-item panels keep description/thumbnail expansion local and perform thumbnail work only for the active view', async () => {
+  installReaderLayout();
+  const comments = generateDiscussion({ count: 50000 }).comments.map(comment => ({ ...comment, itemId: item.id }));
+  const executor = () => ({ evaluate: vi.fn(async (rows: Parameters<typeof evaluateDiscussionQuery>[0], query: Parameters<typeof evaluateDiscussionQuery>[1]) => evaluateDiscussionQuery(rows, query)), dispose: vi.fn() });
+  const first = new DiscussionViewSession(comments, executor()), second = new DiscussionViewSession(comments, executor());
+  const content = (active: string) => <>{[['a', first], ['b', second]].map(([id, session]) => <main key={String(id)} className="reader-panel" hidden={active !== id} data-view-id={String(id)}>
+    <DiscussionPanel viewId={String(id)} active={active === id} item={{ ...item, description: 'Local description' }} comments={comments} session={session as DiscussionViewSession} locale="en" saving={false} refreshDisabled={false} coverageLimited={false} onRefresh={vi.fn()} onToggle={vi.fn()} />
+  </main>)}</>;
+  const view = render(content('a')); await load(view.container);
+  expect(api.getThumbnail).toHaveBeenCalledTimes(1); expect(api.checkThumbnail).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Expand thumbnail' })); fireEvent.click(screen.getByRole('button', { name: 'Show description' }));
+  view.rerender(content('b')); await waitFor(() => expect(api.checkThumbnail).toHaveBeenCalledTimes(2)); await load(required(view.container.querySelector<HTMLElement>('[data-view-id=b]')));
+  expect(screen.getByRole('button', { name: 'Expand thumbnail' })).toBeTruthy(); expect(screen.getByRole('button', { name: 'Show description' })).toBeTruthy();
+  view.rerender(content('a')); await waitFor(() => expect(api.checkThumbnail).toHaveBeenCalledTimes(3));
+  expect(screen.getByRole('button', { name: 'Shrink thumbnail' })).toBeTruthy(); expect(screen.getByRole('button', { name: 'Hide description' })).toBeTruthy();
+  for (const panel of view.container.querySelectorAll('main')) expect(panel.querySelectorAll('article.comment').length).toBeLessThan(35);
+  expect(view.container.querySelectorAll('#description-a')).toHaveLength(1); expect(view.container.querySelectorAll('#description-b')).toHaveLength(1);
+  first.dispose(); second.dispose();
+});

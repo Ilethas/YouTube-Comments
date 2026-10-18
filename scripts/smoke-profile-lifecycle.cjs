@@ -109,9 +109,9 @@ if (process.versions.electron) {
     } finally { copy.close(); }
     console.log('M3 PASS: two UI participants, pending semantic checkpoints, slow accepted save, constrained drains, input freeze, authenticated IPC, verified backup and M2 release.');
     await invoke(a, 'bulkSeen', { itemId: 'video-demo', seen: true, target: { kind: 'all' } });
-    await wait(() => js(b, "!!document.querySelector('.bulk-area > .text-button') && document.getElementById('comment-v3').querySelector('input[type=checkbox]').checked"), 'displayed recovery before queued Undo');
+    await wait(() => js(b, "!!document.querySelector('.bulk-area > .text-button') && document.querySelector('[role=tabpanel]:not([hidden]) [data-domain-comment-id=\"v3\"]').querySelector('input[type=checkbox]').checked"), 'displayed recovery before queued Undo');
     delayChannel = 'reader:toggle-seen'; delayContents = b.webContents;
-    await js(b, "document.getElementById('comment-v3').querySelector('input[type=checkbox]').click();void 0");
+    await js(b, "document.querySelector('[role=tabpanel]:not([hidden]) [data-domain-comment-id=\"v3\"]').querySelector('input[type=checkbox]').click();void 0");
     await wait(() => !!releaseReply, 'UI checkbox acknowledgment held');
     await js(b, "document.activeElement?.blur();document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true}));void 0");
     await wait(() => stagedCount === 1, 'main-issued queued Undo ticket');

@@ -46,6 +46,8 @@ beforeEach(() => {
     onSharedCommit: undefined as unknown as ReaderApi['onSharedCommit'],
     getSharedSnapshot: undefined as unknown as ReaderApi['getSharedSnapshot'],
     getSharedMetadata: undefined as unknown as ReaderApi['getSharedMetadata'],
+    getDiscussionView: vi.fn(async () => ({ ok: false as const, error: { code: 'NOT_FOUND' as const } })),
+    duplicateTab: vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } })),
     getThumbnail: vi.fn(async () => ({ ok: true as const, value: null })),
     checkThumbnail: vi.fn(async () => ({ ok: true as const, value: null })),
     openThumbnail: vi.fn(async () => ({ ok: true as const, value: null })),
@@ -134,7 +136,7 @@ it('Library startup does not create/evaluate/render hidden discussions; first ac
   } };
   window.__readerWork = {}; await showReader();
   expect(createQueryExecutor).not.toHaveBeenCalled(); expect(document.querySelectorAll('article.comment')).toHaveLength(0);
-  expect(work()).toEqual({});
+  expect(Object.fromEntries(Object.entries(work()).filter(([key]) => !key.startsWith('panel:')))).toEqual({});
   fireEvent.click(document.getElementById('tab-test-view-video-demo') as HTMLElement);
   await screen.findByRole('searchbox', { name: 'Search this discussion' });
   expect(screen.getByRole<HTMLInputElement>('searchbox').value).toBe('microphone');
@@ -161,7 +163,7 @@ it('active saved view shows localized restoration status until the worker finish
   expect(document.querySelectorAll('article.comment')).toHaveLength(0);
   const [rows, query] = evaluate.mock.calls[0]; const focus = document.activeElement;
   await act(async () => finish(evaluateDiscussionQuery(rows, query)));
-  expect(document.getElementById('comment-v2')?.dataset.selected).toBe('true');
+  expect(commentElement('v2')?.dataset.selected).toBe('true');
   expect(document.activeElement).toBe(focus); expect(api.toggleSeen).not.toHaveBeenCalled();
 });
 
@@ -186,12 +188,13 @@ function threeDiscussions() {
   state = { ...state, items: [...items, third], comments: { ...initialComments, [third.id]: rows },
     workspace: { ...state.workspace, tabs: [...state.workspace.tabs, discussionTab(third.id)] } };
 }
-const work = () => window.__readerWork ?? {};
+const work = () => Object.fromEntries(Object.entries(window.__readerWork ?? {}).map(([key,value]) => [key.replace(':test-view-', ':'),value]));
+const commentElement = (id: string) => [...screen.getByRole('tabpanel').querySelectorAll<HTMLElement>('article.comment')].find(row => row.dataset.domainCommentId === id);
 function expectUnrelatedIdle() {
   for (const id of ['post-demo', 'third-discussion']) for (const kind of ['panel', 'forest', 'tree']) expect(work()[`${kind}:${id}`] ?? 0).toBe(0);
 }
 
-it('Library/Settings/discussion activation and pending workspace saves never rebuild or render mounted discussions', async () => {
+it('Library/Settings/discussion activation updates visibility without rebuilding mounted discussion projections', async () => {
   threeDiscussions(); window.__readerWork = {};
   await showReader();
   expect(work()['forest:third-discussion'] ?? 0).toBe(0);
@@ -209,20 +212,20 @@ it('Library/Settings/discussion activation and pending workspace saves never reb
   for (const name of ['Library', 'Settings']) {
     fireEvent.click(screen.getByRole('button', { name }));
     await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-${name.toLowerCase()}`));
-    expect(work()).toEqual({});
+    expect(Object.fromEntries(Object.entries(work()).filter(([key]) => !key.startsWith('panel:')))).toEqual({});
   }
   for (const id of ['video-demo', 'post-demo', 'third-discussion', 'video-demo']) {
     fireEvent.click(document.getElementById(`tab-${discussionTab(id).id}`) as HTMLElement);
     await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-test-view-${id}`));
-    expect(work()).toEqual({});
+    expect(Object.fromEntries(Object.entries(work()).filter(([key]) => !key.startsWith('panel:')))).toEqual({});
   }
   let resolve!: (result: Result<ReaderState['workspace']>) => void;
   vi.mocked(api.activateTab).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
   fireEvent.click(document.getElementById('tab-test-view-post-demo') as HTMLElement);
   expect(document.getElementById('tab-test-view-video-demo')?.hasAttribute('disabled')).toBe(true);
-  expect(work()).toEqual({});
+  expect(Object.fromEntries(Object.entries(work()).filter(([key]) => !key.startsWith('panel:')))).toEqual({});
   await act(async () => resolve({ ok: true, value: openWorkspaceTab(state.workspace, discussionTab('post-demo')) }));
-  expect(work()).toEqual({});
+  expect(Object.fromEntries(Object.entries(work()).filter(([key]) => !key.startsWith('panel:')))).toEqual({});
   expect(panel.scrollTop).toBe(345);
   expect(Array.from(panel.querySelectorAll('.comment-branch'))).toEqual(originalRows);
 });
@@ -241,7 +244,7 @@ it('activation retains ADR 0009 isolation with a 10k hidden discussion and bound
   for (const id of ['post-demo', 'third-discussion', 'video-demo']) {
     fireEvent.click(document.getElementById(`tab-${discussionTab(id).id}`) as HTMLElement);
     await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-test-view-${id}`));
-    expect(work()).toEqual({});
+    expect(Object.fromEntries(Object.entries(work()).filter(([key]) => !key.startsWith('panel:')))).toEqual({});
   }
 });
 
@@ -707,7 +710,7 @@ it('older acquisition acknowledgment preserves newer app opens and mixed reorder
 });
 
 const currentView = () => within(screen.getByRole('tabpanel'));
-const appliedRows = () => Array.from(screen.getByRole('tabpanel').querySelectorAll<HTMLElement>('[data-view-role=match]'), row => row.id);
+const appliedRows = () => Array.from(screen.getByRole('tabpanel').querySelectorAll<HTMLElement>('[data-view-role=match]'), row => row.getAttribute('data-domain-comment-id'));
 const press = (key: string, modifiers: KeyboardEventInit = {}, target: Element | Document = document) => {
   const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...modifiers });
   fireEvent(target, event); return event;
@@ -926,7 +929,7 @@ it('seen saves retain applied matches/counts and pending view until second Apply
   fireEvent.change(currentView().getByLabelText('Seen filter'), { target: { value: 'unseen' } });
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
   const previous = appliedRows(), count = currentView().getByText(/Applied:/).textContent;
-  const target = document.getElementById(previous[0])?.querySelector<HTMLInputElement>('input');
+  const target = commentElement(required(previous[0]))?.querySelector<HTMLInputElement>('input');
   if (!target) throw new Error('Missing match');
   await userEvent.click(target);
   await waitFor(() => expect(target.checked).toBe(true));
@@ -965,7 +968,7 @@ it('match/F3/Shift+F3 and live unseen navigation select/reveal application IDs w
   await showReader();
   fireEvent.change(currentView().getByLabelText('Seen filter'), { target: { value: 'unseen' } });
   await userEvent.click(screen.getByRole('button', { name: 'Apply' })); const matches = appliedRows();
-  const selected = () => screen.getByRole('tabpanel').querySelector('[data-selected=true]')?.id;
+  const selected = () => screen.getByRole('tabpanel').querySelector<HTMLElement>('[data-selected=true]')?.dataset.domainCommentId;
   await userEvent.click(screen.getByRole('button', { name: 'Next match' })); expect(selected()).toBe(matches[0]);
   fireEvent.keyDown(document, { key: 'F3' }); expect(selected()).toBe(matches[1]);
   fireEvent.keyDown(document, { key: 'F3', shiftKey: true }); expect(selected()).toBe(matches[0]);
@@ -982,18 +985,18 @@ it('F3/unseen wrapping and match position follow sorted trees while drafts, coun
   await showReader();
   fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'needle' } });
   await userEvent.click(currentView().getByRole('button', { name: 'Apply' }));
-  const selected = () => screen.getByRole('tabpanel').querySelector('[data-selected=true]')?.id;
-  fireEvent.keyDown(document, { key: 'F3', shiftKey: true }); expect(selected()).toBe('comment-c');
+  const selected = () => screen.getByRole('tabpanel').querySelector<HTMLElement>('[data-selected=true]')?.dataset.domainCommentId;
+  fireEvent.keyDown(document, { key: 'F3', shiftKey: true }); expect(selected()).toBe('c');
   expect(currentView().getByLabelText('Applied match position').textContent).toBe('3 / 3');
   fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'draft' } });
   fireEvent.change(currentView().getByLabelText('Sort'), { target: { value: 'newest' } });
-  expect(selected()).toBe('comment-c');
+  expect(selected()).toBe('c');
   expect(currentView().getByLabelText('Applied match position').textContent).toBe('1 / 3');
   expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe('draft');
-  fireEvent.keyDown(document, { key: 'F3' }); expect(selected()).toBe('comment-b');
-  fireEvent.keyDown(document, { key: 'F3', shiftKey: true }); expect(selected()).toBe('comment-c');
-  await userEvent.click(currentView().getByRole('button', { name: 'Previous unseen' })); expect(selected()).toBe('comment-a');
-  await userEvent.click(currentView().getByRole('button', { name: 'Next unseen' })); expect(selected()).toBe('comment-c');
+  fireEvent.keyDown(document, { key: 'F3' }); expect(selected()).toBe('b');
+  fireEvent.keyDown(document, { key: 'F3', shiftKey: true }); expect(selected()).toBe('c');
+  await userEvent.click(currentView().getByRole('button', { name: 'Previous unseen' })); expect(selected()).toBe('a');
+  await userEvent.click(currentView().getByRole('button', { name: 'Next unseen' })); expect(selected()).toBe('c');
   expect(api.toggleSeen).not.toHaveBeenCalled();
 });
 
@@ -1006,7 +1009,7 @@ it('current matching bulk sends exactly the frozen Original match IDs after sort
   fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'needle' } });
   await userEvent.click(currentView().getByRole('button', { name: 'Apply' }));
   fireEvent.change(currentView().getByLabelText('Sort'), { target: { value: 'newest' } });
-  expect(appliedRows()).toEqual(['comment-b', 'comment-a']);
+  expect(appliedRows()).toEqual(['b', 'a']);
   fireEvent.click(currentView().getByText('Bulk actions', { selector: 'summary' }));
   fireEvent.change(currentView().getByLabelText('Scope'), { target: { value: 'matching' } });
   await userEvent.click(currentView().getByRole('button', { name: 'Continue' }));
@@ -1039,13 +1042,13 @@ it('raw-only search hits remain context; complete tree and live unseen navigatio
   fireEvent.change(currentView().getByLabelText('Search this discussion'), { target: { value: 'camera' } });
   fireEvent.change(currentView().getByLabelText('Seen filter'), { target: { value: 'unseen' } });
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(appliedRows()).toEqual(['comment-nested-target']);
+  expect(appliedRows()).toEqual(['nested-target']);
   expect(currentView().getByText('SEARCH HIT').closest('article')?.dataset.viewRole).toBe('context');
   expect(screen.getByRole('tabpanel').querySelectorAll('.comment')).toHaveLength(3);
   expect(currentView().getByText('Applied: 1 matching comment · 1 containing thread')).toBeTruthy();
   await userEvent.click(screen.getByRole('button', { name: 'Next match' }));
   await userEvent.click(screen.getByRole('button', { name: 'Next unseen' }));
-  expect(screen.getByRole('tabpanel').querySelector('[data-selected=true]')?.id).toBe('comment-sibling-context');
+  expect(screen.getByRole('tabpanel').querySelector<HTMLElement>('[data-selected=true]')?.dataset.domainCommentId).toBe('sibling-context');
   expect(api.toggleSeen).not.toHaveBeenCalled();
 });
 it('query failure after successful Refresh preserves the previous tree even if committed placement changes', async () => {
@@ -1065,7 +1068,7 @@ it('query failure after successful Refresh preserves the previous tree even if c
   expect(appliedRows()).toEqual(previous);
   expect(screen.getByRole('tabpanel').querySelectorAll('.comment')).toHaveLength(2);
   expect(currentView().getByText('needle changed')).toBeTruthy();
-  expect(document.getElementById('comment-child-query')?.closest('.comment-branch')?.getAttribute('data-depth')).toBe('1');
+  expect(commentElement('child-query')?.closest('.comment-branch')?.getAttribute('data-depth')).toBe('1');
 });
 
 it('date/discovery controls are compact independent drafts, validate ranges, Apply/Ctrl+Enter and localize without changing membership', async () => {
@@ -1078,7 +1081,7 @@ it('date/discovery controls are compact independent drafts, validate ranges, App
   await showReader();
   const panel = () => screen.getByRole('tabpanel');
   const control = (name: string) => within(panel()).getByLabelText(name);
-  const matches = () => [...panel().querySelectorAll('[data-view-role=match]')].map(row => row.id.replace('comment-', ''));
+  const matches = () => [...panel().querySelectorAll('[data-view-role=match]')].map(row => row.getAttribute('data-domain-comment-id'));
   const details = panel().querySelector<HTMLDetailsElement>('.query-dates');
   expect(details?.open).toBe(false);
   fireEvent.click(within(panel()).getByText('Date / discoveries', { selector: 'summary' }));
@@ -1090,7 +1093,7 @@ it('date/discovery controls are compact independent drafts, validate ranges, App
   await waitFor(() => expect(matches()).toEqual(['fresh']));
   expect(panel().querySelectorAll('article')).toHaveLength(2); // complete containing tree
   fireEvent.keyDown(panel(), { key: 'F3', bubbles: true });
-  expect(panel().querySelector('[data-selected=true]')?.id).toBe('comment-fresh');
+  expect(panel().querySelector<HTMLElement>('[data-selected=true]')?.dataset.domainCommentId).toBe('fresh');
   expect(api.toggleSeen).not.toHaveBeenCalled();
   fireEvent.change(control('Publication date'), { target: { value: 'all' } });
   fireEvent.change(control('From date'), { target: { value: '2026-10-08' } });
@@ -1148,7 +1151,7 @@ it('bulk and Undo acknowledge live state/ruler while retaining applied IDs, role
   fireEvent.keyDown(document, { key: 'z', ctrlKey: true }); expect(api.undoSeen).not.toHaveBeenCalled();
   await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Continue' }));
   await currentView().findByRole('button', { name: 'Undo' });
-  expect(api.bulkSeen).toHaveBeenCalledWith({ itemId: 'video-demo', seen: true, target: { kind: 'matching', ids: matches.map(id => id.replace('comment-', '')) } });
+  expect(api.bulkSeen).toHaveBeenCalledWith({ itemId: 'video-demo', seen: true, target: { kind: 'matching', ids: matches.map(id => id) } });
   expect(appliedRows()).toEqual(matches); expect(currentView().getByText(/Applied:/).textContent).toBe(summary);
   expect(ruler.dataset.unseenCount).toBe('0'); expect(ruler.dataset.newCount).toBe(newCount);
   const search = currentView().getByLabelText('Search this discussion');
@@ -1276,7 +1279,7 @@ it('M2 peer seen updates real controls and counts while applied IDs, draft and s
     state = { ...state, comments: { ...state.comments, [itemId]: state.comments[itemId].map(c => c.id === id ? { ...c, seen } : c) } };
     publish({ kind: 'seen', itemId, values: [{ id, seen }], undo: null });
   });
-  await waitFor(() => expect(document.getElementById('comment-v3')?.querySelector<HTMLInputElement>('input[type=checkbox]')?.checked).toBe(true));
+  await waitFor(() => expect(commentElement('v3')?.querySelector<HTMLInputElement>('input[type=checkbox]')?.checked).toBe(true));
   expect(appliedRows()).toEqual(previous); expect(currentView().getByText(/Applied:/).textContent).toBe(count);
   expect(currentView().getByText(translator('en')('querySeenPending'))).toBeTruthy();
   expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe('unapplied draft');
@@ -1295,7 +1298,7 @@ it('M2 peer Refresh promotes content props before a fast worker result, retainin
       comments: { ...state.comments, [itemId]: [...state.comments[itemId], { ...state.comments[itemId][0], id: 'peer-new', parentId: null, text: 'M2 discovery', seen: false }] } };
     publish({ kind: 'item', itemId });
   });
-  await waitFor(() => expect(document.getElementById('comment-peer-new')).toBeTruthy());
+  await waitFor(() => expect(commentElement('peer-new')).toBeTruthy());
   expect((currentView().getByLabelText('Search this discussion') as HTMLInputElement).value).toBe('local draft');
   expect((currentView().getByLabelText('Sort') as HTMLSelectElement).value).toBe('newest');
 });
@@ -1306,7 +1309,7 @@ it('subtree feedback describes the captured assignment even when a newer shared 
     undo: { ...recovery, id: 'peer-replacement', targetSeen: false },
   } }));
   await showReader();
-  fireEvent.click(required(document.getElementById('comment-v3')?.querySelector('input[type=checkbox]')), { ctrlKey: true });
+  fireEvent.click(required(commentElement('v3')?.querySelector('input[type=checkbox]')), { ctrlKey: true });
   await waitFor(() => expect(api.toggleSeen).toHaveBeenCalledWith({ itemId: 'video-demo', commentId: 'v3', subtree: true, seen: true }));
   expect(await screen.findByText('Marked 2 comments seen.')).toBeTruthy();
 });
@@ -1328,8 +1331,8 @@ it('M2 local checkbox and preference controls use committed notifications while 
     return { ok: true as const, value: before };
   });
   await showReader();
-  fireEvent.click(required(document.getElementById('comment-v3')?.querySelector('input[type=checkbox]')));
-  await waitFor(() => expect(document.getElementById('comment-v3')?.querySelector<HTMLInputElement>('input[type=checkbox]')?.checked).toBe(true));
+  fireEvent.click(required(commentElement('v3')?.querySelector('input[type=checkbox]')));
+  await waitFor(() => expect(commentElement('v3')?.querySelector<HTMLInputElement>('input[type=checkbox]')?.checked).toBe(true));
   fireEvent.click(required(document.getElementById('settings-toggle')));
   const appearance = await screen.findByRole('combobox', { name: 'Appearance' });
   fireEvent.change(appearance, { target: { value: 'dark' } });

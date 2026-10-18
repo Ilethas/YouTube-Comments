@@ -8,6 +8,13 @@ export type SharedChange = { readonly kind: 'watermark' | 'helpers' | 'workspace
   | { readonly kind: 'seen'; readonly itemId: string; readonly values: readonly { readonly id: string; readonly seen: boolean }[];
       readonly undo: ReaderState['seenUndo'][string] };
 export interface SharedCommit extends SharedStamp { readonly change: SharedChange }
+/** One owned semantic seed: no comments, geometry, or evaluated result IDs. */
+export interface SharedViewSnapshot extends SharedStamp {
+  readonly viewId: string;
+  readonly instance: ReaderState['viewInstances'][string];
+  readonly intent?: ReaderState['discussionViews'][string];
+  readonly collapse?: ReaderState['discussionCollapse'][string];
+}
 export interface SharedSnapshot extends SharedStamp { readonly state: ReaderState }
 /** A scoped snapshot includes small global metadata, never unrelated comments.
  * It cannot advance past unseen revisions; the replica requests full recovery then. */
