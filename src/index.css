@@ -298,3 +298,13 @@ button > .action-icon { margin-right: 4px; }
 .reply-toggle { display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px; font: inherit; color: inherit; background: transparent; border: 1px solid transparent; }
 .reply-toggle:hover { text-decoration: underline; }
 .reply-summary { opacity: .8; }
+/* Main-owned lifecycle preparation freezes every reader, including hidden tabs. */
+.profile-operation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  background: Canvas;
+  color: CanvasText;
+}

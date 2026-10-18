@@ -8,7 +8,9 @@ change. M2 is implemented in
 commits, fixed notifications, replica recovery, explicit assignments, expected-ID
 Undo and progress fanout. Its counter is process-local with fresh snapshots across
 epochs; no durable revision table/migration is introduced. Production remains one
-reader. M3-M9 below remain unimplemented; their requirements remain proposals.
+reader. M3 global lifecycle safety is implemented in
+[ADR 0029](decisions/0029-global-profile-and-window-lifecycle-safety.md), without
+a schema change. M4–M9 below remain unimplemented; their requirements remain proposals.
 
 **Accepted owner policy, recorded during M1:** native HTML DnD is preferred for
 reorder/attachment. VS Code-style outside drag-end detachment is acceptable for the
@@ -276,6 +278,13 @@ authoritative event; operation-progress settlement arriving first must not be us
 to infer that peer data is already synchronized.
 
 ## All-window backup/restore barrier
+
+M3 implements this foundation through ADR 0029. Departures: Close/Reload conservatively
+drain all current participants; queued mutations register immutable main tickets
+before preparation; deferred dirty reading intent uses bounded full checkpoints;
+loss of an enrolled incarnation aborts unconfirmed preflight instead of silently
+counting its unsent state as drained. Schema 12 retains shared per-item view slots.
+The later topology/view tables and restore-set behavior described below remain M4–M6.
 
 Keep existing SQLite online backup and closed-file restore/recovery. Extend their
 precondition from “this renderer flushed” to **every current participant drained**.

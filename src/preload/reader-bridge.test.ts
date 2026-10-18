@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { createReaderBridge } from './reader-bridge';
 import { readerChannels } from '../shared/reader-api';
 import { defaultQuery } from '../domain/discussion-query';
+import { profileChannels } from '../shared/profile-operation';
 
 it('exposes only explicit intent and progress methods without a generic privileged transport', async () => {
   const invoke = vi.fn(async () => ({ ok: true, value: {} }));
@@ -73,4 +74,26 @@ it('progress subscription validates exact payloads and returns transport cleanup
   cleanup(); expect(unsubscribe).toHaveBeenCalledTimes(1);
   await api.cancelAcquisition({ operationId: 'opaque-id' }); await api.getAcquisitionProgress();
   expect(invoke.mock.calls).toEqual([[readerChannels.cancelAcquisition, { operationId: 'opaque-id' }], [readerChannels.getAcquisitionProgress]]);
+});
+
+it('M3 exposes only fixed lifecycle intents and validates lifecycle notifications and cleanup', async () => {
+  let receive!: (value: unknown) => void;
+  const cleanup = vi.fn(), invoke = vi.fn(async () => ({ ok: true, value: null }));
+  const api = createReaderBridge(invoke, undefined, undefined, callback => { receive = callback; return cleanup; });
+  const lifecycle = api.lifecycle; if (!lifecycle) throw new Error('Missing lifecycle');
+  expect(Object.keys(lifecycle).sort()).toEqual(['ack', 'command', 'current', 'onEvent', 'plan', 'refuse', 'resume', 'settleAccepted', 'stage', 'submit']);
+  expect(Object.isFrozen(lifecycle)).toBe(true);
+  const listener = vi.fn(), unsubscribe = lifecycle.onEvent(listener);
+  const identity = { operationId: '11111111-1111-1111-1111-111111111111', profileEpoch: '22222222-2222-2222-2222-222222222222' };
+  const event = { ...identity, phase: 'DRAINING', kind: 'backup', failed: false, stamp: { profileEpoch: identity.profileEpoch, commitRevision: 4 } };
+  for (const invalid of [null, {}, { ...event, windowId: 'forged' }, { ...event, phase: 'unknown' },
+    { ...event, stamp: { ...event.stamp, commitRevision: NaN } }, { ...event, profileEpoch: identity.operationId }]) receive(invalid);
+  expect(listener).not.toHaveBeenCalled(); receive(event); expect(listener).toHaveBeenCalledWith(event);
+  unsubscribe(); expect(cleanup).toHaveBeenCalledOnce();
+  await lifecycle.stage({ kind: 'updatePreferences', request: { appearance: 'dark' } });
+  await lifecycle.refuse(identity); await lifecycle.resume(identity); await lifecycle.current();
+  expect(invoke.mock.calls).toEqual([
+    [profileChannels.stage, { kind: 'updatePreferences', request: { appearance: 'dark' } }],
+    [profileChannels.refuse, identity], [profileChannels.resume, identity], [profileChannels.current],
+  ]);
 });

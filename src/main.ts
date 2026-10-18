@@ -1,5 +1,5 @@
 import { isAcquisitionNotification } from './shared/acquisition';
-import { app, shell, dialog, clipboard, protocol, nativeImage } from 'electron';
+import { app, shell, dialog, clipboard, protocol, nativeImage, Menu, BrowserWindow } from 'electron';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,6 +16,7 @@ import { protectBeforeMigration, recoverProfile } from './main/persistence/profi
 import { backupText } from './shared/data-backup';
 import { initialLocale } from './shared/preferences';
 import identity from './shared/application-identity.json';
+import type { ProfileOperationCoordinator } from './main/profile-operation-coordinator';
 
 // The startup helper owns shortcut creation/removal and quits after Update.exe
 // closes. Do not quit early or register ANY reader work during lifecycle events.
@@ -33,6 +34,7 @@ function startReader() {
   const thumbnailDirectory = resolveThumbnailDirectory({ mode, appData: demoRoot ?? app.getPath('appData') });
   app.setPath('userData', path.dirname(databasePath));
   let service: ReaderService;
+  let lifecycle: ProfileOperationCoordinator | undefined;
   const documentPath = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
   const documentUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL ? new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).href : pathToFileURL(documentPath).href;
 
@@ -77,17 +79,46 @@ function startReader() {
           : new Response(null, { status: 404 });
       } catch { return new Response(null, { status: 404 }); }
     });
-    registerReaderIpc(service, windows);
+    lifecycle = registerReaderIpc(service, windows);
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
+      { role: 'fileMenu' }, { role: 'editMenu' },
+      { label: 'View', submenu: [
+        { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => {
+          const window = BrowserWindow.getFocusedWindow();
+          if (window) windows.requestReload(window);
+        } }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' },
+      ] }, { role: 'windowMenu' },
+    ]));
     const window = windows.createReaderWindow();
     if (recovery) void dialog.showMessageBox(window, { type: 'info', message: backupText(profileLocale)[recovery] });
   });
   let shutdownStarted = false;
+  let quitReady = false;
+  let quitTask: Promise<void> | undefined;
   app.on('before-quit', event => {
-    if (!shutdownStarted && service) {
-      event.preventDefault();
-      shutdownStarted = true;
-      void service.shutdown().finally(() => app.quit());
-    }
+    if (!service || quitReady) return;
+    event.preventDefault();
+    if (quitTask) return;
+    const quit = async () => {
+      let ownedId: string | undefined;
+      try {
+        if (!service.restarting && lifecycle) {
+          lifecycle.cancelPreparation();
+          await service.settleDataOperation();
+          if (!service.restarting) {
+            await lifecycle.released();
+            const previous = lifecycle.current()?.operationId, drained = lifecycle.begin('quit');
+            if (lifecycle.current()?.operationId !== previous) ownedId = lifecycle.current()?.operationId;
+            await drained; lifecycle.executePhase(); lifecycle.accept();
+          }
+        }
+        shutdownStarted = true;
+        await service.shutdown();
+        windows.finishAll(); quitReady = true; app.quit();
+      } catch { if (ownedId) lifecycle?.release(true, ownedId); shutdownStarted = false; }
+    };
+    quitTask = (lifecycle ? lifecycle.scheduleIntentional(quit) : quit()).finally(() => { quitTask = undefined; });
   });
 
   // Quit when all windows are closed, except on macOS. There, it's common

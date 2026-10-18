@@ -37,6 +37,9 @@ export function useDiscussionViews(options?: { readonly collapse?: ReaderState['
       return session;
     },
     has(id: string) { return sessions.current.has(id); },
+    freeze(activeItemId?: string) { for (const [id, session] of sessions.current) session.freeze(id === activeItemId); },
+    async checkpoints() { return (await Promise.all([...sessions.current].map(([id, session]) => session.drainCheckpoints(id)))).flat(); },
+    resume() { for (const session of sessions.current.values()) session.resume(); },
     flush(id: string) { return sessions.current.get(id)?.flush() ?? Promise.resolve(); },
     async flushAll(): Promise<boolean> {
       const current = [...sessions.current.values()];

@@ -21,8 +21,8 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 async function load(container: HTMLElement) {
-  await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
-  fireEvent.load(required(container.querySelector('img')));
+  await waitFor(() => expect(container.querySelector('.video-thumbnail-row img')).not.toBeNull());
+  fireEvent.load(required(container.querySelector('.video-thumbnail-row img')));
 }
 it('compact toggle supports click, native keyboard, EN/PL actions and explicit image-viewer menu only', async () => {
   const user = userEvent.setup(), view = render(<VideoThumbnail item={item} locale="en" active />);

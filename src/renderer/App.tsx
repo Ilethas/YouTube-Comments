@@ -24,6 +24,9 @@ import type { BulkSeenRequest, SeenMutationResult } from '../domain/seen-operati
 import type { SeenFeedback } from './BulkSeenControls';
 import { ExternalTools } from './ExternalTools';
 import { DataBackups } from './DataBackups';
+import { RendererProfileLifecycle } from './profile-lifecycle';
+import type { Checkpoint } from './profile-lifecycle';
+import type { PendingMutation } from '../shared/profile-operation';
 
 export function App({ api: transport = window.reader }: { api?: ReaderApi }) {
   const replica = useMemo(() => typeof transport.onSharedCommit === 'function' ? new ReaderReplica(transport) : undefined, [transport]);
@@ -87,6 +90,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const acknowledgedUndo = useRef(new Map<string, SeenMutationResult['undo']>());
   const saveQueue = useRef(Promise.resolve());
+  const submittedSave = useRef<Promise<unknown>>(Promise.resolve());
+  const queuedSaves = useRef(new Map<symbol, { checkpoint: () => Promise<Checkpoint>; resume: () => void }>());
   const lastSaveFailed = useRef(false);
   const [saving, setSaving] = useState(false);
   const [savingItemId, setSavingItemId] = useState<string>();
@@ -102,6 +107,15 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const [cancelledKind, setCancelledKind] = useState<'acquire' | 'refresh'>();
   const acquisitionBusy = useRef(false);
   const dataBusy = useRef(false);
+  const shell = useRef<HTMLDivElement>(null);
+  const profileOverlay = useRef<HTMLDivElement>(null);
+  const profilePreviousFocus = useRef<HTMLElement | null>(null);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileFailed, setProfileFailed] = useState(false);
+  const profileController = useRef<RendererProfileLifecycle>();
+  const [releaseFailed, setReleaseFailed] = useState(false);
+  const otherSaveFailed = useRef(false);
+  useLayoutEffect(() => { if (profileBusy) profileOverlay.current?.focus({ preventScroll: true }); }, [profileBusy]);
   const afterData = useRef(new Set<() => void>());
   const acknowledgedSeen = useRef(new Map<string, boolean>());
   const sharedState = useRef(initialState);
@@ -209,13 +223,14 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     try {
       const result = await action();
       if (result.ok) {
+        otherSaveFailed.current = false;
         acceptWorkspace(result.value);
         if (focusId === '@shortcuts' && result.value.activeTabId === 'settings') setHelpRequest({ revision: result.value.revision });
         else if (focusId) requestAnimationFrame(() => {
           (focusId === '@active' ? document.querySelector<HTMLElement>('[role=tab][aria-selected=true]') ?? document.getElementById('library-toggle') : document.getElementById(`tab-${focusId}`))?.focus();
         });
-      } else setSaveError(true);
-    } catch { setSaveError(true); }
+      } else { setSaveError(true); otherSaveFailed.current = true; }
+    } catch { setSaveError(true); otherSaveFailed.current = true; }
     finally { workspaceBusy.current = false; setWorkspaceSaving(false); }
   }
   function activate(tabId: string, focus = false) {
@@ -245,13 +260,42 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     } catch { setRemovalError('STORAGE_UNAVAILABLE'); }
     finally { removalBusy.current = false; setRemovalPending(false); }
   }
-  const save = useCallback(function save<T>(action: () => Promise<Result<T>>, accept: (value: T) => void, itemId?: string): Promise<boolean> {
+  const save = useCallback(function save<T>(action: () => Promise<Result<T>>, accept: (value: T) => void, itemId?: string, command?: PendingMutation): Promise<boolean> {
     // FIFO acknowledgments preserve later user intent, including across discussions.
+    const key = Symbol();
+    let resolveDrain!: (result: Result<unknown> | undefined) => void;
+    const drained = new Promise<Result<unknown> | undefined>(resolve => { resolveDrain = resolve; });
+    const staged = command && api.lifecycle && busy.current ? api.lifecycle.stage(structuredClone(command)) : undefined;
+    if (command && staged) queuedSaves.current.set(key, { checkpoint: async () => {
+      const result = await staged; if (!result.ok) throw new Error('Queued intent was not accepted');
+      return { command: { ...command, ticket: result.value }, accept: resolveDrain };
+    }, resume: () => resolveDrain(undefined) });
     let succeeded = false;
     const run = async () => {
       busy.current = true; setSaving(true); setSavingItemId(itemId); setSaveError(false);
       try {
-        const result = await action();
+        let result: Result<T>;
+        if (staged && api.lifecycle) {
+          submittedSave.current = staged;
+          const ticket = await staged;
+          if (!ticket.ok) result = ticket;
+          else {
+            let saved: Result<unknown> | undefined;
+            if (dataBusy.current) saved = await drained;
+            if (!saved) {
+              const response = api.lifecycle.submit(ticket.value); submittedSave.current = response;
+              saved = await response;
+              if (!saved.ok && saved.error.code === 'DATA_BUSY') saved = await drained;
+              if (!saved) { const retry = api.lifecycle.submit(ticket.value); submittedSave.current = retry; saved = await retry; }
+            }
+            result = saved as Result<T>;
+          }
+        } else {
+          const response = action(); submittedSave.current = response;
+          result = await response;
+        }
+        queuedSaves.current.delete(key);
+        if (result.sync) await replica?.reconcile(result.sync);
         if (result.ok) { accept(result.value); succeeded = true; lastSaveFailed.current = false; }
         else { setSaveError(true); lastSaveFailed.current = true; }
       } catch { setSaveError(true); lastSaveFailed.current = true; }
@@ -260,7 +304,42 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     const task = busy.current ? saveQueue.current.then(run) : run();
     saveQueue.current = task.catch(() => undefined);
     return task.then(() => succeeded);
-  }, []);
+  }, [api, replica]);
+  useEffect(() => {
+    if (!api.lifecycle) return;
+    const blockInput = (event: Event) => {
+      if (event instanceof KeyboardEvent && event.key === 'Tab' && event.target instanceof Element && event.target.closest('.profile-operation-overlay')) return;
+      if (dataBusy.current && !(event.target instanceof Element && event.target.closest('[data-profile-retry]'))) { event.preventDefault(); event.stopImmediatePropagation(); }
+    };
+    const inputEvents = ['keydown', 'pointerdown', 'click', 'input', 'change', 'submit'];
+    inputEvents.forEach(kind => document.addEventListener(kind, blockInput, true));
+    const settledSubmitted = async () => {
+      let pending: Promise<unknown>;
+      do { pending = submittedSave.current; await pending.catch(() => undefined); } while (pending !== submittedSave.current);
+    };
+    const lifecycle = new RendererProfileLifecycle(api.lifecycle, {
+      freeze: () => {
+        if (!dataBusy.current) profilePreviousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        dataBusy.current = true;
+        if (shell.current) shell.current.inert = true;
+        views.freeze(activeDiscussion.current); setProfileBusy(true); setProfileFailed(false); setReleaseFailed(false);
+      },
+      checkpoints: async () => { await settledSubmitted(); return [...await Promise.all([...queuedSaves.current.values()].map(entry => entry.checkpoint())), ...await views.checkpoints()]; },
+      settled: async () => { await settledSubmitted(); return !lastSaveFailed.current && !otherSaveFailed.current; },
+      reconcile: async () => { await replica?.check(); },
+      release: failed => {
+        views.resume(); dataBusy.current = false;
+        for (const entry of queuedSaves.current.values()) entry.resume();
+        for (const resume of afterData.current) resume(); afterData.current.clear();
+        if (shell.current) shell.current.inert = false;
+        if (profilePreviousFocus.current?.isConnected) profilePreviousFocus.current.focus({ preventScroll: true });
+        setProfileBusy(false); setProfileFailed(failed);
+      },
+      releaseFailure: () => setReleaseFailed(true),
+    });
+    profileController.current = lifecycle;
+    lifecycle.start(); return () => { lifecycle.stop(); inputEvents.forEach(kind => document.removeEventListener(kind, blockInput, true)); };
+  }, [api, replica, views]);
   const openSource = useCallback((itemId: string) => api.openSource({ itemId }), [api]);
   const openCommentAction = useCallback((request: Parameters<ReaderApi['openCommentAction']>[0]) => api.openCommentAction(request), [api]);
   const t = translator(locale);
@@ -304,13 +383,13 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     void save(() => api.toggleSeen({ itemId, commentId, subtree, seen }), value => {
       acceptSeen(itemId, value);
       if (subtree && value.changedCount > 1) setSeenFeedback(current => ({ ...current, [itemId]: { kind: 'marked', count: value.changedCount, seen } }));
-    }, itemId);
+    }, itemId, { kind: 'toggleSeen', request: { itemId, commentId, subtree, seen } });
   }, [api, save, acceptSeen]);
   const bulkSeen = useCallback(async (request: BulkSeenRequest) => {
     const success = await save(() => api.bulkSeen(request), value => {
       acceptSeen(request.itemId, value);
       setSeenFeedback(current => ({ ...current, [request.itemId]: { kind: value.changedCount ? 'marked' : 'noop', count: value.changedCount, seen: request.seen } }));
-    }, request.itemId);
+    }, request.itemId, { kind: 'bulkSeen', request });
     if (!success) setSeenFeedback(current => ({ ...current, [request.itemId]: { kind: 'error' } }));
     return success;
   }, [api, save, acceptSeen]);
@@ -320,7 +399,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     void save(() => api.undoSeen({ itemId, expectedOperationId }), value => {
       acceptSeen(itemId, value);
       setSeenFeedback(current => ({ ...current, [itemId]: { kind: 'undo', count: value.restored, skipped: value.skipped } }));
-    }, itemId).then(success => { if (!success) setSeenFeedback(current => ({ ...current, [itemId]: { kind: 'error' } })); });
+    }, itemId, { kind: 'undoSeen', request: { itemId, expectedOperationId } }).then(success => { if (!success) setSeenFeedback(current => ({ ...current, [itemId]: { kind: 'error' } })); });
   }, [api, save, acceptSeen]);
   useLayoutEffect(() => {
     if (!showAcquisition || !focusUrl) return;
@@ -372,7 +451,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     return () => document.removeEventListener('keydown', keyboard);
   });
 
-  return <div className="app-shell">
+  return <><div className="app-shell" ref={shell}>
+    {profileFailed && <p role="alert">{t('profileDrainFailed')}</p>}
     <header className="app-toolbar">
       <div className="brand"><span className="brand-icon" aria-hidden="true">≡</span><strong>{t('appName')}</strong></div>
       <div className="workspace-actions">
@@ -438,32 +518,33 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       <div className="preferences">
         <label>{t('language')}<select value={locale} disabled={saving} onChange={event => {
           const next = event.target.value as Locale;
-          void save(() => api.updatePreferences({ locale: next }), value => { if (!replica) setLocale(value.locale); });
+          void save(() => api.updatePreferences({ locale: next }), value => { if (!replica) setLocale(value.locale); }, undefined, { kind: 'updatePreferences', request: { locale: next } });
         }}>
           <option value="en">{t('en')}</option><option value="pl">{t('pl')}</option>
         </select></label>
         <label>{t('appearance')}<select value={appearance} disabled={saving} onChange={event => {
           const next = event.target.value as Appearance;
-          void save(() => api.updatePreferences({ appearance: next }), value => { if (!replica) setAppearance(value.appearance); });
+          void save(() => api.updatePreferences({ appearance: next }), value => { if (!replica) setAppearance(value.appearance); }, undefined, { kind: 'updatePreferences', request: { appearance: next } });
         }}>
           {(['system', 'light', 'dark'] as const).map(value => <option key={value} value={value}>{t(value)}</option>)}
         </select></label>
         <TranslationSettings preferences={{ translationTarget, customTranslationTarget }} locale={locale} disabled={saving}
           save={change => save(() => api.updatePreferences(change), value => {
             if (!replica) { setTranslationTarget(value.translationTarget); setCustomTranslationTarget(value.customTranslationTarget); }
-          })} />
+          }, undefined, { kind: 'updatePreferences', request: change })} />
         <label>{t('selectionControls')}<select value={selectionControls} disabled={saving} onChange={event => {
           const next = event.target.value as SelectionControls;
-          void save(() => api.updatePreferences({ selectionControls: next }), value => { if (!replica) setSelectionControls(value.selectionControls); });
+          void save(() => api.updatePreferences({ selectionControls: next }), value => { if (!replica) setSelectionControls(value.selectionControls); }, undefined, { kind: 'updatePreferences', request: { selectionControls: next } });
         }}><option value="on-demand">{t('selectionOnDemand')}</option><option value="always">{t('selectionAlways')}</option></select></label>
         <label><input type="checkbox" checked={includeCollapsedInPrefix} disabled={saving} onChange={event => {
           const next = event.target.checked;
-          void save(() => api.updatePreferences({ includeCollapsedInPrefix: next }), value => { if (!replica) setIncludeCollapsedInPrefix(value.includeCollapsedInPrefix); });
+          void save(() => api.updatePreferences({ includeCollapsedInPrefix: next }), value => { if (!replica) setIncludeCollapsedInPrefix(value.includeCollapsedInPrefix); }, undefined, { kind: 'updatePreferences', request: { includeCollapsedInPrefix: next } });
         }} />{t('includeCollapsedInPrefix')}</label>
       </div>
         <p className="reader-help">{t('translationPrivacy')}</p>
         <ExternalTools api={api} locale={locale} active={activeId === 'settings'} />
         <DataBackups api={api} locale={locale} onBusy={value => {
+          if (api.lifecycle) return;
           dataBusy.current = value;
           if (!value) { for (const resume of afterData.current) resume(); afterData.current.clear(); }
         }} prepare={async () => {
@@ -484,5 +565,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
         coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onAction={openCommentAction} onToggle={toggleComment}
         undo={seenUndo[item.id]} feedback={seenFeedback[item.id]} onBulk={bulkSeen} onUndo={undoSeen} onBulkModal={setBulkModalOpen} />}
     </main>)}
-  </div>;
+  </div>{profileBusy && <div className="profile-operation-overlay" role="dialog" aria-modal="true" tabIndex={-1} ref={profileOverlay} aria-label={t('profileQuiescing')}>
+    <p role="status"><span className="acquisition-spinner" aria-hidden="true" /> {t('profileQuiescing')}</p>
+    {releaseFailed && <div role="alert"><p>{t('profileReconcileFailed')}</p><button autoFocus data-profile-retry onClick={() => profileController.current?.retryRelease()}>{t('retry')}</button></div>}
+  </div>}</>;
 }

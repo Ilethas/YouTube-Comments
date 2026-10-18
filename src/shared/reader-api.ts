@@ -55,6 +55,7 @@ export interface AcquisitionResult {
 
 /** Intent-only capabilities. No generic invoke, SQL, executable input or Node handles. */
 export interface ReaderApi {
+  readonly lifecycle?: import('./profile-operation').ProfileLifecycleApi;
   onSharedCommit(listener: (commit: SharedCommit) => void): () => void;
   getSharedSnapshot(request?: RefreshRequest): Promise<Result<SharedSnapshot | SharedItemSnapshot>>;
   getSharedMetadata(): Promise<Result<SharedMetadata>>;

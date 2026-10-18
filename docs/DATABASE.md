@@ -1,5 +1,21 @@
 # Database and durable data
 
+M3 adds runtime-only global profile/window lifecycle coordination, with no schema
+change: current schema remains **12**. All participating authorized renderers drain
+accepted queues before a backup or restore snapshot. Main-issued pre-preparation
+mutation tickets and exact bounded drain leases prevent ordinary DATA_BUSY bypass.
+Every successful drain transaction uses the existing post-COMMIT M2 revision stream;
+failed COMMITs publish nothing. Clean optional view/collapse rows are not created
+merely by lifecycle preparation. M4's independent view/window identity migration is
+still future scope.
+
+After confirmed restore, main settles children and verifies independent safety as
+before. Terminal RESTARTING fences every old-profile write before offline SQLite
+preparation/close/replacement. Only full relaunch/recovery can open replacement
+storage, under a new repository epoch. Cancelled preflight releases participants
+through M2 reconciliation; crashed documents contribute only committed data. See
+[ADR 0029](decisions/0029-global-profile-and-window-lifecycle-safety.md).
+
 M2 (ADR 0028) keeps schema **12** and all historical migration/backup rules.
 Repository post-COMMIT publications use a random open-incarnation epoch and a
 bounded process-local revision; neither is a durable content/Undo/workspace

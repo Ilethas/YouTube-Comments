@@ -4,6 +4,9 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  profileQuiescing: 'Finishing saved changes. Please wait…',
+  profileReconcileFailed: 'Saved changes could not be synchronized. Retry before continuing.',
+  profileDrainFailed: 'Changes could not be safely saved. The operation stopped and the window stayed open. Retry saving, then close or try the operation again.',
   expandThumbnail: 'Expand thumbnail', shrinkThumbnail: 'Shrink thumbnail', openThumbnail: 'Open in image viewer',
   thumbnailMenu: 'Thumbnail actions', thumbnailOpenFailed: 'Could not open the cached image. Try again.',
   selectionControls: "Comment selection controls",
@@ -165,6 +168,9 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  profileQuiescing: 'Kończenie zapisu zmian. Proszę czekać…',
+  profileReconcileFailed: 'Nie udało się zsynchronizować zapisanych zmian. Ponów przed kontynuowaniem.',
+  profileDrainFailed: 'Nie udało się bezpiecznie zapisać zmian. Operacja została zatrzymana, a okno pozostało otwarte. Ponów zapis, a potem zamknij okno lub ponów operację.',
   expandThumbnail: 'Powiększ miniaturę', shrinkThumbnail: 'Pomniejsz miniaturę', openThumbnail: 'Otwórz w przeglądarce obrazów',
   thumbnailMenu: 'Działania miniatury', thumbnailOpenFailed: 'Nie udało się otworzyć zapisanego obrazu. Spróbuj ponownie.',
   selectionControls: "Kontrolki zaznaczania komentarzy",

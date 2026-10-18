@@ -24,7 +24,7 @@ export function DataBackups({ api, locale, prepare, onBusy }: {
     busy.current = true; onBusy(true); setPending(true); setMessage(undefined); setFailed(false);
     let restarting = false;
     try {
-      if (!await prepare()) throw new Error('Pending saves failed');
+      if (!api.lifecycle && !await prepare()) throw new Error('Pending saves failed');
       const result = await api[operation]();
       if (!result.ok) {
         restarting = result.error.code === 'RECOVERY_REQUIRED';

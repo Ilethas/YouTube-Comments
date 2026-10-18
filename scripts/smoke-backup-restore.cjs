@@ -79,7 +79,11 @@ if (process.versions.electron && process.type === 'browser') {
           : { ...payload, expectedOperationId: acknowledged.undo.id };
       }
       const result = await js(`window.reader.${name}(${payload === undefined ? '' : JSON.stringify(payload)})`);
-      assert.equal(result.ok, true, JSON.stringify(result)); return result.value;
+      assert.equal(result.ok, true, JSON.stringify(result));
+      if ((name === 'createBackup' || name === 'restoreBackup') && result.value.status !== 'restarting') {
+        await wait("!document.querySelector('.app-shell').inert");
+      }
+      return result.value;
     };
     // Keep the real complete main -> renderer IPC, but do not clone 60k comments
     // again across executeJavaScript just to inspect a handful of metadata fields.
@@ -138,6 +142,7 @@ if (process.versions.electron && process.type === 'browser') {
       confirmation = true;
       fs.writeFileSync(path.join(root, 'bad.sqlite'), 'not SQLite'); openSource = path.join(root, 'bad.sqlite');
       const invalid = await js('window.reader.restoreBackup()'); assert.equal(invalid.error.code, 'INVALID_BACKUP');
+      await wait("!document.querySelector('.app-shell').inert");
       assert.deepEqual(data(database(root)), before); openSource = snapshot;
       const begin = performance.now();
       await invoke('restoreBackup');

@@ -1,5 +1,79 @@
 # Testing strategy
 
+## Global profile/window lifecycle safety (M3, 2026-10-18, ADR 0029)
+
+Current implementation keeps schema **12** and exactly **one production reader**.
+All M3 test profiles are generated OS-temp data. No owner profile, Setup, install,
+uninstall, commit, push or publishing action is used.
+
+The coordinator tests cover two enrolled contexts and unequal completion, synchronous
+write fencing, exact sealed sequences, omitted registered intent, post-preparation
+ticket rejection, forged/cross-context/replayed/changed/old-epoch tickets and ACKs,
+partial command failure, refusal, participant close/reload/crash, deadline failure,
+reconciled retry, legal transitions and confirmed-restore origin loss. Temporary
+SQLite tests exercise both checkpoints in the snapshot, post-COMMIT order, failed
+COMMIT rollback/retry, snapshot verification failure, cancellation, captured origin
+loss and offline replacement with a fresh open epoch. Renderer tests cover freeze,
+slow accepted saves, stale preparation callbacks, explicit refusal, reconciliation
+before resume, retry after failed reconciliation and preservation of hidden anchors.
+Existing M1/M2 security/replica, historical schema, backup/safety and rename-gap crash
+recovery tests remain enabled.
+
+`npm.cmd run test:profile-lifecycle` runs two real secured Apps through actual
+preload/IPC/SQLite, plus a built-production-entry Quit test. The first uses main-only
+delay/failure/dialog-answer injection to test a slow accepted save, actual checkbox
+then Ctrl+Z FIFO, pre-registered Undo drain, rejected new intent, two-participant
+backup, global busy UI, native repeated Close while work is pending, later native
+close cancellation/reauthorization, failed save then Close retry, peer survival,
+controlled reload, uncontrolled reload and forced renderer crash during preflight,
+hung-drain failure/release, restore cancellation, dialog-origin death, and confirmed
+restore that continues after origin destruction. Old-profile UI/IPC stays inert at
+RESTARTING. This harness requests restart without launching another process; genuine
+relaunch and forced restore rename-gap recovery are independently covered by the
+existing built-entry/packaged harnesses. The Quit harness proves repeated explicit
+Quit joins one drain, a pending draft commits before SQLite closes, and production
+creates one window. Both are included in `test:electron` for future regressions.
+
+Final verification (2026-10-18):
+
+| Check | Result |
+| --- | --- |
+| `npm.cmd test` | PASS: **1015 tests / 81 files**, 128.88 s; no unhandled errors |
+| `npm.cmd run typecheck` | PASS |
+| `npm.cmd run lint` | PASS, no warnings |
+| `npm.cmd run make:zip` | PASS: production main/preload/renderer/worker build, verified 73-file Windows x64 application (385,972,278 bytes) and 158,338,467-byte ZIP; final build 20.01 s |
+| All 11 original Electron harnesses | PASS in split runs after repairing the regressions described below; the earlier aggregate invocations stopped at the failing checks and are not reported as passing aggregate runs |
+| `npm.cmd run test:profile-lifecycle` | PASS: two real authorized renderers and built-entry repeated Quit; final two-renderer root `reader-m3-z45uzj` |
+| `npm.cmd run test:packaged` | PASS: final extracted ZIP EXE, native Save/Open/cancel/confirm/acknowledgment, exact-table restore/safety and actual relaunch from PID 15860 to 24256; disposable root `reader-packaged-hJ5LTL` |
+| `git diff --check` | PASS |
+
+The original harnesses passed: `smoke-electron`, `smoke-view-restoration`,
+`smoke-backup-restore`, `smoke-reader-actions`, `smoke-collapse`, `smoke-selection`,
+`smoke-reader-usability`, `smoke-thumbnails`, `smoke-usability-milestone`,
+`smoke-window-coordination` and `smoke-shared-sync` (all under `scripts/`). Backup
+roundtrip compared every authoritative table at 60k total generated comments;
+forced previous/candidate rename crashes recovered in fresh real processes. M1
+still checks one production reader and last-window shutdown; M2 still exercises
+delayed UI acknowledgments, exact Undo, frozen views and origin-independent work.
+
+Intermediate verification caught and corrected FIFO dispatch, unnecessary empty
+collapse records and hidden DOM anchor capture. The large-view restart now retains
+the expected distant selection/offset for both 10k and 50k discussions. The existing
+thumbnail test now waits for the thumbnail image itself rather than whichever avatar
+image first appears. The original preload capability allowlist explicitly includes
+only the fixed lifecycle API. Backup harness user gestures wait for the new explicit
+reconciled release after direct cancelled/failed IPC operations; no test uses an
+arbitrary sleep as a drain acknowledgment. Backup exclusive destination publication,
+schema validators and crash-recovery assertions were not weakened.
+
+Windows Electron evidence
+does not certify Linux/macOS native behavior, M6 restore sets/geometry, physical
+multi-monitor/DPI behavior, independent duplicate-view persistence or installer
+lifecycle. Crashes/forced termination preserve only committed data. Schema-12 test
+renderers still share per-item saved view slots; M4 owns independent view identities.
+
+The following M2 section records the historical accepted baseline, before M3.
+
 ## Ordered shared synchronization (M2, 2026-10-18, ADR 0028)
 
 M2 keeps schema **12** and one production reader. Epochs/commit revisions are

@@ -29,6 +29,8 @@ import { installRestore, prepareRestore } from './persistence/profile-restore';
 import type { RestoreCheckpoint } from './persistence/profile-restore';
 import { randomUUID } from 'node:crypto';
 import type { ThumbnailCache, CachedThumbnail } from './thumbnail-cache';
+import type { ProfileOperationCoordinator } from './profile-operation-coordinator';
+import type { DrainCommand } from '../shared/profile-operation';
 
 export interface DataBackupOptions {
   readonly databasePath: string;
@@ -41,6 +43,26 @@ type ServiceValue = SharedSnapshot | SharedItemSnapshot | SharedMetadata | Reade
 /** Small use-case boundary: validate before touching persistence; failures carry
  * stable codes. Diagnostics are reported only on the privileged side. */
 export class ReaderService {
+  private lifecycle?: ProfileOperationCoordinator;
+  attachLifecycle(coordinator: ProfileOperationCoordinator): void { this.lifecycle = coordinator; }
+  private lastProfileStamp?: import('../shared/reader-sync').SharedStamp;
+  profileStamp() {
+    if (this.repository) this.lastProfileStamp = this.repository.stamp();
+    return this.lastProfileStamp ?? { profileEpoch: this.unavailableEpoch, commitRevision: 0 };
+  }
+  private readonly unavailableEpoch = randomUUID();
+  /** Main-only sealed checkpoint entry. Ordinary dispatch never accepts a bypass. */
+  drainCheckpoint(caller: ReaderCallerContext, command: DrainCommand): Result<unknown> {
+    const operation = command.kind === 'view' ? 'saveDiscussionView' : command.kind === 'collapse' ? 'setDiscussionCollapse' : command.kind;
+    const result = this.execute(operation, [command.request], caller, true) as Result<unknown>;
+    return result.ok ? { ...result, sync: this.repository?.latestCommit() ?? this.profileStamp() } : result;
+  }
+  get restarting(): boolean { return this.restartPending; }
+  profileCheckpointAllowed(command: DrainCommand): boolean {
+    if ('ticket' in command) return true;
+    try { return !!this.repository?.getStoredItem(command.request.itemId); } catch { return false; }
+  }
+  async settleDataOperation(): Promise<void> { await this.dataPending; }
   private readonly helperEvidence = new Map<string, string>();
   private readonly commitObservers = new Set<(commit: SharedCommit) => void>();
   onSharedCommit(listener: (commit: SharedCommit) => void): () => void { this.commitObservers.add(listener); return () => { this.commitObservers.delete(listener); }; }
@@ -115,14 +137,15 @@ export class ReaderService {
     const result = this.execute(operation, args, caller);
     return result instanceof Promise ? result.then(attach) : attach(result);
   }
-  private execute(operation: ReaderOperation, args: readonly unknown[], caller?: ReaderCallerContext): Result<ServiceValue> | Promise<Result<ServiceValue>> {
+  private execute(operation: ReaderOperation, args: readonly unknown[], caller?: ReaderCallerContext, checkpoint = false): Result<ServiceValue> | Promise<Result<ServiceValue>> {
     if (operation === 'createBackup' || operation === 'restoreBackup') {
       if (args.length !== 0) return Promise.resolve({ ok: false, error: { code: 'INVALID_REQUEST' } });
-      if (this.dataPending || this.stopping || this.restartPending) return Promise.resolve({ ok: false, error: { code: 'DATA_BUSY' } });
+      if (this.dataPending || this.stopping || this.restartPending || this.lifecycle?.blocks(caller)) return Promise.resolve({ ok: false, error: { code: 'DATA_BUSY' } });
       this.dataPending = this.runDataOperation(operation, caller).finally(() => { this.dataPending = undefined; });
       return this.dataPending;
     }
-    if (this.stopping || this.restartPending || this.dataPending && operation !== 'getAcquisitionProgress') return { ok: false, error: { code: 'DATA_BUSY' } };
+    const read = ['getAcquisitionProgress', 'getSharedSnapshot', 'getSharedMetadata', 'bootstrap'].includes(operation);
+    if (this.stopping || this.restartPending || !read && !checkpoint && (this.lifecycle ? this.lifecycle.blocks(caller) : this.dataPending)) return { ok: false, error: { code: 'DATA_BUSY' } };
     if (operation === 'getAcquisitionProgress') return args.length === 0
       ? { ok: true, value: this.acquisition?.current() ?? null } : { ok: false, error: { code: 'INVALID_REQUEST' } };
     if (operation === 'cancelAcquisition') {
@@ -248,6 +271,8 @@ export class ReaderService {
     const originLost = () => caller !== undefined && !caller.isCurrent();
     let closed = false, settled = false;
     try {
+      if (operation === 'createBackup' && this.acquisition?.current()) return { ok: false, error: { code: 'DATA_BUSY' } };
+      if (this.lifecycle) { await this.lifecycle.begin(operation === 'createBackup' ? 'backup' : 'restore'); this.lifecycle.executePhase(); }
       const locale = repository.preferences(this.languages).locale;
       if (operation === 'createBackup') {
         if (this.acquisition?.current()) return { ok: false, error: { code: 'DATA_BUSY' } };
@@ -257,6 +282,7 @@ export class ReaderService {
         if (!destination || this.stopping || originLost()) return { ok: true, value: { status: 'cancelled' } };
         await validateBackupDestination(destination, options.databasePath);
         if (originLost()) return { ok: true, value: { status: 'cancelled' } };
+        this.lifecycle?.accept();
         await repository.createBackup(destination);
         return { ok: true, value: { status: 'created', destination } };
       }
@@ -264,13 +290,16 @@ export class ReaderService {
       if (!source || this.stopping || originLost()) return { ok: true, value: { status: 'cancelled' } };
       const directory = await prepareRestore(source, options.databasePath, options.checkpoint);
       if (this.stopping || originLost() || !await options.dialogs.confirm(locale, caller) || this.stopping || originLost()) return { ok: true, value: { status: 'cancelled' } };
-      // Main has rejected new IPC mutations since this operation began. Accepted
-      // renderer queues were flushed before invocation; now settle all children
-      // and any earlier helper selection before the safety snapshot.
+      // Main rejected new ordinary mutations before global preparation. Enrolled
+      // queues have now drained under their exact capabilities; settle accepted
+      // main-owned work before the independent safety snapshot.
       settled = true;
+      this.lifecycle?.accept();
       await Promise.all([this.acquisition?.close(), this.helpers?.shutdown(), this.thumbnails?.cache.settle()]);
       await repository.createBackup(path.join(directory, 'safety.sqlite'));
       await options.checkpoint?.('safety');
+      // Terminal fencing precedes the first offline storage action, including failures.
+      this.restartPending = true; this.lifecycle?.restarting();
       repository.prepareOffline(); repository.close(); this.repository = undefined; closed = true;
       await installRestore(options.databasePath, directory, options.checkpoint);
       this.restartPending = true;
@@ -278,12 +307,13 @@ export class ReaderService {
       return { ok: true, value: { status: 'restarting' } };
     } catch (error) {
       this.diagnose(error);
-      if (closed) {
+      if (closed || this.restartPending) {
         // Startup recovers offline before any opener/seed, then acknowledges the
         // result in a fresh process. Never reuse old renderer or service state.
         this.restartPending = true; setImmediate(options.restart);
         return { ok: false, error: { code: 'RECOVERY_REQUIRED' } };
       }
+      this.lifecycle?.release(true);
       if (settled) {
         this.helpers = new HelperSettingsService(repository, this.helperOptions);
         this.acquisition = new AcquisitionService(repository, this.languages,
@@ -291,6 +321,8 @@ export class ReaderService {
       }
       return { ok: false, error: { code: error instanceof BackupValidationError ? error.reason
         : operation === 'createBackup' ? 'DATA_WRITE_FAILED' : 'RESTORE_FAILED' } };
+    } finally {
+      if (!this.restartPending) this.lifecycle?.release();
     }
   }
   private async openSource(args: readonly unknown[]): Promise<Result<null>> {

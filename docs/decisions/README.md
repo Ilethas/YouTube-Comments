@@ -1,13 +1,18 @@
 # Decisions and open questions
 
+[ADR 0029](0029-global-profile-and-window-lifecycle-safety.md) implements M3 global
+profile and native lifecycle barriers, bounded pre-registered mutation/drain leases,
+reconciled release and terminal restore fencing. Schema stays 12 and production
+still opens one reader. M4–M6 independent identities/session restoration remain future work.
+
 [ADR 0028](0028-ordered-shared-state-synchronization.md) implements M2 ordered
 shared synchronization with schema 12 and one production reader. M3 lifecycle
-barriers and later view/window UI remain pending.
+barriers are added by ADR 0029; later view/window UI remains pending.
 
 [ADR 0027](0027-secure-window-coordination-foundation.md) implements M1 secured
 window coordination and authenticated native-dialog origins with one production
 reader and no schema change. It records the accepted provisional HTML dragging
-policy; actual gestures and M3–M9 remain outside the current implementation.
+policy; actual gestures and M4–M9 remain outside the current implementation.
 
 [ADR 0026](0026-custom-translation-reader-minutes-and-layout.md) adds schema-12
 atomic custom translation, shared reader/bulk publication minutes, an activity-only
@@ -230,4 +235,5 @@ Prefer small records about significant decisions, such as SQLite integration, pa
 
 - [0012 — Publication-date and latest-discovery filters](0012-publication-date-and-latest-discovery-filters.md): accepted; system-zone whole-day boundaries, captured clock, rolling presets, missing/estimated evidence, deterministic worker payload and durable NEW filter. Q-03 closed; Q-05 only arbitrary historical windows. Future date bulk must reuse these semantics.
 
-- [0028 - Ordered shared-state synchronization](0028-ordered-shared-state-synchronization.md): implemented awaiting review; M2 only, schema 12, epoch/ordered post-commit notifications, bounded replica recovery, explicit checkbox assignment, guarded shared Undo, progress fanout and test-only second renderers. M3 global lifecycle barriers remain pending.
+- [0028 - Ordered shared-state synchronization](0028-ordered-shared-state-synchronization.md): accepted M2 foundation; schema 12, epoch/ordered post-commit notifications, bounded replica recovery, explicit checkbox assignment, guarded shared Undo, progress fanout and test-only second renderers.
+- [0029 - Global profile and window lifecycle safety](0029-global-profile-and-window-lifecycle-safety.md): M3, schema 12, all-participant drains, pre-registered queued mutation tickets, exact drain leases, safe close/reload/quit and terminal offline restore fencing. One production reader; M4–M6 identities/topology remain future scope.

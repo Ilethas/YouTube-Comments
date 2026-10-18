@@ -6,6 +6,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import type { ReaderService } from './reader-service';
 import { registerReaderIpc } from './reader-ipc';
 import { readerChannels } from '../shared/reader-api';
+import { profileChannels } from '../shared/profile-operation';
 
 const { handlers } = vi.hoisted(() => ({ handlers: new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>() }));
 vi.mock('electron', () => ({ ipcMain: { handle: (channel: string, handler: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => { if (handlers.has(channel)) throw new Error('Duplicate handler'); handlers.set(channel, handler); } } }));
@@ -51,9 +52,9 @@ it('registers every channel once independently of window creation/reload and ret
   const windows = new WindowCoordinator('file:///app/index.html', ''), fixture = windowFixture();
   const service = new ActualReaderService(() => { throw new Error('No storage needed'); }, ['en'], () => undefined);
   registerReaderIpc(service, windows);
-  expect(handlers.size).toBe(Object.keys(readerChannels).length);
+  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length - 1);
   for (let i = 0; i < 2; i++) { windows.register(fixture.window); fixture.commit(); fixture.reload(); }
-  expect(handlers.size).toBe(Object.keys(readerChannels).length);
+  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length - 1);
   for (const channel of Object.values(readerChannels)) {
     expect(await handlers.get(channel)?.(fixture.event(), { windowId: 'forged', executable: 'evil' }, 'extra'))
       .toEqual({ ok: false, error: { code: 'INVALID_REQUEST' } });

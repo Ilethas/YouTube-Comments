@@ -1,5 +1,31 @@
 # Architecture
 
+## Global profile and native lifecycle safety (M3, ADR 0029)
+
+One main-owned ProfileOperationCoordinator enrolls current WindowCoordinator
+document contexts and owns PREPARING → DRAINING → QUIESCENT → EXECUTING → RELEASED
+or terminal RESTARTING. Ordinary writes stop before preparation notification.
+Queued seen/preferences/bulk/Undo intents register exact one-use tickets before
+preparation; frozen participants seal those tickets plus bounded dirty view/collapse
+checkpoints into main-issued operation/epoch/incarnation/sequence leases. No generic
+DATA_BUSY bypass exists. Clean optional view/collapse records remain absent.
+
+All participants freeze input, capture anchors, settle accepted workers/operations
+and drain queues before profile execution. Read-only M2 reconciliation stays available
+until offline replacement. Release requires reconciliation before ordinary editing
+resumes; failures remain visible and timeouts fail rather than approve a drain.
+Native initial Close keeps authority until drain; controlled reload and explicit Quit
+use the same protocol. Failed or later-cancelled Close remains usable. Shared service
+shutdown belongs to application Quit/last-window settlement, never a peer close.
+
+Backup keeps verified online snapshots and acquisition-busy policy. Restore retains
+captured native-dialog ownership, staging, explicit confirmation, independent safety,
+offline recovery and full relaunch. After affirmative acceptance it is app-owned;
+RESTARTING fences every old-profile command before offline storage begins. Crashes
+and uncontrolled reloads recover only committed SQLite data. See
+[ADR 0029](decisions/0029-global-profile-and-window-lifecycle-safety.md) for bounds,
+failure rules, conservative all-participant close drains and M4–M6 limitations.
+
 ## Ordered shared replicas (M2, ADR 0028)
 
 Repository outer transactions publish once after COMMIT under a random repository
@@ -27,8 +53,8 @@ drafts, sort/collapse/selection and anchor semantics. Progress fans out separate
 from committed content. See ADR 0028 for exact limits and response reconciliation.
 
 Production still opens one reader. Test-only second windows share the actual
-service/repository. M3 all-window backup/restore and close/reload queue barriers
-remain absent; current single-renderer safety is retained. No M4 identity migration,
+service/repository. M3 adds all-window backup/restore and close/reload queue barriers
+as described above. No M4 identity migration,
 duplicate views, extra-window UI or transfer is introduced.
 
 ## Secure window coordination (M1, ADR 0027)
@@ -50,8 +76,8 @@ recovery messages retain separate application-level ownership. One service/repos
 single reader startup, existing profile/order/seeding, thumbnail protocol and packaged
 security remain. Registry removal never shuts down persistence. See
 [ADR 0027](decisions/0027-secure-window-coordination-foundation.md) for exact lifecycle
-and cancellation boundaries. Shared synchronization is implemented in M2; global drain barriers
-remain M3; persistent windows/views and public additional windows remain later work.
+and cancellation boundaries. Shared synchronization is implemented in M2 and global
+drain barriers in M3; persistent windows/views and public additional windows remain later work.
 
 ## Usability increment (ADR 0026)
 

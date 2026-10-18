@@ -11,6 +11,25 @@ import type { QueryExecutor } from './query-worker-client';
 vi.mock('./query-executor', () => ({ createQueryExecutor: vi.fn() }));
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
+it('M3 captures only the visible anchor and preserves hidden logical anchors while draining all dirty sessions', async () => {
+  vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate: async (rows, query) => evaluateDiscussionQuery(rows, query), dispose: vi.fn() } as ReturnType<typeof createQueryExecutor>));
+  const save = vi.fn<ReaderApi['saveDiscussionView']>(async () => ({ ok: true, value: null }));
+  const { result } = renderHook(() => useDiscussionViews({ saved: {}, save }));
+  const rows = [dateTestComment('a')], a = result.current.get('a', rows), b = result.current.get('b', rows);
+  let hidden = false;
+  a.attachReader(() => ({ id: 'a', offset: 11 })); b.attachReader(() => hidden ? { offset: 0 } : { id: 'a', offset: 22 });
+  act(() => { a.readerSettled(); b.readerSettled(); hidden = true; result.current.freeze('a'); });
+  const entries = await result.current.checkpoints();
+  expect(entries.filter(entry => entry.command.kind === 'view').map(entry => entry.command.request)).toEqual([
+    expect.objectContaining({ itemId: 'a', anchor: { commentId: 'a', offset: 11 } }),
+    expect.objectContaining({ itemId: 'b', anchor: { commentId: 'a', offset: 22 } }),
+  ]);
+  entries.forEach(entry => entry.accept({ ok: true, value: null }));
+  expect(save).not.toHaveBeenCalled();
+  expect(await result.current.checkpoints()).toEqual([]);
+  result.current.resume();
+});
+
 it('flushAll waits for accepted query evaluation and the latest full-intent save, reporting failed persistence', async () => {
   let finish: ((result: ReturnType<typeof evaluateDiscussionQuery>) => void) | undefined;
   const evaluate = vi.fn<QueryExecutor['evaluate']>(() => new Promise<ReturnType<typeof evaluateDiscussionQuery>>(resolve => { finish = resolve; }));

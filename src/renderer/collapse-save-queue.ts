@@ -7,14 +7,15 @@ export class CollapseSaveQueue {
   private pending: CollapseChange[] = [];
   private running?: Promise<void>;
   private disposed = false;
+  private paused = false;
   constructor(private readonly save: (change: CollapseChange) => Promise<Result<null>>, private readonly feedback: (failed: boolean) => void) {}
   schedule(change: CollapseChange): void { this.pending.push(change); void this.flush(); }
   flush(): Promise<void> {
     if (this.running) return this.running;
-    if (this.disposed || !this.pending.length) return Promise.resolve();
+    if (this.disposed || this.paused || !this.pending.length) return Promise.resolve();
     let failed = false;
     this.running = (async () => {
-      while (!this.disposed && this.pending.length) {
+      while (!this.disposed && !this.paused && this.pending.length) {
         try {
           const result = await this.save(this.pending[0]);
           if (this.disposed) return;
@@ -26,9 +27,20 @@ export class CollapseSaveQueue {
       this.running = undefined;
       // An edit can arrive after the loop empties but before this finalizer.
       // Include it in the same awaited flush, without retrying failed writes.
-      if (!failed && !this.disposed && this.pending.length) return this.flush();
+      if (!failed && !this.disposed && !this.paused && this.pending.length) return this.flush();
     });
     return this.running;
   }
+  pause(): void { this.paused = true; }
+  async settled(): Promise<void> { await this.running; }
+  get dirty(): boolean { return this.pending.length > 0; }
+  checkpoint(): (success: boolean) => void {
+    const pending = [...this.pending];
+    return success => {
+      if (success && pending.every((change, index) => this.pending[index] === change)) this.pending.splice(0, pending.length);
+      this.feedback(!success);
+    };
+  }
+  resume(): void { this.paused = false; }
   dispose(): void { this.disposed = true; }
 }

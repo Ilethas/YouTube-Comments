@@ -2,12 +2,38 @@ import { isSharedCommit } from '../shared/reader-sync';
 import { isAcquisitionNotification } from '../shared/acquisition';
 import { readerChannels } from '../shared/reader-api';
 import type { ReaderApi } from '../shared/reader-api';
+import { isProfileEvent, profileChannels } from '../shared/profile-operation';
+import type { ProfileLifecycleApi } from '../shared/profile-operation';
 
 /** The transport stays private to preload. Renderer receives intent methods only. */
-export function createReaderBridge(invoke: (channel: string, ...args: unknown[]) => Promise<unknown>,
+export function createReaderBridge(rawInvoke: (channel: string, ...args: unknown[]) => Promise<unknown>,
   subscribe: (listener: (value: unknown) => void) => () => void = () => () => undefined,
-  sharedSubscribe: (listener: (value: unknown) => void) => () => void = () => () => undefined): ReaderApi {
+  sharedSubscribe: (listener: (value: unknown) => void) => () => void = () => () => undefined,
+  profileSubscribe?: (listener: (value: unknown) => void) => () => void): ReaderApi {
+  const pending = new Set<Promise<unknown>>();
+  const tracked = new Set<string>(['toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'openStoredItem', 'activateTab', 'closeTab', 'openLibrary', 'openSettings', 'moveTab', 'removeLibraryItem', 'chooseHelper', 'clearHelper', 'getHelperStatus'].map(key => readerChannels[key as keyof typeof readerChannels]));
+  const invoke = (channel: string, ...args: unknown[]) => {
+    const task = rawInvoke(channel, ...args);
+    if (tracked.has(channel)) { pending.add(task); void task.then(() => pending.delete(task), () => pending.delete(task)); }
+    return task;
+  };
+  const lifecycle: ProfileLifecycleApi | undefined = profileSubscribe ? Object.freeze({
+    stage: command => invoke(profileChannels.stage, command) as ReturnType<ProfileLifecycleApi['stage']>,
+    submit: ticket => invoke(profileChannels.submit, ticket) as ReturnType<ProfileLifecycleApi['submit']>,
+    settleAccepted: async () => {
+      const results = await Promise.allSettled([...pending]);
+      return results.every(result => result.status === 'fulfilled' && (result.value as { ok?: boolean })?.ok === true);
+    },
+    onEvent: listener => profileSubscribe(value => { if (isProfileEvent(value)) listener(value); }),
+    current: () => invoke(profileChannels.current) as ReturnType<ProfileLifecycleApi['current']>,
+    plan: (identity, commands) => invoke(profileChannels.plan, identity, commands) as ReturnType<ProfileLifecycleApi['plan']>,
+    command: (grant, sequence, command) => invoke(profileChannels.command, grant, sequence, command) as ReturnType<ProfileLifecycleApi['command']>,
+    ack: (grant, succeeded) => invoke(profileChannels.ack, grant, succeeded) as ReturnType<ProfileLifecycleApi['ack']>,
+    refuse: identity => invoke(profileChannels.refuse, identity) as ReturnType<ProfileLifecycleApi['refuse']>,
+    resume: identity => invoke(profileChannels.resume, identity) as ReturnType<ProfileLifecycleApi['resume']>,
+  } satisfies ProfileLifecycleApi) : undefined;
   return Object.freeze({
+    ...(lifecycle ? { lifecycle } : {}),
     onSharedCommit: listener => sharedSubscribe(value => { if (isSharedCommit(value)) listener(value); }),
     getSharedSnapshot: request => (request === undefined ? invoke(readerChannels.getSharedSnapshot) : invoke(readerChannels.getSharedSnapshot, request)) as ReturnType<ReaderApi['getSharedSnapshot']>,
     getSharedMetadata: () => invoke(readerChannels.getSharedMetadata) as ReturnType<ReaderApi['getSharedMetadata']>,

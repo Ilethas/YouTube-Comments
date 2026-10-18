@@ -93,6 +93,7 @@ export class ReaderReplica {
   }
   private async checkCurrent(): Promise<void> {
     const result = await this.transport.getSharedMetadata();
+    if (!result.ok) throw new ReplicaReadError(result.error.code);
     if (result.ok && isSharedStamp(result.value)) await this.reconcile(result.value);
   }
   async reconcile(stamp: SharedStamp): Promise<void> {

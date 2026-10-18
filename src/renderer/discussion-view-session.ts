@@ -91,6 +91,7 @@ export class DiscussionViewSession {
   private generation = 0;
   private seenRevision = 0;
   private disposed = false;
+  private draining = false;
   private scrollRevision = 0;
   /** Explicit header scrolling supersedes an unfinished sort/collapse reveal,
    * retaining logical navigation selection, criteria and settled-anchor saving. */
@@ -216,7 +217,7 @@ export class DiscussionViewSession {
   }
   /** Called only after idle/virtual reveal settles, never once per scroll pixel. */
   readerSettled(): void {
-    if (this.state.restoring) return;
+    if (this.state.restoring || this.draining) return;
     const captured = this.captureAnchor?.();
     if (!captured) return;
     const next = boundedAnchor(captured.id, captured.offset);
@@ -229,6 +230,31 @@ export class DiscussionViewSession {
     this.readerSettled();
     return Promise.all([this.saveQueue?.flush(), this.collapseQueue?.flush()]).then(() => undefined);
   }
+  /** Freeze asynchronous timers before waiting for accepted worker intent. The
+   * checkpoint uses the captured logical anchor, never an unmount side effect. */
+  freeze(capture = true): void {
+    if (capture) this.readerSettled();
+    this.draining = true; this.saveQueue?.pause(); this.collapseQueue?.pause();
+  }
+  async drainCheckpoints(itemId: string): Promise<readonly import('./profile-lifecycle').Checkpoint[]> {
+    if (this.state.pending) await new Promise<void>(resolve => {
+      const unsubscribe = this.subscribe(() => { if (!this.state.pending) { unsubscribe(); resolve(); } });
+    });
+    await Promise.all([this.saveQueue?.settled(), this.collapseQueue?.settled()]);
+    const entries: import('./profile-lifecycle').Checkpoint[] = [];
+    if (this.collapseQueue?.dirty) {
+      const accept = this.collapseQueue.checkpoint(), collapse = this.state.collapse;
+      entries.push({ command: { kind: 'collapse', request: { itemId, kind: 'all', collapsed: collapse.defaultCollapsed } },
+        accept: result => { if (!result.ok || !collapse.overrides.length) accept(result.ok); } });
+      if (collapse.overrides.length) entries.push({ command: { kind: 'collapse', request: { itemId, kind: 'comments', ids: collapse.overrides, collapsed: !collapse.defaultCollapsed } }, accept: result => accept(result.ok) });
+    }
+    if (this.saveQueue?.dirty) {
+      const accept = this.saveQueue.checkpoint();
+      entries.push({ command: { kind: 'view', request: { itemId, ...this.persistentIntent() } }, accept: result => accept(result.ok) });
+    }
+    return entries;
+  }
+  resume(): void { this.draining = false; this.saveQueue?.resume(); this.collapseQueue?.resume(); }
   edit(draft: DiscussionQuery): void {
     if (this.state.restoring) return;
     this.state = { ...this.state, draft }; this.saveQueue?.schedule(draftSaveDelay); this.changed();
