@@ -4,6 +4,20 @@ import { windowFixture } from './testing/window-fixture';
 
 vi.mock('electron', () => ({}));
 const url = 'file:///app/index.html';
+it('binds the persistent identity before authorization, keeps reload leases fresh and rejects a second live owner', () => {
+  const coordinator = new WindowCoordinator(url, ''), a = windowFixture(), b = windowFixture();
+  coordinator.setIdentityProvider(() => 'persisted-window');
+  coordinator.register(a.window);
+  expect(coordinator.resolveCaller(a.event())).toBeUndefined();
+  a.commit(); const original = coordinator.resolveCaller(a.event());
+  expect(original?.windowId).toBe('persisted-window');
+  expect(() => coordinator.register(b.window)).toThrow('Persistent window already registered');
+  expect(coordinator.resolveCaller(a.event())).toBe(original);
+  a.reload();
+  expect(coordinator.resolveCaller(a.event())?.windowId).toBe('persisted-window');
+  expect(coordinator.resolveCaller(a.event())?.rendererLease).not.toBe(original?.rendererLease);
+  expect(original?.isCurrent()).toBe(false);
+});
 it('requires registration and a trusted document commit; identities are opaque and contexts frozen', () => {
   const coordinator = new WindowCoordinator(url, '/trusted/preload.js'), a = windowFixture(), b = windowFixture();
   expect(coordinator.resolveCaller(a.event())).toBeUndefined();
@@ -30,7 +44,7 @@ it('reload and registry replacement invalidate captured contexts and stale frame
   coordinator.register(a.window); expect(second?.isCurrent()).toBe(false);
   expect(a.contents.listenerCount('did-frame-navigate')).toBe(1);
   expect(coordinator.resolveCaller(a.event())).toBeUndefined(); a.commit();
-  expect(coordinator.resolveCaller(a.event())?.windowId).not.toBe(second?.windowId);
+  expect(coordinator.resolveCaller(a.event())?.windowId).toBe(second?.windowId);
   coordinator.unregister(a.window); expect(coordinator.size).toBe(0);
   expect(a.contents.listenerCount('did-frame-navigate')).toBe(0);
 });

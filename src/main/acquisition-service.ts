@@ -1,3 +1,4 @@
+import type { ReaderCallerContext } from './caller-context';
 import { randomUUID } from 'node:crypto';
 import { setImmediate } from 'node:timers/promises';
 import type { AcquisitionResult, Result } from '../shared/reader-api';
@@ -31,27 +32,27 @@ export class AcquisitionService {
     return { ok: true, value: null };
   }
   private emit(value: AcquisitionNotification): void { try { this.notify(value); } catch { /* Window closure cannot affect persistence. */ } }
-  async acquire(url: string): Promise<Result<AcquisitionResult>> {
+  async acquire(url: string, caller?: ReaderCallerContext): Promise<Result<AcquisitionResult>> {
     const started = this.clock();
     const target = parseAcquisitionTarget(url);
     if (!target) return { ok: false, error: { code: 'INVALID_REQUEST' } };
-    return this.run(target, true, started);
+    return this.run(target, true, started, undefined, caller);
   }
-  async refresh(itemId: string): Promise<Result<AcquisitionResult>> {
+  async refresh(itemId: string, caller?: ReaderCallerContext): Promise<Result<AcquisitionResult>> {
     const started = this.clock();
     if (this.active) return { ok: false, error: { code: 'ACQUISITION_BUSY' } };
     try {
       // Retained intentionally: measure existing pre-Refresh full repository read.
-      const item = this.repository.bootstrap(this.languages).items.find(item => item.id === itemId);
+      const item = this.repository.bootstrap(this.languages, caller?.windowId).items.find(item => item.id === itemId);
       if (!item) return { ok: false, error: { code: 'NOT_FOUND' } };
       const url = item.sourceKind === 'youtube-video' ? `https://www.youtube.com/watch?v=${encodeURIComponent(item.sourceId)}`
         : item.sourceKind === 'youtube-community-post' ? `https://www.youtube.com/post/${encodeURIComponent(item.sourceId)}` : '';
       const target = parseAcquisitionTarget(url);
       if (!target) return { ok: false, error: { code: 'NOT_REFRESHABLE' } };
-      return this.run(target, false, started, itemId);
+      return this.run(target, false, started, itemId, caller);
     } catch { return { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }; }
   }
-  private async run(target: AcquisitionTarget, openTab: boolean, started: number, itemId?: string): Promise<Result<AcquisitionResult>> {
+  private async run(target: AcquisitionTarget, openTab: boolean, started: number, itemId?: string, caller?: ReaderCallerContext): Promise<Result<AcquisitionResult>> {
     if (this.active) return { ok: false, error: { code: 'ACQUISITION_BUSY' } };
     if (this.lifecycle.signal.aborted) return { ok: false, error: { code: 'ACQUISITION_FAILED' } };
     const operationId = this.operationId(), controller = new AbortController();
@@ -89,11 +90,11 @@ export class AcquisitionService {
       }
       // Linearization point: no await between this transition and atomic ingest.
       advance('saving');
-      const attempt = this.repository.ingest(result.extraction, target, openTab);
+      const attempt = this.repository.ingest(result.extraction, target, openTab && (!caller || caller.isCurrent()), caller?.windowId);
       durations.savingMs += this.clock() - stageStarted;
       if (result.error || attempt.coverage.kind === 'failed' || !attempt.itemId) return { ok: false, error: { code: result.error ?? 'ACQUISITION_FAILED' } };
       const bootstrapStarted = this.clock();
-      const state = this.repository.bootstrap(this.languages);
+      const state = this.repository.bootstrap(this.languages, caller?.windowId);
       durations.bootstrapMs = this.clock() - bootstrapStarted;
       const timings: AcquisitionTimings = { targetMs, ...durations, totalMs: this.clock() - started };
       return { ok: true, sync: this.repository.latestCommit() ?? this.repository.stamp(), value: { operationId, timings, state, summary: {

@@ -1,3 +1,4 @@
+const { tabElement, viewId, seedPeerIdentity } = require('./window-view-fixtures.cjs');
 // M3: real secured App/preload/IPC participants, one disposable SQLite authority.
 // Dialog answers and deterministic stalls/failures are main-only test injection.
 const assert = require('node:assert/strict');
@@ -61,21 +62,27 @@ if (process.versions.electron) {
         if (phase === 'safety' && safetyReached) { safetyReached(); await new Promise(resolve => { continueSafety = resolve; }); }
       } });
     const lifecycle = registerReaderIpc(service, windows);
+    seedPeerIdentity(windows, repository);
     const js = (window, code) => window.webContents.executeJavaScript(code);
-    const invoke = (window, method, payload) => js(window, `window.reader.${method}(${payload === undefined ? '' : JSON.stringify(payload)})`);
+    const invoke = async (window, method, payload) => {
+      if (['openStoredItem','activateTab','closeTab','moveTab','openLibrary','openSettings'].includes(method)) {
+        const state = (await js(window, 'window.reader.bootstrap()')).value;
+        payload = { ...payload, expectedRevision: state.workspace.revision };
+      }
+      return js(window, `window.reader.${method}(${payload === undefined ? '' : JSON.stringify(payload)})`);
+    };
     const ready = window => wait(() => js(window, "!!document.querySelector('.app-shell') && !!document.querySelector('.comment')"), 'App ready');
     const released = () => wait(async () => lifecycle.phase === 'RELEASED' && windows.participants().every(c => !lifecycle.blocks(c)), 'reconciled release');
-    const edit = (window, id, text) => js(window, `(() => {const e=document.querySelector('#panel-${id} input[type=search]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(text)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    const edit = (window, id, text) => js(window, `(() => {const e=document.querySelector('[data-item-id=${id}] input[type=search]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(text)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     const a = windows.createReaderWindow(); let b = windows.createReaderWindow();
     await Promise.all([ready(a), ready(b)]);
     const callerA = windows.participants().find(c => windows.originWindow(c) === a);
     assert.ok(callerA);
-    // Mount both discussions. Keep a different pending per-item semantic intent
-    // in each renderer; M4 has not created duplicate per-view storage yet.
-    await invoke(a, 'activateTab', { tabId: 'discussion:post-demo' });
-    await wait(() => js(b, "!!document.querySelector('#panel-post-demo input[type=search]')"), 'post session');
-    await invoke(a, 'activateTab', { tabId: 'discussion:video-demo' });
-    await edit(a, 'video-demo', 'pending-A'); await edit(b, 'post-demo', 'pending-B');
+    // Mount separate owned views and retain independent semantic checkpoints.
+    await invoke(a, 'activateTab', { tabId: viewId((await invoke(a, 'bootstrap')).value, 'post-demo') });
+    await wait(() => js(b, "!!document.querySelector('[data-item-id=video-demo] input[type=search]')"), 'independent video session');
+    await invoke(a, 'activateTab', { tabId: viewId((await invoke(a, 'bootstrap')).value, 'video-demo') });
+    await edit(a, 'video-demo', 'pending-A'); await edit(b, 'video-demo', 'pending-B');
     delayChannel = 'reader:toggle-seen'; delayContents = b.webContents;
     const seen = invoke(b, 'toggleSeen', { itemId: 'video-demo', commentId: 'v3', subtree: false, seen: true });
     await wait(() => !!releaseReply, 'slow accepted save');
@@ -93,10 +100,11 @@ if (process.versions.electron) {
     assert.equal((await backup).value.status, 'created'); await released();
     const copy = ReaderRepository.open(snapshot);
     try {
-      const state = copy.bootstrap(['en']);
-      // Each checkpoint is present in the commit stream. The two renderers still
-      // share schema-12 item view slots: final same-item writer is authoritative.
-      assert.ok(state.discussionViews['video-demo']); assert.ok(state.discussionViews['post-demo']);
+      const state = copy.bootstrap(['en'], callerA.windowId), peerCaller = windows.participants().find(c => windows.originWindow(c) === b), peerState = copy.bootstrap(['en'], peerCaller.windowId);
+      // Both independent checkpoint owners survive in one verified snapshot.
+      assert.equal(state.discussionViews[viewId(state,'video-demo')].draft.text, 'pending-A');
+      assert.equal(peerState.discussionViews[viewId(peerState,'video-demo')].draft.text, 'pending-B');
+      assert.notEqual(viewId(state,'video-demo'), viewId(peerState,'video-demo'));
       assert.equal(state.comments['video-demo'].find(c => c.id === 'v3').seen, true);
     } finally { copy.close(); }
     console.log('M3 PASS: two UI participants, pending semantic checkpoints, slow accepted save, constrained drains, input freeze, authenticated IPC, verified backup and M2 release.');
@@ -120,7 +128,7 @@ if (process.versions.electron) {
     // An actual native Close during pending checkpoint work stays alive/current
     // until its final bounded write is acknowledged. Duplicate Close joins it.
     delayChannel = 'reader:profile-drain'; delayContents = b.webContents;
-    await edit(b, 'post-demo', 'native-close-pending');
+    await edit(b, 'video-demo', 'native-close-pending');
     b.close(); b.close(); await wait(() => !!releaseReply, 'native Close held drain');
     assert.equal(b.isDestroyed(), false); assert.ok(windows.participants().some(c => windows.originWindow(c) === b));
     releaseReply(); releaseReply = undefined;
@@ -145,11 +153,11 @@ if (process.versions.electron) {
     b.removeListener('close', preventFinal);
     // Failed durable writes keep Close cancelled and authorized, then retry.
     const saveView = repository.saveDiscussionView.bind(repository); let failSave = true;
-    repository.saveDiscussionView = request => { if (failSave) { failSave = false; throw new Error('M3 injected durable failure'); } return saveView(request); };
+    repository.saveDiscussionView = (request, windowId) => { if (failSave) { failSave = false; throw new Error('M3 injected durable failure'); } return saveView(request, windowId); };
     await edit(b, 'video-demo', 'failed-close-pending');
     b.close(); await wait(() => lifecycle.current()?.failed && lifecycle.phase === 'RELEASED', 'failed Close released'); await released();
     assert.equal(b.isDestroyed(), false); assert.ok(windows.participants().some(c => windows.originWindow(c) === b));
-    assert.equal(await js(b, "Array.from(document.querySelectorAll('[role=alert]')).some(e=>e.textContent.includes('could not be safely saved'))"), true);
+    await wait(() => js(b, "Array.from(document.querySelectorAll('[role=alert]')).some(e=>e.textContent.includes('could not be safely saved'))"), 'failed Close feedback rendered after release');
     b.close(); await wait(() => b.isDestroyed(), 'retried Close'); await released();
     b = windows.createReaderWindow(); await ready(b);
     // Cancellation before confirmation is global and retryable.
@@ -210,7 +218,7 @@ if (process.versions.electron) {
       const child = spawn(require('electron'), [__filename], { env, stdio: 'inherit', windowsHide: true });
       await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error('M3 exited '+code))); });
       const { DatabaseSync } = require('node:sqlite'), db = new DatabaseSync(path.join(root, 'profile', 'reader.sqlite'), { readOnly: true });
-      try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 12); assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok'); assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []); } finally { db.close(); }
+      try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 13); assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok'); assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []); } finally { db.close(); }
     } finally {
       assert.ok(path.dirname(root) === os.tmpdir() && path.basename(root).startsWith('reader-m3-'));
       fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

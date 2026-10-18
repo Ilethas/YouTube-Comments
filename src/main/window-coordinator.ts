@@ -18,7 +18,7 @@ interface WindowRecord {
   finishing?: boolean;
 }
 
-/** Main-owned runtime identities, independent of Electron IDs and persistence.
+/** Main-owned persistent window identities, independent of Electron native IDs.
  * Registration alone grants no authority: a trusted top-level document commit
  * issues a new lease. Removing a window never shuts down the shared service. */
 export class WindowCoordinator {
@@ -29,19 +29,25 @@ export class WindowCoordinator {
 
   constructor(private readonly documentUrl: string, private readonly preloadPath: string) {}
 
+  private identityProvider: () => string = randomUUID;
+  setIdentityProvider(provider: () => string): void { this.identityProvider = provider; }
+
   createReaderWindow(): BrowserWindow {
+    const windowId = this.identityProvider();
     const window = createApplicationWindow(this.preloadPath);
-    this.register(window);
+    this.register(window, windowId);
     void window.loadURL(this.documentUrl);
     return window;
   }
 
   /** Main-only registration, before load. Replacing a registration invalidates
    * every prior captured context, even when the runtime window is reused. */
-  register(window: BrowserWindow): void {
+  register(window: BrowserWindow, windowId?: string): void {
     const contents = window.webContents;
+    windowId ??= this.records.get(contents)?.windowId ?? this.identityProvider();
     this.unregister(window);
-    const record: WindowRecord = { windowId: randomUUID(), window, closing: false };
+    if ([...this.records.values()].some(record => record.windowId === windowId)) throw new Error('Persistent window already registered');
+    const record: WindowRecord = { windowId, window, closing: false };
     this.records.set(contents, record);
     const revoke = () => {
       const previous = record.caller; record.caller = undefined; record.frame = undefined;

@@ -1,3 +1,4 @@
+const { tabElement, viewId } = require('./window-view-fixtures.cjs');
 // Focused verification of the real built entry points. Run after Forge builds;
 // this script is never shipped as the application entry or exposed to renderer.
 const assert = require('node:assert/strict');
@@ -92,8 +93,8 @@ async function verifyWindow(window, nativeTheme) {
     // Normalize absent optional values for the serialized restart checkpoint.
     // Legacy content/seen/helper checks compare durable discussion data. The
     // separate view-restoration harness verifies independently changing intent.
-    const { discussionViews, ...content } = result.value;
-    return JSON.parse(JSON.stringify(content));
+    const { discussionViews, viewInstances, ...content } = result.value;
+    return JSON.parse(JSON.stringify({ ...content, viewInstances: Object.fromEntries(Object.entries(viewInstances).map(([id,v])=>[id,{itemId:v.itemId}])) }));
   }
   const currentSort = () => js("document.querySelector('[role=tabpanel]:not([hidden]) .discussion-sort select').value");
   async function selectSort(mode) {
@@ -197,6 +198,7 @@ async function verifyWindow(window, nativeTheme) {
       contents.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
     };
     const active = async id => {
+      if (['settings','library'].includes(id)) id = (await snapshot()).workspace.tabs.find(tab=>tab.kind===id).id;
       await waitFor(`document.querySelector('[role=tab][aria-selected=true]')?.id === ${JSON.stringify('tab-' + id)} && !document.querySelector('.tabs button:disabled')`, 'keyboard tab activation');
     };
     key('F1');
@@ -241,7 +243,7 @@ async function verifyWindow(window, nativeTheme) {
     key('W', ['control']); await active('settings'); // closing final Library chooses left
     assert.equal(window.isDestroyed(), false, 'Ctrl+W closes a workspace tab, never the native window');
     await js("document.getElementById('library-toggle').click()"); await active('library');
-    await js("document.getElementById('tab-settings').click()"); await active('settings');
+    await js("document.querySelector('[role=tab][aria-controls=panel-settings]').click()"); await active('settings');
     key('W', ['control']); await active('library'); // closing Settings chooses right
     key('F1'); await waitFor("document.activeElement.id === 'keyboard-shortcuts' && !document.querySelector('.tabs button:disabled')", 'F1 reopens singleton');
     const rows = await js("Array.from(document.querySelectorAll('#panel-settings tr[data-shortcut-id]'),row=>({id:row.dataset.shortcutId,keys:row.querySelector('td').textContent}))");
@@ -251,7 +253,7 @@ async function verifyWindow(window, nativeTheme) {
     assert.equal(rows.some(row => row.id === 'comment-toggle-row'), false);
     assert.equal(rows.some(row => row.id === 'comment-subtree-row'), false);
     assert.equal(rows.find(row => row.id === 'previous-tab').keys, 'Ctrl+Shift+Tab');
-    const hints = await js("({apply:document.querySelector('#panel-video-demo .query-controls button[type=submit]').title,next:document.querySelector('#panel-video-demo .query-navigation button:nth-child(2)').title,add:document.querySelector('[aria-controls=acquisition-form]').title,seen:document.querySelector('.seen-control').title,tab:document.querySelector('[role=tab]').title})");
+    const hints = await js("({apply:document.querySelector('[data-item-id=video-demo] .query-controls button[type=submit]').title,next:document.querySelector('[data-item-id=video-demo] .query-navigation button:nth-child(2)').title,add:document.querySelector('[aria-controls=acquisition-form]').title,seen:document.querySelector('.seen-control').title,tab:document.querySelector('[role=tab]').title})");
     assert.match(hints.apply, /Ctrl\+Enter/); assert.match(hints.next, /F3/); assert.match(hints.add, /Ctrl\+L/);
     assert.match(hints.seen, /Ctrl\+Click/); assert.match(hints.tab, /Alt\+Left/);
     // Ignored local captures allow agent visual inspection in both locales/themes.
@@ -267,12 +269,12 @@ async function verifyWindow(window, nativeTheme) {
     }
     window.hide(); window.setSize(...size);
     await preference(0, before.preferences.locale); await preference(1, before.preferences.appearance);
-    await js("(() => { for (const selector of ['.library-filter input','#panel-video-demo .query-search input']) { const input=document.querySelector(selector); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,''); input.dispatchEvent(new Event('input',{bubbles:true})); } })()");
+    await js("(() => { for (const selector of ['.library-filter input','[data-item-id=video-demo] .query-search input']) { const input=document.querySelector(selector); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,''); input.dispatchEvent(new Event('input',{bubbles:true})); } })()");
     await waitFor("document.querySelector('.library-filter input').value === ''", 'restore Library draft');
     // Restore the original workspace through the UI; all stored data stays intact.
     for (const id of ['settings', 'library']) {
-      await js(`document.getElementById('tab-${id}').nextElementSibling.click()`);
-      await waitFor(`document.getElementById('tab-${id}') === null && !document.querySelector('.tabs button:disabled')`, 'close temporary app tab');
+      await js(`document.querySelector('[role=tab][aria-controls=panel-${id}]').nextElementSibling.click()`);
+      await waitFor(`document.querySelector('[role=tab][aria-controls=panel-${id}]') === null && !document.querySelector('.tabs button:disabled')`, 'close temporary app tab');
     }
     await js(`document.getElementById(${JSON.stringify('tab-' + before.workspace.activeTabId)}).click()`);
     await active(before.workspace.activeTabId);
@@ -306,25 +308,25 @@ async function verifyWindow(window, nativeTheme) {
     assert.equal(original.preferences.appearance, 'system');
     await preference(0, 'en');
     await verifyKeyboardShortcuts();
-    await js("document.querySelectorAll('#panel-video-demo .seen-control input')[2].click()");
-    await waitFor("document.querySelectorAll('#panel-video-demo .seen-control input')[2].checked && !document.querySelector('input:disabled')", 'ordinary click');
+    await js("document.querySelectorAll('[data-item-id=video-demo] .seen-control input')[2].click()");
+    await waitFor("document.querySelectorAll('[data-item-id=video-demo] .seen-control input')[2].checked && !document.querySelector('input:disabled')", 'ordinary click');
     let state = await snapshot();
     assert.deepEqual(state.comments['video-demo'].map(comment => comment.seen),
       original.comments['video-demo'].map(comment => comment.id === 'v3' ? !comment.seen : comment.seen));
-    await js("document.querySelectorAll('#panel-video-demo .seen-control input')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}))");
-    await waitFor("!document.querySelectorAll('#panel-video-demo .seen-control input')[1].checked && !document.querySelector('input:disabled')", 'Ctrl click');
+    await js("document.querySelectorAll('[data-item-id=video-demo] .seen-control input')[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}))");
+    await waitFor("!document.querySelectorAll('[data-item-id=video-demo] .seen-control input')[1].checked && !document.querySelector('input:disabled')", 'Ctrl click');
     state = await snapshot();
     assert.deepEqual(state.comments['video-demo'].map(comment => comment.seen),
       original.comments['video-demo'].map(comment => ['v2', 'v3', 'v4'].includes(comment.id) ? false : comment.seen));
     assert.deepEqual(state.comments['post-demo'], original.comments['post-demo']);
     // An ordinary edit outside the subtree must also survive the real restart.
-    await js("document.querySelectorAll('#panel-video-demo .seen-control input')[5].click()");
-    await waitFor("document.querySelectorAll('#panel-video-demo .seen-control input')[5].checked && !document.querySelector('input:disabled')", 'independent ordinary click');
+    await js("document.querySelectorAll('[data-item-id=video-demo] .seen-control input')[5].click()");
+    await waitFor("document.querySelectorAll('[data-item-id=video-demo] .seen-control input')[5].checked && !document.querySelector('input:disabled')", 'independent ordinary click');
     await js("document.querySelectorAll('[role=tab]')[1].click()");
-    await waitFor("document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-post-demo'", 'tab selection');
-    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), 'panel-post-demo');
+    await waitFor("document.querySelector('[role=tabpanel]:not([hidden])').dataset.itemId === 'post-demo'", 'tab selection');
+    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').dataset.itemId"), 'post-demo');
     await js("document.querySelectorAll('[role=tab]')[0].click()");
-    await waitFor("document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-video-demo'", 'tab return');
+    await waitFor("document.querySelector('[role=tabpanel]:not([hidden])').dataset.itemId === 'video-demo'", 'tab return');
     for (const mode of ['light', 'dark', 'system']) {
       await preference(1, mode);
       assert.equal(await js('document.documentElement.dataset.appearance'), mode);
@@ -358,7 +360,8 @@ async function verifyWindow(window, nativeTheme) {
     state = await acquire('https://www.youtube.com/watch?v=VidDemo_001');
     const video = state.items.find(item => item.sourceId === 'VidDemo_001');
     assert.ok(video);
-    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), `panel-${video.id}`);
+    const videoViewId = viewId(state, video.id);
+    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').dataset.itemId"), video.id);
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .source-button').click()");
     await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .source-button').disabled", 'source browser intent');
     assert.deepEqual(browserDestinations, ['https://www.youtube.com/watch?v=VidDemo_001']);
@@ -430,7 +433,7 @@ async function verifyWindow(window, nativeTheme) {
     const recoveryBeforeRefresh = await bulkUi('all', false);
     assert.ok(recoveryBeforeRefresh.seenUndo[video.id]);
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .expansion-controls button:nth-child(2)').click()");
-    await waitFor(`window.reader.bootstrap().then(r=>r.value.discussionCollapse[${JSON.stringify(video.id)}]?.defaultCollapsed===true)`, 'collapse persisted before Refresh');
+    await waitFor(`window.reader.bootstrap().then(r=>r.value.discussionCollapse[${JSON.stringify(videoViewId)}]?.defaultCollapsed===true)`, 'collapse persisted before Refresh');
     // The applied rolling criteria resolve against this fresh clock on Refresh.
     const beforeSort = await snapshot();
     await selectSort('latest-activity');
@@ -440,10 +443,10 @@ async function verifyWindow(window, nativeTheme) {
     await waitFor("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) .comment-text')).some(row=>row.textContent.includes('New smoke comment'))", 'refresh applied query');
     assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .query-search input').value"), 'unapplied draft');
     assert.equal(await currentSort(), 'latest-activity', 'Refresh retains session sorting');
-    const retainedCollapse = (await snapshot()).discussionCollapse[video.id];
+    const retainedCollapse = (await snapshot()).discussionCollapse[videoViewId];
     assert.deepEqual(retainedCollapse, { defaultCollapsed: true, overrides: [] }, 'Successful helper Refresh retains explicit collapsed default');
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .expansion-controls button:first-child').click()");
-    await waitFor(`window.reader.bootstrap().then(r=>r.value.discussionCollapse[${JSON.stringify(video.id)}]?.defaultCollapsed===false)`, 'expand persisted after Refresh');
+    await waitFor(`window.reader.bootstrap().then(r=>r.value.discussionCollapse[${JSON.stringify(videoViewId)}]?.defaultCollapsed===false)`, 'expand persisted after Refresh');
     await selectSort('original');
     assert.ok((await visibleMatches()).length > 0);
     const afterRefreshUndo = await undoUi();
@@ -505,29 +508,29 @@ async function verifyWindow(window, nativeTheme) {
     state = await snapshot();
     assert.equal(state.items.length, 4);
     const priorComments = state.comments;
-    await js(`document.getElementById('tab-discussion:${video.id}').click()`);
-    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-${video.id}'`, 'video sort before close');
+    await js(`${tabElement(video.id)}.click()`);
+    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').dataset.itemId === '${video.id}'`, 'video sort before close');
     await selectSort('newest');
-    await js(`document.getElementById('tab-discussion:${post.id}').click()`);
-    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-${post.id}'`, 'post before background close');
-    await js(`document.getElementById('tab-discussion:${video.id}').nextElementSibling.click()`);
-    await waitFor(`document.getElementById('tab-discussion:${video.id}') === null`, 'close background video');
-    assert.equal((await snapshot()).workspace.activeTabId, 'discussion:' + post.id);
+    await js(`${tabElement(post.id)}.click()`);
+    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').dataset.itemId === '${post.id}'`, 'post before background close');
+    await js(`${tabElement(video.id)}.nextElementSibling.click()`);
+    await waitFor(`${tabElement(video.id)} === null`, 'close background video');
+    assert.equal((await snapshot()).workspace.activeTabId, (await js('window.reader.bootstrap()')).value.workspace.tabs.find(t=>t.kind==='discussion'&&t.itemId===post.id).id);
     await js("document.querySelector('#library-toggle').click()");
     await waitFor("document.querySelector('#panel-library:not([hidden])') !== null", 'Library tab');
     await js("Array.from(document.querySelectorAll('.library-entry')).find(row => row.textContent.includes('Invented workshop')).querySelector('button').click()");
-    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-${video.id}'`, 'Library reopen video');
+    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').dataset.itemId === '${video.id}'`, 'Library reopen video');
     assert.equal(await currentSort(), 'newest', 'Close/reopen retains sorting in one Reader lifetime');
     await selectSort('original');
-    await js(`document.getElementById('tab-discussion:${post.id}').nextElementSibling.click()`);
-    await waitFor(`document.getElementById('tab-discussion:${post.id}') === null`, 'close Community workspace view');
+    await js(`${tabElement(post.id)}.nextElementSibling.click()`);
+    await waitFor(`${tabElement(post.id)} === null`, 'close Community workspace view');
     state = await snapshot();
     assert.deepEqual(state.comments, priorComments);
     assert.equal(state.items.length, 4);
     assert.equal(state.workspace.tabs.filter(tab => tab.kind === 'discussion').length, 3);
     // Real mouse dragging reorders a background app tab without activating it.
     const activeBefore = state.workspace.activeTabId;
-    const start = await js("(() => { const r=document.getElementById('tab-library').getBoundingClientRect(); return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}; })()");
+    const start = await js("(() => { const r=document.querySelector('[role=tab][aria-controls=panel-library]').getBoundingClientRect(); return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}; })()");
     const target = await js("Math.round(document.querySelector('.tabs').getBoundingClientRect().left+4)");
     contents.sendInputEvent({ type: 'mouseMove', ...start });
     contents.sendInputEvent({ type: 'mouseDown', ...start, button: 'left', clickCount: 1 });
@@ -535,9 +538,9 @@ async function verifyWindow(window, nativeTheme) {
     contents.sendInputEvent({ type: 'mouseMove', x: target, y: start.y, button: 'left' });
     await pause(50);
     contents.sendInputEvent({ type: 'mouseUp', x: target, y: start.y, button: 'left', clickCount: 1 });
-    await waitFor("document.querySelector('.tab').dataset.tabId === 'library' && !document.querySelector('[role=tab]:disabled')", 'native pointer reorder');
+    await waitFor("document.querySelector('.tab [role=tab]').getAttribute('aria-controls') === 'panel-library' && !document.querySelector('[role=tab]:disabled')", 'native pointer reorder');
     state = await snapshot(); assert.equal(state.workspace.activeTabId, activeBefore);
-    await js("document.getElementById('tab-settings').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',altKey:true,bubbles:true}))");
+    await js("document.querySelector('[role=tab][aria-controls=panel-settings]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',altKey:true,bubbles:true}))");
     await waitFor("!document.querySelector('[role=tab]:disabled')", 'keyboard reorder');
     state = await snapshot();
     // Delete the closed real Community discussion through the actual modal.
@@ -567,10 +570,10 @@ async function verifyWindow(window, nativeTheme) {
     await js("document.querySelector('dialog .destructive').click()");
     await waitFor("document.querySelector('dialog') === null && document.querySelectorAll('.library-entry').length === 3", 'remove committed');
     assert.equal((await snapshot()).items.some(item => item.id === post.id), false);
-    await js(`document.getElementById('tab-discussion:${video.id}').click()`);
-    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id === 'panel-${video.id}'`, 'active video checkpoint');
+    await js(`${tabElement(video.id)}.click()`);
+    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').dataset.itemId === '${video.id}'`, 'active video checkpoint');
     state = await snapshot();
-    assert.equal(state.workspace.activeTabId, 'discussion:' + video.id);
+    assert.equal(state.workspace.activeTabId, state.workspace.tabs.find(t=>t.kind==='discussion'&&t.itemId===video.id).id);
     const bulkOriginal = await snapshot();
     for (const seen of [true, false]) {
       const marked = await bulkUi('all', seen);
@@ -617,8 +620,8 @@ async function verifyWindow(window, nativeTheme) {
       await waitFor("!document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input:disabled')", 'restore verification row');
     }
     // Mixed Ctrl+click subtree is recoverable through the established gesture.
-    await js("document.getElementById('tab-discussion:video-demo').click()");
-    await waitFor("document.querySelector('[role=tabpanel]:not([hidden])').id==='panel-video-demo'", 'demo subtree');
+    await js(`${tabElement('video-demo')}.click()`);
+    await waitFor("document.querySelector('[role=tabpanel]:not([hidden])').dataset.itemId==='video-demo'", 'demo subtree');
     await js("document.getElementById('comment-v3').querySelector('input').click()");
     await waitFor("document.getElementById('comment-v3').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'mixed subtree preparation');
     const mixed = await snapshot();
@@ -664,8 +667,8 @@ async function verifyWindow(window, nativeTheme) {
     assert.ok(hit.width>=32 && hit.height>=32); assert.equal(hit.focused,true); assert.equal(hit.outline,'2px');
     await js("document.getElementById('comment-v3').querySelector('input').click()");
     await waitFor("!document.getElementById('comment-v3').querySelector('input').checked && !document.querySelector('.seen-control input:disabled')", 'restore demo');
-    await js(`document.getElementById('tab-discussion:${video.id}').click()`);
-    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').id==='panel-${video.id}'`, 'restart recovery preparation');
+    await js(`${tabElement(video.id)}.click()`);
+    await waitFor(`document.querySelector('[role=tabpanel]:not([hidden])').dataset.itemId==='${video.id}'`, 'restart recovery preparation');
     assert.deepEqual((await snapshot()).comments,bulkOriginal.comments);
     const restartOperation = await bulkUi('all',true);
     const laterEdit = bulkOriginal.comments[video.id].find(comment=>!comment.seen);
@@ -675,14 +678,14 @@ async function verifyWindow(window, nativeTheme) {
     fs.writeFileSync(path.join(root,'seen-before.json'),JSON.stringify(bulkOriginal));
     state = await snapshot();
     await selectSort('latest-activity');
-    await waitFor(`(async()=>{const state=await window.reader.bootstrap();return state.ok && state.value.discussionViews[${JSON.stringify(video.id)}]?.sort==='latest-activity';})()`, 'sort save acknowledged before quit');
+    await waitFor(`(async()=>{const state=await window.reader.bootstrap();return state.ok && state.value.discussionViews[${JSON.stringify(videoViewId)}]?.sort==='latest-activity';})()`, 'sort save acknowledged before quit');
     fs.writeFileSync(checkpoint, JSON.stringify(state));
   } else {
     const saved = JSON.parse(fs.readFileSync(checkpoint, 'utf8'));
     assert.deepEqual(original, saved);
     await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .discussion-sort select') !== null", 'saved view reconstruction');
     assert.equal(await currentSort(), 'latest-activity', 'Restart restores persisted sorting');
-    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), `panel-${saved.workspace.tabs.find(tab => tab.id === saved.workspace.activeTabId).itemId}`);
+    assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden])').id"), `panel-${saved.workspace.activeTabId}`);
     assert.equal(await js("document.querySelectorAll('[role=tab]').length"), saved.workspace.tabs.length);
     await waitFor("document.querySelectorAll('[role=tabpanel]:not([hidden]) .new-badge').length === 1", 'Real seen NEW survives process restart');
     assert.notEqual(await js("document.querySelector('[role=tabpanel]:not([hidden]) .ruler-new').getAttribute('d')"), '', 'Durable NEW ruler survives restart');
@@ -690,9 +693,9 @@ async function verifyWindow(window, nativeTheme) {
     assert.equal(await js('document.documentElement.dataset.appearance'), saved.preferences.appearance);
     // Check that the persisted states are actually reflected in the UI.
     const restoreActive = saved.workspace.activeTabId;
-    await js("document.getElementById('tab-discussion:video-demo').click()");
-    await waitFor("document.querySelector('#panel-video-demo:not([hidden]) .seen-control input') !== null", 'lazy demo activation');
-    assert.deepEqual(await js("Array.from(document.querySelectorAll('#panel-video-demo .seen-control input'), input => input.checked)"),
+    await js(`${tabElement('video-demo')}.click()`);
+    await waitFor("document.querySelector('[data-item-id=video-demo]:not([hidden]) .seen-control input') !== null", 'lazy demo activation');
+    assert.deepEqual(await js("Array.from(document.querySelectorAll('[data-item-id=video-demo] .seen-control input'), input => input.checked)"),
       saved.comments['video-demo'].map(comment => comment.seen));
     await js(`document.getElementById(${JSON.stringify('tab-' + restoreActive)}).click()`);
     await waitFor(`document.querySelector('[role=tab][aria-selected=true]').id===${JSON.stringify('tab-' + restoreActive)} && !document.querySelector('.tabs button:disabled')`, 'return to restart discussion');
@@ -841,7 +844,7 @@ if (process.versions.electron && process.type === 'browser') {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 12);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 13);
         assert.equal(db.prepare('SELECT count(*) AS count FROM helper_settings').get().count,0);
         assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 7);
         assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 3);

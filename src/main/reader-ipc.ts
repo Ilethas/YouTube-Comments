@@ -9,6 +9,7 @@ import { profileChannels } from '../shared/profile-operation';
 /** Register once for the application, independently of window creation. Every
  * invocation requires a registered top-level exact document and current lease. */
 export function registerReaderIpc(service: ReaderService, windows: WindowCoordinator): ProfileOperationCoordinator | undefined {
+  if (service.claimWindowIdentity) windows.setIdentityProvider(() => service.claimWindowIdentity(windows.size > 0));
   service.onSharedCommit?.(commit => windows.sendSharedCommit(commit));
   for (const operation of Object.keys(readerChannels) as ReaderOperation[]) {
     ipcMain.handle(readerChannels[operation], (event, ...args: unknown[]) => {
@@ -19,7 +20,7 @@ export function registerReaderIpc(service: ReaderService, windows: WindowCoordin
   }
   if (!service.attachLifecycle) return;
   const lifecycle = new ProfileOperationCoordinator(() => windows.participants(), (caller, event) => windows.sendProfileEvent(caller, event),
-    () => service.profileStamp(), (caller, command) => service.drainCheckpoint(caller, command), 15000, command => service.profileCheckpointAllowed(command));
+    () => service.profileStamp(), (caller, command) => service.drainCheckpoint(caller, command), 15000, (command, caller) => service.profileCheckpointAllowed(command, caller));
   service.attachLifecycle(lifecycle);
   for (const action of ['current', 'stage', 'submit', 'plan', 'command', 'ack', 'refuse', 'resume'] as const) {
     ipcMain.handle(profileChannels[action], (event, ...args: unknown[]) => {

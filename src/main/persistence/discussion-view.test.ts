@@ -1,3 +1,5 @@
+import { required } from '../../renderer/testing/required';
+import { legacyComparableState , viewVersion, viewIdentity } from '../testing/view-identity';
 import { downgradeSelectionFixture } from './testing/schema-10';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
@@ -9,7 +11,7 @@ import { migrateDatabase, migrations } from './migrations';
 import { defaultQuery } from '../../domain/discussion-query';
 import { discussionSorts } from '../../domain/discussion-view';
 import type { SaveDiscussionViewRequest } from '../../domain/discussion-view';
-import { discussionTab } from '../../domain/workspace';
+
 import { normalizeYtDlp } from '../extractors/yt-dlp';
 import { ReaderService } from '../reader-service';
 
@@ -28,7 +30,7 @@ function raw<T>(action: (db: DatabaseSync) => T) {
   const db = new DatabaseSync(file); db.exec('PRAGMA foreign_keys=ON');
   try { return action(db); } finally { db.close(); }
 }
-const intent = (itemId = 'video-demo'): SaveDiscussionViewRequest => ({ itemId,
+const intent = (itemId = 'video-demo'): SaveDiscussionViewRequest => ({ ...viewVersion(repo, itemId),
   draft: { ...defaultQuery, text: 'microphone', fields: ['author', 'replied-to-author'], mode: 'regex', caseSensitive: true, publication: { kind: 'custom', from: '2026-10-01', to: '2026-10-14' }, discovery: 'new' },
   applied: { ...defaultQuery, text: 'camera', seen: 'unseen', publication: { kind: 'last-24-hours' } }, sort: 'newest',
   anchor: { commentId: itemId === 'video-demo' ? 'v3' : 'p2', offset: 27.5 }, selected: itemId === 'video-demo' ? 'v4' : 'p3' });
@@ -36,7 +38,7 @@ const intent = (itemId = 'video-demo'): SaveDiscussionViewRequest => ({ itemId,
 it('schema 7 → 8 preserves populated content, seen revisions, history, workspace, Undo, preferences and helpers; absent rows mean defaults', () => {
   repo.bulkSeen({ itemId: 'video-demo', seen: true, target: { kind: 'all' } });
   repo.updatePreferences({ locale: 'pl' }, ['en']); repo.updatePreferences({ appearance: 'dark' }, ['en']);
-  repo.changeWorkspace('openLibrary'); repo.changeWorkspace('moveTab', 'library', 0);
+  repo.changeWorkspace('openLibrary'); repo.changeWorkspace('moveTab', required(repo.workspace().tabs.find(t => t.kind === 'library')).id, 0);
   repo.setHelperSelection('yt-dlp', 'C:\\helpers\\yt-dlp.exe');
   const before = repo.bootstrap(['en']), history = repo.history();
   const revisions = raw(db => db.prepare('SELECT * FROM comment_state').all());
@@ -50,24 +52,24 @@ it('schema 7 → 8 preserves populated content, seen revisions, history, workspa
     expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(7);
     expect(db.prepare("SELECT name FROM sqlite_master WHERE name='discussion_view_state'").get()).toBeUndefined();
     migrateDatabase(db); migrateDatabase(db);
-    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(12);
-    expect(db.prepare('SELECT * FROM discussion_view_state').all()).toEqual([]);
+    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(13);
+    expect(db.prepare('SELECT * FROM discussion_view_intent').all()).toEqual([]);
     expect(db.prepare('SELECT * FROM comment_state').all()).toEqual(revisions);
   } finally { db.close(); repo = ReaderRepository.open(file); }
-  expect(repo.bootstrap(['en'])).toEqual(before); expect(repo.history()).toEqual(history);
+  expect(legacyComparableState(repo.bootstrap(['en']))).toEqual(legacyComparableState(before)); expect(repo.history()).toEqual(history);
   expect(repo.getHelperSelection('yt-dlp')).toBe('C:\\helpers\\yt-dlp.exe');
 });
 
 it.each(discussionSorts)('%s persists distinct draft/applied, semantic dates, anchor/offset/selection across close, real connection restarts and Library reopen', sort => {
   const request = { ...intent(), sort }; repo.saveDiscussionView(request);
-  repo.changeWorkspace('closeTab', discussionTab(request.itemId).id);
-  const saved = restart().discussionViews[request.itemId];
-  const { itemId, ...expected } = request; expect(saved).toEqual(expected);
-  repo.changeWorkspace('openStoredItem', itemId);
-  expect(restart().discussionViews[itemId]).toEqual(expected);
+  repo.changeWorkspace('closeTab', request.viewId);
+  const saved = restart().discussionViews[request.viewId];
+  const { viewId, draft, applied, sort: storedSort, anchor, selected } = request; const expected = { draft, applied, sort: storedSort, anchor, selected }; expect(saved).toEqual(expected);
+  repo.changeWorkspace('openStoredItem', 'video-demo');
+  expect(restart().discussionViews[viewId]).toEqual(expected);
   raw(db => {
-    const row = db.prepare('SELECT * FROM discussion_view_state').get();
-    expect(Object.keys(row ?? {})).toEqual(['item_id', 'draft_query_json', 'applied_query_json', 'sort', 'anchor_comment_id', 'anchor_offset', 'selected_comment_id']);
+    const row = db.prepare('SELECT * FROM discussion_view_intent').get();
+    expect(Object.keys(row ?? {})).toEqual(['view_id', 'item_id', 'draft_query_json', 'applied_query_json', 'sort', 'anchor_comment_id', 'anchor_offset', 'selected_comment_id']);
     expect(String(row?.applied_query_json)).not.toContain('publicationBounds');
   });
 });
@@ -79,11 +81,11 @@ it('discussion state remains independent, reacquisition retains identity, and re
   const id = repo.ingest(extraction, undefined, true).itemId;
   if (!id) throw new Error('Expected accepted fixture');
   const comment = repo.bootstrap(['en']).comments[id][0].id;
-  repo.saveDiscussionView({ ...intent(), itemId: id, anchor: { commentId: comment, offset: 0 }, selected: comment });
+  repo.saveDiscussionView({ ...intent(), ...viewVersion(repo, id), anchor: { commentId: comment, offset: 0 }, selected: comment });
   expect(repo.ingest(extraction).itemId).toBe(id);
   expect(Object.keys(restart().discussionViews)).toHaveLength(3);
   const after = repo.removeLibraryItem(id, ['en']);
-  expect(Object.keys(after.discussionViews).sort()).toEqual(['post-demo', 'video-demo']);
+  expect(Object.keys(after.discussionViews).sort()).toEqual([viewIdentity(repo, 'post-demo'), viewIdentity(repo, 'video-demo')].sort());
   expect(restart().discussionViews).toEqual(after.discussionViews);
   raw(db => expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]));
 });
@@ -91,14 +93,14 @@ it('discussion state remains independent, reacquisition retains identity, and re
 it('invalid/corrupt convenience data falls back per discussion with one bounded diagnostic and keeps content/seen/history usable', () => {
   repo.saveDiscussionView(intent()); repo.saveDiscussionView(intent('post-demo'));
   const before = repo.bootstrap(['en']), history = repo.history();
-  raw(db => db.prepare('UPDATE discussion_view_state SET applied_query_json=? WHERE item_id=?').run('{broken', 'video-demo'));
+  raw(db => db.prepare('UPDATE discussion_view_intent SET applied_query_json=? WHERE item_id=?').run('{broken', 'video-demo'));
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   const restored = restart(); repo.bootstrap(['en']);
-  expect(restored.discussionViews['video-demo']).toBeUndefined();
-  expect(restored.discussionViews['post-demo']).toEqual(before.discussionViews['post-demo']);
+  expect(restored.discussionViews[viewIdentity(repo, 'video-demo')]).toBeUndefined();
+  expect(restored.discussionViews[viewIdentity(repo, 'post-demo')]).toEqual(before.discussionViews[viewIdentity(repo, 'post-demo')]);
   expect(restored.comments).toEqual(before.comments); expect(repo.history()).toEqual(history);
   expect(warn.mock.calls).toEqual([['INVALID_DISCUSSION_VIEW_STATE']]);
-  raw(db => db.prepare('UPDATE discussion_view_state SET draft_query_json=? WHERE item_id=?').run(JSON.stringify({ ...defaultQuery, sql: 'evil' }), 'post-demo'));
+  raw(db => db.prepare('UPDATE discussion_view_intent SET draft_query_json=? WHERE item_id=?').run(JSON.stringify({ ...defaultQuery, sql: 'evil' }), 'post-demo'));
   expect(repo.bootstrap(['en']).discussionViews).toEqual({});
 });
 
@@ -118,12 +120,12 @@ it('narrow IPC rejects unexpected/derived shapes, enums, oversized text, nonfini
   }
   expect(repo.bootstrap(['en']).discussionViews).toEqual({});
   expect(service.dispatch('saveDiscussionView', [request])).toEqual({ ok: true, value: null, sync: repo.latestCommit() });
-  expect(service.dispatch('saveDiscussionView', [{ ...request, itemId: 'missing' }])).toEqual({ ok: false, error: { code: 'NOT_FOUND' } });
+  expect(service.dispatch('saveDiscussionView', [{ ...request, viewId: 'missing' }])).toEqual({ ok: false, error: { code: 'FORBIDDEN' } });
 });
 
 it('failed full view upsert retains the previously acknowledged intent', () => {
   repo.saveDiscussionView(intent()); const before = repo.bootstrap(['en']);
-  raw(db => db.exec("CREATE TRIGGER fail_view BEFORE UPDATE ON discussion_view_state BEGIN SELECT RAISE(ABORT,'view failure'); END"));
+  raw(db => db.exec("CREATE TRIGGER fail_view BEFORE UPDATE ON discussion_view_intent BEGIN SELECT RAISE(ABORT,'view failure'); END"));
   expect(() => repo.saveDiscussionView({ ...intent(), sort: 'oldest' })).toThrow('view failure');
   expect(restart()).toEqual(before);
 });

@@ -1,3 +1,4 @@
+const { tabElement, viewId } = require('./window-view-fixtures.cjs');
 // Offline built-entry checks. All profile/cache/backup bytes belong to this harness.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -34,13 +35,13 @@ if (process.versions.electron) {
       await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(e.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event(e.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`);
     }
     async function settings() { await js("document.getElementById('settings-toggle').click()"); await wait("!!document.querySelector('#panel-settings:not([hidden]) .preferences')"); }
-    async function reader() { await js(`document.getElementById(${JSON.stringify('tab-discussion:' + itemId)}).click()`); await wait(`${panel}?.id===${JSON.stringify('panel-' + itemId)} && !!${panel}.querySelector('.query-controls')`); }
+    async function reader() { await js(`${tabElement(itemId)}.click()`); await wait(`${panel}?.dataset.itemId===${JSON.stringify(itemId)} && !!${panel}.querySelector('.query-controls')`); }
     const filter = name => `.reader-panel:not([hidden]) [name="publication-${name}"]`;
     const count = number => `${panel}.querySelector('.applied-counts')?.textContent.includes(${JSON.stringify(new Intl.NumberFormat('en').format(number))})`;
     async function apply() { await js(`${panel}.querySelector('.query-controls').requestSubmit()`); await pause(120); }
     await wait("!!document.querySelector('.app-shell')");
     const db = new DatabaseSync(database(root), { readOnly: true });
-    try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 12); assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []); } finally { db.close(); }
+    try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 13); assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []); } finally { db.close(); }
     const before = await boot();
     contents.debugger.attach('1.3');
     await contents.debugger.sendCommand('Emulation.setTimezoneOverride', { timezoneId: 'Europe/Warsaw' });

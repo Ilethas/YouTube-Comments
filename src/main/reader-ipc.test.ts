@@ -51,6 +51,7 @@ it('applies sender/frame/document checks to every intent, including acquire and 
 it('registers every channel once independently of window creation/reload and retains service payload validation', async () => {
   const windows = new WindowCoordinator('file:///app/index.html', ''), fixture = windowFixture();
   const service = new ActualReaderService(() => { throw new Error('No storage needed'); }, ['en'], () => undefined);
+  vi.spyOn(service, 'claimWindowIdentity').mockReturnValue('persisted-test-window');
   registerReaderIpc(service, windows);
   expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length - 1);
   for (let i = 0; i < 2; i++) { windows.register(fixture.window); fixture.commit(); fixture.reload(); }

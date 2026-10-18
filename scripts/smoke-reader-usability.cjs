@@ -1,3 +1,4 @@
+const { viewId } = require('./window-view-fixtures.cjs');
 // Built-entry demo deletion/seed/restore checks. Every profile belongs to this
 // harness; no installer, real account profile, helper or live source is used.
 const assert = require('node:assert/strict');
@@ -47,8 +48,8 @@ if (process.versions.electron) {
       assert.deepEqual(real, preserved.item);
       assert.deepEqual(before.comments[real.id], preserved.comments);
       assert.deepEqual(before.seenUndo[real.id], preserved.undo);
-      assert.deepEqual(before.discussionViews[real.id], preserved.view);
-      assert.deepEqual(before.discussionCollapse[real.id], preserved.collapse);
+      assert.deepEqual(before.discussionViews[viewId(before,real.id)], preserved.view);
+      assert.deepEqual(before.discussionCollapse[viewId(before,real.id)], preserved.collapse);
       if (phase === 'delete' || phase === 'production-restored') {
         assert.equal(before.items.filter(item => item.isDemo).length, 2);
         await js("document.getElementById('library-toggle').click()");
@@ -97,10 +98,10 @@ if (process.versions.electron) {
       const fixture = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../src/main/extractors/__fixtures__/yt-nested-a.json'), 'utf8'));
       const itemId = repo.ingest(normalizeYtDlp(JSON.stringify(fixture.raw), fixture.context), undefined, true).itemId;
       repo.bulkSeen({ itemId, seen: true, target: { kind: 'all' } });
-      repo.setDiscussionCollapse({ itemId, kind: 'all', collapsed: true });
-      repo.saveDiscussionView({ itemId, draft: defaultQuery, applied: defaultQuery, sort: 'original', anchor: { commentId: null, offset: 0 }, selected: null });
+      repo.setDiscussionCollapse({ viewId: viewId(repo.bootstrap(['en']),itemId), expectedRevision: 0, kind: 'all', collapsed: true });
+      repo.saveDiscussionView({ viewId: viewId(repo.bootstrap(['en']),itemId), expectedRevision: 0, draft: defaultQuery, applied: defaultQuery, sort: 'original', anchor: { commentId: null, offset: 0 }, selected: null });
       const state = repo.bootstrap(['en']);
-      fs.writeFileSync(path.join(root, 'preserved.json'), JSON.stringify({ item: state.items.find(item => item.id === itemId), comments: state.comments[itemId], undo: state.seenUndo[itemId], view: state.discussionViews[itemId], collapse: state.discussionCollapse[itemId] }));
+      fs.writeFileSync(path.join(root, 'preserved.json'), JSON.stringify({ item: state.items.find(item => item.id === itemId), comments: state.comments[itemId], undo: state.seenUndo[itemId], view: state.discussionViews[viewId(state,itemId)], collapse: state.discussionCollapse[viewId(state,itemId)] }));
       const backup = path.join(root, 'development-backup.sqlite'); await repo.createBackup(backup); repo.close();
       await run('delete'); await run('restart'); await run('empty');
       await run('production-fresh', true);

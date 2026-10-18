@@ -1,5 +1,13 @@
 # Multiple equal windows: proposed architecture
 
+**M4 progress, 2026-10-18:** schema 13 and persistent window/tab/view identities
+are implemented in [ADR 0030](decisions/0030-persistent-window-topology-and-view-instances.md).
+The migration preserves all legacy items, exact open topology, dormant resume
+identities and optional reading/collapse records. Intent and collapse use separate
+CAS counters. Production still opens one reader; M5 duplicate UI, M6 native
+windows/geometry/session policy and M7 transfer remain future work. The broader
+proposal below retains its historical design context.
+
 Research/design, 2026-10-17. **Broader architecture remains proposed.**
 M1 is implemented in [ADR 0027](decisions/0027-secure-window-coordination-foundation.md)
 with one production reader and runtime-only window identities, without a schema
@@ -10,7 +18,7 @@ Undo and progress fanout. Its counter is process-local with fresh snapshots acro
 epochs; no durable revision table/migration is introduced. Production remains one
 reader. M3 global lifecycle safety is implemented in
 [ADR 0029](decisions/0029-global-profile-and-window-lifecycle-safety.md), without
-a schema change. M4–M9 below remain unimplemented; their requirements remain proposals.
+a schema change. M4 is implemented separately by ADR 0030; M5-M9 remain proposals.
 
 **Accepted owner policy, recorded during M1:** native HTML DnD is preferred for
 reorder/attachment. VS Code-style outside drag-end detachment is acceptable for the
@@ -21,7 +29,7 @@ or evidence of desktop release. Future native detection must remain isolated fro
 durable ownership/transfer logic. No drag code is added in M1; M8 still requires
 real native input testing.
 See [MULTI_WINDOW_AUDIT.md](MULTI_WINDOW_AUDIT.md) for verified source traces,
-technical debt, command results and evidence limits. Current schema is **12**.
+technical debt, command results and evidence limits. Current schema is **13**.
 Names and tables below are proposed responsibilities, not existing APIs.
 
 ## Requirements and terminology

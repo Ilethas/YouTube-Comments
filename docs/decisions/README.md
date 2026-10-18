@@ -237,3 +237,5 @@ Prefer small records about significant decisions, such as SQLite integration, pa
 
 - [0028 - Ordered shared-state synchronization](0028-ordered-shared-state-synchronization.md): accepted M2 foundation; schema 12, epoch/ordered post-commit notifications, bounded replica recovery, explicit checkbox assignment, guarded shared Undo, progress fanout and test-only second renderers.
 - [0029 - Global profile and window lifecycle safety](0029-global-profile-and-window-lifecycle-safety.md): M3, schema 12, all-participant drains, pre-registered queued mutation tickets, exact drain leases, safe close/reload/quit and terminal offline restore fencing. One production reader; M4–M6 identities/topology remain future scope.
+
+- [0030: Persistent window topology and view instances (M4)](0030-persistent-window-topology-and-view-instances.md) - schema 13, lossless legacy mapping, independent owned views, topology and separate intent/collapse CAS; one production reader.

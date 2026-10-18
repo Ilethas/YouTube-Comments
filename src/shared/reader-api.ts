@@ -3,16 +3,17 @@ import type { AcquisitionNotification, AcquisitionProgress, AcquisitionTimings }
 import type { Comment, ContentItem } from '../domain/discussion';
 import { normalizeTranslationCode, translationTargets } from './preferences';
 import type { Appearance, Locale, Preferences, TranslationTarget, SelectionControls } from './preferences';
+import { isRevision } from '../domain/discussion-view';
 import type { WorkspaceState } from '../domain/workspace';
 import type { BulkSeenRequest, SeenMutationResult, SeenUndoResult, SeenUndoDescriptor } from '../domain/seen-operation';
 import type { HelperRequest, HelperStatus } from './helper-settings';
-import type { DiscussionViewIntent, SaveDiscussionViewRequest } from '../domain/discussion-view';
+import type { DiscussionViewIntent, SaveDiscussionViewRequest, ViewInstance } from '../domain/discussion-view';
 import type { DiscussionCollapse, SetDiscussionCollapseRequest } from '../domain/discussion-collapse';
 import type { DataBackupResult } from './data-backup';
 
 export type ErrorCode = 'INVALID_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA'
   | 'ACQUISITION_CANCELLED' | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE' | 'NOT_REMOVABLE' | 'SOURCE_OPEN_FAILED' | 'NOT_OPENABLE'
-  | 'UNDO_CONFLICT' | 'TRANSLATION_TOO_LONG' | 'INVALID_BACKUP' | 'NEWER_BACKUP' | 'OLDER_BACKUP' | 'DATA_BUSY' | 'DATA_WRITE_FAILED' | 'RESTORE_FAILED' | 'RECOVERY_REQUIRED';
+  | 'STATE_CONFLICT' | 'UNDO_CONFLICT' | 'TRANSLATION_TOO_LONG' | 'INVALID_BACKUP' | 'NEWER_BACKUP' | 'OLDER_BACKUP' | 'DATA_BUSY' | 'DATA_WRITE_FAILED' | 'RESTORE_FAILED' | 'RECOVERY_REQUIRED';
 /** Stable codes cross IPC; raw privileged diagnostics never reach the renderer. */
 export type Result<T> = { readonly ok: true; readonly value: T; readonly sync?: SharedStamp | SharedCommit }
   | { readonly ok: false; readonly sync?: SharedStamp | SharedCommit; readonly error: { readonly code: ErrorCode } };
@@ -26,6 +27,7 @@ export interface ReaderState {
   readonly workspace: WorkspaceState;
   readonly seenUndo: Readonly<Record<string, SeenUndoDescriptor | null>>;
   readonly discussionCollapse: Readonly<Record<string, DiscussionCollapse>>;
+  readonly viewInstances: Readonly<Record<string, ViewInstance>>;
   readonly discussionViews: Readonly<Record<string, DiscussionViewIntent>>;
 }
 export interface ToggleSeenRequest {
@@ -40,7 +42,9 @@ export type PreferenceChange = { readonly locale: Locale } | { readonly appearan
 export interface CommentActionRequest { readonly itemId: string; readonly commentId: string; readonly action: 'author' | 'permalink' | 'translate' | 'copy-permalink' }
 
 export interface AcquireRequest { readonly url: string }
-export interface TabRequest { readonly tabId: string }
+export interface TopologyRequest { readonly expectedRevision: number }
+export interface OpenStoredItemRequest extends RefreshRequest, TopologyRequest {}
+export interface TabRequest extends TopologyRequest { readonly tabId: string }
 export interface MoveTabRequest extends TabRequest { readonly toIndex: number }
 export interface UndoSeenRequest { readonly itemId: string; readonly expectedOperationId: string }
 export interface RefreshRequest { readonly itemId: string }
@@ -81,11 +85,11 @@ export interface ReaderApi {
   updatePreferences(change: PreferenceChange): Promise<Result<Preferences>>;
   acquire(request: AcquireRequest): Promise<Result<AcquisitionResult>>;
   refresh(request: RefreshRequest): Promise<Result<AcquisitionResult>>;
-  openStoredItem(request: RefreshRequest): Promise<Result<WorkspaceState>>;
+  openStoredItem(request: OpenStoredItemRequest): Promise<Result<WorkspaceState>>;
   activateTab(request: TabRequest): Promise<Result<WorkspaceState>>;
   closeTab(request: TabRequest): Promise<Result<WorkspaceState>>;
-  openLibrary(): Promise<Result<WorkspaceState>>;
-  openSettings(): Promise<Result<WorkspaceState>>;
+  openLibrary(request: TopologyRequest): Promise<Result<WorkspaceState>>;
+  openSettings(request: TopologyRequest): Promise<Result<WorkspaceState>>;
   moveTab(request: MoveTabRequest): Promise<Result<WorkspaceState>>;
   removeLibraryItem(request: RefreshRequest): Promise<Result<ReaderState>>;
 }
@@ -165,13 +169,20 @@ export function isRefreshRequest(value: unknown): value is RefreshRequest {
 }
 
 export function isTabRequest(value: unknown): value is TabRequest {
-  return exactKeys(value, ['tabId']) && identifier(value.tabId);
+  return exactKeys(value, ['tabId', 'expectedRevision']) && identifier(value.tabId) && isRevision(value.expectedRevision);
 }
 export function isMoveTabRequest(value: unknown): value is MoveTabRequest {
-  return exactKeys(value, ['tabId', 'toIndex']) && identifier(value.tabId)
+  return exactKeys(value, ['tabId', 'toIndex', 'expectedRevision']) && identifier(value.tabId) && isRevision(value.expectedRevision)
     && Number.isSafeInteger(value.toIndex) && (value.toIndex as number) >= 0;
 }
 
 export function isUndoSeenRequest(value: unknown): value is UndoSeenRequest {
   return exactKeys(value, ['itemId', 'expectedOperationId']) && identifier(value.itemId) && identifier(value.expectedOperationId);
+}
+
+export function isTopologyRequest(value: unknown): value is TopologyRequest {
+  return exactKeys(value, ['expectedRevision']) && isRevision(value.expectedRevision);
+}
+export function isOpenStoredItemRequest(value: unknown): value is OpenStoredItemRequest {
+  return exactKeys(value, ['itemId', 'expectedRevision']) && identifier(value.itemId) && isRevision(value.expectedRevision);
 }

@@ -25,9 +25,9 @@ export function WorkspaceTabs({ workspace, locale, disabled, label, icon, activa
     onPointerDownCapture={newPress} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerCancel} onLostPointerCapture={lostCapture}
     onClickCapture={event => { if (suppressClick.current && event.detail > 0) { event.preventDefault(); event.stopPropagation(); } }}>
     <span id="tab-reorder-help" className="visually-hidden">{reorderHelp(locale)}</span>
-    {shown.tabs.map((tab, index) => <div key={tab.id} className="tab" role="presentation" data-tab-id={tab.id}
+    {shown.tabs.map((tab, index) => <div key={tab.id} className="tab" role="presentation" data-tab-id={tab.id} data-tab-item-id={tab.kind === 'discussion' ? tab.itemId : undefined}
       data-active={workspace.activeTabId === tab.id} data-dragging={dragging === tab.id}>
-      <button role="tab" id={`tab-${tab.id}`} aria-controls={`panel-${tab.kind === 'discussion' ? tab.itemId : tab.id}`}
+      <button role="tab" id={`tab-${tab.id}`} aria-controls={`panel-${tab.kind === 'discussion' ? tab.id : tab.kind}`}
         disabled={disabled} aria-selected={workspace.activeTabId === tab.id} tabIndex={workspace.activeTabId === tab.id ? 0 : -1}
         aria-label={`${t(icon(tab))}: ${label(tab)}`} title={`${t(icon(tab))}: ${label(tab)} · ${reorderHelp(locale)}`}
         onClick={event => { if (!suppressClick.current || event.detail === 0) activate(tab.id); }}

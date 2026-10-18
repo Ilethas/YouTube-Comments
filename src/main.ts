@@ -90,8 +90,14 @@ function startReader() {
         } }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' },
       ] }, { role: 'windowMenu' },
     ]));
-    const window = windows.createReaderWindow();
-    if (recovery) void dialog.showMessageBox(window, { type: 'info', message: backupText(profileLocale)[recovery] });
+    try {
+      const window = windows.createReaderWindow();
+      if (recovery) void dialog.showMessageBox(window, { type: 'info', message: backupText(profileLocale)[recovery] });
+    } catch (error) {
+      console.error(error);
+      dialog.showErrorBox(text.title, service.storageFailure === 'UNSUPPORTED_SCHEMA' ? text.UNSUPPORTED_SCHEMA : text.RECOVERY_REQUIRED);
+      app.quit();
+    }
   });
   let shutdownStarted = false;
   let quitReady = false;

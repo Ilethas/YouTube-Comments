@@ -1,8 +1,96 @@
 # Testing strategy
 
+## Persistent topology and independent views (M4, 2026-10-18, ADR 0030)
+
+Current schema is **13**; production still opens **one reader**. All verification
+uses newly owned disposable OS-temp development or independently redirected test
+production environments. No owner profile, Setup, installation, commit or push.
+Historical milestone evidence below retains its original schema/date.
+
+The M4 migration fixture includes three discussions, open and dormant instances,
+reordered Library/Settings, a non-first active tab, a separately empty workspace,
+distinct raw draft/applied JSON, sort/anchor/offset/navigation selection, sparse
+collapse (including collapse without query), away-and-back seen revisions, populated
+Undo entries, discovery/attempt history, custom translation, helper paths and full
+parent/child evidence. Assertions compare every shared SQL field and each mapped
+optional row exactly. Missing intent/collapse records remain absent. Direct SQLite
+attacks cover forged ownership, double placement, duplicate positions/singletons,
+foreign active membership, cross-item views/anchors/selection/collapse and deletion
+of an item with several views. Five failure stages verify complete schema/data/
+version rollback, original closed-file bytes and successful retry. Historical
+backup versions 1-12 validate using their original shapes and migrate in staging.
+
+Renderer tests now resolve real instance IDs and include two sessions of the same
+item, independent semantic/collapse state, shared seen fanout with frozen applied
+membership and separate CAS lanes through ordinary saves and sealed checkpoints.
+The existing M1/M2/M3 negative sender, ordering, expected-operation Undo, FIFO,
+incarnation, drain and offline-fencing assertions remain enabled. Historical
+pre-M4 fixture comparisons explicitly project old topology semantics; the M4
+fixtures separately assert exact new IDs/mapping/ownership/revisions.
+
+`npm.cmd run test:m4-migration` starts the actual built production entry from a
+populated v12 profile. It checks exact one-window open topology, closed-instance
+identity/state, distant virtual anchor restoration, close/reopen of the same view,
+verified backup/full restore and two subsequent process starts. The second start
+is compared to the final checkpoint committed by the preceding native Close;
+fractional measured row offsets can advance by less than one CSS pixel while all
+semantic fields and logical IDs remain exact. Migration SQL offset preservation
+is checked byte/value-exactly before rendering. Native dialogs/relaunch in this
+focused harness use main-only answers; extracted-EXE native coverage is separate.
+The two-App M3 harness now has independently persisted windows and checks different
+same-item drafts in its verified backup, rather than sharing a schema-12 slot.
+
+Final M4 verification (2026-10-18):
+
+| Check | Result |
+| --- | --- |
+| Full Vitest | **1031/1031 tests, 82/82 files PASS**, native exit 0; 109.62 s. |
+| Typecheck / lint | PASS, no source diagnostics or lint findings. |
+| Windows x64 production package / ZIP make | PASS, native exit 0; production main/preload/renderer/worker build, executable/runtime/ASAR/fuses, 73 application files (385,986,796 bytes), 158,341,412-byte no-install ZIP; 22.47 s. |
+| Combined `npm.cmd run test:electron` | **All 14 harnesses PASS** in one final invocation, including M1, M2, both M3 harnesses and all three M4 migration/restart phases. |
+| Focused real Electron v12 migration | PASS: migrate, restore/restart and second restart. |
+| `npm.cmd run test:packaged` | PASS, native exit 0; unmodified extracted ZIP EXE, actual native dialogs, exact all-table restore/independent safety and real relaunch from PID 39196 to 32712; disposable root `reader-packaged-h9NTTQ`. |
+| `git diff --check` | PASS, native exit 0; no whitespace errors. |
+
+The combined run includes `smoke-electron`, `smoke-view-restoration`,
+`smoke-backup-restore`, `smoke-reader-actions`, `smoke-collapse`, `smoke-selection`,
+`smoke-reader-usability`, `smoke-thumbnails`, `smoke-usability-milestone`,
+`smoke-window-coordination`, `smoke-shared-sync`, `smoke-profile-lifecycle`,
+`smoke-profile-quit` and `smoke-m4-migration` (all under `scripts/`). It retains
+10k/50k reading/selection coverage, the 60k complete backup roundtrip and forced
+rename-gap recovery. Final disposable M1/M2/M3 roots were `reader-m1-pQQQyv`,
+`reader-m2-63hXbE` and `reader-m3-fQ5Kd2`. Production-entry checks still prove
+exactly one reader. Packaged verification also covers fresh/existing independently
+redirected production environments, helper configuration, seen/Undo, renderer
+isolation and launch from both extracted and original application folders.
+
+The final SQL identity guard rejects changing a tab's ID, kind or item, including
+retargeting a dormant singleton into a discussion without a required view. The
+required-view deletion guard and cross-item ownership attacks remain enabled.
+No unresolved M4 validation failure remains. Rejection of schema 13 by the old
+migrations 1-12 contract is tested before any write; an archived pre-M4 executable
+was not separately built or launched.
+
+The restricted Vitest launcher initially could not load esbuild's config through
+parent directories; the broader runner completed the real suite. Harness fixture
+adaptations replaced old literal tab IDs, old SQL table names and shared-workspace
+expectations, preserving their substantive assertions. Expected invalid-backup
+errors, injected restore crashes and occasional Chromium GPU shutdown diagnostics
+are distinguishable from failed assertions in the retained ignored `.m4-*.log`
+files. An intermediate combined run exposed a test timing race: the failed-Close
+check now waits for its existing React error alert after main's reconciled release,
+then asserts continued authority and successful retry. It uses the existing bounded
+wait helper and retains the safety assertions. No live YouTube request is needed for this milestone;
+optional installed-helper live acquisition and installer lifecycle were not run.
+
+M5 duplicate UI/descendant DOM namespaces, M6 public native windows/restore policy/
+geometry/physical monitors and M7 ownership transfer remain unimplemented and
+unverified. M4 does not claim multi-monitor safety or full native session restoration.
+
+
 ## Global profile/window lifecycle safety (M3, 2026-10-18, ADR 0029)
 
-Current implementation keeps schema **12** and exactly **one production reader**.
+The M3 milestone kept schema **12** and exactly **one production reader**; M4 above supersedes its identity/schema limits.
 All M3 test profiles are generated OS-temp data. No owner profile, Setup, install,
 uninstall, commit, push or publishing action is used.
 

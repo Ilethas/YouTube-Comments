@@ -1,3 +1,4 @@
+const { tabElement, viewId } = require('./window-view-fixtures.cjs');
 // Built application, native decoder, actual protocol/CSP and Chromium layout.
 // All discussions, cache files and snapshots belong to this disposable harness.
 const assert = require('node:assert/strict');
@@ -83,7 +84,7 @@ if (process.versions.electron) {
     for (const [index, value] of [[0, 'pl'], [1, 'dark']]) {
       await js(`(()=>{const e=document.querySelectorAll('.preferences select')[${index}];Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('change',{bubbles:true}));})()`); await pause(100);
     }
-    await js(`document.getElementById(${JSON.stringify('tab-discussion:' + fixture.itemId)}).click()`);
+    await js(`${tabElement(fixture.itemId)}.click()`);
     await wait(`${image}?.getAttribute('aria-label')==='Pomniejsz miniaturę'`);
     assert.equal(await js(`${image}.parentElement.previousElementSibling.className`), 'item-title');
     assert.equal(await js(`${image}.parentElement.previousElementSibling.querySelector('.source-button')!==null`), true);
@@ -101,10 +102,11 @@ if (process.versions.electron) {
     if (phase === 'restart') assert.equal(requests.filter(request => request.url.includes(sourceId)).length, 0);
     if (phase === 'offline') assert.ok(requests.filter(request => request.url.includes(sourceId)).length <= 8);
     // Invalid/no-image discussion has no image area after bounded attempts.
-    await js(`window.reader.openStoredItem({itemId:${JSON.stringify(fixture.invalidId)}})`);
-    // Open through Library so React receives the workspace acknowledgment.
+    assert.equal((await js(`(async()=>{const metadata=await window.reader.getSharedMetadata();return window.reader.openStoredItem({itemId:${JSON.stringify(fixture.invalidId)},expectedRevision:metadata.value.workspace.revision});})()`)).ok,true);
+    await wait(`${panel}?.querySelector('h1')?.textContent==='Invalid thumbnail' && !document.querySelector('.tabs button:disabled')`);
+    // Exercise the ordinary Library route after the scoped replica acknowledges.
     await js("document.getElementById('library-toggle').click()");
-    await wait("!!document.querySelector('.library-entry')");
+    await wait("!!document.querySelector('#panel-library:not([hidden]) .library-entry') && !document.querySelector('.tabs button:disabled')");
     await js("[...document.querySelectorAll('.library-entry')].find(e=>e.textContent.includes('Invalid thumbnail')).querySelector('button').click()");
     await wait(`${panel}?.querySelector('h1')?.textContent==='Invalid thumbnail'`); await pause(150);
     assert.equal(await js(`${panel}.querySelector('.video-thumbnail-row')===null`), true);

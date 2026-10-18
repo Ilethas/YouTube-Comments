@@ -1,3 +1,4 @@
+const { tabElement, viewId, seedPeerIdentity } = require('./window-view-fixtures.cjs');
 // M2 only. Two secured test renderers share one real service/repository. No
 // production new-window path, production profile, helper process or installer.
 const assert = require('node:assert/strict');
@@ -49,9 +50,13 @@ if (process.versions.electron) {
       async (_target, _signal, advance) => { advance('fetching'); await new Promise(resolve => { finishExtraction = resolve; }); return { extraction: normalizeYtDlp(JSON.stringify(fixture.raw), fixture.context) }; },
       {}, undefined, value => windows.sendAcquisitionProgress(value));
     registerReaderIpc(service, windows);
+    seedPeerIdentity(windows, repository);
     const a = windows.createReaderWindow(), b = windows.createReaderWindow();
     const js = async (window, code) => { try { return await window.webContents.executeJavaScript(code); } catch (error) { throw new Error('M2 expression failed: '+code, {cause:error}); } };
-    const invoke = async (window, name, payload) => js(window, `window.reader.${name}(${payload === undefined ? '' : JSON.stringify(payload)})`);
+    const invoke = async (window, name, payload) => {
+      if (['openLibrary','openSettings','openStoredItem','activateTab','closeTab','moveTab'].includes(name)) payload = { ...payload, expectedRevision: (await js(window,'window.reader.bootstrap()')).value.workspace.revision };
+      return js(window, `window.reader.${name}(${payload === undefined ? '' : JSON.stringify(payload)})`);
+    };
     const ready = window => wait(() => js(window, "!!document.querySelector('.comment')"), 'real reader');
     await Promise.all([ready(a), ready(b)]);
     for (const window of [a, b]) await js(window, "window.m2Events=[];window.m2Progress=[];window.reader.onSharedCommit(e=>window.m2Events.push(e));window.reader.onAcquisitionProgress(e=>window.m2Progress.push(e));void 0");
@@ -96,12 +101,12 @@ if (process.versions.electron) {
     assert.equal((await invoke(a, 'bootstrap')).value.seenUndo['video-demo'].id, replacement.value.undo.id);
     const undo = await invoke(b, 'undoSeen', { itemId: 'video-demo', expectedOperationId: replacement.value.undo.id }); assert.equal(undo.ok, true);
     // Atomic preferences/custom code drive both real Settings replicas.
-    await invoke(a, 'openSettings');
+    await invoke(a, 'openSettings'); await invoke(b, 'openSettings');
     await wait(() => js(b, "document.getElementById('panel-settings')?.hidden===false"), 'both Settings mounted');
     await invoke(a, 'updatePreferences', { translationTarget: 'custom', customTranslationTarget: 'uk-UA' });
     await invoke(a, 'updatePreferences', { appearance: 'dark' });
     await wait(() => js(b, "document.documentElement.dataset.appearance==='dark'"), 'peer preference');
-    await invoke(a, 'openSettings');
+    await invoke(a, 'openSettings'); await invoke(b, 'openSettings');
     await wait(() => js(b, "document.getElementById('panel-settings')?.hidden===false && document.querySelector('.translation-settings input')?.value==='uk-UA'"), 'peer custom target');
     // Reload has a new M1 document lease and reconstructs M2 state without a log.
     const reload = new Promise(resolve => b.webContents.once('did-finish-load', resolve)); b.webContents.reload(); await reload;
@@ -119,21 +124,25 @@ if (process.versions.electron) {
     await js(b, "window.m2Progress=[];window.reader.onAcquisitionProgress(e=>window.m2Progress.push(e));void 0");
     finishExtraction(); finishExtraction = undefined;
     const acquired = await acquisition; assert.equal(acquired.ok, true); const itemId = acquired.value.summary.itemId;
-    await wait(() => js(b, `!!document.getElementById(${JSON.stringify('tab-discussion:'+itemId)})`), 'peer acquisition content');
+    await wait(async () => (await invoke(b, 'bootstrap')).value.items.some(item => item.id === itemId), 'peer acquisition content');
+    assert.equal(await js(b, `!!${tabElement(itemId)}`), false, 'peer topology remains independent');
+    await invoke(b, 'openStoredItem', { itemId });
     assert.equal(await js(b, 'window.m2Progress.some(e=>e.settled===true)'), true);
     // Remove while a committed Refresh reply is delayed: it must not resurrect.
     delayReply = true;
     await js(a, "document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click();void 0"); await wait(() => !!finishExtraction, 'refresh fetching'); finishExtraction(); finishExtraction = undefined;
     await wait(() => !!releaseReply, 'held refresh reply');
     assert.equal((await invoke(b, 'removeLibraryItem', { itemId })).ok, true);
-    await wait(() => js(a, `!document.getElementById(${JSON.stringify('tab-discussion:'+itemId)})`), 'peer removal');
+    await wait(() => js(a, `!${tabElement(itemId)}`), 'peer removal');
     releaseReply(); releaseReply = undefined; await pause(100);
-    assert.equal(await js(a, `!!document.getElementById(${JSON.stringify('tab-discussion:'+itemId)})`), false);
+    assert.equal(await js(a, `!!${tabElement(itemId)}`), false);
     // Accepted work remains profile-owned after the initiating renderer dies.
+    const peerWorkspace = (await invoke(b,'bootstrap')).value.workspace;
     const abandoned = invoke(a, 'acquire', { url: 'https://www.youtube.com/watch?v=VidDemo_001' }); abandoned.catch(() => undefined);
     await wait(() => !!finishExtraction, 'origin-independent acquire'); a.destroy(); finishExtraction(); finishExtraction = undefined;
     await wait(() => repository.bootstrap(['en']).items.some(i=>!i.isDemo), 'commit after origin destruction');
-    await wait(() => js(b, "document.querySelectorAll('[role=tab]').length>=4"), 'surviving peer observes commit');
+    await wait(async () => (await invoke(b,'bootstrap')).value.items.some(i=>!i.isDemo), 'surviving peer observes commit');
+    assert.deepEqual((await invoke(b,'bootstrap')).value.workspace,peerWorkspace,'origin death does not open a peer tab');
     await service.shutdown(); b.destroy();
     clearTimeout(watchdog);
     console.log('M2 Electron PASS: two real authorized reader replicas, shared UI/IPC/preload events, frozen matches/live seen, late replies, expected Undo, preferences/custom target, reload, global progress, removal versus delayed Refresh, commit after origin destruction.');
@@ -152,7 +161,7 @@ if (process.versions.electron) {
       const child = spawn(require('electron'), [__filename], { env, stdio: 'inherit', windowsHide: true });
       await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error('M2 exited '+code))); });
       const { DatabaseSync } = require('node:sqlite'), db = new DatabaseSync(path.join(root, 'reader.sqlite'), { readOnly: true });
-      try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 12); assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok'); } finally { db.close(); }
+      try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 13); assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok'); } finally { db.close(); }
     } finally {
       assert.ok(path.dirname(root) === os.tmpdir() && path.basename(root).startsWith('reader-m2-'));
       fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

@@ -1,3 +1,4 @@
+import { required } from '../renderer/testing/required';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, readdirSync } from 'node:fs';
 import os from 'node:os';
@@ -48,7 +49,9 @@ it('requires payload-free semantic intents and respects cancelled Save/Open/conf
 it('commits earlier seen/view writes before backup, rejects stale writes and concurrent operations', async () => {
   start();
   service.dispatch('toggleSeen', [{ itemId: 'video-demo', commentId: 'v1', subtree: false, seen: false }]);
-  service.dispatch('saveDiscussionView', [{ itemId: 'video-demo', draft: { ...defaultQuery, text: 'draft' }, applied: defaultQuery,
+  const bootstrap = service.dispatch('bootstrap', []); if (!bootstrap.ok) throw new Error('No bootstrap');
+  const viewId = required(Object.entries(bootstrap.value.viewInstances).find(([,v]) => v.itemId === 'video-demo'))[0];
+  service.dispatch('saveDiscussionView', [{ viewId, expectedRevision: 0, draft: { ...defaultQuery, text: 'draft' }, applied: defaultQuery,
     sort: 'newest', anchor: { commentId: 'v1', offset: 22 }, selected: 'v2' }]);
   let choose!: (file: string) => void;
   vi.mocked(dialogs.save).mockImplementationOnce(() => new Promise(resolve => { choose = resolve; }));
@@ -59,7 +62,7 @@ it('commits earlier seen/view writes before backup, rejects stale writes and con
   const snapshot = ReaderRepository.open(path.join(root, 'snapshot.sqlite'));
   try {
     const state = snapshot.bootstrap(['en']); expect(state.comments['video-demo'].find(c => c.id === 'v1')?.seen).toBe(false);
-    expect(state.discussionViews['video-demo']).toMatchObject({ draft: { text: 'draft' }, sort: 'newest', anchor: { offset: 22 } });
+    expect(state.discussionViews[viewId]).toMatchObject({ draft: { text: 'draft' }, sort: 'newest', anchor: { offset: 22 } });
   } finally { snapshot.close(); }
 });
 it('handles destination write/permission/disk failures with a stable code', async () => {
@@ -105,7 +108,7 @@ it('settles active acquisition and blocks stale IPC until restart, with a separa
   expect(service.dispatch('toggleSeen', [{ itemId: 'video-demo', commentId: 'v1', subtree: false, seen: false }])).toMatchObject({ error: { code: 'DATA_BUSY' } });
   await vi.waitFor(() => expect(restart).toHaveBeenCalledOnce());
   const directory = path.join(recoveryDirectory(file), readdirSync(recoveryDirectory(file))[0]);
-  expect(validateBackup(path.join(directory, 'safety.sqlite'))).toBe(12); expect(validateBackup(file)).toBe(12);
+  expect(validateBackup(path.join(directory, 'safety.sqlite'))).toBe(13); expect(validateBackup(file)).toBe(13);
 });
 it('settles an in-flight backup before shutdown closes the database', async () => {
   start(); let finish!: (file: string) => void;

@@ -1,3 +1,5 @@
+import { legacyComparableState , viewIdentity } from '../testing/view-identity';
+
 import { displayedToggle, displayedUndo } from '../testing/displayed-seen';
 import { downgradeSelectionFixture } from './testing/schema-10';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -76,7 +78,7 @@ it('schema 5 migration preserves states, initializes revisions and rolls back/re
     migrateDatabase(db);
     expect(db.prepare('SELECT * FROM comment_state').all()).toEqual(old.map(row => ({ ...row, revision: 0 })));
   });
-  expect(state()).toEqual(before);
+  expect(legacyComparableState(state())).toEqual(legacyComparableState(before));
 });
 
 it.each([true, false])('All assigns %s across stored discussion only; logs changed rows and restores exactly', seen => {
@@ -192,7 +194,7 @@ it('partial Undo protects later edits, including away-and-back revisions and unr
   displayedToggle(repository, { itemId: 'video-demo', commentId: changed[1].id, subtree: false });
   const unrelated = required(before.find(comment => comment.seen));
   displayedToggle(repository, { itemId: 'video-demo', commentId: unrelated.id, subtree: false });
-  repository.changeWorkspace('closeTab', 'discussion:video-demo'); reopen();
+  repository.changeWorkspace('closeTab', viewIdentity(repository, 'video-demo')); reopen();
   expect(state().seenUndo['video-demo']).toEqual(result.undo);
   repository.changeWorkspace('openStoredItem', 'video-demo');
   const undo = displayedUndo(repository, 'video-demo');

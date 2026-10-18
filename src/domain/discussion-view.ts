@@ -16,7 +16,13 @@ export interface DiscussionViewIntent {
   readonly anchor: DiscussionAnchor;
   readonly selected: string | null;
 }
-export interface SaveDiscussionViewRequest extends DiscussionViewIntent { readonly itemId: string }
+/** One tab/view instance references shared content. Independent CAS lanes allow
+ * full semantic saves and sparse collapse assignments to serialize separately. */
+export interface ViewInstance { readonly itemId: string; readonly intentRevision: number; readonly collapseRevision: number }
+/** Main resolves the item's identity and the caller's retained ownership from
+ * viewId. An instance identifier never establishes authorization by itself. */
+export interface SaveDiscussionViewRequest extends DiscussionViewIntent { readonly viewId: string; readonly expectedRevision: number }
+export const isRevision = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) < Number.MAX_SAFE_INTEGER;
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -46,8 +52,13 @@ export function isDiscussionQuery(value: unknown): value is DiscussionQuery {
 }
 /** Main checks exact runtime shape and then separately checks same-item ownership. */
 export function isSaveDiscussionViewRequest(value: unknown): value is SaveDiscussionViewRequest {
-  if (!keys(value, ['itemId', 'draft', 'applied', 'sort', 'anchor', 'selected'])) return false;
-  return isViewIdentity(value.itemId) && isDiscussionQuery(value.draft) && isDiscussionQuery(value.applied)
+  if (!keys(value, ['viewId', 'expectedRevision', 'draft', 'applied', 'sort', 'anchor', 'selected'])) return false;
+  return isViewIdentity(value.viewId) && isRevision(value.expectedRevision) && isDiscussionViewIntent({ draft: value.draft, applied: value.applied, sort: value.sort, anchor: value.anchor, selected: value.selected });
+}
+/** Semantic validation shared with exact historical backup shapes. */
+export function isDiscussionViewIntent(value: unknown): value is DiscussionViewIntent {
+  if (!keys(value, ['draft', 'applied', 'sort', 'anchor', 'selected'])) return false;
+  return isDiscussionQuery(value.draft) && isDiscussionQuery(value.applied)
     && discussionSorts.includes(value.sort as DiscussionSort)
     && (value.selected === null || isViewIdentity(value.selected))
     && keys(value.anchor, ['commentId', 'offset']) && (value.anchor.commentId === null || isViewIdentity(value.anchor.commentId))

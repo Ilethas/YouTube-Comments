@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { migrations, migrateDatabase, schemaVersion } from './migrations';
-import { isSaveDiscussionViewRequest } from '../../domain/discussion-view';
+import { isDiscussionViewIntent, isViewIdentity } from '../../domain/discussion-view';
 import { normalizeTranslationCode } from '../../shared/preferences';
 
 export type BackupValidationReason = 'INVALID_BACKUP' | 'NEWER_BACKUP' | 'OLDER_BACKUP';
@@ -28,7 +28,7 @@ function requireEmpty(db: DatabaseSync, sql: string): void {
 
 /** Read-only validation uses only application-authored SQL. Unknown tables,
  * indexes, views and triggers are rejected before any staged migration runs.
- * Schemas 1–12 are recognized; only the staged copy may subsequently migrate. */
+ * Schemas 1–13 are recognized; only the staged copy may subsequently migrate. */
 export function validateBackup(file: string): number {
   let db: DatabaseSync | undefined;
   try {
@@ -48,7 +48,7 @@ export function validateBackup(file: string): number {
       if (code !== null && normalizeTranslationCode(code) !== code || preferences?.translation_target === 'custom' && code === null) throw new BackupValidationError('INVALID_BACKUP');
     }
     requireEmpty(db, 'SELECT 1 FROM comments c LEFT JOIN comment_state s ON c.id=s.comment_id WHERE s.comment_id IS NULL LIMIT 1');
-    if (version >= 3 && db.prepare('SELECT count(*) AS n FROM workspace WHERE id=1').get()?.n !== 1) throw new BackupValidationError('INVALID_BACKUP');
+    if (version >= 3 && version <= 12 && db.prepare('SELECT count(*) AS n FROM workspace WHERE id=1').get()?.n !== 1) throw new BackupValidationError('INVALID_BACKUP');
     if (version >= 2) {
       requireEmpty(db, `SELECT 1 FROM extraction_attempts a JOIN content_items i ON i.id=a.item_id
         WHERE a.outcome='accepted' AND (a.source_id IS NOT i.source_id OR a.source_kind IS NOT
@@ -78,10 +78,15 @@ export function validateBackup(file: string): number {
       (SELECT count(*) FROM seen_operation_entries e WHERE e.operation_id=o.id) LIMIT 1`);
     if (version >= 6) requireEmpty(db, `SELECT 1 FROM seen_operation_entries e JOIN comment_state s ON s.comment_id=e.comment_id
       WHERE e.written_revision>s.revision LIMIT 1`);
-    if (version >= 8) for (const row of db.prepare('SELECT * FROM discussion_view_state').iterate()) {
-      if (!isSaveDiscussionViewRequest({ itemId: row.item_id, draft: JSON.parse(String(row.draft_query_json)),
+    if (version >= 8) for (const row of db.prepare(version <= 12 ? 'SELECT * FROM discussion_view_state' : 'SELECT * FROM discussion_view_intent').iterate()) {
+      if (!isViewIdentity(row.item_id) || !isDiscussionViewIntent({ draft: JSON.parse(String(row.draft_query_json)),
         applied: JSON.parse(String(row.applied_query_json)), sort: row.sort,
         anchor: { commentId: row.anchor_comment_id, offset: row.anchor_offset }, selected: row.selected_comment_id })) throw new BackupValidationError('INVALID_BACKUP');
+    }
+    if (version >= 13) {
+      if (!db.prepare('SELECT 1 FROM app_windows').get()) throw new BackupValidationError('INVALID_BACKUP');
+      requireEmpty(db, `SELECT 1 FROM tab_instances t LEFT JOIN discussion_views v ON v.view_id=t.id WHERE t.kind='discussion' AND v.view_id IS NULL LIMIT 1`);
+      requireEmpty(db, `SELECT 1 FROM tab_instances t LEFT JOIN item_resume_view r ON r.window_id=t.owner_window_id AND r.item_id=t.item_id WHERE t.kind='discussion' AND r.view_id IS NULL LIMIT 1`);
     }
     return version;
   } catch (error) {

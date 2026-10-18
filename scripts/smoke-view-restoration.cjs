@@ -1,3 +1,4 @@
+const { tabElement, viewId, placeDiscussion, placeSingleton, activeTab } = require('./window-view-fixtures.cjs');
 // Offline built-entry restart/layout checks. Only a newly owned temporary profile
 // is seeded/modified. No production hooks or renderer filesystem capability.
 const assert = require('node:assert/strict');
@@ -13,7 +14,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const defaultQuery = { text: '', fields: ['content'], mode: 'text', caseSensitive: false, seen: 'all', publication: { kind: 'all' }, discovery: 'all' };
 const databaseFile = root => path.join(root, 'youtube-comments-development', 'reader.sqlite');
 function views(db) {
-  return Object.fromEntries(db.prepare('SELECT * FROM discussion_view_state').all().map(row => [row.item_id, {
+  return Object.fromEntries(db.prepare('SELECT * FROM discussion_view_intent').all().map(row => [row.item_id, {
     draft: JSON.parse(row.draft_query_json), applied: JSON.parse(row.applied_query_json), sort: row.sort,
     anchor: { commentId: row.anchor_comment_id, offset: row.anchor_offset }, selected: row.selected_comment_id,
   }]));
@@ -31,7 +32,7 @@ function seedGenerated(root) {
     };
     const insertItem = insert('content_items', itemTemplate), insertComment = insert('comments', commentTemplate), insertAttempt = insert('extraction_attempts', attemptTemplate);
     const state = db.prepare('INSERT INTO comment_state VALUES (?,0,0)');
-    const tab = db.prepare("INSERT INTO workspace_tabs VALUES (?,'discussion',?,?)");
+
     for (const [position, count] of [10000, 50000].entries()) {
       const itemId = `restoration-${count}`, attempt = `${itemId}-baseline`, itemRemote = JSON.parse(itemTemplate.remote_json);
       itemRemote.sourceId = itemId; itemRemote.title = { status: 'observed', value: `Restoration ${count}` };
@@ -52,9 +53,10 @@ function seedGenerated(root) {
           first_discovery_id: attempt, first_attempt_id: attempt, last_attempt_id: attempt });
         state.run(id);
       }
-      tab.run(`discussion:${itemId}`, itemId, position + 2);
+      placeDiscussion(db, itemId, position + 2);
     }
-    db.exec("INSERT INTO workspace_tabs VALUES ('library','library',NULL,4); UPDATE workspace SET active_tab_id='library',revision=revision+1; UPDATE preferences SET locale='en',appearance='light'; COMMIT");
+    activeTab(db, placeSingleton(db, 'library', 4));
+    db.exec("UPDATE preferences SET locale='en',appearance='light'; COMMIT");
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
   } catch (error) { db.exec('ROLLBACK'); throw error; } finally { db.close(); }
 }
@@ -82,8 +84,8 @@ async function verify(window, root, phase) {
       input.dispatchEvent(new Event(input instanceof HTMLSelectElement ? 'change' : 'input',{bubbles:true}));})()`);
   }
   async function activate(id) {
-    await js(`document.getElementById(${JSON.stringify('tab-discussion:' + id)}).click()`);
-    await wait(`${panel}.id===${JSON.stringify('panel-' + id)} && ${query} && !document.querySelector('.tabs button:disabled')`, 'activate/reconstruct');
+    await js(`${tabElement(id)}.click()`);
+    await wait(`${panel}.dataset.itemId===${JSON.stringify(id)} && ${query} && !document.querySelector('.tabs button:disabled')`, 'activate/reconstruct');
   }
   async function library() {
     await js("document.getElementById('library-toggle').click()");
@@ -92,7 +94,7 @@ async function verify(window, root, phase) {
   async function open(count) {
     await library();
     await js(`Array.from(document.querySelectorAll('.library-entry')).find(row=>row.textContent.includes('Restoration ${count}')).querySelector('button').click()`);
-    await wait(`${panel}.id==='panel-restoration-${count}' && ${query} && !document.querySelector('.tabs button:disabled')`, 'Library reopen');
+    await wait(`${panel}.dataset.itemId==='restoration-${count}' && ${query} && !document.querySelector('.tabs button:disabled')`, 'Library reopen');
   }
   async function apply() {
     await js(`${query}.requestSubmit()`);
@@ -153,8 +155,8 @@ async function verify(window, root, phase) {
       await js(`${panel}.dispatchEvent(new KeyboardEvent('keydown',{key:'F3',bubbles:true}))`);
       await wait(`${panel}.querySelector('[data-selected=true]')?.id==='comment-restoration-10000-${index - 1}'`, 'F3 continues in restored Newest order');
       await settle();
-      await js("document.getElementById('tab-discussion:restoration-10000').nextElementSibling.click()");
-      await wait("!document.getElementById('tab-discussion:restoration-10000')", 'close'); await library();
+      await js(`${tabElement('restoration-10000')}.nextElementSibling.click()`);
+      await wait(`!${tabElement('restoration-10000')}`, 'close'); await library();
       fs.writeFileSync(checkpoint, JSON.stringify({ ...expected, views: views(db) }));
       console.log(JSON.stringify({ restoration: { startupReadyMs, small, large, activationAndChecksMs: Date.now() - started } }));
     } else if (phase === 'library' || phase === 'reopen') {
@@ -233,9 +235,9 @@ if (process.versions.electron && process.type === 'browser') {
           const db = new DatabaseSync(databaseFile(root));
           try {
             const query = phase === 'relative' ? { ...defaultQuery, publication: { kind: 'last-24-hours' } } : { ...defaultQuery, mode: 'regex', text: '[' };
-            db.prepare("UPDATE discussion_view_state SET applied_query_json=?,draft_query_json=?,anchor_comment_id=NULL,anchor_offset=0,selected_comment_id=NULL WHERE item_id='restoration-10000'").run(JSON.stringify(query), JSON.stringify(query));
-            db.exec("UPDATE workspace SET active_tab_id='discussion:restoration-10000',revision=revision+1");
-            if (phase === 'failure') db.prepare('INSERT INTO discussion_view_state VALUES (?,?,?,?,NULL,0,NULL)').run('post-demo', '{broken', JSON.stringify(defaultQuery), 'original');
+            db.prepare("UPDATE discussion_view_intent SET applied_query_json=?,draft_query_json=?,anchor_comment_id=NULL,anchor_offset=0,selected_comment_id=NULL WHERE item_id='restoration-10000'").run(JSON.stringify(query), JSON.stringify(query));
+            activeTab(db, db.prepare("SELECT view_id FROM item_resume_view WHERE item_id='restoration-10000'").get().view_id);
+            if (phase === 'failure') db.prepare('INSERT INTO discussion_view_intent VALUES (?,?,?,?,?,NULL,0,NULL)').run(db.prepare("SELECT view_id FROM item_resume_view WHERE item_id='post-demo'").get().view_id, 'post-demo', '{broken', JSON.stringify(defaultQuery), 'original');
           } finally { db.close(); }
         }
         const environment = { ...process.env, YOUTUBE_COMMENTS_DEMO_ROOT: root, VIEW_SMOKE_PHASE: phase };

@@ -19,12 +19,12 @@ it('exposes only explicit intent and progress methods without a generic privileg
   await api.updatePreferences({ appearance: 'system' });
   await api.acquire({ url: 'https://www.youtube.com/watch?v=abcdefghijk' });
   await api.refresh({ itemId: 'stored-item' });
-  await api.openStoredItem({ itemId: 'stored-item' });
-  await api.activateTab({ tabId: 'stored-item' });
-  await api.closeTab({ tabId: 'stored-item' });
-  await api.openLibrary();
-  await api.openSettings();
-  await api.moveTab({ tabId: 'library', toIndex: 0 });
+  await api.openStoredItem({ expectedRevision: 0, itemId: 'stored-item' });
+  await api.activateTab({ expectedRevision: 0, tabId: 'stored-item' });
+  await api.closeTab({ expectedRevision: 0, tabId: 'stored-item' });
+  await api.openLibrary({ expectedRevision: 0 });
+  await api.openSettings({ expectedRevision: 0 });
+  await api.moveTab({ expectedRevision: 0, tabId: 'library', toIndex: 0 });
   await api.removeLibraryItem({ itemId: 'stored-item' });
   await api.bulkSeen({ itemId: 'stored-item', seen: true, target: { kind: 'all' } });
   await api.undoSeen({ itemId: 'stored-item', expectedOperationId: 'operation' });
@@ -39,19 +39,19 @@ it('exposes only explicit intent and progress methods without a generic privileg
     [readerChannels.updatePreferences, { appearance: 'system' }],
     [readerChannels.acquire, { url: 'https://www.youtube.com/watch?v=abcdefghijk' }],
     [readerChannels.refresh, { itemId: 'stored-item' }],
-    [readerChannels.openStoredItem, { itemId: 'stored-item' }],
-    [readerChannels.activateTab, { tabId: 'stored-item' }],
-    [readerChannels.closeTab, { tabId: 'stored-item' }],
-    [readerChannels.openLibrary],
-    [readerChannels.openSettings],
-    [readerChannels.moveTab, { tabId: 'library', toIndex: 0 }],
+    [readerChannels.openStoredItem, { expectedRevision: 0, itemId: 'stored-item' }],
+    [readerChannels.activateTab, { expectedRevision: 0, tabId: 'stored-item' }],
+    [readerChannels.closeTab, { expectedRevision: 0, tabId: 'stored-item' }],
+    [readerChannels.openLibrary, { expectedRevision: 0 }],
+    [readerChannels.openSettings, { expectedRevision: 0 }],
+    [readerChannels.moveTab, { expectedRevision: 0, tabId: 'library', toIndex: 0 }],
     [readerChannels.removeLibraryItem, { itemId: 'stored-item' }],
     [readerChannels.bulkSeen, { itemId: 'stored-item', seen: true, target: { kind: 'all' } }],
     [readerChannels.undoSeen, { itemId: 'stored-item', expectedOperationId: 'operation' }],
   ]);
-  const intent = { itemId: 'stored-item', draft: defaultQuery, applied: defaultQuery, sort: 'original' as const, anchor: { commentId: null, offset: 0 }, selected: null };
-  await api.setDiscussionCollapse({ itemId: 'stored-item', kind: 'all', collapsed: true });
-  expect(invoke).toHaveBeenLastCalledWith(readerChannels.setDiscussionCollapse, { itemId: 'stored-item', kind: 'all', collapsed: true });
+  const intent = { viewId: 'stored-view', expectedRevision: 0, draft: defaultQuery, applied: defaultQuery, sort: 'original' as const, anchor: { commentId: null, offset: 0 }, selected: null };
+  await api.setDiscussionCollapse({ viewId: 'stored-view', expectedRevision: 0, kind: 'all', collapsed: true });
+  expect(invoke).toHaveBeenLastCalledWith(readerChannels.setDiscussionCollapse, { viewId: 'stored-view', expectedRevision: 0, kind: 'all', collapsed: true });
   await api.saveDiscussionView(intent);
   expect(invoke).toHaveBeenLastCalledWith(readerChannels.saveDiscussionView, intent);
   await api.createBackup(); await api.restoreBackup();

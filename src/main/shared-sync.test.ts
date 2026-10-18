@@ -1,3 +1,4 @@
+import { viewVersion } from './testing/view-identity';
 import { required } from '../renderer/testing/required';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
@@ -79,7 +80,7 @@ it('a deferred foreign-key failure at COMMIT publishes nothing and preserves the
   repository.bulkSeen({ itemId: 'video-demo', seen: true, target: { kind: 'all' } });
   const before = state(), stamp = repository.stamp(), events = vi.fn(); repository.onCommit(events);
   const db = new DatabaseSync(file);
-  db.exec("CREATE TRIGGER fail_commit_m2 AFTER UPDATE ON comment_state BEGIN UPDATE workspace SET active_tab_id='missing-tab'; END"); db.close();
+  db.exec("CREATE TRIGGER fail_commit_m2 AFTER UPDATE ON comment_state BEGIN UPDATE app_windows SET active_tab_id='missing-tab'; END"); db.close();
   expect(() => repository.toggleSeen(request(false))).toThrow(/FOREIGN KEY/);
   expect(repository.stamp()).toEqual(stamp); expect(state()).toEqual(before); expect(events).not.toHaveBeenCalled();
 });
@@ -107,7 +108,7 @@ it('command envelopes preceding notifications reconcile without full-profile rea
   const a = participant(); await a.replica.start(); a.pause();
   await a.replica.api.toggleSeen(request(true));
   await a.replica.api.toggleSeen(request(false));
-  await a.replica.api.saveDiscussionView({ itemId: 'video-demo', draft: defaultQuery, applied: defaultQuery,
+  await a.replica.api.saveDiscussionView({ ...viewVersion(repository, 'video-demo'), draft: defaultQuery, applied: defaultQuery,
     sort: 'original', anchor: { commentId: null, offset: 0 }, selected: null });
   expect(a.replica.current.comments).toEqual(state().comments);
   expect(a.invoke.mock.calls.filter(call => call[0] === readerChannels.getSharedSnapshot)).toHaveLength(1);

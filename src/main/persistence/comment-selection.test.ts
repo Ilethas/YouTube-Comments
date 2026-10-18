@@ -1,3 +1,5 @@
+import { legacyComparableState , viewVersion } from '../testing/view-identity';
+
 import { displayedToggle, displayedUndo } from '../testing/displayed-seen';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
@@ -43,7 +45,7 @@ it('defaults to on-demand and includes hidden replies; exact main-owned preferen
 });
 
 it.each(['selected', 'view-prefix'] as const)('%s boolean assignments target only IDs and preserve no-op recovery, discovery and collapse; partial Undo protects later revisions', reason => {
-  repo.setDiscussionCollapse({ itemId: 'video-demo', kind: 'comments', ids: ['v1'], collapsed: true });
+  repo.setDiscussionCollapse({ ...viewVersion(repo, 'video-demo', 'collapse'), kind: 'comments', ids: ['v1'], collapsed: true });
   const before = bootstrap(), history = repo.history();
   const result = repo.bulkSeen(request(true, reason));
   expect(result).toMatchObject({ targetCount: 3, undo: { kind: reason } });
@@ -81,7 +83,7 @@ it('rejects duplicate, unowned, removed, oversized or malformed explicit scopes 
 it('schema 10 upgrade preserves populated recoverable operations and child entries, with pre-migration safety and immutable staged backup', async () => {
   repo.updatePreferences({ locale: 'pl' }, ['en']); repo.updatePreferences({ appearance: 'dark' }, ['en']);
   repo.updatePreferences({ translationTarget: 'de' }, ['en']);
-  repo.setDiscussionCollapse({ itemId: 'video-demo', kind: 'comments', ids: ['v1'], collapsed: true });
+  repo.setDiscussionCollapse({ ...viewVersion(repo, 'video-demo', 'collapse'), kind: 'comments', ids: ['v1'], collapsed: true });
   repo.bulkSeen({ itemId: 'video-demo', seen: true, target: { kind: 'all' } });
   displayedToggle(repo, { itemId: 'video-demo', commentId: 'v3', subtree: false });
   displayedToggle(repo, { itemId: 'video-demo', commentId: 'v3', subtree: false });
@@ -91,9 +93,9 @@ it('schema 10 upgrade preserves populated recoverable operations and child entri
   const bytes = readFileSync(file); await protectBeforeMigration(file);
   const snapshots = readdirSync(recoveryDirectory(file)); expect(snapshots).toHaveLength(1);
   const safety = path.join(recoveryDirectory(file), snapshots[0]); expect(validateBackup(safety)).toBe(10);
-  const staged = await prepareRestore(safety, file); expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(12);
+  const staged = await prepareRestore(safety, file); expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(13);
   expect(readFileSync(file)).toEqual(bytes);
-  repo = ReaderRepository.open(file); expect(bootstrap()).toEqual(before); expect(repo.history()).toEqual(history);
+  repo = ReaderRepository.open(file); expect(legacyComparableState(bootstrap())).toEqual(legacyComparableState(before)); expect(repo.history()).toEqual(history);
   raw(db => { expect(db.prepare('SELECT * FROM seen_operation_entries').all()).toEqual(entries); expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]); });
   expect(displayedUndo(repo, 'video-demo')).toMatchObject({ skipped: 1, restored: entries.length - 1 });
 }, 15000);
@@ -110,14 +112,14 @@ it('a failure after rebuilding the Undo parent rolls back preferences, parent, e
     expect(db.prepare('PRAGMA table_info(preferences)').all().some(row => row.name === 'selection_controls')).toBe(false);
     migrateDatabase(db); expect(db.prepare('SELECT * FROM seen_operation_entries').all()).toEqual(entries);
   });
-  expect(validateBackup(file)).toBe(12); repo = ReaderRepository.open(file);
+  expect(validateBackup(file)).toBe(13); repo = ReaderRepository.open(file);
   expect(displayedUndo(repo, 'video-demo').restored).toBeGreaterThan(0);
 });
 
 it('full snapshot restore preserves explicit Undo metadata, both preferences and sparse collapse through restart', async () => {
   repo.bulkSeen(request(false, 'view-prefix'));
   repo.updatePreferences({ selectionControls: 'always' }, ['en']); repo.updatePreferences({ includeCollapsedInPrefix: false }, ['en']);
-  repo.setDiscussionCollapse({ itemId: 'video-demo', kind: 'comments', ids: ['v1'], collapsed: true });
+  repo.setDiscussionCollapse({ ...viewVersion(repo, 'video-demo', 'collapse'), kind: 'comments', ids: ['v1'], collapsed: true });
   const before = bootstrap(), snapshot = path.join(directory, 'snapshot.sqlite'); await repo.createBackup(snapshot);
   const stage = await prepareRestore(snapshot, file);
   repo.bulkSeen(request(true)); repo.updatePreferences({ includeCollapsedInPrefix: true }, ['en']);

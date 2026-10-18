@@ -1,13 +1,48 @@
 # Database and durable data
 
+## Persistent topology and view ownership (schema 13, M4)
+
+[ADR 0030](decisions/0030-persistent-window-topology-and-view-instances.md) is the
+current identity/storage contract; the older sections below record their original
+schema increments. `app_windows` has durable topology CAS and a composite active
+membership FK. `tab_instances` has opaque IDs and retained window ownership;
+`window_tabs` enforces one placement per instance and unique positions. Checked
+kind/item composite FKs bind required `discussion_views` identities to discussion
+tabs. Library/Settings have a same-table partial unique index per window.
+
+Optional `discussion_view_intent`, `view_collapse` and sparse
+`view_collapse_overrides` are view-owned and have same-item comment FKs.
+`item_resume_view` explicitly retains the owned instance for closed discussions.
+TabId equals viewId for discussion instances. Multiple views may reference one
+item without duplicating comments, seen, history, NEW or Undo. Item deletion
+cascades every view and placement; ordinary close deletes placement only.
+
+Migration 13 creates one legacy window and one instance for EVERY item, copies
+exact workspace positions/order/active mapping and raw optional reading/collapse
+records, preserves absence, and creates owned resume pointers for dormant items.
+Unrelated authoritative tables never rebuild. Counts/ownership are checked;
+DDL/data/user_version roll back together on failure. Startup recovery and verified
+pre-migration safety precede this transaction. Historical definitions 1-12 are
+unchanged; backup validation selects their OLD shapes. Older backups upgrade only
+in staging, never by rewriting the selected source. Schema 13 snapshots include
+all topology and all dormant views; newer/modified schemas reject.
+
+Renderer topology commands require expected topology revision; intent and collapse
+have separate durable CAS counters, so their independent FIFO writers cannot
+collide on a shared version. Main derives the window from its document registry
+and authenticates view ownership, including M3 checkpoints. Runtime M2 epochs and
+commit revisions remain separate. No native geometry or restore set is invented;
+M6 can add optional metadata without a destructive topology change. Startup still
+opens only the initial persisted reader. M5/M6/M7 remain future work.
+
+
 M3 adds runtime-only global profile/window lifecycle coordination, with no schema
-change: current schema remains **12**. All participating authorized renderers drain
+change: M3 itself retained schema **12**; current schema is **13** (M4). All participating authorized renderers drain
 accepted queues before a backup or restore snapshot. Main-issued pre-preparation
 mutation tickets and exact bounded drain leases prevent ordinary DATA_BUSY bypass.
 Every successful drain transaction uses the existing post-COMMIT M2 revision stream;
 failed COMMITs publish nothing. Clean optional view/collapse rows are not created
-merely by lifecycle preparation. M4's independent view/window identity migration is
-still future scope.
+merely by lifecycle preparation. M4's independent view/window identity migration is implemented in ADR 0030.
 
 After confirmed restore, main settles children and verifies independent safety as
 before. Terminal RESTARTING fences every old-profile write before offline SQLite
@@ -42,7 +77,7 @@ IDs never persist. See [ADR 0026](decisions/0026-custom-translation-reader-minut
 
 ## Selection preferences and Undo metadata (schema 11, ADR 0024)
 
-Current schema is 12. Schema 11 added checked selection_controls (on-demand default,
+Current schema is 13; this section describes schema 11. Schema 11 added checked selection_controls (on-demand default,
 or always) and include_collapsed_in_prefix (boolean, default 1). Selected ID sets,
 visual range anchors and selection-mode flags remain renderer/session-only.
 The existing durable navigation selected_comment_id is a different identity.

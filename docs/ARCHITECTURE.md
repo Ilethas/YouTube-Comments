@@ -1,5 +1,34 @@
 # Architecture
 
+## Persistent window and view identities (M4, ADR 0030)
+
+The current schema is **13**. Main owns one repository/service and still constructs
+exactly one production reader. WindowCoordinator obtains a persistent window ID
+before constructing/loading its reader; reload keeps it while replacing the runtime
+document lease. Scoped bootstrap, metadata, workspace writes and acquisition replies
+use the authenticated caller's window. Renderer-supplied window/view identities
+never establish ownership. Closed instances retain their owner and resume pointer.
+
+Discussion tabId and viewId are the SAME opaque instance ID, referencing shared
+itemId. React panel keys, activation/close/focus, session registry and intent/collapse
+writers use that instance ID. Item-to-session fanout preserves shared seen and
+Refresh behavior without sharing draft/applied/sort/anchor/collapse. M2 snapshots
+and metadata are window-scoped; private saves remain ordered watermarks. Structural
+commands use topology CAS; separate intent/collapse CAS lanes avoid races between
+the two FIFO queues. M3 seals per-view checkpoints with those versions and retains
+its global barriers, incarnation authentication, release reconciliation and terminal
+restore fence. Clean optional rows remain absent.
+
+The lossless forward migration preserves raw optional state for open AND dormant
+legacy discussions and every authoritative shared field. Historical backup shapes,
+verified safety and staged upgrades remain exact. See
+[ADR 0030](decisions/0030-persistent-window-topology-and-view-instances.md) and
+[DATABASE](DATABASE.md) for tables, constraints and mapping. No native geometry is
+recorded. M5 owns duplicate UI and descendant DOM namespaces; M6 owns extra native
+windows and full restore policy; M7 owns transfer. The following milestone sections
+retain their historical scope and are superseded here for identity/schema details.
+
+
 ## Global profile and native lifecycle safety (M3, ADR 0029)
 
 One main-owned ProfileOperationCoordinator enrolls current WindowCoordinator
@@ -54,8 +83,8 @@ from committed content. See ADR 0028 for exact limits and response reconciliatio
 
 Production still opens one reader. Test-only second windows share the actual
 service/repository. M3 adds all-window backup/restore and close/reload queue barriers
-as described above. No M4 identity migration,
-duplicate views, extra-window UI or transfer is introduced.
+as described above. M4 supplies persistent identity separately; duplicate UI,
+extra-window UI and transfer remain later milestones.
 
 ## Secure window coordination (M1, ADR 0027)
 
@@ -77,7 +106,7 @@ single reader startup, existing profile/order/seeding, thumbnail protocol and pa
 security remain. Registry removal never shuts down persistence. See
 [ADR 0027](decisions/0027-secure-window-coordination-foundation.md) for exact lifecycle
 and cancellation boundaries. Shared synchronization is implemented in M2 and global
-drain barriers in M3; persistent windows/views and public additional windows remain later work.
+drain barriers in M3; M4 adds persistent windows/views while public additional windows remain later work.
 
 ## Usability increment (ADR 0026)
 

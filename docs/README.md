@@ -1,10 +1,18 @@
 # Documentation map
 
+[ADR 0030](decisions/0030-persistent-window-topology-and-view-instances.md) implements
+M4: schema **13**, persistent windows and opaque discussion tab/view instances,
+per-window topology, independent intent/collapse CAS and owned dormant resume
+pointers. Migration preserves exact schema-12 topology and optional state for every
+stored item. Production still opens one reader; M5-M7 remain future work. See
+[testing](TESTING.md) for the final 1,031-test, 14-harness and packaged-EXE evidence.
+
 [ADR 0029](decisions/0029-global-profile-and-window-lifecycle-safety.md) implements
 M3: main-owned global drain/Close/Reload/Quit coordination, pre-registered queued
 mutation tickets, exact bounded drain leases, M2 reconciliation on release and
-terminal old-profile restore fencing. Schema remains 12 and production remains
-one reader. See [testing](TESTING.md) for disposable multi-renderer evidence.
+terminal old-profile restore fencing. M3 retained schema 12; M4 above supersedes
+its identity model. Production remains one reader. See [testing](TESTING.md) for
+disposable multi-renderer evidence.
 
 [ADR 0028](decisions/0028-ordered-shared-state-synchronization.md) implements M2: ordered shared
 commit notifications, bounded renderer reconciliation, explicit checkbox
@@ -15,7 +23,7 @@ The two-renderer test interface is confined to disposable Electron harnesses.
 [ADR 0027](decisions/0027-secure-window-coordination-foundation.md) implements M1:
 main-owned window registration/document leases, one secured factory, authenticated
 IPC caller context and originating native dialogs. Production still opens one
-reader, with schema 12. M4–M9 remain future work. The owner accepts provisional
+reader, with schema 12 at that milestone. M5-M9 remain future work. The owner accepts provisional
 HTML DnD outside detachment where Escape may detach; M8 native testing is pending.
 
 [M0 drag feasibility](MULTI_WINDOW_M0_FEASIBILITY.md) records the isolated two-window

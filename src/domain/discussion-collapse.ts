@@ -1,4 +1,4 @@
-import { isViewIdentity } from './discussion-view';
+import { isViewIdentity, isRevision } from './discussion-view';
 
 /** IDs are sparse exceptions to the discussion default, including currently
  * filtered-out comments. No row means fully expanded. */
@@ -11,13 +11,13 @@ export const expandedDiscussion: DiscussionCollapse = { defaultCollapsed: false,
  * every identity before changing any state. All never materializes comment IDs. */
 export type CollapseChange = { readonly kind: 'all'; readonly collapsed: boolean }
   | { readonly kind: 'comments'; readonly ids: readonly string[]; readonly collapsed: boolean };
-export type SetDiscussionCollapseRequest = CollapseChange & { readonly itemId: string };
+export type SetDiscussionCollapseRequest = CollapseChange & { readonly viewId: string; readonly expectedRevision: number };
 /** Exact runtime shape and size validation only; item ownership belongs to main. */
 export function isSetDiscussionCollapseRequest(value: unknown): value is SetDiscussionCollapseRequest {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const row = value as Record<string, unknown>;
-  if (!isViewIdentity(row.itemId) || typeof row.collapsed !== 'boolean') return false;
-  const keys = row.kind === 'all' ? ['itemId', 'kind', 'collapsed'] : ['itemId', 'kind', 'collapsed', 'ids'];
+  if (!isViewIdentity(row.viewId) || !isRevision(row.expectedRevision) || typeof row.collapsed !== 'boolean') return false;
+  const keys = row.kind === 'all' ? ['viewId', 'expectedRevision', 'kind', 'collapsed'] : ['viewId', 'expectedRevision', 'kind', 'collapsed', 'ids'];
   return Object.keys(row).length === keys.length && keys.every(key => Object.hasOwn(row, key))
     && (row.kind === 'all' || row.kind === 'comments' && Array.isArray(row.ids) && row.ids.length > 0 && row.ids.length <= 100000
       && row.ids.every(isViewIdentity) && new Set(row.ids).size === row.ids.length);

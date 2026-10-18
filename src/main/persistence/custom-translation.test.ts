@@ -1,3 +1,5 @@
+import { legacyComparableState , viewVersion } from '../testing/view-identity';
+
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
@@ -48,15 +50,15 @@ it('defaults to app, rejects activation without saved code, preserves code acros
 it('schema 11 migration preserves every preference, content/history/Undo/workspace and views; old backups stage immutably', async () => {
   for (const change of [{ locale: 'pl' }, { appearance: 'dark' }, { translationTarget: 'fr' }, { selectionControls: 'always' }, { includeCollapsedInPrefix: false }] as const) repo.updatePreferences(change, ['en']);
   repo.bulkSeen({ itemId: 'video-demo', seen: true, target: { kind: 'all' } });
-  repo.setDiscussionCollapse({ itemId: 'video-demo', kind: 'all', collapsed: true });
-  repo.saveDiscussionView({ itemId: 'video-demo', draft: defaultQuery, applied: defaultQuery, sort: 'newest', anchor: { commentId: 'v1', offset: 7 }, selected: 'v2' });
+  repo.setDiscussionCollapse({ ...viewVersion(repo, 'video-demo', 'collapse'), kind: 'all', collapsed: true });
+  repo.saveDiscussionView({ ...viewVersion(repo, 'video-demo', 'intent'), draft: defaultQuery, applied: defaultQuery, sort: 'newest', anchor: { commentId: 'v1', offset: 7 }, selected: 'v2' });
   const before = repo.bootstrap(['en']), history = repo.history(); repo.close();
   raw(downgradeCustomTranslationFixture); expect(validateBackup(file)).toBe(11);
   const bytes = readFileSync(file); await protectBeforeMigration(file);
   const safety = path.join(recoveryDirectory(file), readdirSync(recoveryDirectory(file))[0]); expect(validateBackup(safety)).toBe(11);
-  const staged = await prepareRestore(safety, file); expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(12);
+  const staged = await prepareRestore(safety, file); expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(13);
   expect(readFileSync(file)).toEqual(bytes);
-  repo = ReaderRepository.open(file); expect(repo.bootstrap(['en'])).toEqual(before); expect(repo.history()).toEqual(history);
+  repo = ReaderRepository.open(file); expect(legacyComparableState(repo.bootstrap(['en']))).toEqual(legacyComparableState(before)); expect(repo.history()).toEqual(history);
   raw(db => expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]));
 }, 30000);
 it('migration failure rolls back the table rebuild, all preference fields and version', () => {
@@ -69,10 +71,10 @@ it('migration failure rolls back the table rebuild, all preference fields and ve
 it('backup/restore includes custom targets and semantic query times with no seen changes', async () => {
   repo.updatePreferences({ translationTarget: 'custom', customTranslationTarget: 'mni-Mtei' }, ['en']);
   const query = { ...defaultQuery, publication: { kind: 'custom' as const, from: '2026-10-16', fromTime: '14:30', to: '2026-10-17', toTime: '09:15' } };
-  repo.saveDiscussionView({ itemId: 'video-demo', draft: query, applied: query, sort: 'original', anchor: { commentId: null, offset: 0 }, selected: null });
+  repo.saveDiscussionView({ ...viewVersion(repo, 'video-demo', 'intent'), draft: query, applied: query, sort: 'original', anchor: { commentId: null, offset: 0 }, selected: null });
   const before = repo.bootstrap(['en']), snapshot = path.join(directory, 'backup.sqlite'); await repo.createBackup(snapshot);
   repo.updatePreferences({ translationTarget: 'en' }, ['en']);
   const staged = await prepareRestore(snapshot, file); await repo.createBackup(path.join(staged, 'safety.sqlite'));
   repo.prepareOffline(); repo.close(); await installRestore(file, staged);
-  repo = ReaderRepository.open(file); expect(repo.bootstrap(['en'])).toEqual(before); expect(validateBackup(file)).toBe(12);
+  repo = ReaderRepository.open(file); expect(repo.bootstrap(['en'])).toEqual(before); expect(validateBackup(file)).toBe(13);
 }, 30000);

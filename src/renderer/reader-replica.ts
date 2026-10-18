@@ -189,12 +189,12 @@ export class ReaderReplica {
         const comments = { ...state.comments }, seenUndo = { ...state.seenUndo };
         if (scope.item) { comments[scope.itemId] = scope.comments; seenUndo[scope.itemId] = scope.undo; }
         else { delete comments[scope.itemId]; delete seenUndo[scope.itemId]; }
-        state = { ...state, items, comments, seenUndo, workspace: scope.workspace };
+        state = { ...state, items, comments, seenUndo, workspace: scope.workspace, viewInstances: scope.viewInstances };
       } else if (change.kind === 'preferences' || change.kind === 'workspace') {
         const result = await this.transport.getSharedMetadata();
         if (!result.ok || !isSharedStamp(result.value) || result.value.profileEpoch !== event.profileEpoch || result.value.commitRevision !== event.commitRevision) { this.recover = true; continue; }
         if (this.stopped || incarnation !== this.incarnation) return;
-        state = { ...state, preferences: result.value.preferences, workspace: result.value.workspace };
+        state = { ...state, preferences: result.value.preferences, workspace: result.value.workspace, viewInstances: result.value.viewInstances };
       }
       this.snapshot = { profileEpoch: event.profileEpoch, commitRevision: event.commitRevision, state };
       this.publish(change);

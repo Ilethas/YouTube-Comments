@@ -1,5 +1,6 @@
+const discussionTab = (itemId: string) => instanceTab(`test-view-${itemId}`, itemId);
 import { expect, it } from 'vitest';
-import { closeWorkspaceTab, discussionTab, moveWorkspaceTab, openWorkspaceTab } from './workspace';
+import { closeWorkspaceTab, discussionTab as instanceTab, moveWorkspaceTab, openWorkspaceTab } from './workspace';
 import type { WorkspaceState, WorkspaceTab } from './workspace';
 
 const library: WorkspaceTab = { id: 'library', kind: 'library' };
@@ -16,8 +17,8 @@ it('singletons activate without duplicates and closed views append', () => {
   }
 });
 it('mixed active neighbors choose right then left then empty; background preserves active', () => {
-  expect(closeWorkspaceTab(mixed, 'library').activeTabId).toBe('discussion:b');
-  expect(closeWorkspaceTab({ ...mixed, activeTabId: 'settings' }, 'settings').activeTabId).toBe('discussion:b');
+  expect(closeWorkspaceTab(mixed, 'library').activeTabId).toBe('test-view-b');
+  expect(closeWorkspaceTab({ ...mixed, activeTabId: 'settings' }, 'settings').activeTabId).toBe('test-view-b');
   expect(closeWorkspaceTab(mixed, 'settings').activeTabId).toBe('library');
   expect(closeWorkspaceTab({ tabs: [library], activeTabId: 'library', revision: 0 }, 'library')).toEqual({ tabs: [], activeTabId: null, revision: 1 });
 });

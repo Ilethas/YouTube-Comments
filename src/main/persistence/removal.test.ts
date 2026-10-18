@@ -1,3 +1,5 @@
+import { required } from '../../renderer/testing/required';
+import { viewVersion , storedTab, viewIdentity } from '../testing/view-identity';
 import { displayedToggle } from '../testing/displayed-seen';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
@@ -8,7 +10,8 @@ import { ReaderRepository } from './reader-repository';
 import { defaultQuery } from '../../domain/discussion-query';
 import { ReaderService } from '../reader-service';
 import { normalizeYtDlp } from '../extractors/yt-dlp';
-import { discussionTab } from '../../domain/workspace';
+
+const discussionTab = (itemId: string) => storedTab(repository, itemId);
 import type { ExtractLive } from '../live-extraction';
 
 let directory: string, file: string, repository: ReaderRepository;
@@ -32,18 +35,19 @@ it.each(['real', 'video-demo', 'post-demo'])('removes %s and every owned record,
   const real = insert(), id = target === 'real' ? real : target;
   for (const item of repository.bootstrap(['en']).items) {
     repository.bulkSeen({ itemId: item.id, seen: true, target: { kind: 'all' } });
-    repository.setDiscussionCollapse({ itemId: item.id, kind: 'all', collapsed: true });
-    repository.saveDiscussionView({ itemId: item.id, draft: defaultQuery, applied: defaultQuery, sort: 'original', anchor: { commentId: null, offset: 10 }, selected: null });
+    repository.setDiscussionCollapse({ ...viewVersion(repository, item.id, 'collapse'), kind: 'all', collapsed: true });
+    repository.saveDiscussionView({ ...viewVersion(repository, item.id, 'intent'), draft: defaultQuery, applied: defaultQuery, sort: 'original', anchor: { commentId: null, offset: 10 }, selected: null });
   }
   repository.setHelperSelection('yt-dlp', 'C:\\test-only\\yt-dlp.exe');
   const preserved = repository.bootstrap(['en']);
+  const removedView = viewIdentity(repository, id);
   const filter = (value: object) => Object.fromEntries(Object.entries(value).filter(([key]) => key !== id));
   const after = repository.removeLibraryItem(id, ['en']);
   expect(after.items).toEqual(preserved.items.filter(item => item.id !== id));
   expect(after.comments).toEqual(filter(preserved.comments));
   expect(after.seenUndo).toEqual(filter(preserved.seenUndo));
-  expect(after.discussionViews).toEqual(filter(preserved.discussionViews));
-  expect(after.discussionCollapse).toEqual(filter(preserved.discussionCollapse));
+  expect(after.discussionViews).toEqual(Object.fromEntries(Object.entries(preserved.discussionViews).filter(([key]) => key !== removedView)));
+  expect(after.discussionCollapse).toEqual(Object.fromEntries(Object.entries(preserved.discussionCollapse).filter(([key]) => key !== removedView)));
   expect(repository.getHelperSelection('yt-dlp')).toBe('C:\\test-only\\yt-dlp.exe');
   raw(db => expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]));
   repository.close(); repository = ReaderRepository.open(file);
@@ -58,16 +62,17 @@ it.each(['closed', 'background', 'active-right', 'active-left'] as const)('remov
   else if (position === 'active-right') repository.changeWorkspace('activateTab', discussionTab(id).id);
   else if (position === 'active-left') { repository.changeWorkspace('moveTab', discussionTab(id).id, 4); repository.changeWorkspace('activateTab', discussionTab(id).id); }
   const before = repository.bootstrap(['en']), history = repository.history().filter(attempt => attempt.itemId !== id);
+  const removedTabId = discussionTab(id).id;
   const commentIds = before.comments[id].map(comment => comment.id);
   const after = repository.removeLibraryItem(id, ['en']);
   expect(after.items).toEqual(before.items.filter(item => item.id !== id));
   expect(after.comments).toEqual(Object.fromEntries(Object.entries(before.comments).filter(([itemId]) => itemId !== id)));
   expect(after.preferences).toEqual(before.preferences);
   expect(repository.history()).toEqual(history);
-  expect(after.workspace.tabs.map(tab => tab.id)).toEqual(before.workspace.tabs.filter(tab => tab.id !== discussionTab(id).id).map(tab => tab.id));
-  expect(after.workspace.activeTabId).toBe(position === 'active-right' ? 'library' : 'settings');
+  expect(after.workspace.tabs.map(tab => tab.id)).toEqual(before.workspace.tabs.filter(tab => tab.id !== removedTabId).map(tab => tab.id));
+  expect(after.workspace.activeTabId).toBe(required(before.workspace.tabs.find(tab => tab.kind === (position === 'active-right' ? 'library' : 'settings'))).id);
   raw(db => {
-    for (const table of ['content_items', 'comments', 'extraction_attempts', 'workspace_tabs']) {
+    for (const table of ['content_items', 'comments', 'extraction_attempts', 'tab_instances']) {
       const field = table === 'content_items' ? 'id' : 'item_id';
       expect(db.prepare(`SELECT count(*) AS n FROM ${table} WHERE ${field}=?`).get(id)?.n).toBe(0);
     }
@@ -85,8 +90,8 @@ it('removing the last active discussion leaves an empty workspace', () => {
 it.each(['real', 'video-demo'])('a late %s delete failure rolls back workspace, local state, comments, evidence and history', target => {
   const real = insert(), id = target === 'real' ? real : target;
   repository.bulkSeen({ itemId: id, seen: true, target: { kind: 'all' } });
-  repository.setDiscussionCollapse({ itemId: id, kind: 'all', collapsed: true });
-  repository.saveDiscussionView({ itemId: id, draft: defaultQuery, applied: defaultQuery, sort: 'original', anchor: { commentId: null, offset: 0 }, selected: null });
+  repository.setDiscussionCollapse({ ...viewVersion(repository, id, 'collapse'), kind: 'all', collapsed: true });
+  repository.saveDiscussionView({ ...viewVersion(repository, id, 'intent'), draft: defaultQuery, applied: defaultQuery, sort: 'original', anchor: { commentId: null, offset: 0 }, selected: null });
   const before = repository.bootstrap(['en']), history = repository.history();
   raw(db => db.exec("CREATE TRIGGER fail_remove BEFORE DELETE ON extraction_attempts BEGIN SELECT RAISE(ABORT,'late removal failure'); END"));
   expect(() => repository.removeLibraryItem(id, ['en'])).toThrow('late removal failure');
@@ -147,9 +152,9 @@ it.each(['acquire', 'refresh'] as const)('rejects removal of the same source dur
   const service = new ReaderService(() => repository, ['en'], () => undefined, () => new Promise(resolve => { finish = resolve; }));
   const pending = operation === 'acquire' ? service.dispatch('acquire', [{ url: 'https://youtu.be/VidDemo_001' }]) : service.dispatch('refresh', [{ itemId: id }]);
   expect(service.dispatch('removeLibraryItem', [{ itemId: id }])).toMatchObject({ error: { code: 'ACQUISITION_BUSY' } });
-  expect(service.dispatch('openLibrary', []).ok).toBe(true);
-  expect(service.dispatch('openSettings', []).ok).toBe(true);
-  expect(service.dispatch('moveTab', [{ tabId: 'settings', toIndex: 0 }]).ok).toBe(true);
+  expect(service.dispatch('openLibrary', [{ expectedRevision: repository.workspace().revision }]).ok).toBe(true);
+  expect(service.dispatch('openSettings', [{ expectedRevision: repository.workspace().revision }]).ok).toBe(true);
+  expect(service.dispatch('moveTab', [{ tabId: required(repository.workspace().tabs.find(t => t.kind === 'settings')).id, toIndex: 0, expectedRevision: repository.workspace().revision }]).ok).toBe(true);
   const before = repository.workspace();
   finish({ extraction }); expect((await pending).ok).toBe(true);
   expect(repository.workspace().tabs).toEqual(before.tabs);

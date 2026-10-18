@@ -1,3 +1,4 @@
+const discussionTab = (itemId: string) => instanceTab(`test-view-${itemId}`, itemId);
 import type { SharedChange, SharedCommit } from '../shared/reader-sync';
 import { translator } from './i18n';
 import { required } from './testing/required';
@@ -13,7 +14,7 @@ import { initialComments, items } from '../fixtures/discussions';
 import { toggleSeen } from '../domain/discussion';
 import type { AcquisitionResult, ReaderApi, ReaderState, Result } from '../shared/reader-api';
 import type { AcquisitionNotification } from '../shared/acquisition';
-import { closeWorkspaceTab, discussionTab, openWorkspaceTab, moveWorkspaceTab } from '../domain/workspace';
+import { closeWorkspaceTab, discussionTab as instanceTab, openWorkspaceTab, moveWorkspaceTab } from '../domain/workspace';
 import { defaultQuery, evaluateDiscussionQuery } from '../domain/discussion-query';
 import { createQueryExecutor } from './query-executor';
 import type { QueryExecutor } from './query-worker-client';
@@ -33,7 +34,7 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() { /* jsdom has no layout. */ } unobserve() { /* Test only. */ } disconnect() { /* Test only. */ } });
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: function(this: HTMLElement, options: ScrollToOptions) { this.scrollTop = options.top ?? 0; } });
   vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate: async (comments, query) => evaluateDiscussionQuery(comments, query), dispose: vi.fn() } as QueryExecutor as ReturnType<typeof createQueryExecutor>));
-  state = { discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items, comments: initialComments, preferences: { locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' },
+  state = { viewInstances: {}, discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items, comments: initialComments, preferences: { locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' },
     workspace: { tabs: items.map(item => discussionTab(item.id)), activeTabId: discussionTab(items[0].id).id, revision: 0 } };
   const open: ReaderApi['openStoredItem'] = async ({ itemId }) => {
     state = { ...state, workspace: openWorkspaceTab(state.workspace, discussionTab(itemId)) };
@@ -55,7 +56,7 @@ beforeEach(() => {
     onAcquisitionProgress: vi.fn(() => () => undefined),
     getAcquisitionProgress: vi.fn(async () => ({ ok: true as const, value: null })),
     cancelAcquisition: vi.fn(async () => ({ ok: true as const, value: null })),
-    saveDiscussionView: vi.fn(async request => { state = { ...state, discussionViews: { ...state.discussionViews, [request.itemId]: request } }; return { ok: true as const, value: null }; }),
+    saveDiscussionView: vi.fn(async request => { state = { ...state, discussionViews: { ...state.discussionViews, [request.viewId]: request } }; return { ok: true as const, value: null }; }),
     openSource: vi.fn(async () => ({ ok: true as const, value: null })),
     getHelperStatus: vi.fn(async ({ kind }) => ({ ok: true as const, value: { kind, mode: 'unavailable' as const, state: 'unavailable' as const, testedVersion: kind === 'yt-dlp' ? '2026.08.19' : '0.4.0' } })),
     chooseHelper: vi.fn(async () => ({ ok: true as const, value: null })),
@@ -64,7 +65,7 @@ beforeEach(() => {
     undoSeen: vi.fn(async () => ({ ok: false as const, error: { code: 'STORAGE_UNAVAILABLE' as const } })),
     openStoredItem: vi.fn(open),
     activateTab: vi.fn(async ({ tabId }) => {
-      state = { ...state, workspace: openWorkspaceTab(state.workspace, state.workspace.tabs.find(tab => tab.id === tabId) ?? discussionTab(tabId.replace(/^discussion:/, ''))) };
+      state = { ...state, workspace: openWorkspaceTab(state.workspace, state.workspace.tabs.find(tab => tab.id === tabId) ?? discussionTab(tabId.replace(/^test-view-/, ''))) };
       return { ok: true as const, value: state.workspace };
     }),
     openLibrary: vi.fn(async () => { state = { ...state, workspace: openWorkspaceTab(state.workspace, { id: 'library', kind: 'library' }) }; return { ok: true as const, value: state.workspace }; }),
@@ -128,23 +129,23 @@ const checked = () => checkboxes().map(input => input.checked);
 
 it('Library startup does not create/evaluate/render hidden discussions; first activation reconstructs once with independent draft/applied/sort/selection', async () => {
   state = { ...state, workspace: openWorkspaceTab(state.workspace, { id: 'library', kind: 'library' }), discussionViews: {
-    'video-demo': { draft: { ...defaultQuery, text: 'microphone' }, applied: { ...defaultQuery, seen: 'unseen' }, sort: 'oldest', anchor: { commentId: null, offset: 0 }, selected: 'v2' },
-    'post-demo': { draft: defaultQuery, applied: defaultQuery, sort: 'latest-activity', anchor: { commentId: null, offset: 0 }, selected: 'p1' },
+    'test-view-video-demo': { draft: { ...defaultQuery, text: 'microphone' }, applied: { ...defaultQuery, seen: 'unseen' }, sort: 'oldest', anchor: { commentId: null, offset: 0 }, selected: 'v2' },
+    'test-view-post-demo': { draft: defaultQuery, applied: defaultQuery, sort: 'latest-activity', anchor: { commentId: null, offset: 0 }, selected: 'p1' },
   } };
   window.__readerWork = {}; await showReader();
   expect(createQueryExecutor).not.toHaveBeenCalled(); expect(document.querySelectorAll('article.comment')).toHaveLength(0);
   expect(work()).toEqual({});
-  fireEvent.click(document.getElementById('tab-discussion:video-demo') as HTMLElement);
+  fireEvent.click(document.getElementById('tab-test-view-video-demo') as HTMLElement);
   await screen.findByRole('searchbox', { name: 'Search this discussion' });
   expect(screen.getByRole<HTMLInputElement>('searchbox').value).toBe('microphone');
   expect(screen.getByText('Draft criteria · Apply to update')).toBeTruthy();
   expect(within(screen.getByRole('tabpanel')).getByLabelText<HTMLSelectElement>('Sort').value).toBe('oldest');
   expect(createQueryExecutor).toHaveBeenCalledTimes(1); expect(work()['panel:post-demo'] ?? 0).toBe(0);
   expect(api.toggleSeen).not.toHaveBeenCalled();
-  fireEvent.click(document.getElementById('tab-discussion:post-demo') as HTMLElement);
+  fireEvent.click(document.getElementById('tab-test-view-post-demo') as HTMLElement);
   await waitFor(() => expect(within(screen.getByRole('tabpanel')).getByLabelText<HTMLSelectElement>('Sort').value).toBe('latest-activity'));
   expect(createQueryExecutor).toHaveBeenCalledTimes(2);
-  fireEvent.click(document.getElementById('tab-discussion:video-demo') as HTMLElement);
+  fireEvent.click(document.getElementById('tab-test-view-video-demo') as HTMLElement);
   await waitFor(() => expect(screen.getByRole<HTMLInputElement>('searchbox').value).toBe('microphone'));
   expect(createQueryExecutor).toHaveBeenCalledTimes(2);
 });
@@ -155,7 +156,7 @@ it('active saved view shows localized restoration status until the worker finish
   // Keep the production session promise pending while testing the first paint.
   evaluate.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
   vi.mocked(createQueryExecutor).mockReturnValue({ evaluate, dispose: vi.fn() } as ReturnType<typeof createQueryExecutor>);
-  state = { ...state, discussionViews: { 'video-demo': { draft: defaultQuery, applied: defaultQuery, sort: 'newest', anchor: { commentId: 'v2', offset: 12 }, selected: 'v2' } } };
+  state = { ...state, discussionViews: { 'test-view-video-demo': { draft: defaultQuery, applied: defaultQuery, sort: 'newest', anchor: { commentId: 'v2', offset: 12 }, selected: 'v2' } } };
   await showReader(); expect(screen.getByText('Restoring saved discussion view…')).toBeTruthy();
   expect(document.querySelectorAll('article.comment')).toHaveLength(0);
   const [rows, query] = evaluate.mock.calls[0]; const focus = document.activeElement;
@@ -168,11 +169,11 @@ it('a restore timeout affects only that discussion; localized fallback permits r
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   vi.mocked(createQueryExecutor).mockImplementationOnce(() => ({ evaluate: async () => ({ ok: false, error: 'QUERY_TOO_EXPENSIVE' }), dispose: vi.fn() } as ReturnType<typeof createQueryExecutor>));
   const view = { draft: defaultQuery, applied: { ...defaultQuery, text: 'saved criteria' }, sort: 'newest' as const, anchor: { commentId: null, offset: 0 }, selected: null };
-  state = { ...state, discussionViews: { 'video-demo': view, 'post-demo': { ...view, applied: defaultQuery } } };
+  state = { ...state, discussionViews: { 'test-view-video-demo': view, 'test-view-post-demo': { ...view, applied: defaultQuery } } };
   await showReader(); await screen.findByRole('searchbox');
   expect(screen.getByRole('alert').textContent).toContain('saved view could not be restored');
   expect(screen.getByRole<HTMLInputElement>('searchbox').value).toBe('saved criteria'); expect(checkboxes()).toHaveLength(initialComments['video-demo'].length);
-  fireEvent.click(document.getElementById('tab-discussion:post-demo') as HTMLElement);
+  fireEvent.click(document.getElementById('tab-test-view-post-demo') as HTMLElement);
   await waitFor(() => expect(screen.getByRole('tabpanel').querySelector('.query-controls')).not.toBeNull());
   expect(within(screen.getByRole('tabpanel')).queryByRole('alert')).toBeNull();
   expect(checkboxes()).toHaveLength(initialComments['post-demo'].length);
@@ -197,10 +198,10 @@ it('Library/Settings/discussion activation and pending workspace saves never reb
   // First activation mounts lazily; subsequent switches retain mounted isolation.
   for (const id of ['post-demo', 'third-discussion', 'video-demo']) {
     fireEvent.click(document.getElementById(`tab-${discussionTab(id).id}`) as HTMLElement);
-    await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-${id}`));
+    await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-test-view-${id}`));
   }
   expect(work()['forest:third-discussion']).toBeGreaterThan(0);
-  const panel = document.getElementById('panel-video-demo');
+  const panel = document.getElementById('panel-test-view-video-demo');
   if (!panel) throw new Error('Missing panel');
   panel.scrollTop = 345;
   const originalRows = Array.from(panel.querySelectorAll('.comment-branch'));
@@ -212,13 +213,13 @@ it('Library/Settings/discussion activation and pending workspace saves never reb
   }
   for (const id of ['video-demo', 'post-demo', 'third-discussion', 'video-demo']) {
     fireEvent.click(document.getElementById(`tab-${discussionTab(id).id}`) as HTMLElement);
-    await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-${id}`));
+    await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-test-view-${id}`));
     expect(work()).toEqual({});
   }
   let resolve!: (result: Result<ReaderState['workspace']>) => void;
   vi.mocked(api.activateTab).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
-  fireEvent.click(document.getElementById('tab-discussion:post-demo') as HTMLElement);
-  expect(document.getElementById('tab-discussion:video-demo')?.hasAttribute('disabled')).toBe(true);
+  fireEvent.click(document.getElementById('tab-test-view-post-demo') as HTMLElement);
+  expect(document.getElementById('tab-test-view-video-demo')?.hasAttribute('disabled')).toBe(true);
   expect(work()).toEqual({});
   await act(async () => resolve({ ok: true, value: openWorkspaceTab(state.workspace, discussionTab('post-demo')) }));
   expect(work()).toEqual({});
@@ -232,14 +233,14 @@ it('activation retains ADR 0009 isolation with a 10k hidden discussion and bound
   await showReader();
   for (const id of ['post-demo', 'third-discussion', 'video-demo']) {
     fireEvent.click(document.getElementById(`tab-${discussionTab(id).id}`) as HTMLElement);
-    await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-${id}`));
+    await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-test-view-${id}`));
   }
-  const large = document.getElementById('panel-third-discussion');
+  const large = document.getElementById('panel-test-view-third-discussion');
   expect(large?.querySelectorAll('article').length).toBeLessThan(30);
   window.__readerWork = {};
   for (const id of ['post-demo', 'third-discussion', 'video-demo']) {
     fireEvent.click(document.getElementById(`tab-${discussionTab(id).id}`) as HTMLElement);
-    await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-${id}`));
+    await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe(`panel-test-view-${id}`));
     expect(work()).toEqual({});
   }
 });
@@ -250,8 +251,8 @@ it('draft, query evaluation, navigation and seen saves in A keep B/C idle; draft
   // Keep both peers mounted before checking that acknowledged seen/Undo updates
   // do not change their memoized action callbacks or rebuild hidden readers.
   for (const id of ['post-demo', 'third-discussion', 'video-demo']) {
-    fireEvent.click(required(document.getElementById(`tab-discussion:${id}`)));
-    await waitFor(() => expect(document.getElementById(`tab-discussion:${id}`)?.getAttribute('aria-selected')).toBe('true'));
+    fireEvent.click(required(document.getElementById(`tab-test-view-${id}`)));
+    await waitFor(() => expect(document.getElementById(`tab-test-view-${id}`)?.getAttribute('aria-selected')).toBe('true'));
   }
   window.__readerWork = {};
   fireEvent.change(screen.getByRole('searchbox', { name: 'Search this discussion' }), { target: { value: 'camera' } });
@@ -392,7 +393,7 @@ function acquired(): AcquisitionResult {
   const item = { ...items[0], id: 'acquired-video', isDemo: false, removable: true, sourceId: 'abcdefghijk', title: 'Acquired video' };
   const comment = { ...initialComments['video-demo'][0], id: 'acquired-comment', itemId: item.id, parentId: null, seen: false, text: 'Acquired comment' };
   return { operationId: 'fixture-operation', timings: { targetMs: 0, helperMs: 0, preparationMs: 0, fetchMs: 0, processingMs: 0, savingMs: 0, bootstrapMs: 0, totalMs: 0 },
-    state: { discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' },
+    state: { viewInstances: {}, discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' },
     workspace: { tabs: [...items, item].map(item => discussionTab(item.id)), activeTabId: discussionTab(item.id).id, revision: 1 } },
     summary: { itemId: item.id, coverage: 'unknown', inserted: 1, updated: 0, warnings: 0 } };
 }
@@ -407,7 +408,7 @@ it('URL Enter submission adds and activates acknowledged discussion, then Refres
   await userEvent.type(screen.getByLabelText('YouTube URL'), 'https://youtu.be/abcdefghijk{Enter}');
   expect(api.acquire).toHaveBeenCalledWith({ url: 'https://youtu.be/abcdefghijk' });
   await screen.findByText('Acquired comment');
-  expect(screen.getByRole('tabpanel').id).toBe('panel-acquired-video');
+  expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-acquired-video');
   expect(screen.queryByText(/Synthetic discussions/)).toBeNull();
   expect(within(screen.getByRole('tabpanel')).queryByText(/Demo reference time/)).toBeNull();
   expect(screen.getByRole('status').title).toContain('Discussion saved');
@@ -415,7 +416,7 @@ it('URL Enter submission adds and activates acknowledged discussion, then Refres
   await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   expect(api.refresh).toHaveBeenCalledWith({ itemId: 'acquired-video' });
   await screen.findByText('Refreshed comment');
-  expect(screen.getByRole('tabpanel').id).toBe('panel-acquired-video');
+  expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-acquired-video');
 });
 it.each(['cancelled', 'INVALID_BACKUP', 'restarting', 'RECOVERY_REQUIRED'] as const)(
   'coordinates acquisition acknowledgments with restore outcome %s', async outcome => {
@@ -432,12 +433,12 @@ it.each(['cancelled', 'INVALID_BACKUP', 'restarting', 'RECOVERY_REQUIRED'] as co
     fireEvent.click(screen.getByRole('button', { name: 'Restore backup…' }));
     await waitFor(() => expect(api.restoreBackup).toHaveBeenCalledOnce());
     await act(async () => finishAcquire({ ok: true, value: acquired() }));
-    expect(document.getElementById('panel-acquired-video')).toBeNull();
+    expect(document.getElementById('panel-test-view-acquired-video')).toBeNull();
     await act(async () => finishRestore(outcome === 'cancelled' || outcome === 'restarting'
       ? { ok: true, value: { status: outcome } } : { ok: false, error: { code: outcome } }));
     if (outcome === 'cancelled' || outcome === 'INVALID_BACKUP') await screen.findByText('Acquired comment');
     else {
-      expect(document.getElementById('panel-acquired-video')).toBeNull();
+      expect(document.getElementById('panel-test-view-acquired-video')).toBeNull();
       expect(screen.getByRole('dialog').hasAttribute('open')).toBe(true);
     }
   });
@@ -459,7 +460,7 @@ it('acquisition shows busy but checkboxes remain usable; failure retains visible
   await userEvent.click(screen.getByRole('tab', { name: /A quieter desk/ }));
   finish({ ok: false, error: { code: 'HELPER_UNAVAILABLE' } });
   expect((await screen.findByRole('alert')).textContent).toContain('niedostępny');
-  expect(screen.getByRole('tabpanel').id).toBe('panel-video-demo');
+  expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-video-demo');
   expect(checked()[0]).toBe(!original[0]);
   expect(screen.queryByRole('status')).toBeNull();
 });
@@ -532,13 +533,13 @@ it('closes a background tab independently and Library reopens it; closing all sh
   await showReader();
   const title = items[0].kind === 'video' ? items[0].title : '';
   await userEvent.click(screen.getByRole('button', { name: /^Close tab: Quiet Workshop/ }));
-  expect(api.closeTab).toHaveBeenCalledWith({ tabId: discussionTab('post-demo').id });
+  expect(api.closeTab).toHaveBeenCalledWith({ tabId: discussionTab('post-demo').id, expectedRevision: 0 });
   expect(api.activateTab).not.toHaveBeenCalled();
-  expect(screen.getByRole('tabpanel').id).toBe('panel-video-demo');
+  expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-video-demo');
   await userEvent.click(screen.getByRole('button', { name: 'Library' }));
   await userEvent.click(within(screen.getByRole('tabpanel')).getByRole('button', { name: 'Open' }));
-  expect(api.openStoredItem).toHaveBeenCalledWith({ itemId: 'post-demo' });
-  expect(screen.getByRole('tabpanel').id).toBe('panel-post-demo');
+  expect(api.openStoredItem).toHaveBeenCalledWith({ itemId: 'post-demo', expectedRevision: 2 });
+  expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-post-demo');
   await userEvent.click(screen.getByRole('button', { name: 'Close tab: Library' }));
   await userEvent.click(screen.getByRole('button', { name: `Close tab: ${title}` }));
   await userEvent.click(screen.getByRole('button', { name: /^Close tab: Quiet Workshop/ }));
@@ -551,7 +552,7 @@ it('starts with persisted tab selection and keeps complete stored description be
   const value = acquired().state;
   api.bootstrap = vi.fn(async () => ({ ok: true as const, value }));
   await showReader();
-  expect(screen.getByRole('tabpanel').id).toBe('panel-acquired-video');
+  expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-acquired-video');
   const button = screen.getByRole('button', { name: 'Show description' });
   const description = document.getElementById(button.getAttribute('aria-controls') ?? '');
   expect(description?.classList.contains('preview')).toBe(true);
@@ -574,7 +575,7 @@ it('older acquisition workspace acknowledgment cannot reopen a tab closed after 
   await userEvent.click(screen.getByRole('button', { name: 'Close tab: Acquired video' }));
   finish({ ok: true as const, value });
   await waitFor(() => expect(screen.queryByRole('tab', { name: /Acquired video/ })).toBeNull());
-  expect(screen.getByRole('tabpanel').id).toBe('panel-post-demo');
+  expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-post-demo');
 });
 
 it('a failed tab close retains the acknowledged view and presents localized save feedback', async () => {
@@ -584,7 +585,7 @@ it('a failed tab close retains the acknowledged view and presents localized save
   await userEvent.click(screen.getByRole('button', { name: /^Close tab: A quieter desk/ }));
   expect((await screen.findByRole('alert')).textContent).toContain('could not be confirmed');
   expect(screen.getAllByRole('tab')).toHaveLength(2);
-  expect(screen.getByRole('tabpanel').id).toBe('panel-video-demo');
+  expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-video-demo');
   expect(checked()).toEqual(original);
 });
 
@@ -600,7 +601,7 @@ it('Library and Settings are ordinary singleton closable tabs; toolbar contains 
   await userEvent.click(screen.getByRole('button', { name: 'Close tab: Settings' }));
   expect(screen.getByRole('tabpanel').id).toBe('panel-library');
   await userEvent.click(screen.getByRole('button', { name: 'Close tab: Library' }));
-  expect(screen.getByRole('tabpanel').id).toBe('panel-post-demo');
+  expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-post-demo');
   await userEvent.click(screen.getByRole('button', { name: 'Library' }));
   expect(screen.getAllByRole('tab').at(-1)?.textContent).toBe('Library');
 });
@@ -615,7 +616,7 @@ it('Library filters metadata, shows open/closed counts and removable demo identi
   await userEvent.type(screen.getByRole('searchbox'), 'reading lamp');
   expect(within(panel).getAllByRole('listitem')).toHaveLength(1);
   await userEvent.click(within(panel).getByRole('button', { name: 'Open' }));
-  expect(screen.getByRole('tabpanel').id).toBe('panel-post-demo');
+  expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-post-demo');
   expect(screen.getAllByRole('tab')).toHaveLength(3);
 });
 it('confirmation is required, Cancel preserves item, and successful Remove updates Library and workspace', async () => {
@@ -696,7 +697,7 @@ it('older acquisition acknowledgment preserves newer app opens and mixed reorder
   await userEvent.click(screen.getByRole('button', { name: 'Library' }));
   await userEvent.click(screen.getByRole('button', { name: 'Settings' }));
   fireEvent.keyDown(screen.getByRole('tab', { name: 'Settings: Settings' }), { key: 'ArrowLeft', altKey: true });
-  await waitFor(() => expect(api.moveTab).toHaveBeenCalledWith({ tabId: 'settings', toIndex: 3 }));
+  await waitFor(() => expect(api.moveTab).toHaveBeenCalledWith({ tabId: 'settings', toIndex: 3, expectedRevision: 3 }));
   finish({ ok: true, value: old });
   await waitFor(() => expect(document.querySelector('.acquisition-status')).toBeNull());
   expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
@@ -731,7 +732,7 @@ it('cycles forward and backward with wrap across discussions, Library and Settin
 it('closes active tabs using right then left then empty, without deleting stored discussions', async () => {
   state = { ...state, workspace: { ...state.workspace, tabs: [state.workspace.tabs[0], { id: 'library', kind: 'library' }, { id: 'settings', kind: 'settings' }, state.workspace.tabs[1]], activeTabId: 'library' } };
   await showReader();
-  for (const id of ['tab-settings', 'tab-discussion:post-demo', 'tab-discussion:video-demo']) {
+  for (const id of ['tab-settings', 'tab-test-view-post-demo', 'tab-test-view-video-demo']) {
     expect(press('w', { ctrlKey: true }).defaultPrevented).toBe(true);
     await waitFor(() => expect(activeTab()).toBe(id)); await workspaceReady();
   }
@@ -783,7 +784,7 @@ it('F1 waits for acknowledged singleton Settings activation and focuses help whe
   expect(press('F1').defaultPrevented).toBe(true);
   expect(document.getElementById(keyboardShortcutsTarget)).toBeNull();
   expect(press('F1').defaultPrevented).toBe(false); // pending workspace acknowledgment owns this operation
-  finish(await open());
+  finish(await open({ expectedRevision: 0 }));
   await waitFor(() => expect(document.activeElement?.id).toBe(keyboardShortcutsTarget));
   expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
   api.openSettings = vi.fn(open);
@@ -816,7 +817,7 @@ it('ordinary editable keys remain local, query Ctrl+Enter/F3 still work and Alt+
   expect(screen.getByRole('tabpanel').querySelector('[data-selected=true]')).toBeTruthy();
   const tab = screen.getByRole('tab', { name: /Video:/ }); tab.focus();
   press('ArrowRight', { altKey: true }, tab);
-  await waitFor(() => expect(api.moveTab).toHaveBeenCalledWith({ tabId: 'discussion:video-demo', toIndex: 1 }));
+  await waitFor(() => expect(api.moveTab).toHaveBeenCalledWith({ tabId: 'test-view-video-demo', toIndex: 1, expectedRevision: 0 }));
   expect(api.toggleSeen).not.toHaveBeenCalled();
 });
 it.each(['textarea', 'select', 'contenteditable'])('leaves ordinary navigation and discussion commands in unrelated %s controls', async kind => {
@@ -1105,10 +1106,10 @@ it('date/discovery controls are compact independent drafts, validate ranges, App
   await waitFor(() => expect(matches()).toEqual(['baseline']));
   fireEvent.change(control('Discovery'), { target: { value: 'new' } });
   fireEvent.click(screen.getAllByRole('tab')[1]);
-  await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe('panel-post-demo'));
+  await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-post-demo'));
   expect((within(screen.getByRole('tabpanel')).getByLabelText('Discovery') as HTMLSelectElement).value).toBe('all');
   fireEvent.click(screen.getAllByRole('tab')[0]);
-  await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe('panel-date-test'));
+  await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-date-test'));
   expect((control('Discovery') as HTMLSelectElement).value).toBe('new');
   expect((control('From date') as HTMLInputElement).value).toBe('2001-01-01');
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -1116,7 +1117,7 @@ it('date/discovery controls are compact independent drafts, validate ranges, App
   fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'pl' } });
   await waitFor(() => expect(document.documentElement.lang).toBe('pl'));
   fireEvent.click(screen.getAllByRole('tab')[0]);
-  await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe('panel-date-test'));
+  await waitFor(() => expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-date-test'));
   expect((control('Odkrycie') as HTMLSelectElement).value).toBe('new');
   expect(matches()).toEqual(['baseline']);
   expect(control('Data publikacji')).toBeDefined(); expect(control('Data Do')).toBeDefined();
@@ -1257,9 +1258,9 @@ function installSharedTransport() {
   let commitRevision = 0;
   const stamp = () => ({ profileEpoch: '00000000-0000-0000-0000-000000000001', commitRevision });
   api.onSharedCommit = listener => { listeners.add(listener); return () => { listeners.delete(listener); }; };
-  api.getSharedMetadata = async () => ({ ok: true, value: { ...stamp(), preferences: state.preferences, workspace: state.workspace } });
+  api.getSharedMetadata = async () => ({ ok: true, value: { ...stamp(), preferences: state.preferences, workspace: state.workspace, viewInstances: state.viewInstances } });
   api.getSharedSnapshot = async request => ({ ok: true, value: request ? { ...stamp(), itemId: request.itemId,
-    item: state.items.find(i => i.id === request.itemId) ?? null, comments: state.comments[request.itemId] ?? [], undo: state.seenUndo[request.itemId] ?? null, workspace: state.workspace }
+    item: state.items.find(i => i.id === request.itemId) ?? null, comments: state.comments[request.itemId] ?? [], undo: state.seenUndo[request.itemId] ?? null, workspace: state.workspace, viewInstances: state.viewInstances }
     : { ...stamp(), state } });
   return (change: SharedChange) => { commitRevision++; for (const listener of listeners) listener({ ...stamp(), change }); };
 }
@@ -1319,7 +1320,7 @@ it('M2 local checkbox and preference controls use committed notifications while 
     return { ok: true as const, value: { comments: before, changedCount: 1, targetCount: 1, undo: null } };
   });
   const open = api.openSettings;
-  api.openSettings = vi.fn(async () => { const result = await open(); publish({ kind: 'workspace' }); return result; });
+  api.openSettings = vi.fn(async () => { const result = await open({ expectedRevision: 0 }); publish({ kind: 'workspace' }); return result; });
   api.updatePreferences = vi.fn(async change => {
     const before = state.preferences;
     state = { ...state, preferences: { ...state.preferences, ...change } };

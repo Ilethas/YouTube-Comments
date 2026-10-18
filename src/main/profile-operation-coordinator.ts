@@ -42,7 +42,7 @@ export class ProfileOperationCoordinator {
     private readonly stamp: () => SharedStamp,
     private readonly execute: (caller: ReaderCallerContext, command: DrainCommand) => Result<unknown>,
     private readonly deadlineMs = 15000,
-    private readonly checkpointAllowed: (command: DrainCommand) => boolean = () => true) {}
+    private readonly checkpointAllowed: (command: DrainCommand, caller: ReaderCallerContext) => boolean = () => true) {}
 
   /** Serialize only main's intentional Close/Reload/Quit requests. Profile
    * commands themselves still reject concurrent requests instead of queuing. */
@@ -125,17 +125,17 @@ export class ProfileOperationCoordinator {
     if (!participant || !op || op.phase !== 'DRAINING' || participant.commands || JSON.stringify(commands).length > 8 * 1024 * 1024) return denied();
     const used = new Set<string>(), views = new Set<string>(), collapseDefaults = new Map<string, boolean>(), collapseOverrides = new Set<string>();
     for (const command of commands) {
-      if (!this.checkpointAllowed(command)) return denied();
+      if (!this.checkpointAllowed(command, caller)) return denied();
       if (command.kind === 'view') {
-        if (views.has(command.request.itemId)) return denied(); views.add(command.request.itemId);
+        if (views.has(command.request.viewId)) return denied(); views.add(command.request.viewId);
       }
       if (command.kind === 'collapse') {
         const request = command.request;
         if (request.kind === 'all') {
-          if (collapseDefaults.has(request.itemId)) return denied(); collapseDefaults.set(request.itemId, request.collapsed);
+          if (collapseDefaults.has(request.viewId)) return denied(); collapseDefaults.set(request.viewId, request.collapsed);
         } else {
-          if (!collapseDefaults.has(request.itemId) || collapseDefaults.get(request.itemId) === request.collapsed || collapseOverrides.has(request.itemId)) return denied();
-          collapseOverrides.add(request.itemId);
+          if (!collapseDefaults.has(request.viewId) || collapseDefaults.get(request.viewId) === request.collapsed || collapseOverrides.has(request.viewId)) return denied();
+          collapseOverrides.add(request.viewId);
         }
       }
     }

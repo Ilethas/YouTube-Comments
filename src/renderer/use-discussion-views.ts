@@ -5,7 +5,9 @@ import { createQueryExecutor } from './query-executor';
 import type { ReaderApi, ReaderState } from '../shared/reader-api';
 
 /** Registry survives tab close/reopen; explicit Library removal disposes its worker/state. */
-export function useDiscussionViews(options?: { readonly collapse?: ReaderState['discussionCollapse']; readonly saveCollapse?: ReaderApi['setDiscussionCollapse']; readonly saved: ReaderState['discussionViews']; readonly save: ReaderApi['saveDiscussionView'] }) {
+export function useDiscussionViews(options?: { readonly collapse?: ReaderState['discussionCollapse']; readonly saveCollapse?: ReaderApi['setDiscussionCollapse']; readonly instances?: ReaderState['viewInstances']; readonly saved: ReaderState['discussionViews']; readonly save: ReaderApi['saveDiscussionView'] }) {
+  const itemIds = useRef(new Map<string, string>());
+  const revisions = useRef(new Map<string, { intent: number; collapse: number }>());
   const sessions = useRef(new Map<string, DiscussionViewSession>());
   // Bootstrap intent is considered once per new session, never on acknowledgments.
   const initial = useRef(options);
@@ -22,15 +24,26 @@ export function useDiscussionViews(options?: { readonly collapse?: ReaderState['
     });
   }, []);
   return useMemo(() => ({
-    get(id: string, comments: readonly Comment[]) {
+    get(id: string, comments: readonly Comment[], itemId: string) {
       let session = sessions.current.get(id);
+      if (session && itemIds.current.get(id) !== itemId) throw new Error('View item identity changed');
       if (!session) {
         const configuration = initial.current, saveCollapse = configuration?.saveCollapse;
+        itemIds.current.set(id, itemId);
+        const instance = configuration?.instances?.[id];
+        const revision = { intent: instance?.intentRevision ?? 0, collapse: instance?.collapseRevision ?? 0 };
+        revisions.current.set(id, revision);
         session = new DiscussionViewSession(comments, createQueryExecutor(), undefined, undefined, {
           collapse: removed.current.has(id) ? undefined : configuration?.collapse?.[id],
-          saveCollapse: saveCollapse ? change => saveCollapse({ itemId: id, ...change }) : undefined,
+          saveCollapse: saveCollapse ? async change => {
+            const result = await saveCollapse({ viewId: id, expectedRevision: revision.collapse, ...change });
+            if (result.ok) revision.collapse++; return result;
+          } : undefined,
           saved: removed.current.has(id) ? undefined : configuration?.saved[id],
-          save: configuration ? intent => configuration.save({ itemId: id, ...intent }) : undefined,
+          save: configuration ? async intent => {
+            const result = await configuration.save({ viewId: id, expectedRevision: revision.intent, ...intent });
+            if (result.ok) revision.intent++; return result;
+          } : undefined,
         });
         sessions.current.set(id, session);
       }
@@ -38,7 +51,21 @@ export function useDiscussionViews(options?: { readonly collapse?: ReaderState['
     },
     has(id: string) { return sessions.current.has(id); },
     freeze(activeItemId?: string) { for (const [id, session] of sessions.current) session.freeze(id === activeItemId); },
-    async checkpoints() { return (await Promise.all([...sessions.current].map(([id, session]) => session.drainCheckpoints(id)))).flat(); },
+    async checkpoints() {
+      return (await Promise.all([...sessions.current].map(async ([id, session]) => {
+        const entries = await session.drainCheckpoints(id), revision = revisions.current.get(id);
+        if (!revision) throw new Error('Missing view transport revision');
+        let collapse = revision.collapse;
+        return entries.map(entry => {
+          const command = entry.command;
+          if (command.kind !== 'view' && command.kind !== 'collapse') return entry;
+          const lane = command.kind === 'view' ? 'intent' : 'collapse';
+          const expectedRevision = lane === 'intent' ? revision.intent : collapse++;
+          return { command: { ...command, request: { ...command.request, expectedRevision } } as typeof command,
+            accept: (result: Parameters<typeof entry.accept>[0]) => { if (result.ok) revision[lane] = expectedRevision + 1; entry.accept(result); } };
+        });
+      }))).flat();
+    },
     resume() { for (const session of sessions.current.values()) session.resume(); },
     flush(id: string) { return sessions.current.get(id)?.flush() ?? Promise.resolve(); },
     async flushAll(): Promise<boolean> {
@@ -52,8 +79,9 @@ export function useDiscussionViews(options?: { readonly collapse?: ReaderState['
       await Promise.all(current.map(session => session.flush()));
       return current.every(session => !session.state.saveFailed && !session.state.collapseSaveFailed);
     },
-    remove(id: string) { removed.current.add(id); sessions.current.get(id)?.dispose(); sessions.current.delete(id); },
-    refresh(id: string, comments: readonly Comment[], item?: ContentItem) { const session = sessions.current.get(id); return session?.refresh(comments, item) ?? Promise.resolve(); },
-    seenChanged(id: string) { sessions.current.get(id)?.seenChanged(); },
+    hasItem(itemId: string) { return [...itemIds.current.values()].includes(itemId); },
+    remove(itemId: string) { for (const [id, item] of itemIds.current) if (item === itemId) { removed.current.add(id); sessions.current.get(id)?.dispose(); sessions.current.delete(id); itemIds.current.delete(id); revisions.current.delete(id); } },
+    async refresh(itemId: string, comments: readonly Comment[], item?: ContentItem) { await Promise.all([...sessions.current].filter(([id]) => itemIds.current.get(id) === itemId).map(([, session]) => session.refresh(comments, item))); },
+    seenChanged(itemId: string) { for (const [id, session] of sessions.current) if (itemIds.current.get(id) === itemId) session.seenChanged(); },
   }), []);
 }

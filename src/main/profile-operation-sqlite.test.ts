@@ -1,3 +1,4 @@
+import { required } from '../renderer/testing/required';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
@@ -25,19 +26,23 @@ afterEach(async () => {
 function setup() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'reader-m3-db-')); roots.push(root);
   const file = path.join(root, 'profile', 'reader.sqlite'), backup = path.join(root, 'backup.sqlite');
-  const alive = [true, true], callers: ReaderCallerContext[] = alive.map((_, index) => ({ windowId: randomUUID(), rendererLease: randomUUID(), isCurrent: () => alive[index] }));
+  const alive = [true, true];
   const events: ProfileEvent[][] = [[], []];
   const dialogs: DataBackupDialogs = { save: vi.fn(async () => backup), select: vi.fn(async () => backup), confirm: vi.fn(async () => true) };
   const restart = vi.fn();
   let repository!: ReaderRepository;
   const service = new ReaderService(() => { repository = ReaderRepository.open(file); repository.initializeDemo(); return repository; }, ['en'], () => undefined, undefined, {}, undefined, undefined, { databasePath: file, dialogs, restart });
   services.push(service);
+  const windowIds = [repository.initialWindowId(), repository.createPersistentWindow()];
+  repository.changeWorkspace('openStoredItem', 'post-demo', undefined, windowIds[1]);
+  const callers: ReaderCallerContext[] = alive.map((_, index) => ({ windowId: windowIds[index], rendererLease: randomUUID(), isCurrent: () => alive[index] }));
   const lifecycle = new ProfileOperationCoordinator(() => callers.filter(c => c.isCurrent()), (caller, event) => { events[callers.indexOf(caller)].push(event); },
-    () => service.profileStamp(), (caller, command) => service.drainCheckpoint(caller, command));
+    () => service.profileStamp(), (caller, command) => service.drainCheckpoint(caller, command), 15000,
+    (command, caller) => service.profileCheckpointAllowed(command, caller));
   service.attachLifecycle(lifecycle);
   function drain(index: number) {
     const event = lifecycle.current(); if (!event) throw new Error('No operation');
-    const command: DrainCommand = { kind: 'view', request: { itemId: index === 0 ? 'video-demo' : 'post-demo', draft: { ...defaultQuery, text: `pending-${index}` }, applied: defaultQuery,
+    const command: DrainCommand = { kind: 'view', request: { viewId: required(Object.entries(repository.viewInstances(windowIds[index])).find(([,v]) => v.itemId === (index === 0 ? 'video-demo' : 'post-demo')))[0], expectedRevision: required(Object.values(repository.viewInstances(windowIds[index])).find(v => v.itemId === (index === 0 ? 'video-demo' : 'post-demo'))).intentRevision, draft: { ...defaultQuery, text: `pending-${index}` }, applied: defaultQuery,
       sort: 'newest', selected: null, anchor: { commentId: null, offset: 0 } } };
     const plan = lifecycle.plan(callers[index], { operationId: event.operationId, profileEpoch: event.profileEpoch }, [command]);
     if (!plan.ok) throw new Error('Plan denied');
@@ -52,13 +57,14 @@ it('snapshots both pending checkpoints only after the second participant; new mu
   s.service.onSharedCommit(event => commits.push(event.commitRevision));
   const operation = s.service.dispatch('createBackup', [], s.callers[0]);
   expect(s.lifecycle.phase).toBe('DRAINING'); s.drain(1);
+  expect(() => s.service.claimWindowIdentity(true)).toThrow('Profile busy');
   expect(s.dialogs.save).not.toHaveBeenCalled();
   expect(s.service.dispatch('toggleSeen', [{ itemId: 'video-demo', commentId: 'v1', seen: false, subtree: false }], s.callers[0])).toMatchObject({ error: { code: 'DATA_BUSY' } });
   expect(s.service.dispatch('getSharedMetadata', [], s.callers[1]).ok).toBe(true);
   s.drain(0); expect(await operation).toMatchObject({ value: { status: 'created' } });
-  expect(commits).toEqual([2, 3]);
+  expect(commits).toEqual([4, 5]);
   const copy = ReaderRepository.open(s.backup);
-  try { const state = copy.bootstrap(['en']); expect(state.discussionViews['video-demo'].draft.text).toBe('pending-0'); expect(state.discussionViews['post-demo'].draft.text).toBe('pending-1'); } finally { copy.close(); }
+  try { const state = copy.bootstrap(['en'], s.callers[0].windowId), peer = copy.bootstrap(['en'], s.callers[1].windowId); expect(Object.values(state.discussionViews)[0].draft.text).toBe('pending-0'); expect(Object.values(peer.discussionViews)[0].draft.text).toBe('pending-1'); } finally { copy.close(); }
   s.resume(); expect(s.lifecycle.blocks(s.callers[1])).toBe(false);
 });
 it('failed COMMIT publishes nothing, aborts preflight, preserves storage and permits a reconciled retry', async () => {
@@ -101,6 +107,6 @@ it('confirmed restore replaces offline with all old commands fenced and a fresh 
   expect(await restore).toMatchObject({ value: { status: 'restarting' } });
   expect(s.lifecycle.phase).toBe('RESTARTING');
   expect(s.service.dispatch('saveDiscussionView', [{ itemId: 'video-demo' }], s.callers[0])).toMatchObject({ error: { code: 'DATA_BUSY' } });
-  expect(validateBackup(s.file)).toBe(12);
+  expect(validateBackup(s.file)).toBe(13);
   const reopened = ReaderRepository.open(s.file); try { expect(reopened.stamp().profileEpoch).not.toBe(oldEpoch); } finally { reopened.close(); }
 });

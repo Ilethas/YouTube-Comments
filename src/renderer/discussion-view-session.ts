@@ -236,7 +236,7 @@ export class DiscussionViewSession {
     if (capture) this.readerSettled();
     this.draining = true; this.saveQueue?.pause(); this.collapseQueue?.pause();
   }
-  async drainCheckpoints(itemId: string): Promise<readonly import('./profile-lifecycle').Checkpoint[]> {
+  async drainCheckpoints(viewId: string): Promise<readonly import('./profile-lifecycle').Checkpoint[]> {
     if (this.state.pending) await new Promise<void>(resolve => {
       const unsubscribe = this.subscribe(() => { if (!this.state.pending) { unsubscribe(); resolve(); } });
     });
@@ -244,13 +244,13 @@ export class DiscussionViewSession {
     const entries: import('./profile-lifecycle').Checkpoint[] = [];
     if (this.collapseQueue?.dirty) {
       const accept = this.collapseQueue.checkpoint(), collapse = this.state.collapse;
-      entries.push({ command: { kind: 'collapse', request: { itemId, kind: 'all', collapsed: collapse.defaultCollapsed } },
+      entries.push({ command: { kind: 'collapse', request: { viewId, expectedRevision: 0, kind: 'all', collapsed: collapse.defaultCollapsed } },
         accept: result => { if (!result.ok || !collapse.overrides.length) accept(result.ok); } });
-      if (collapse.overrides.length) entries.push({ command: { kind: 'collapse', request: { itemId, kind: 'comments', ids: collapse.overrides, collapsed: !collapse.defaultCollapsed } }, accept: result => accept(result.ok) });
+      if (collapse.overrides.length) entries.push({ command: { kind: 'collapse', request: { viewId, expectedRevision: 0, kind: 'comments', ids: collapse.overrides, collapsed: !collapse.defaultCollapsed } }, accept: result => accept(result.ok) });
     }
     if (this.saveQueue?.dirty) {
       const accept = this.saveQueue.checkpoint();
-      entries.push({ command: { kind: 'view', request: { itemId, ...this.persistentIntent() } }, accept: result => accept(result.ok) });
+      entries.push({ command: { kind: 'view', request: { viewId, expectedRevision: 0, ...this.persistentIntent() } }, accept: result => accept(result.ok) });
     }
     return entries;
   }

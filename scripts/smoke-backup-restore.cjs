@@ -1,3 +1,4 @@
+const { viewId } = require('./window-view-fixtures.cjs');
 // Real built-main/preload/renderer checks using only an owned disposable profile.
 // Native dialogs and relaunch are controlled here, never through shipped hooks.
 const assert = require('node:assert/strict');
@@ -72,6 +73,15 @@ if (process.versions.electron && process.type === 'browser') {
     await wait("document.querySelector('.app-shell') !== null");
     console.log(`Backup Electron ${phase} startup ready: ${(performance.now() - processStarted).toFixed(1)} ms`);
     const invoke = async (name, payload) => {
+      if (['saveDiscussionView','setDiscussionCollapse'].includes(name)) {
+        const state = (await js('window.reader.bootstrap()')).value;
+        const id = viewId(state,payload.itemId), { itemId: _item, ...intent } = payload;
+        payload = { ...intent, viewId: id, expectedRevision: state.viewInstances[id][name==='saveDiscussionView'?'intentRevision':'collapseRevision'] };
+      }
+      if (['openLibrary','openSettings','openStoredItem','activateTab','closeTab','moveTab'].includes(name)) {
+        const state = (await js('window.reader.bootstrap()')).value;
+        payload = { ...payload, expectedRevision: state.workspace.revision };
+      }
       // Capture the acknowledged descriptor/state before this sequential test intent.
       if (name === 'toggleSeen' || name === 'undoSeen') {
         const acknowledged = await js(`window.reader.getSharedSnapshot(${JSON.stringify({itemId:payload.itemId})}).then(r=>r.value)`);
@@ -88,7 +98,7 @@ if (process.versions.electron && process.type === 'browser') {
     // Keep the real complete main -> renderer IPC, but do not clone 60k comments
     // again across executeJavaScript just to inspect a handful of metadata fields.
     const metadata = async () => {
-      const result = await js('window.reader.bootstrap().then(r=>r.ok?{ok:true,value:{items:r.value.items,preferences:r.value.preferences,discussionViews:r.value.discussionViews,seenUndo:r.value.seenUndo,workspace:r.value.workspace}}:r)');
+      const result = await js('window.reader.bootstrap().then(r=>r.ok?{ok:true,value:{items:r.value.items,preferences:r.value.preferences,viewInstances:r.value.viewInstances,discussionViews:r.value.discussionViews,seenUndo:r.value.seenUndo,workspace:r.value.workspace}}:r)');
       assert.equal(result.ok, true); return result.value;
     };
     const remove = async itemId => {
@@ -102,7 +112,7 @@ if (process.versions.electron && process.type === 'browser') {
       if (phase === 'seed') await invoke('setDiscussionCollapse', { itemId: 'video-demo', kind: 'comments', ids: ['v1'], collapsed: false });
       await invoke('toggleSeen', { itemId: 'video-demo', commentId: 'v1', subtree: false });
       await invoke('bulkSeen', { itemId: 'post-demo', seen: true, target: { kind: 'all' } });
-      await invoke('openSettings'); await invoke('moveTab', { tabId: 'settings', toIndex: 0 });
+      await invoke('openSettings'); await invoke('moveTab', { tabId: (await metadata()).workspace.tabs.find(t=>t.kind==='settings').id, toIndex: 0 });
       const query = { text: '', fields: ['content'], mode: 'text', caseSensitive: false, seen: 'all', publication: { kind: 'all' }, discovery: 'all' };
       await invoke('saveDiscussionView', { itemId: 'video-demo', draft: { ...query, text: 'different draft' }, applied: query, sort: 'newest', anchor: { commentId: 'v5', offset: 15 }, selected: 'v2' });
       await invoke('updatePreferences', { locale: 'pl' }); await invoke('updatePreferences', { appearance: 'dark' });
@@ -132,7 +142,7 @@ if (process.versions.electron && process.type === 'browser') {
       await invoke('setDiscussionCollapse', { itemId: 'video-demo', kind: 'all', collapsed: phase === 'seed' });
       if (phase === 'seed') await invoke('setDiscussionCollapse', { itemId: 'video-demo', kind: 'comments', ids: ['v1'], collapsed: false });
       await invoke('toggleSeen', { itemId: 'video-demo', commentId: 'v1', subtree: false });
-      await invoke('undoSeen', { itemId: 'post-demo' }); await invoke('closeTab', { tabId: 'discussion:post-demo' });
+      await invoke('undoSeen', { itemId: 'post-demo' }); await invoke('closeTab', { tabId: viewId((await js('window.reader.bootstrap()')).value, 'post-demo') });
       await invoke('updatePreferences', { appearance: 'light' });
       const state = await metadata(), removable = state.items.find(item => item.removable && !item.isDemo);
       if (removable) await remove(removable.id);
@@ -161,8 +171,8 @@ if (process.versions.electron && process.type === 'browser') {
       assert.deepEqual(data(database(root)), expected);
       const boot = await metadata();
       assert.equal(boot.preferences.locale, 'pl');
-      assert.equal(boot.discussionViews['video-demo'].draft.text, 'different draft');
-      assert.equal(boot.discussionViews['video-demo'].sort, 'newest');
+      assert.equal(boot.discussionViews[viewId(boot,'video-demo')].draft.text, 'different draft');
+      assert.equal(boot.discussionViews[viewId(boot,'video-demo')].sort, 'newest');
       assert.equal((await invoke('getHelperStatus', { kind: 'yt-dlp' })).path, 'C:\\test-only\\yt-dlp.exe');
       const recovery = path.join(path.dirname(database(root)), 'recovery');
       const safety = fs.readdirSync(recovery).map(name => path.join(recovery, name, 'safety.sqlite')).filter(fs.existsSync);

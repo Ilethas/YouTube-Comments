@@ -53,6 +53,8 @@ function remoteEvidence<T extends StoredCommentObservation | StoredContentObserv
 }
 function authorValues(value?: Author) { return [value?.sourceId ?? null, value?.displayName ?? null, value?.handle ?? null]; }
 function booleanValue(value?: boolean) { return value === undefined ? null : Number(value); }
+export class StateConflictError extends Error {}
+export class ViewOwnershipError extends Error {}
 export class UndoConflictError extends Error {}
 export class MissingCommentError extends Error {}
 export class NotRemovableError extends Error {}
@@ -125,9 +127,9 @@ export class ReaderRepository {
     for (const observer of this.observers) { try { observer(event); } catch { /* Committed truth survives recipients. */ } }
     return value;
   }
-  itemSnapshot(itemId: string): SharedItemSnapshot {
+  itemSnapshot(itemId: string, windowId = this.initialWindowId()): SharedItemSnapshot {
     const item = this.getStoredItem(itemId) ?? null;
-    return { ...this.stamp(), itemId, item, comments: item ? this.readComments(item) : [], undo: item ? this.seenUndo(itemId) : null, workspace: this.workspace() };
+    return { ...this.stamp(), itemId, item, comments: item ? this.readComments(item) : [], undo: item ? this.seenUndo(itemId) : null, workspace: this.workspace(windowId), viewInstances: this.viewInstances(windowId) };
   }
   private readonly invalidViewDiagnostics = new Set<string>();
   private constructor(private readonly db: DatabaseSync, private readonly ingestion: IngestionDependencies) {}
@@ -199,7 +201,9 @@ export class ReaderRepository {
         });
       });
       establishSyntheticHistory(this.db, this.ingestion.newId);
-      this.writeWorkspace({ tabs: items.map(item => discussionTab(item.id)), activeTabId: items[0] ? discussionTab(items[0].id).id : null, revision: this.workspace().revision + 1 });
+      const windowId = this.initialWindowId();
+      const tabs = items.map(item => this.resumeTab(windowId, item.id));
+      this.writeWorkspace(windowId, { tabs, activeTabId: tabs[0]?.id ?? null, revision: this.workspace(windowId).revision + 1 });
     });
   }
 
@@ -286,7 +290,7 @@ export class ReaderRepository {
   /** Receives normalized data only. Reads/plans/writes/history share one short transaction.
    * Extractor execution/parsing must precede this call. Existing local state is never written.
    * Failed normalization records history only, optionally associated with a caller-owned target. */
-  ingest(extraction: NormalizedExtraction, target?: AttemptTarget, openTab = false): MergeAttempt {
+  ingest(extraction: NormalizedExtraction, target?: AttemptTarget, openTab = false, windowId = this.initialWindowId()): MergeAttempt {
     const attemptId = this.ingestion.newId(), at = this.ingestion.now();
     return this.commit((attempt: MergeAttempt) => attempt.outcome === 'accepted' && attempt.itemId ? { kind: 'item', itemId: attempt.itemId } : { kind: 'watermark' }, () => {
       const actualTarget = extraction.item ? { sourceKind: extraction.item.sourceKind, sourceId: extraction.item.sourceId } : target;
@@ -332,7 +336,8 @@ export class ReaderRepository {
             like_count=?,is_creator=?,is_pinned=?,remote_json=?,last_observed_at=?,last_attempt_id=? WHERE id=?`).run(...values, comment.id);
         }
       }
-      if (openTab) this.openWorkspaceItem(item.id);
+      this.resumeTab(windowId, item.id);
+      if (openTab) this.openWorkspaceItem(windowId, item.id);
       return attempt;
     });
   }
@@ -354,165 +359,182 @@ export class ReaderRepository {
       selectionControls: row.selection_controls as Preferences['selectionControls'], includeCollapsedInPrefix: row.include_collapsed_in_prefix === 1 };
   }
 
-  bootstrap(languages: readonly string[]): ReaderState {
+  bootstrap(languages: readonly string[], windowId = this.initialWindowId()): ReaderState {
     const items = this.readItems();
     return { items, comments: Object.fromEntries(items.map(item => [item.id, this.readComments(item)])),
       seenUndo: Object.fromEntries(items.map(item => [item.id, this.seenUndo(item.id)])),
-      preferences: this.preferences(languages), workspace: this.workspace(), discussionViews: this.discussionViews(), discussionCollapse: this.discussionCollapse() };
+      preferences: this.preferences(languages), workspace: this.workspace(windowId), viewInstances: this.viewInstances(windowId), discussionViews: this.discussionViews(windowId), discussionCollapse: this.discussionCollapse(windowId) };
   }
 
-  /** Invalid presentation state is isolated per discussion; content stays readable. */
-  private discussionCollapse(): Readonly<Record<string, DiscussionCollapse>> {
-    const states = new Map<string, DiscussionCollapse>();
-    for (const row of this.db.prepare('SELECT d.* FROM discussion_collapse d JOIN content_items i ON i.id=d.item_id').all()) {
-      if (typeof row.item_id === 'string' && (row.default_collapsed === 0 || row.default_collapsed === 1))
-        states.set(row.item_id, { defaultCollapsed: row.default_collapsed === 1, overrides: [] });
-    }
-    const overrides = new Map<string, string[]>();
-    for (const row of this.db.prepare(`SELECT o.* FROM comment_collapse_overrides o
-      JOIN comments c ON c.item_id=o.item_id AND c.id=o.comment_id`).all()) {
-      if (typeof row.item_id !== 'string' || typeof row.comment_id !== 'string' || !states.has(row.item_id)) continue;
-      const ids = overrides.get(row.item_id) ?? []; ids.push(row.comment_id); overrides.set(row.item_id, ids);
-    }
-    for (const [id, state] of states) states.set(id, { ...state, overrides: overrides.get(id) ?? [] });
-    return Object.fromEntries(states);
+  /** M4 opens only this existing window at startup; M6 owns restore-set policy. */
+  initialWindowId(): string {
+    const row = this.db.prepare('SELECT id FROM app_windows ORDER BY rowid LIMIT 1').get();
+    if (!row) throw new Error('Missing persistent window');
+    return String(row.id);
   }
 
-  /** Constant-space All, sparse opposite-default exceptions, atomic same-item
-   * ownership validation. No comment/seen/query/history records are changed. */
-  setDiscussionCollapse(request: SetDiscussionCollapseRequest): null {
+  /** Main-only construction seam for authorized test participants and future M6. */
+  createPersistentWindow(): string {
+    return this.commit({ kind: 'workspace' }, () => {
+      const id = randomUUID(); this.db.prepare('INSERT INTO app_windows VALUES (?,NULL,0)').run(id); return id;
+    });
+  }
+
+  viewInstances(windowId: string): ReaderState['viewInstances'] {
+    return Object.fromEntries(this.db.prepare(`SELECT v.* FROM discussion_views v JOIN tab_instances t ON t.id=v.view_id WHERE t.owner_window_id=?`).all(windowId)
+      .map(row => [String(row.view_id), { itemId: String(row.item_id), intentRevision: Number(row.intent_revision), collapseRevision: Number(row.collapse_revision) }]));
+  }
+
+  /** Dormant instances retain their owner; close never revokes a queued final save.
+   * Document incarnation is checked by M1 at dispatch, including M3 checkpoints. */
+  ownedView(windowId: string, viewId: string): string {
+    const row = this.db.prepare(`SELECT v.item_id FROM discussion_views v JOIN tab_instances t ON t.id=v.view_id WHERE v.view_id=? AND t.owner_window_id=?`).get(viewId, windowId);
+    if (!row) throw new ViewOwnershipError('Unowned view');
+    return String(row.item_id);
+  }
+  private advanceView(windowId: string, viewId: string, expected: number, column: 'intent_revision' | 'collapse_revision'): string {
+    const itemId = this.ownedView(windowId, viewId);
+    if (!this.db.prepare(`UPDATE discussion_views SET ${column}=${column}+1 WHERE view_id=? AND ${column}=?`).run(viewId, expected).changes) throw new StateConflictError('Stale view');
+    return itemId;
+  }
+  private discussionCollapse(windowId: string): ReaderState['discussionCollapse'] {
+    const states: Record<string, DiscussionCollapse> = {};
+    for (const row of this.db.prepare(`SELECT c.* FROM view_collapse c JOIN tab_instances t ON t.id=c.view_id WHERE t.owner_window_id=?`).all(windowId)) {
+      if (row.default_collapsed !== 0 && row.default_collapsed !== 1) continue;
+      const overrides = this.db.prepare('SELECT o.comment_id FROM view_collapse_overrides o JOIN comments c ON c.id=o.comment_id AND c.item_id=o.item_id WHERE o.view_id=? AND o.item_id=? ORDER BY o.comment_id').all(row.view_id, row.item_id);
+      states[String(row.view_id)] = { defaultCollapsed: row.default_collapsed === 1, overrides: overrides.map(o => String(o.comment_id)) };
+    }
+    return states;
+  }
+  setDiscussionCollapse(request: SetDiscussionCollapseRequest, windowId = this.initialWindowId()): null {
     if (!isSetDiscussionCollapseRequest(request)) throw new InvalidDiscussionViewError();
     return this.commit({ kind: 'watermark' }, () => {
-      if (!this.db.prepare('SELECT 1 FROM content_items WHERE id=?').get(request.itemId)) throw new MissingCommentError();
+      const itemId = this.advanceView(windowId, request.viewId, request.expectedRevision, 'collapse_revision');
       if (request.kind === 'comments') {
         const owns = this.db.prepare('SELECT 1 FROM comments WHERE item_id=? AND id=?');
-        if (request.ids.some(id => !owns.get(request.itemId, id))) throw new InvalidDiscussionViewError();
+        if (request.ids.some(id => !owns.get(itemId, id))) throw new InvalidDiscussionViewError();
       }
-      const existing = this.db.prepare('SELECT default_collapsed FROM discussion_collapse WHERE item_id=?').get(request.itemId);
-      const valid = existing?.default_collapsed === 0 || existing?.default_collapsed === 1;
-      if (existing && !valid) this.db.prepare('DELETE FROM discussion_collapse WHERE item_id=?').run(request.itemId);
-      this.db.prepare('INSERT OR IGNORE INTO discussion_collapse VALUES (?,0)').run(request.itemId);
+      this.db.prepare('INSERT OR IGNORE INTO view_collapse VALUES (?,?,0)').run(request.viewId, itemId);
+      let existing = this.db.prepare('SELECT default_collapsed FROM view_collapse WHERE view_id=?').get(request.viewId);
+      if (!existing) throw new Error('Missing collapse default');
+      if (existing.default_collapsed !== 0 && existing.default_collapsed !== 1) {
+        this.db.prepare('DELETE FROM view_collapse WHERE view_id=?').run(request.viewId);
+        this.db.prepare('INSERT INTO view_collapse VALUES (?,?,0)').run(request.viewId, itemId); existing = { default_collapsed: 0 };
+      }
       if (request.kind === 'all') {
-        this.db.prepare('DELETE FROM comment_collapse_overrides WHERE item_id=?').run(request.itemId);
-        this.db.prepare('UPDATE discussion_collapse SET default_collapsed=? WHERE item_id=?').run(Number(request.collapsed), request.itemId);
+        this.db.prepare('DELETE FROM view_collapse_overrides WHERE view_id=?').run(request.viewId);
+        this.db.prepare('UPDATE view_collapse SET default_collapsed=? WHERE view_id=?').run(Number(request.collapsed), request.viewId);
       } else {
-        const defaultCollapsed = valid && existing.default_collapsed === 1;
-        const statement = request.collapsed === defaultCollapsed
-          ? this.db.prepare('DELETE FROM comment_collapse_overrides WHERE item_id=? AND comment_id=?')
-          : this.db.prepare('INSERT OR IGNORE INTO comment_collapse_overrides VALUES (?,?)');
-        for (const id of request.ids) statement.run(request.itemId, id);
+        for (const id of request.ids) {
+          if (request.collapsed === (existing.default_collapsed === 1)) this.db.prepare('DELETE FROM view_collapse_overrides WHERE view_id=? AND comment_id=?').run(request.viewId, id);
+          else this.db.prepare('INSERT OR IGNORE INTO view_collapse_overrides VALUES (?,?,?)').run(request.viewId, itemId, id);
+        }
       }
       return null;
     });
   }
-
-  private ownsViewIdentities(request: SaveDiscussionViewRequest): boolean {
+  private ownsViewIdentities(itemId: string, request: DiscussionViewIntent): boolean {
     const owns = this.db.prepare('SELECT 1 FROM comments WHERE item_id=? AND id=?');
-    return [request.anchor.commentId, request.selected].every(id => id === null || !!owns.get(request.itemId, id));
+    return [request.anchor.commentId, request.selected].every(id => id === null || !!owns.get(itemId, id));
   }
-
-  /** Validate presentation rows independently: corruption cannot fail content bootstrap.
-   * Diagnostics expose a fixed code once per affected item in this connection. */
-  private discussionViews(): Readonly<Record<string, DiscussionViewIntent>> {
+  private discussionViews(windowId: string): ReaderState['discussionViews'] {
     const views: [string, DiscussionViewIntent][] = [];
-    for (const row of this.db.prepare('SELECT * FROM discussion_view_state').all()) {
+    for (const row of this.db.prepare(`SELECT v.* FROM discussion_view_intent v JOIN tab_instances t ON t.id=v.view_id WHERE t.owner_window_id=?`).all(windowId)) {
       try {
-        if (typeof row.draft_query_json !== 'string' || row.draft_query_json.length > 110000
-          || typeof row.applied_query_json !== 'string' || row.applied_query_json.length > 110000) throw new InvalidDiscussionViewError();
-        const request: unknown = { itemId: row.item_id, draft: JSON.parse(row.draft_query_json), applied: JSON.parse(row.applied_query_json),
+        const request: unknown = { viewId: row.view_id, expectedRevision: 0, draft: JSON.parse(String(row.draft_query_json)), applied: JSON.parse(String(row.applied_query_json)),
           sort: row.sort, anchor: { commentId: row.anchor_comment_id, offset: row.anchor_offset }, selected: row.selected_comment_id };
-        if (!isSaveDiscussionViewRequest(request) || !this.ownsViewIdentities(request)) throw new InvalidDiscussionViewError();
-        const { itemId, ...view } = request;
-        views.push([itemId, view]);
+        if (!isSaveDiscussionViewRequest(request) || !this.ownsViewIdentities(String(row.item_id), request)) throw new InvalidDiscussionViewError();
+        const { viewId, draft, applied, sort, anchor, selected } = request;
+        const view = { draft, applied, sort, anchor, selected };
+        views.push([viewId, view]);
       } catch {
-        const id = String(row.item_id);
-        if (!this.invalidViewDiagnostics.has(id)) {
-          this.invalidViewDiagnostics.add(id);
-          console.warn('INVALID_DISCUSSION_VIEW_STATE');
-        }
+        const id = String(row.view_id);
+        if (!this.invalidViewDiagnostics.has(id)) { this.invalidViewDiagnostics.add(id); console.warn('INVALID_DISCUSSION_VIEW_STATE'); }
       }
     }
     return Object.fromEntries(views);
   }
-
-  /** One small atomic full-intent upsert. No result IDs or generic JSON writes.
-   * Closing a tab never deletes this row; deleting its item cascades it. */
-  saveDiscussionView(request: SaveDiscussionViewRequest): null {
+  saveDiscussionView(request: SaveDiscussionViewRequest, windowId = this.initialWindowId()): null {
     if (!isSaveDiscussionViewRequest(request)) throw new InvalidDiscussionViewError('Invalid view intent');
     return this.commit({ kind: 'watermark' }, () => {
-      if (!this.db.prepare('SELECT 1 FROM content_items WHERE id=?').get(request.itemId)) throw new MissingCommentError('Unknown discussion');
-      if (!this.ownsViewIdentities(request)) throw new InvalidDiscussionViewError('Unowned view identity');
-      this.db.prepare(`INSERT INTO discussion_view_state VALUES (?,?,?,?,?,?,?)
-        ON CONFLICT(item_id) DO UPDATE SET draft_query_json=excluded.draft_query_json, applied_query_json=excluded.applied_query_json,
-          sort=excluded.sort, anchor_comment_id=excluded.anchor_comment_id, anchor_offset=excluded.anchor_offset,
-          selected_comment_id=excluded.selected_comment_id`).run(request.itemId, JSON.stringify(request.draft), JSON.stringify(request.applied),
-        request.sort, request.anchor.commentId, request.anchor.commentId === null ? 0 : request.anchor.offset, request.selected);
-      this.invalidViewDiagnostics.delete(request.itemId);
-      return null;
+      const itemId = this.advanceView(windowId, request.viewId, request.expectedRevision, 'intent_revision');
+      if (!this.ownsViewIdentities(itemId, request)) throw new InvalidDiscussionViewError('Unowned comment');
+      this.db.prepare(`INSERT INTO discussion_view_intent VALUES (?,?,?,?,?,?,?,?)
+        ON CONFLICT(view_id) DO UPDATE SET draft_query_json=excluded.draft_query_json, applied_query_json=excluded.applied_query_json,
+          sort=excluded.sort, anchor_comment_id=excluded.anchor_comment_id, anchor_offset=excluded.anchor_offset, selected_comment_id=excluded.selected_comment_id`)
+        .run(request.viewId, itemId, JSON.stringify(request.draft), JSON.stringify(request.applied), request.sort, request.anchor.commentId, request.anchor.commentId === null ? 0 : request.anchor.offset, request.selected);
+      this.invalidViewDiagnostics.delete(request.viewId); return null;
     });
   }
-
-  workspace(): WorkspaceState {
-    const row = this.db.prepare('SELECT active_tab_id, revision FROM workspace WHERE id = 1').get();
-    if (!row) throw new Error('Missing workspace');
-    const tabs = this.db.prepare('SELECT id, kind, item_id FROM workspace_tabs ORDER BY position').all().map(tab =>
-      tab.kind === 'discussion' ? discussionTab(String(tab.item_id))
-        : { id: String(tab.id), kind: String(tab.kind) } as WorkspaceTab);
-    return { tabs, activeTabId: row.active_tab_id === null ? null : String(row.active_tab_id), revision: Number(row.revision) };
+  workspace(windowId = this.initialWindowId()): WorkspaceState {
+    const row = this.db.prepare('SELECT active_tab_id,topology_revision FROM app_windows WHERE id=?').get(windowId);
+    if (!row) throw new ViewOwnershipError('Unknown window');
+    const tabs = this.db.prepare(`SELECT t.id,t.kind,t.item_id FROM window_tabs p JOIN tab_instances t ON t.id=p.tab_id WHERE p.window_id=? ORDER BY p.position`).all(windowId)
+      .map(tab => tab.kind === 'discussion' ? discussionTab(String(tab.id), String(tab.item_id)) : { id: String(tab.id), kind: tab.kind } as WorkspaceTab);
+    return { tabs, activeTabId: row.active_tab_id === null ? null : String(row.active_tab_id), revision: Number(row.topology_revision) };
   }
-
-  private writeWorkspace(state: WorkspaceState): WorkspaceState {
-    this.db.exec('DELETE FROM workspace_tabs');
-    const insert = this.db.prepare('INSERT INTO workspace_tabs (id,kind,item_id,position) VALUES (?,?,?,?)');
-    state.tabs.forEach((tab, position) => insert.run(tab.id, tab.kind, tab.kind === 'discussion' ? tab.itemId : null, position));
-    this.db.prepare('UPDATE workspace SET active_tab_id = ?, revision = ? WHERE id = 1').run(state.activeTabId, state.revision);
+  private writeWorkspace(windowId: string, state: WorkspaceState): WorkspaceState {
+    if (!Number.isSafeInteger(state.revision) || state.revision < 0) throw new StateConflictError('Topology revision exhausted');
+    this.db.prepare('DELETE FROM window_tabs WHERE window_id=?').run(windowId);
+    const insert = this.db.prepare('INSERT INTO window_tabs VALUES (?,?,?,?)');
+    state.tabs.forEach((tab, position) => insert.run(windowId, tab.id, tab.kind, position));
+    this.db.prepare('UPDATE app_windows SET active_tab_id=?,topology_revision=? WHERE id=?').run(state.activeTabId, state.revision, windowId);
     return state;
   }
-
-  private openWorkspaceItem(itemId: string): WorkspaceState {
-    const state = this.workspace(), next = openWorkspaceTab(state, discussionTab(itemId));
-    return next === state ? state : this.writeWorkspace(next);
+  private resumeTab(windowId: string, itemId: string): WorkspaceTab {
+    const row = this.db.prepare('SELECT view_id FROM item_resume_view WHERE window_id=? AND item_id=?').get(windowId, itemId);
+    if (row) return discussionTab(String(row.view_id), itemId);
+    if (!this.db.prepare('SELECT 1 FROM content_items WHERE id=?').get(itemId)) throw new MissingCommentError();
+    const id = randomUUID();
+    this.db.prepare("INSERT INTO tab_instances VALUES (?,?,'discussion',?)").run(id, windowId, itemId);
+    this.db.prepare('INSERT INTO item_resume_view VALUES (?,?,?)').run(windowId, itemId, id);
+    return discussionTab(id, itemId);
   }
-
-  /** Intent-only workspace writes never change Library data. */
+  private openWorkspaceItem(windowId: string, itemId: string): WorkspaceState {
+    const state = this.workspace(windowId), existing = state.tabs.find(tab => tab.kind === 'discussion' && tab.itemId === itemId);
+    const next = openWorkspaceTab(state, existing ?? this.resumeTab(windowId, itemId));
+    return next === state ? state : this.writeWorkspace(windowId, next);
+  }
+  /** Trusted callers can omit CAS; every renderer structural command supplies it. */
   changeWorkspace(operation: 'openStoredItem' | 'activateTab' | 'closeTab' | 'openLibrary' | 'openSettings' | 'moveTab',
-    identity?: string, toIndex?: number): WorkspaceState {
+    identity?: string, toIndex?: number, windowId = this.initialWindowId(), expectedRevision = this.workspace(windowId).revision): WorkspaceState {
     return this.commit({ kind: 'workspace' }, () => {
-      const state = this.workspace();
+      const state = this.workspace(windowId);
+      if (state.revision !== expectedRevision) throw new StateConflictError('Stale topology');
+      if (operation === 'openStoredItem') { if (!identity) throw new MissingCommentError(); return this.openWorkspaceItem(windowId, identity); }
       let next: WorkspaceState;
-      if (operation === 'openStoredItem') {
-        if (!this.db.prepare('SELECT id FROM content_items WHERE id = ?').get(identity ?? '')) throw new MissingCommentError('Unknown discussion');
-        return this.openWorkspaceItem(identity as string);
-      } else if (operation === 'openLibrary' || operation === 'openSettings') {
+      if (operation === 'openLibrary' || operation === 'openSettings') {
         const kind = operation === 'openLibrary' ? 'library' : 'settings';
-        next = openWorkspaceTab(state, { id: kind, kind });
+        let tab = this.db.prepare('SELECT id FROM tab_instances WHERE owner_window_id=? AND kind=?').get(windowId, kind);
+        if (!tab) { const id = randomUUID(); this.db.prepare('INSERT INTO tab_instances VALUES (?,?,?,NULL)').run(id, windowId, kind); tab = { id }; }
+        next = openWorkspaceTab(state, { id: String(tab.id), kind });
       } else {
         const tab = state.tabs.find(tab => tab.id === identity);
-        if (!tab) throw new MissingCommentError('Unknown tab');
-        next = operation === 'closeTab' ? closeWorkspaceTab(state, tab.id)
-          : operation === 'moveTab' ? moveWorkspaceTab(state, tab.id, toIndex as number) : openWorkspaceTab(state, tab);
+        if (!tab) throw new ViewOwnershipError('Unowned tab');
+        next = operation === 'closeTab' ? closeWorkspaceTab(state, tab.id) : operation === 'moveTab' ? moveWorkspaceTab(state, tab.id, toIndex as number) : openWorkspaceTab(state, tab);
       }
-      return next === state ? state : this.writeWorkspace(next);
+      return next === state ? state : this.writeWorkspace(windowId, next);
     });
   }
-
-  /** Delete all item-owned rows and its view atomically, with FK enforcement on.
-   * The baseline/history cycle requires deferring FK checks until commit. */
-  removeLibraryItem(itemId: string, languages: readonly string[]): ReaderState {
+  removeLibraryItem(itemId: string, languages: readonly string[], windowId = this.initialWindowId()): ReaderState {
     return this.commit({ kind: 'removed', itemId }, () => {
       const item = this.readItems().find(item => item.id === itemId);
-      if (!item) throw new MissingCommentError('Unknown discussion');
-      if (!item.removable) throw new NotRemovableError('Discussion removal unavailable');
-      this.db.exec('PRAGMA defer_foreign_keys = ON');
-      const state = this.workspace(), next = closeWorkspaceTab(state, discussionTab(itemId).id);
-      // Revision advances even for a closed item: stale content acknowledgments
-      // must be distinguishable after a destructive mutation.
-      this.writeWorkspace({ ...next, revision: state.revision + 1 });
+      if (!item) throw new MissingCommentError();
+      if (!item.removable) throw new NotRemovableError();
+      this.db.exec('PRAGMA defer_foreign_keys=ON');
+      for (const row of this.db.prepare('SELECT id FROM app_windows').all()) {
+        const id = String(row.id), state = this.workspace(id);
+        let next = state;
+        for (const tab of state.tabs) if (tab.kind === 'discussion' && tab.itemId === itemId) next = closeWorkspaceTab(next, tab.id);
+        this.writeWorkspace(id, { ...next, revision: state.revision + 1 });
+      }
+      // Remove view FK references before comments, retaining every other item's state.
+      this.db.prepare('DELETE FROM tab_instances WHERE item_id=?').run(itemId);
       this.db.prepare('DELETE FROM comment_state WHERE comment_id IN (SELECT id FROM comments WHERE item_id=?)').run(itemId);
       this.db.prepare('DELETE FROM comments WHERE item_id=?').run(itemId);
       this.db.prepare('DELETE FROM content_items WHERE id=?').run(itemId);
       this.db.prepare('DELETE FROM extraction_attempts WHERE item_id=? OR (source_kind=? AND source_id=?)').run(itemId, item.sourceKind ?? null, item.sourceId);
-      return this.bootstrap(languages);
+      return this.bootstrap(languages, windowId);
     });
   }
 

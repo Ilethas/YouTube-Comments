@@ -17,8 +17,9 @@ export interface SharedItemSnapshot extends SharedStamp {
   readonly comments: ReaderState['comments'][string];
   readonly undo: ReaderState['seenUndo'][string];
   readonly workspace: ReaderState['workspace'];
+  readonly viewInstances: ReaderState['viewInstances'];
 }
-export interface SharedMetadata extends SharedStamp { readonly preferences: ReaderState['preferences']; readonly workspace: ReaderState['workspace'] }
+export interface SharedMetadata extends SharedStamp { readonly preferences: ReaderState['preferences']; readonly workspace: ReaderState['workspace']; readonly viewInstances: ReaderState['viewInstances'] }
 export const sharedCommitChannel = 'reader:shared-commit';
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const exact = (v: Record<string, unknown>, keys: string[]) => Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v, k));

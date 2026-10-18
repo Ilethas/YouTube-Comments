@@ -1,3 +1,4 @@
+const { tabElement, viewId } = require('./window-view-fixtures.cjs');
 // Built-entry Electron UI/restart regression, offline and disposable profiles only.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -37,8 +38,8 @@ if (process.versions.electron) {
     };
     const persisted = () => {
       const db = new DatabaseSync(database(root), { readOnly: true });
-      try { return { default: db.prepare('SELECT default_collapsed FROM discussion_collapse WHERE item_id=?').get(fixture.itemId)?.default_collapsed,
-        overrides: db.prepare('SELECT comment_id FROM comment_collapse_overrides WHERE item_id=?').all(fixture.itemId).map(row => row.comment_id) }; }
+      try { return { default: db.prepare('SELECT default_collapsed FROM view_collapse WHERE item_id=?').get(fixture.itemId)?.default_collapsed,
+        overrides: db.prepare('SELECT comment_id FROM view_collapse_overrides WHERE item_id=?').all(fixture.itemId).map(row => row.comment_id) }; }
       finally { db.close(); }
     };
     await wait(`${panel}?.querySelector('.query-controls') !== null && !!${panel}?.querySelector('.virtual-reader')`);
@@ -88,7 +89,7 @@ if (process.versions.electron) {
         await js(`(()=>{const e=document.querySelectorAll('.preferences select')[${index}];Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
         await pause(150);
       }
-      await js(`document.getElementById(${JSON.stringify('tab-discussion:' + fixture.itemId)}).click()`);
+      await js(`${tabElement(fixture.itemId)}.click()`);
       await wait(`${panel}.querySelector('.virtual-reader') !== null`);
       assert.equal(await count(), 2);
       await pause(200); await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
@@ -101,8 +102,8 @@ if (process.versions.electron) {
       await click('Rozwiń wszystko'); assert.equal(await count(), 41);
       await click('Zwiń wszystko'); await pause(150);
       const collapse = persisted();
-      await js(`document.getElementById(${JSON.stringify('tab-discussion:' + fixture.itemId)}).nextElementSibling.click()`);
-      await wait(`!document.getElementById(${JSON.stringify('tab-discussion:' + fixture.itemId)})`);
+      await js(`${tabElement(fixture.itemId)}.nextElementSibling.click()`);
+      await wait(`!${tabElement(fixture.itemId)}`);
       await js("document.getElementById('library-toggle').click()");
       await wait("!!document.querySelector('.library-entry')");
       await js("document.querySelector('.library-entry button').click()");

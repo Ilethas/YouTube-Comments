@@ -1,3 +1,5 @@
+import { legacyComparableState , viewIdentity } from '../testing/view-identity';
+
 import { displayedToggle } from '../testing/displayed-seen';
 import { downgradeSelectionFixture } from './testing/schema-10';
 import { evaluateTestQuery } from '../../fixtures/query-testing';
@@ -104,7 +106,7 @@ it('derives latest accepted NEW independently of seen/publication, tied/regressi
   repository.ingest(failed, { sourceKind: input.item.sourceKind, sourceId: input.item.sourceId });
   expect(state().items[0].latestAcceptedDiscoveryId).toBe(refresh.id);
   expect(newCohort()).toHaveLength(1);
-  repository.changeWorkspace('closeTab', `discussion:${added.itemId}`);
+  repository.changeWorkspace('closeTab', viewIdentity(repository, added.itemId));
   repository.changeWorkspace('openStoredItem', added.itemId);
   const before = state();
   const db = raw(), orders = db.prepare('SELECT id, attempt_order FROM extraction_attempts ORDER BY attempt_order').all();
@@ -143,7 +145,7 @@ it('schema 4 → 5 freezes existing attempt insertion order transactionally with
   expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(4);
   expect(db.prepare('SELECT * FROM extraction_attempts ORDER BY rowid').all()).toEqual(historyRows);
   migrateDatabase(db);
-  expect(state()).toEqual(before);
+  expect(legacyComparableState(state())).toEqual(legacyComparableState(before));
   expect(db.prepare('SELECT id FROM extraction_attempts ORDER BY attempt_order').all().map(row => row.id)).toEqual(historyRows.map(row => row.id));
   expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
 });
@@ -433,7 +435,7 @@ it('schema 1 to 2 preserves legacy IDs, all remote fields, seen/preferences and 
   const db = raw(); schemaOne(db);
   const items = db.prepare('SELECT * FROM content_items').all(), old = db.prepare('SELECT * FROM comments ORDER BY position').all();
   migrateDatabase(db);
-  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(12);
+  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(13);
   expect(db.prepare('SELECT * FROM content_items').all()).toMatchObject(items);
   expect(db.prepare('SELECT * FROM comments ORDER BY position').all()).toMatchObject(old);
   expect(db.prepare('SELECT * FROM comment_state ORDER BY comment_id').all()).toEqual([{ comment_id: 'old-child', seen: 0, revision: 0 }, { comment_id: 'old-root', seen: 1, revision: 0 }]);

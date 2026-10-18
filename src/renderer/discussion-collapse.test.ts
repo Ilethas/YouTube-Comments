@@ -140,9 +140,9 @@ it('all ruler categories compress onto the visible ancestor, distinguish own/hid
 });
 
 it('rejects extra/unbounded/duplicate IPC fields and serializes failed idempotent saves before later assignments', async () => {
-  expect(isSetDiscussionCollapseRequest({ itemId: 'x', ...all })).toBe(true);
-  for (const request of [{ itemId: 'x', ...all, ids: [] }, { itemId: '', ...all }, { itemId: 'x', kind: 'comments', collapsed: false, ids: ['a', 'a'] },
-    { itemId: 'x', kind: 'comments', collapsed: false, ids: Array(100001).fill('a') }]) expect(isSetDiscussionCollapseRequest(request)).toBe(false);
+  expect(isSetDiscussionCollapseRequest({ viewId: 'view-x', expectedRevision: 0, ...all })).toBe(true);
+  for (const request of [{ viewId: 'view-x', expectedRevision: 0, ...all, ids: [] }, { itemId: '', ...all }, { viewId: 'view-x', expectedRevision: 0, kind: 'comments', collapsed: false, ids: ['a', 'a'] },
+    { viewId: 'view-x', expectedRevision: 0, kind: 'comments', collapsed: false, ids: Array(100001).fill('a') }]) expect(isSetDiscussionCollapseRequest(request)).toBe(false);
   const save = vi.fn().mockResolvedValueOnce({ ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }).mockResolvedValue({ ok: true, value: null });
   const feedback = vi.fn(), queue = new CollapseSaveQueue(save, feedback);
   queue.schedule(all); await queue.flush(); expect(feedback).toHaveBeenLastCalledWith(true);

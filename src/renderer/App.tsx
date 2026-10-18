@@ -7,7 +7,6 @@ import type { AcquisitionResult, ErrorCode, ReaderApi, ReaderState, Result } fro
 import { TranslationSettings } from './TranslationSettings';
 import type { TranslationTarget, Appearance, SelectionControls } from '../shared/preferences';
 import { countLabel, initialLocale, Locale, translator } from './i18n';
-import { discussionTab } from '../domain/workspace';
 import { WorkspaceTabs } from './WorkspaceTabs';
 import { TabIcon } from './TabIcon';
 import { ActionIcon } from './ActionIcon';
@@ -57,7 +56,7 @@ export function App({ api: transport = window.reader }: { api?: ReaderApi }) {
 }
 
 function Reader({ initialState, api, replica }: { initialState: ReaderState; api: ReaderApi; replica?: ReaderReplica }) {
-  const views = useDiscussionViews({ collapse: initialState.discussionCollapse, saveCollapse: request => api.setDiscussionCollapse(request), saved: initialState.discussionViews, save: request => api.saveDiscussionView(request) });
+  const views = useDiscussionViews({ instances: initialState.viewInstances, collapse: initialState.discussionCollapse, saveCollapse: request => api.setDiscussionCollapse(request), saved: initialState.discussionViews, save: request => api.saveDiscussionView(request) });
   const [items, setItems] = useState(initialState.items);
   const [locale, setLocale] = useState<Locale>(initialState.preferences.locale);
   const [appearance, setAppearance] = useState<Appearance>(initialState.preferences.appearance);
@@ -69,7 +68,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const activeId = workspace.activeTabId;
   const activeDiscussion = useRef<string>();
   const activeTab = workspace.tabs.find(tab => tab.id === activeId);
-  activeDiscussion.current = activeTab?.kind === 'discussion' ? activeTab.itemId : undefined;
+  activeDiscussion.current = activeTab?.kind === 'discussion' ? activeTab.id : undefined;
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const workspaceBusy = useRef(false);
   const [showAcquisition, setShowAcquisition] = useState(false);
@@ -137,7 +136,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       }
       for (const item of next.items) {
         const before = previous.items.find(i => i.id === item.id);
-        if (before && before.latestAcceptedDiscoveryId !== item.latestAcceptedDiscoveryId && views.has(item.id)) {
+        if (before && before.latestAcceptedDiscoveryId !== item.latestAcceptedDiscoveryId && views.hasItem(item.id)) {
           // Promote content props before publishing a new worker result. A
           // synchronous external-store render with old props would otherwise
           // cache a projection that omits newly discovered comment identities.
@@ -218,14 +217,14 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   async function workspaceAction(action: () => Promise<Result<WorkspaceState>>, focusId?: string) {
     if (workspaceBusy.current) return;
     const leaving = workspace.tabs.find(tab => tab.id === activeId);
-    if (leaving?.kind === 'discussion') void views.flush(leaving.itemId);
+    if (leaving?.kind === 'discussion') void views.flush(leaving.id);
     workspaceBusy.current = true; setWorkspaceSaving(true); setSaveError(false);
     try {
       const result = await action();
       if (result.ok) {
         otherSaveFailed.current = false;
         acceptWorkspace(result.value);
-        if (focusId === '@shortcuts' && result.value.activeTabId === 'settings') setHelpRequest({ revision: result.value.revision });
+        if (focusId === '@shortcuts' && result.value.tabs.some(tab => tab.id === result.value.activeTabId && tab.kind === 'settings')) setHelpRequest({ revision: result.value.revision });
         else if (focusId) requestAnimationFrame(() => {
           (focusId === '@active' ? document.querySelector<HTMLElement>('[role=tab][aria-selected=true]') ?? document.getElementById('library-toggle') : document.getElementById(`tab-${focusId}`))?.focus();
         });
@@ -234,12 +233,12 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     finally { workspaceBusy.current = false; setWorkspaceSaving(false); }
   }
   function activate(tabId: string, focus = false) {
-    void workspaceAction(() => api.activateTab({ tabId }), focus ? tabId : undefined);
+    void workspaceAction(() => api.activateTab({ tabId, expectedRevision: workspace.revision }), focus ? tabId : undefined);
   }
   function close(tabId: string) {
     const tab = workspace.tabs.find(tab => tab.id === tabId);
-    if (tab?.kind === 'discussion') void views.flush(tab.itemId);
-    void workspaceAction(() => api.closeTab({ tabId }), '@active');
+    if (tab?.kind === 'discussion') void views.flush(tab.id);
+    void workspaceAction(() => api.closeTab({ tabId, expectedRevision: workspace.revision }), '@active');
   }
   async function removeItem() {
     if (!removing || removalBusy.current) return;
@@ -344,7 +343,9 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const openCommentAction = useCallback((request: Parameters<ReaderApi['openCommentAction']>[0]) => api.openCommentAction(request), [api]);
   const t = translator(locale);
   const operationProgress = updatingView ?? progress;
-  const openItems = workspace.tabs.flatMap(tab => tab.kind === 'discussion' ? items.find(item => item.id === tab.itemId) ?? [] : []);
+  const openItems = workspace.tabs.flatMap(tab => { if (tab.kind !== 'discussion') return []; const item = items.find(item => item.id === tab.itemId); return item ? [{ tab, item }] : []; });
+  const libraryTab = workspace.tabs.find(tab => tab.kind === 'library');
+  const settingsTab = workspace.tabs.find(tab => tab.kind === 'settings');
   const isOpen = (id: string) => workspace.tabs.some(tab => tab.kind === 'discussion' && tab.itemId === id);
   const itemLabel = (item: ReaderState['items'][number]) => item.kind === 'video' ? item.title
     : `${item.author?.displayName ?? item.author?.handle ?? t('unknownAuthor')} · ${item.text.replace(/\s+/g, ' ').slice(0, 80)}`;
@@ -408,7 +409,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   }, [showAcquisition, focusUrl]);
   useLayoutEffect(() => {
     if (!helpRequest || workspace.revision < helpRequest.revision) return;
-    if (activeId === 'settings' && !removing) {
+    if (activeTab?.kind === 'settings' && !removing) {
       const target = document.getElementById(keyboardShortcutsTarget);
       target?.scrollIntoView({ block: 'start' }); target?.focus({ preventScroll: true });
     }
@@ -429,16 +430,16 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
         if (!tab) return;
         close(tab.id);
       } else if (command === 'focus-search') {
-        const panel = document.getElementById(tab?.kind === 'discussion' ? `panel-${tab.itemId}` : 'panel-library');
+        const panel = document.getElementById(tab?.kind === 'discussion' ? `panel-${tab.id}` : 'panel-library');
         const input = panel?.querySelector<HTMLInputElement>('input[type=search]');
         if (!input) return;
         input.focus(); input.select();
       } else if (command === 'open-url') {
         setShowAcquisition(true); setFocusUrl(true);
       } else if (command === 'keyboard-help') {
-        void workspaceAction(() => api.openSettings(), '@shortcuts');
+        void workspaceAction(() => api.openSettings({ expectedRevision: workspace.revision }), '@shortcuts');
       } else if (tab?.kind === 'discussion') {
-        const session = views.get(tab.itemId, comments[tab.itemId]);
+        const session = views.get(tab.id, comments[tab.itemId], tab.itemId);
         if (command === 'undo-seen') undoSeen(tab.itemId);
         else if (command === 'apply-view') document.querySelector<HTMLFormElement>('.reader-panel:not([hidden]) .query-controls')?.requestSubmit();
         else navigateDiscussion(session, comments[tab.itemId], 'match', command === 'previous-match' ? -1 : 1);
@@ -457,8 +458,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       <div className="brand"><span className="brand-icon" aria-hidden="true">≡</span><strong>{t('appName')}</strong></div>
       <div className="workspace-actions">
         <button title={shortcutHint(locale, 'open-url')} disabled={!!acquiring || !!progress} aria-expanded={showAcquisition} aria-controls="acquisition-form" onClick={() => { setShowAcquisition(value => !value); }}>{t('acquire')}</button>
-        <button id="library-toggle" disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openLibrary()); }}><ActionIcon name="library" />{t('library')}</button>
-        <button id="settings-toggle" title={shortcutHint(locale, 'keyboard-help')} disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openSettings()); }}><ActionIcon name="settings" />{t('settings')}</button>
+        <button id="library-toggle" disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openLibrary({ expectedRevision: workspace.revision })); }}><ActionIcon name="library" />{t('library')}</button>
+        <button id="settings-toggle" title={shortcutHint(locale, 'keyboard-help')} disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openSettings({ expectedRevision: workspace.revision })); }}><ActionIcon name="settings" />{t('settings')}</button>
       </div>
     </header>
     {showAcquisition && <form id="acquisition-form" className="acquisition-bar" onKeyDown={event => {
@@ -485,12 +486,12 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       }}
       icon={tab => tab.kind === 'discussion' ? items.find(item => item.id === tab.itemId)?.kind ?? 'video' : tab.kind}
       activate={activate} close={close}
-      move={(tabId, toIndex) => { void workspaceAction(() => api.moveTab({ tabId, toIndex })); }} />
+      move={(tabId, toIndex) => { void workspaceAction(() => api.moveTab({ tabId, toIndex, expectedRevision: workspace.revision })); }} />
     {saveError && <div className="save-error" role="alert">{t('saveError')}</div>}
     {!workspace.tabs.length && <main className="empty-workspace"><h1>{t('emptyWorkspace')}</h1><p>{t(items.length ? 'reopenHelp' : 'empty')}</p>
-      <button onClick={() => { void workspaceAction(() => api.openLibrary()); }}>{t('openStored')}</button></main>}
-    {workspace.tabs.some(tab => tab.kind === 'library') && <main id="panel-library" role="tabpanel" aria-labelledby="tab-library"
-      className="reader-panel" hidden={activeId !== 'library'} tabIndex={0}>
+      <button onClick={() => { void workspaceAction(() => api.openLibrary({ expectedRevision: workspace.revision })); }}>{t('openStored')}</button></main>}
+    {workspace.tabs.some(tab => tab.kind === 'library') && <main id="panel-library" role="tabpanel" aria-labelledby={`tab-${libraryTab?.id}`}
+      className="reader-panel" hidden={activeTab?.kind !== 'library'} tabIndex={0}>
       <div className="app-view library-view"><h1>{t('library')}</h1>
         <label className="library-filter">{t('libraryFilter')}<input type="search" title={shortcutHint(locale, 'focus-search', t('libraryFilter'))} value={libraryFilter} onChange={event => setLibraryFilter(event.target.value)} /></label>
         <p className="reader-help">{t('libraryHelp')}</p>
@@ -504,7 +505,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
               {isOpen(item.id) && <span>{t('currentlyOpen')}</span>}</div>
           </div>
           <div className="library-entry-actions"><button disabled={workspaceSaving} onClick={() => {
-            void workspaceAction(() => api.openStoredItem({ itemId: item.id }), discussionTab(item.id).id);
+            void workspaceAction(() => api.openStoredItem({ itemId: item.id, expectedRevision: workspace.revision }), '@active');
           }}>{t(isOpen(item.id) ? 'activate' : 'open')}</button>
           {item.removable && <button className="destructive" onClick={() => { setRemovalError(undefined); setRemoving(item); }}>{t('removeFromLibrary')}</button>}</div>
         </li>)}</ul>
@@ -512,8 +513,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
         {!!items.length && !filterLibrary(items, libraryFilter).length && <p>{t('noLibraryMatches')}</p>}
       </div>
     </main>}
-    {workspace.tabs.some(tab => tab.kind === 'settings') && <main id="panel-settings" role="tabpanel" aria-labelledby="tab-settings"
-      className="reader-panel" hidden={activeId !== 'settings'} tabIndex={0}>
+    {workspace.tabs.some(tab => tab.kind === 'settings') && <main id="panel-settings" role="tabpanel" aria-labelledby={`tab-${settingsTab?.id}`}
+      className="reader-panel" hidden={activeTab?.kind !== 'settings'} tabIndex={0}>
       <div className="app-view settings-view"><h1>{t('settings')}</h1>
       <div className="preferences">
         <label>{t('language')}<select value={locale} disabled={saving} onChange={event => {
@@ -542,7 +543,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
         }} />{t('includeCollapsedInPrefix')}</label>
       </div>
         <p className="reader-help">{t('translationPrivacy')}</p>
-        <ExternalTools api={api} locale={locale} active={activeId === 'settings'} />
+        <ExternalTools api={api} locale={locale} active={activeTab?.kind === 'settings'} />
         <DataBackups api={api} locale={locale} onBusy={value => {
           if (api.lifecycle) return;
           dataBusy.current = value;
@@ -557,9 +558,9 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     {removing && <RemovalDialog title={itemLabel(removing)} locale={locale} pending={removalPending}
       error={removalError ? t(removalError === 'ACQUISITION_BUSY' ? 'removalBusy' : 'removalFailed') : undefined}
       cancel={() => setRemoving(undefined)} remove={() => { void removeItem(); }} />}
-    {openItems.map(item => <main key={item.id} id={`panel-${item.id}`} role="tabpanel" aria-labelledby={`tab-${discussionTab(item.id).id}`}
-      className="reader-panel" hidden={activeId !== discussionTab(item.id).id} tabIndex={0}>
-      {(activeId === discussionTab(item.id).id || views.has(item.id)) && <DiscussionPanel item={item} comments={comments[item.id]} session={views.get(item.id, comments[item.id])}
+    {openItems.map(({ tab, item }) => <main key={tab.id} id={`panel-${tab.id}`} data-item-id={item.id} data-view-id={tab.id} role="tabpanel" aria-labelledby={`tab-${tab.id}`}
+      className="reader-panel" hidden={activeId !== tab.id} tabIndex={0}>
+      {(activeId === tab.id || views.has(tab.id)) && <DiscussionPanel item={item} comments={comments[item.id]} session={views.get(tab.id, comments[item.id], item.id)}
         selectionControls={selectionControls} includeCollapsedInPrefix={includeCollapsedInPrefix}
         locale={locale} saving={saving && savingItemId === item.id} refreshDisabled={!!acquiring || !!progress}
         coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onAction={openCommentAction} onToggle={toggleComment}

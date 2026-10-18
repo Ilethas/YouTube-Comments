@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { downgradeWindowFixture } from './schema-12';
 import { migrations, migrateDatabase } from '../migrations';
 
 /** Test fixture construction only: restore the exact historical schema before
@@ -25,6 +26,7 @@ export function downgradeSelectionFixture(db: DatabaseSync): void {
 
 /** Reconstruct schema 11 exactly, retaining every historical preference field. */
 export function downgradeCustomTranslationFixture(db: DatabaseSync): void {
+  downgradeWindowFixture(db);
   if (!db.prepare('PRAGMA table_info(preferences)').all().some(row => row.name === 'custom_translation_target')) return;
   const reference = new DatabaseSync(':memory:');
   try {

@@ -1,15 +1,16 @@
 /** Application-owned identities never depend on remote source IDs. */
 export type WorkspaceTab =
   | { readonly id: string; readonly kind: 'discussion'; readonly itemId: string }
-  | { readonly id: 'library' | 'settings'; readonly kind: 'library' | 'settings' };
+  | { readonly id: string; readonly kind: 'library' | 'settings' };
 
-/** Revision orders acknowledgments and is never a renderer mutation input. */
+/** Durable topology version for one implicitly scoped window. Commands supply
+ * the displayed expected version; only main allocates the accepted next one. */
 export interface WorkspaceState {
   readonly tabs: readonly WorkspaceTab[];
   readonly activeTabId: string | null;
   readonly revision: number;
 }
-export const discussionTab = (itemId: string): WorkspaceTab => ({ id: `discussion:${itemId}`, kind: 'discussion', itemId });
+export const discussionTab = (id: string, itemId: string): WorkspaceTab => ({ id, kind: 'discussion', itemId });
 export class InvalidWorkspaceMoveError extends Error {}
 
 /** Singleton open appends a closed view or activates an existing one. */

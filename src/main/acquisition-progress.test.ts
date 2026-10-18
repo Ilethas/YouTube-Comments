@@ -1,3 +1,4 @@
+import { viewVersion } from './testing/view-identity';
 import { mkdtemp, readFile, readdir, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -73,7 +74,7 @@ it.each([false, true])('fetch cancellation awaits child settlement, preserves al
   discovery = true;
   await service.refresh(itemId);
   repo.bulkSeen({ itemId, seen: true, target: { kind: 'all' } });
-  repo.saveDiscussionView({ itemId, draft: { ...defaultQuery, text: 'draft' }, applied: defaultQuery,
+  repo.saveDiscussionView({ ...viewVersion(repo, itemId, 'intent'), draft: { ...defaultQuery, text: 'draft' }, applied: defaultQuery,
     sort: 'oldest', anchor: { commentId: first.value.state.comments[itemId][0].id, offset: 12 }, selected: null });
   const before = repo.bootstrap(['en']), history = repo.history(itemId);
   expect(before.comments[itemId].some(comment => comment.source?.commentId === 'later-discovered')).toBe(true);

@@ -1,3 +1,4 @@
+import { required } from '../../renderer/testing/required';
 import { displayedToggle } from '../testing/displayed-seen';
 import { downgradeSelectionFixture } from './testing/schema-10';
 import { afterEach, beforeEach, expect, it } from 'vitest';
@@ -7,7 +8,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { ReaderRepository } from './reader-repository';
 import { migrateDatabase, migrations } from './migrations';
-import { discussionTab } from '../../domain/workspace';
+import { storedTab, viewIdentity } from '../testing/view-identity';
+const discussionTab = (itemId: string) => storedTab(repository, itemId);
 import { ReaderService } from '../reader-service';
 import { normalizeYtDlp } from '../extractors/yt-dlp';
 
@@ -115,7 +117,7 @@ it('schema 2 migration opens stored items and preserves every existing row inclu
     const before = tables.map(table => db.prepare(`SELECT * FROM ${table}`).all());
     migrateDatabase(db);
     expect(tables.map(table => db.prepare(`SELECT * FROM ${table}`).all())).toMatchObject(before);
-    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(12);
+    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(13);
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   } finally { db.close(); repository = ReaderRepository.open(file); }
   expect(state().workspace).toEqual({ tabs: ['video-demo', 'post-demo'].map(discussionTab), activeTabId: discussionTab('video-demo').id, revision: 0 });
@@ -141,7 +143,7 @@ it('workspace migration failure rolls back tables/version and preserves all libr
 
 it('a failed workspace write rolls back order/selection with no content mutations', () => {
   const db = new DatabaseSync(file);
-  try { db.exec("CREATE TRIGGER fail_workspace BEFORE UPDATE ON workspace BEGIN SELECT RAISE(ABORT, 'injected failure'); END"); }
+  try { db.exec("CREATE TRIGGER fail_workspace BEFORE UPDATE ON app_windows BEGIN SELECT RAISE(ABORT, 'injected failure'); END"); }
   finally { db.close(); }
   const before = state();
   expect(() => repository.changeWorkspace('closeTab', discussionTab('video-demo').id)).toThrow('injected failure');
@@ -153,19 +155,20 @@ it('persists mixed singleton order/active identity and app close/reopen across r
   repository.changeWorkspace('openSettings');
   repository.changeWorkspace('openLibrary');
   repository.changeWorkspace('openSettings');
-  expect(state().workspace.tabs.map(tab => tab.id)).toEqual(['discussion:video-demo', 'discussion:post-demo', 'library', 'settings']);
-  repository.changeWorkspace('moveTab', 'library', 1);
-  repository.changeWorkspace('moveTab', 'settings', 0);
+  const libraryId = required(state().workspace.tabs.find(t => t.kind === 'library')).id, settingsId = required(state().workspace.tabs.find(t => t.kind === 'settings')).id;
+  expect(state().workspace.tabs.map(tab => tab.id)).toEqual([viewIdentity(repository, 'video-demo'), viewIdentity(repository, 'post-demo'), libraryId, settingsId]);
+  repository.changeWorkspace('moveTab', libraryId, 1);
+  repository.changeWorkspace('moveTab', settingsId, 0);
   restart();
-  expect(state().workspace.tabs.map(tab => tab.id)).toEqual(['settings', 'discussion:video-demo', 'library', 'discussion:post-demo']);
-  expect(state().workspace.activeTabId).toBe('settings');
-  repository.changeWorkspace('closeTab', 'settings');
-  expect(state().workspace.activeTabId).toBe('discussion:video-demo');
-  repository.changeWorkspace('closeTab', 'library');
+  expect(state().workspace.tabs.map(tab => tab.id)).toEqual([settingsId, viewIdentity(repository, 'video-demo'), libraryId, viewIdentity(repository, 'post-demo')]);
+  expect(state().workspace.activeTabId).toBe(settingsId);
+  repository.changeWorkspace('closeTab', settingsId);
+  expect(state().workspace.activeTabId).toBe(viewIdentity(repository, 'video-demo'));
+  repository.changeWorkspace('closeTab', libraryId);
   repository.changeWorkspace('openLibrary');
-  expect(state().workspace.tabs.at(-1)?.id).toBe('library');
+  expect(state().workspace.tabs.at(-1)?.id).toBe(libraryId);
   const before = state();
-  for (const index of [-1, 99, 0.5]) expect(() => repository.changeWorkspace('moveTab', 'library', index)).toThrow();
+  for (const index of [-1, 99, 0.5]) expect(() => repository.changeWorkspace('moveTab', libraryId, index)).toThrow();
   expect(state()).toEqual(before);
 });
 
@@ -186,7 +189,7 @@ it.each([false, true])('schema 3 → 4 preserves exact workspace (empty=%s) and 
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   } finally { db.close(); repository = ReaderRepository.open(file); }
   expect(state().workspace).toEqual(empty ? { tabs: [], activeTabId: null, revision: 0 }
-    : { tabs: ['post-demo', 'video-demo'].map(discussionTab), activeTabId: 'discussion:post-demo', revision: 19 });
+    : { tabs: ['post-demo', 'video-demo'].map(discussionTab), activeTabId: viewIdentity(repository, 'post-demo'), revision: 19 });
 });
 
 it('schema 4 migration rollback preserves old workspace and retry succeeds with foreign keys on', () => {

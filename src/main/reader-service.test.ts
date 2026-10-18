@@ -45,7 +45,7 @@ it('returns sanitized stable storage and unsupported-schema failures without pat
 
 it('retries the original storage initialization after an initial open failure and retains the successful repository', () => {
   const state = { items: [], comments: {}, preferences: { locale: 'en', appearance: 'system' } };
-  const repository = { onCommit: vi.fn(), latestCommit: vi.fn(), stamp: vi.fn(), bootstrap: vi.fn(() => state), close: vi.fn() } as unknown as ReaderRepository;
+  const repository = { initialWindowId: () => 'test-window', onCommit: vi.fn(), latestCommit: vi.fn(), stamp: vi.fn(), bootstrap: vi.fn(() => state), close: vi.fn() } as unknown as ReaderRepository;
   const open = vi.fn<() => ReaderRepository>()
     .mockImplementationOnce(failedOpen).mockImplementationOnce(failedOpen).mockReturnValue(repository);
   const diagnose = vi.fn();
@@ -55,7 +55,7 @@ it('retries the original storage initialization after an initial open failure an
   expect(service.dispatch('bootstrap', [])).toEqual({ ok: true, value: state });
   expect(service.dispatch('bootstrap', [])).toEqual({ ok: true, value: state });
   expect(open).toHaveBeenCalledTimes(3);
-  expect(repository.bootstrap).toHaveBeenCalledWith(['en']);
+  expect(repository.bootstrap).toHaveBeenCalledWith(['en'], 'test-window');
   expect(diagnose).toHaveBeenCalledTimes(2);
   service.close();
   expect(repository.close).toHaveBeenCalledTimes(1);
@@ -89,7 +89,7 @@ it('does not reopen an unsupported schema, including when a recoverable retry di
 
 it('successful startup opens storage once and subsequent bootstrap requests reuse it', () => {
   const state = { items: [], comments: {}, preferences: { locale: 'pl', appearance: 'dark' } };
-  const repository = { onCommit: vi.fn(), latestCommit: vi.fn(), stamp: vi.fn(), bootstrap: vi.fn(() => state) } as unknown as ReaderRepository;
+  const repository = { initialWindowId: () => 'test-window', onCommit: vi.fn(), latestCommit: vi.fn(), stamp: vi.fn(), bootstrap: vi.fn(() => state) } as unknown as ReaderRepository;
   const open = vi.fn(() => repository);
   const diagnose = vi.fn();
   const service = new ReaderService(open, ['pl'], diagnose);
@@ -101,7 +101,7 @@ it('successful startup opens storage once and subsequent bootstrap requests reus
   expect(diagnose).not.toHaveBeenCalled();
 });
 it('reports failed writes and missing targets as structured errors', () => {
-  const repository = { onCommit: vi.fn(), latestCommit: vi.fn(), stamp: vi.fn(), toggleSeen: vi.fn(() => { throw new Error('private diagnostic'); }) } as unknown as ReaderRepository;
+  const repository = { initialWindowId: () => 'test-window', onCommit: vi.fn(), latestCommit: vi.fn(), stamp: vi.fn(), toggleSeen: vi.fn(() => { throw new Error('private diagnostic'); }) } as unknown as ReaderRepository;
   const service = new ReaderService(() => repository, ['en'], vi.fn());
   const args = [{ itemId: 'video-demo', commentId: 'v2', subtree: true, seen: true }];
   expect(service.dispatch('toggleSeen', args)).toEqual({ ok: false, error: { code: 'STORAGE_UNAVAILABLE' } });
@@ -115,6 +115,6 @@ it.each(['activateTab', 'closeTab', 'moveTab'] as const)('validates exact tab pa
     expect(service.dispatch(operation, [payload])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
   }
 });
-it.each(['openLibrary', 'openSettings'] as const)('requires no arguments for %s', operation => {
+it.each(['openLibrary', 'openSettings'] as const)('requires an exact topology CAS payload for %s', operation => {
   expect(new ReaderService(failedOpen, ['en'], vi.fn()).dispatch(operation, [{}])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
 });

@@ -1,8 +1,9 @@
+const discussionTab = (itemId: string) => instanceTab(`test-view-${itemId}`, itemId);
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { WorkspaceTabs } from './WorkspaceTabs';
-import { discussionTab } from '../domain/workspace';
+import { discussionTab as instanceTab } from '../domain/workspace';
 import type { WorkspaceState } from '../domain/workspace';
 
 const workspace: WorkspaceState = { tabs: [discussionTab('a'), { id: 'library', kind: 'library' }, { id: 'settings', kind: 'settings' }, discussionTab('b')], activeTabId: 'library', revision: 2 };
@@ -30,12 +31,12 @@ it('localized icon labels and separate close controls coexist with keyboard reor
   fireEvent.keyDown(library, { key: 'ArrowLeft', altKey: true }); expect(move).toHaveBeenLastCalledWith('library', 0);
   expect(activate).not.toHaveBeenCalled();
   fireEvent.keyDown(library, { key: 'ArrowRight', altKey: true }); expect(move).toHaveBeenLastCalledWith('library', 2);
-  fireEvent.keyDown(library, { key: 'End' }); expect(activate).toHaveBeenLastCalledWith('discussion:b', true);
-  fireEvent.keyDown(library, { key: 'Home' }); expect(activate).toHaveBeenLastCalledWith('discussion:a', true);
+  fireEvent.keyDown(library, { key: 'End' }); expect(activate).toHaveBeenLastCalledWith('test-view-b', true);
+  fireEvent.keyDown(library, { key: 'Home' }); expect(activate).toHaveBeenLastCalledWith('test-view-a', true);
   fireEvent.click(screen.getByRole('button', { name: 'Close tab: library' })); expect(close).toHaveBeenCalledWith('library');
   expect(screen.getByRole('tab', { name: 'Video: a' }).querySelector('svg[aria-hidden=true]')).toBeTruthy();
 });
-it.each(['discussion:a', 'library', 'settings', 'discussion:b'])('pointer drag previews %s and persists only final order once', id => {
+it.each(['test-view-a', 'library', 'settings', 'test-view-b'])('pointer drag previews %s and persists only final order once', id => {
   show();
   const rows = Array.from(document.querySelectorAll<HTMLElement>('.tab'));
   rows.forEach((row, index) => vi.spyOn(row, 'getBoundingClientRect').mockImplementation(() => ({ left: index * 100, width: 100 } as DOMRect)));

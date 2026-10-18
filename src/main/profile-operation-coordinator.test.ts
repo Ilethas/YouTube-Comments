@@ -6,7 +6,7 @@ import type { DrainCommand, DrainGrant, ProfileEvent } from '../shared/profile-o
 import { defaultQuery } from '../domain/discussion-query';
 
 afterEach(() => vi.useRealTimers());
-const command: DrainCommand = { kind: 'view', request: { itemId: 'video-demo', draft: defaultQuery, applied: defaultQuery,
+const command: DrainCommand = { kind: 'view', request: { viewId: 'view-one', expectedRevision: 0, draft: defaultQuery, applied: defaultQuery,
   sort: 'newest', selected: null, anchor: { commentId: null, offset: 0 } } };
 function setup() {
   const stamp = { profileEpoch: randomUUID(), commitRevision: 0 };

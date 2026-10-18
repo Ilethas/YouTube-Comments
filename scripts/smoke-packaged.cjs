@@ -1,3 +1,4 @@
+const { tabElement, viewId } = require('./window-view-fixtures.cjs');
 // External CDP + native Windows UI automation of the unmodified, fused EXE.
 // Nothing is injected into main/preload/ASAR. No test switch ships in the app.
 const assert = require('node:assert/strict');
@@ -14,7 +15,7 @@ let current;
 function tables(file) {
   const db = new DatabaseSync(file, { readOnly: true });
   try {
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 12);
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 13);
     assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     return Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
@@ -149,10 +150,10 @@ function seed(file) {
     const initial=repo.ingest(normalized,undefined,true);
     const later={...baseline,comments:[...baseline.comments,{id:'packaged-new',parent:'root',text:'Packaged worker target Polish zażółć',timestamp:1790856000}]};
     repo.ingest(tools.normalizeYtDlp(JSON.stringify(later),fixture.context),undefined,true);
-    repo.setDiscussionCollapse({itemId:initial.itemId,kind:'all',collapsed:true});
+    repo.setDiscussionCollapse({viewId:viewId(repo.bootstrap(['en']),initial.itemId),expectedRevision:0,kind:'all',collapsed:true});
     const rootComment=repo.bootstrap(['en']).comments[initial.itemId].find(comment=>comment.parentId===null);
     assert.ok(rootComment);
-    repo.setDiscussionCollapse({itemId:initial.itemId,kind:'comments',ids:[rootComment.id],collapsed:false});
+    repo.setDiscussionCollapse({viewId:viewId(repo.bootstrap(['en']),initial.itemId),expectedRevision:1,kind:'comments',ids:[rootComment.id],collapsed:false});
     return initial.itemId;
   } finally {repo.close();}
 }
@@ -184,14 +185,14 @@ async function run() {
   assert.equal((await session.invoke('bootstrap')).items.length,0,'Fresh packaged production must not seed demo');
   assert.ok(fs.existsSync(database)); await close(session);
   tables(database); // Check current schema/integrity before adding any fixture.
-  report.checks.push('Fresh production schema 12 in independent disposable Windows profile environment; no demo');
+  report.checks.push('Fresh production schema 13 in independent disposable Windows profile environment; no demo');
   const itemId=seed(database);
   session=await start(executable,environment,profile,'production-existing');
   let boot=await session.invoke('bootstrap'); assert.equal(boot.items.length,1);
   await session.wait("!!document.querySelector('.comment') && !!document.querySelector('.source-button')");
-  assert.equal(boot.discussionCollapse[itemId].defaultCollapsed,true);
-  assert.ok(boot.discussionCollapse[itemId].overrides.length>0);
-  report.checks.push('Existing schema 12 with sparse collapse default/exception, source header, real ASAR renderer/preload and node:sqlite');
+  assert.equal(boot.discussionCollapse[viewId(boot,itemId)].defaultCollapsed,true);
+  assert.ok(boot.discussionCollapse[viewId(boot,itemId)].overrides.length>0);
+  report.checks.push('Existing schema 13 with sparse collapse default/exception, source header, real ASAR renderer/preload and node:sqlite');
   const panel='[role=tabpanel]:not([hidden])';
   // UI preferences, kept in React as well as persisted in SQLite.
   await session.js("document.getElementById('settings-toggle').click()");
@@ -227,7 +228,7 @@ async function run() {
     report.helpers.push({kind,state:status.state,version:status.version,path:status.path});
   }
   report.checks.push('Library/Settings, EN/PL, System/Light/Dark, two helper statuses and native executable picker');
-  await session.js(`document.getElementById(${JSON.stringify('tab-discussion:'+itemId)}).click()`);
+  await session.js(`${tabElement(itemId)}.click()`);
   await session.wait(`!!document.querySelector('${panel} .comment')`);
   assert.equal(await session.js(`!!document.querySelector('${panel} .creator-author') && !!document.querySelector('${panel} .action-translate button[title]') && !!document.querySelector('${panel} .action-author button[title]')`),true,'Packaged reader exposes trusted creator and discoverable external actions');
   assert.equal(await session.js(`!!document.querySelector('${panel} .action-permalink')`),false,'Sanitized non-YouTube fixture IDs never become fabricated permalinks');
@@ -283,12 +284,12 @@ async function run() {
     const status=await session.invoke('getHelperStatus',{kind:helper.kind});
     assert.equal(status.path,helper.path); assert.equal(status.mode,'configured');
   }
-  assert.ok(boot.seenUndo[itemId]); assert.equal(boot.discussionViews[itemId].sort,'newest');
-  assert.equal(boot.discussionViews[itemId].applied.publication.from,'2026-01-01');
+  assert.ok(boot.seenUndo[itemId]); assert.equal(boot.discussionViews[viewId(boot,itemId)].sort,'newest');
+  assert.equal(boot.discussionViews[viewId(boot,itemId)].applied.publication.from,'2026-01-01');
   const beforeReconstruction=boot.comments[itemId];
-  await session.js(`document.getElementById(${JSON.stringify('tab-discussion:'+itemId)}).click()`);
+  await session.js(`${tabElement(itemId)}.click()`);
   await session.wait(`document.querySelector('${panel} .discussion-sort select')?.value==='newest' && document.querySelector('${panel} input[name=publication-from]')?.value==='2026-01-01' && document.querySelector('${panel} .discussion-ruler')?.dataset.newCount==='1'`);
-  await session.wait(`document.getElementById(${JSON.stringify('comment-'+encodeURIComponent(boot.discussionViews[itemId].selected))})?.dataset.selected==='true'`);
+  await session.wait(`document.getElementById(${JSON.stringify('comment-'+encodeURIComponent(boot.discussionViews[viewId(boot,itemId)].selected))})?.dataset.selected==='true'`);
   assert.deepEqual((await session.invoke('bootstrap')).comments[itemId],beforeReconstruction,'Restart reconstruction never writes seen');
   await session.invoke('undoSeen',{itemId});
   assert.equal((await session.invoke('bootstrap')).seenUndo[itemId],null);
@@ -344,7 +345,7 @@ async function run() {
   session=await start(path.join(packageDirectory,'youtube-comments.exe'),environment,profile,'production-copied-application');
   const copied=await session.invoke('bootstrap');
   assert.ok(copied.items.some(item=>item.id===itemId));
-  assert.equal(copied.discussionViews[itemId].sort,'newest'); assert.equal(copied.preferences.translationTarget,'de');
+  assert.equal(copied.discussionViews[viewId(copied,itemId)].sort,'newest'); assert.equal(copied.preferences.translationTarget,'de');
   assert.deepEqual(tables(database).helper_settings,expected.helper_settings);
   await close(session);
   report.checks.push('Original out/ EXE also launches from a temporary working directory and shares the copied folder production profile');

@@ -1,3 +1,4 @@
+import { viewVersion } from '../testing/view-identity';
 import { displayedToggle, displayedUndo } from '../testing/displayed-seen';
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
@@ -30,10 +31,10 @@ it.each([10000, 50000])('%i changed comments remain atomic with bounded one-shot
     expect(targets).toHaveLength(count);
     db = new DatabaseSync(file); db.exec('PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL');
     const collapseStart = performance.now();
-    repository.setDiscussionCollapse({ itemId: id, kind: 'all', collapsed: true });
+    repository.setDiscussionCollapse({ ...viewVersion(repository, id, 'collapse'), kind: 'all', collapsed: true });
     const collapseAllMs = performance.now() - collapseStart;
-    expect(db.prepare('SELECT count(*) AS n FROM discussion_collapse').get()?.n).toBe(1);
-    expect(db.prepare('SELECT count(*) AS n FROM comment_collapse_overrides').get()?.n).toBe(0);
+    expect(db.prepare('SELECT count(*) AS n FROM view_collapse').get()?.n).toBe(1);
+    expect(db.prepare('SELECT count(*) AS n FROM view_collapse_overrides').get()?.n).toBe(0);
     const failureId = required(db.prepare('SELECT id FROM comments WHERE item_id=? AND source_comment_id=?').get(id, `large-${count - 1}`)?.id);
     if (typeof failureId !== 'string' || !/^[a-z0-9-]+$/.test(failureId)) throw new Error('Expected generated UUID');
     db.exec(`CREATE TRIGGER fail_large BEFORE UPDATE ON comment_state WHEN NEW.comment_id='${failureId}' BEGIN SELECT RAISE(ABORT,'late large failure'); END`);
@@ -75,9 +76,9 @@ it.each([10000, 50000])('%i changed comments remain atomic with bounded one-shot
     expect(matching).toMatchObject({ targetCount: count, changedCount: count, undo: { kind: 'matching' } });
     expect(displayedUndo(repository, id)).toMatchObject({ restored: count, skipped: 0 });
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
-    expect(db.prepare('SELECT default_collapsed FROM discussion_collapse WHERE item_id=?').get(id)?.default_collapsed).toBe(1);
-    repository.setDiscussionCollapse({ itemId: id, kind: 'all', collapsed: false });
-    expect(db.prepare('SELECT count(*) AS n FROM comment_collapse_overrides').get()?.n).toBe(0);
+    expect(db.prepare('SELECT default_collapsed FROM view_collapse WHERE item_id=?').get(id)?.default_collapsed).toBe(1);
+    repository.setDiscussionCollapse({ ...viewVersion(repository, id, 'collapse'), kind: 'all', collapsed: false });
+    expect(db.prepare('SELECT count(*) AS n FROM view_collapse_overrides').get()?.n).toBe(0);
     console.log(JSON.stringify({ seenScale: count, collapseAllMs, publicationTargetMs, stateWriteReplayMs, recoveryEntryReplayMs, bulkCommitAckMs, explicitPrefixCommitMs, undoCommitAckMs, recoveryGrowthBytes }));
   } finally {
     db?.close(); repository.close();

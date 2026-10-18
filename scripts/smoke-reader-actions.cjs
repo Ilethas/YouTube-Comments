@@ -1,3 +1,4 @@
+const { tabElement, viewId } = require('./window-view-fixtures.cjs');
 // Disposable built-entry Electron interaction regression. The browser seam captures
 // destinations; it never sends fixture text to Google or changes the default browser.
 const assert = require('node:assert/strict');
@@ -63,8 +64,8 @@ if (process.versions.electron) {
         await pause(50);
         await wait(`document.querySelectorAll('.preferences select')[${index}]?.disabled===false && document.querySelectorAll('.preferences select')[${index}].value===${JSON.stringify(value)}`, 'saved preference');
         step += ' return';
-        await js(`document.getElementById(${JSON.stringify('tab-discussion:'+item.id)}).click()`);
-        await wait(`document.getElementById(${JSON.stringify('panel-'+item.id)})?.hidden===false && ${article}!==null && !document.getElementById('settings-toggle').disabled`, 'discussion');
+        await js(`${tabElement(item.id)}.click()`);
+        await wait(`document.querySelector(${JSON.stringify('[data-item-id="'+item.id+'"]')})?.hidden===false && ${article}!==null && !document.getElementById('settings-toggle').disabled`, 'discussion');
       }
       if (process.env.READER_ACTION_PHASE === 'read') {
         assert.equal(before.value.preferences.translationTarget,'de'); assert.equal(before.value.preferences.locale,'pl');

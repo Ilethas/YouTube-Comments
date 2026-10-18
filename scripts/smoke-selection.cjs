@@ -1,3 +1,4 @@
+const { tabElement, viewId } = require('./window-view-fixtures.cjs');
 // Actual built-entry Electron interactions. Offline, disposable profiles only.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -143,7 +144,7 @@ if (process.versions.electron) {
     await wait("!!document.querySelector('#panel-settings:not([hidden])')");
     await js("(()=>{const e=document.querySelectorAll('.preferences select')[3];e.value='always';e.dispatchEvent(new Event('change',{bubbles:true}));})()"); await pause(100);
     await js("document.querySelector('.preferences input[type=checkbox]').click()"); await pause(100);
-    await js(`document.getElementById(${JSON.stringify('tab-discussion:' + fixture.itemId)}).click()`); await wait(`!!${article(20)}`);
+    await js(`${tabElement(fixture.itemId)}.click()`); await wait(`!!${article(20)}`);
     await menu(20); await button('Mark everything up to here as read', "document.querySelector('[role=menu]')");
     assert.ok(await js("document.querySelector('dialog').textContent.includes('2 comments') && document.querySelector('dialog').textContent.includes('Includes 0 comments hidden')"));
     await confirm(); assert.equal(seenCount(), 2); await undo(); assert.equal(seenCount(), 0);
@@ -183,7 +184,7 @@ if (process.versions.electron) {
     for (const [index, value] of [[0, 'pl'], [1, 'dark']]) {
       await js(`(()=>{const e=document.querySelectorAll('.preferences select')[${index}];e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`); await pause(100);
     }
-    await js(`document.getElementById(${JSON.stringify('tab-discussion:' + fixture.itemId)}).click()`); await pause(250);
+    await js(`${tabElement(fixture.itemId)}.click()`); await pause(250);
     // Scattered selection remains usable in Polish/dark at the minimum window
     // width and 125% zoom. Overflow opens upward without touching the ruler.
     await js(`${circle(20)}.click();${circle(21)}.click();${panel}.scrollTo({top:${panel}.scrollHeight,behavior:'instant'})`);
@@ -194,7 +195,7 @@ if (process.versions.electron) {
     fs.writeFileSync(path.join(__dirname, `../.vite/selection-${fixture.count}-pl-dark.png`), (await contents.capturePage()).toPNG());
     await js("document.getElementById('library-toggle').click()"); await pause(150);
     assert.equal(await js("Array.from(document.querySelectorAll('.floating-reader-controls')).filter(e=>e.getClientRects().length).length"), 0);
-    await js(`document.getElementById(${JSON.stringify('tab-discussion:' + fixture.itemId)}).click()`); await pause(150);
+    await js(`${tabElement(fixture.itemId)}.click()`); await pause(150);
     await js(`${panel}.querySelector('.back-to-top').click()`);
     await wait(`${panel}.scrollTop===0`);
     await js(`${panel}.querySelector('.selection-toolbar button:last-child').click()`);
