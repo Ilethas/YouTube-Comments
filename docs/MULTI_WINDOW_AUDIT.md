@@ -1,5 +1,11 @@
 # Multi-window readiness audit
 
+**M6 update, 2026-10-18:** [ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) implements equal production native
+windows, explicit restore membership and safe DIP geometry on schema **14**. B8's
+code foundation is implemented; physical/manual limitations are recorded in
+[TESTING](TESTING.md). M7 transfer, M8 native dragging and M9 aggregate scale/release
+remain pending. The original audit and evidence below are historical.
+
 **M5 progress, 2026-10-18:** [ADR 0031](decisions/0031-independent-duplicate-discussion-tabs.md) implements explicit independent Duplicate Tab
 within one native window, source semantic checkpoint/copy with fresh evaluation,
 dynamic scoped hydration, view-owned DOM/accessibility identity and active-work

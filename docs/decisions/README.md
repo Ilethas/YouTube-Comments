@@ -1,5 +1,11 @@
 # Decisions and open questions
 
+[ADR 0032: Equal native windows and safe session restoration](0032-equal-native-windows-and-session-restoration.md)
+implements M6 on schema **14**: empty New Window, durable Close/Quit/crash restore
+sets, normal DIP geometry and display validation, hidden bootstrap/readiness and
+M3 native checkpoints/offline fencing. M7?M9 remain future work. Earlier milestone
+entries below retain their historical scope.
+
 [ADR 0031: Independent duplicate discussion tabs](0031-independent-duplicate-discussion-tabs.md)
 implements M5 on schema 13 within one native window. It records semantic copy/fresh
 evaluation, dynamic hydration, DOM namespaces, last-used local Open/resume,

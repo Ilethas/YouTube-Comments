@@ -78,7 +78,7 @@ if (process.versions.electron) {
         await wait(() => js(`document.querySelector('[data-view-id="${id}"] .query-search input')?.value==='pending legacy draft'`),'restored reading intent');
         app.quit();
       }
-      console.log(`M4 Electron PASS ${phase}: schema 13, one reader, opaque identity, lossless legacy state, distant dormant reopen, backup/restore/restart.`);
+      console.log(`M4 Electron PASS ${phase}: schema 14, one reader, opaque identity, lossless legacy state, distant dormant reopen, backup/restore/restart.`);
     })().catch(error => { console.error(error); app.exit(1); }));
   });
   app.on('will-quit', () => { if(phase==='migrate') assert.equal(restored,true); clearTimeout(watchdog); });

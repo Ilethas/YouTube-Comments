@@ -33,6 +33,8 @@ export function createReaderBridge(rawInvoke: (channel: string, ...args: unknown
     resume: identity => invoke(profileChannels.resume, identity) as ReturnType<ProfileLifecycleApi['resume']>,
   } satisfies ProfileLifecycleApi) : undefined;
   return Object.freeze({
+    windowReady: () => invoke('reader:window-ready') as Promise<import('../shared/reader-api').Result<null>>,
+    closeWindow: () => invoke('reader:window-close') as Promise<import('../shared/reader-api').Result<null>>,
     ...(lifecycle ? { lifecycle } : {}),
     onSharedCommit: listener => sharedSubscribe(value => { if (isSharedCommit(value)) listener(value); }),
     getSharedSnapshot: request => (request === undefined ? invoke(readerChannels.getSharedSnapshot) : invoke(readerChannels.getSharedSnapshot, request)) as ReturnType<ReaderApi['getSharedSnapshot']>,

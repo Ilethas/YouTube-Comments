@@ -56,7 +56,7 @@ it('schema 11 migration preserves every preference, content/history/Undo/workspa
   raw(downgradeCustomTranslationFixture); expect(validateBackup(file)).toBe(11);
   const bytes = readFileSync(file); await protectBeforeMigration(file);
   const safety = path.join(recoveryDirectory(file), readdirSync(recoveryDirectory(file))[0]); expect(validateBackup(safety)).toBe(11);
-  const staged = await prepareRestore(safety, file); expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(13);
+  const staged = await prepareRestore(safety, file); expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(14);
   expect(readFileSync(file)).toEqual(bytes);
   repo = ReaderRepository.open(file); expect(legacyComparableState(repo.bootstrap(['en']))).toEqual(legacyComparableState(before)); expect(repo.history()).toEqual(history);
   raw(db => expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]));
@@ -76,5 +76,5 @@ it('backup/restore includes custom targets and semantic query times with no seen
   repo.updatePreferences({ translationTarget: 'en' }, ['en']);
   const staged = await prepareRestore(snapshot, file); await repo.createBackup(path.join(staged, 'safety.sqlite'));
   repo.prepareOffline(); repo.close(); await installRestore(file, staged);
-  repo = ReaderRepository.open(file); expect(repo.bootstrap(['en'])).toEqual(before); expect(validateBackup(file)).toBe(13);
+  repo = ReaderRepository.open(file); expect(repo.bootstrap(['en'])).toEqual(before); expect(validateBackup(file)).toBe(14);
 }, 30000);

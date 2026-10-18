@@ -31,6 +31,7 @@ import { randomUUID } from 'node:crypto';
 import type { ThumbnailCache, CachedThumbnail } from './thumbnail-cache';
 import type { ProfileOperationCoordinator } from './profile-operation-coordinator';
 import type { DrainCommand } from '../shared/profile-operation';
+import type { WindowSessionStore } from './persistence/window-session';
 
 export interface DataBackupOptions {
   readonly databasePath: string;
@@ -51,6 +52,25 @@ export class ReaderService {
     if (!hasPeers) return this.repository.initialWindowId();
     return this.repository.createPersistentWindow();
   }
+  /** Native metadata never crosses renderer IPC. Gate EACH write at execution,
+   * including delayed geometry callbacks, against M3/offline replacement. */
+  readNativeSession() { if (!this.repository || this.restartPending) throw new Error('Storage unavailable'); return this.repository.nativeSession().read(); }
+  readNativeGeometry(id: string) { if (!this.repository || this.restartPending) throw new Error('Storage unavailable'); return this.repository.nativeSession().geometry(id); }
+  mutateNativeSession<T>(action: (store: WindowSessionStore) => T, checkpoint = false): T {
+    if (!this.repository || this.stopping || this.restartPending || (this.lifecycle?.blocks() || this.dataPending)
+      && !(checkpoint && ['QUIESCENT', 'EXECUTING', 'RELEASED'].includes(this.lifecycle?.phase ?? ''))) throw new Error('Profile busy');
+    return action(this.repository.nativeSession());
+  }
+  nativeWritesAllowed(): boolean { return !!this.repository && !this.stopping && !this.restartPending && !this.dataPending && !this.lifecycle?.blocks(); }
+  /** Compensation for a main-created provisional window, including load failure
+   * during a drain/dialog. It changes no reading data and is fenced offline. */
+  abandonNativeWindow(id: string, fallback?: import('./persistence/window-session').WindowSession): void {
+    if (!this.repository || this.stopping || this.restartPending) return;
+    this.repository.nativeSession().abandon(id, undefined, fallback);
+  }
+  private nativeCheckpoint?: () => void;
+  setNativeCheckpoint(flush: () => void): void { this.nativeCheckpoint = flush; }
+  flushNativeCheckpoint(): void { if (!this.restartPending) this.nativeCheckpoint?.(); }
   private lifecycle?: ProfileOperationCoordinator;
   attachLifecycle(coordinator: ProfileOperationCoordinator): void { this.lifecycle = coordinator; }
   private lastProfileStamp?: import('../shared/reader-sync').SharedStamp;
@@ -290,7 +310,7 @@ export class ReaderService {
     let closed = false, settled = false;
     try {
       if (operation === 'createBackup' && this.acquisition?.current()) return { ok: false, error: { code: 'DATA_BUSY' } };
-      if (this.lifecycle) { await this.lifecycle.begin(operation === 'createBackup' ? 'backup' : 'restore'); this.lifecycle.executePhase(); }
+      if (this.lifecycle) { await this.lifecycle.begin(operation === 'createBackup' ? 'backup' : 'restore'); this.flushNativeCheckpoint(); this.lifecycle.executePhase(); }
       const locale = repository.preferences(this.languages).locale;
       if (operation === 'createBackup') {
         if (this.acquisition?.current()) return { ok: false, error: { code: 'DATA_BUSY' } };
@@ -301,6 +321,7 @@ export class ReaderService {
         await validateBackupDestination(destination, options.databasePath);
         if (originLost()) return { ok: true, value: { status: 'cancelled' } };
         this.lifecycle?.accept();
+        this.flushNativeCheckpoint();
         await repository.createBackup(destination);
         return { ok: true, value: { status: 'created', destination } };
       }
@@ -314,6 +335,7 @@ export class ReaderService {
       settled = true;
       this.lifecycle?.accept();
       await Promise.all([this.acquisition?.close(), this.helpers?.shutdown(), this.thumbnails?.cache.settle()]);
+      this.flushNativeCheckpoint();
       await repository.createBackup(path.join(directory, 'safety.sqlite'));
       await options.checkpoint?.('safety');
       // Terminal fencing precedes the first offline storage action, including failures.

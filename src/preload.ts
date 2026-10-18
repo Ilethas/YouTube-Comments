@@ -19,3 +19,10 @@ contextBridge.exposeInMainWorld('reader', createReaderBridge((channel, ...args) 
   ipcRenderer.on(profileChannels.event, receive);
   return () => { ipcRenderer.removeListener(profileChannels.event, receive); };
 }));
+
+// A fixed main-world adapter, never a renderer evaluation capability. Chromium's
+// direct close may destroy WebContents without the native cancellable event;
+// route the ordinary affordance through the same authenticated native/M3 path.
+contextBridge.executeInMainWorld({ func: () => {
+  window.close = () => { void window.reader.closeWindow?.().catch(() => undefined); };
+} });

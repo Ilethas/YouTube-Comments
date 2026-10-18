@@ -1,5 +1,13 @@
 # Documentation map
 
+[ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) implements **M6**, equal production native windows,
+File > New Window / Ctrl+N, persistent intended session restoration and safe DIP
+geometry. Current schema is **14**. One shared service/profile serves independent
+window workspaces and views; M3 drains/fencing cover native saves. See [UI](UI_AND_NAVIGATION.md),
+[database](DATABASE.md) and [testing evidence](TESTING.md). M7 transfer, M8 native
+dragging and M9 aggregate scale/release remain future work. Earlier milestones below
+retain their original scope.
+
 [ADR 0031](decisions/0031-independent-duplicate-discussion-tabs.md) implements M5: independent duplicate video/Community discussion tabs inside
 one native window. Semantic source queues checkpoint before atomic copying;
 versioned scoped hydration precedes mount; DOM IDs and interactions belong to the

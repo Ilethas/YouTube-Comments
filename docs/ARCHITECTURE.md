@@ -1,5 +1,24 @@
 # Architecture
 
+## Equal native windows and session restoration (M6)
+
+[ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) implements schema **14**, equal production BrowserWindows and
+one shared main-owned service/repository. File > New Window / Ctrl+N (Cmd+N) creates
+a new empty logical workspace through the secured factory. WindowCoordinator
+registers its persistent identity before trusted loading; M1 derives caller scope.
+M2 shared commits and M4/M5 private view ownership remain unchanged. Startup loads
+only explicit durable restore membership, validates normal DIP geometry against
+current displays, waits for each shell's payload-free readiness and focuses the
+last-active window once. Constructor/load failure removes provisional membership.
+
+M3 retains all-participant Close/Reload drains. Final native geometry and restore
+membership commit before Close; cancellation re-enrolls the window. Peer Close
+keeps shared operations/service alive. Quit snapshots all live windows before
+teardown; last close retains one; crash restores acknowledged membership. Native
+debounced saves flush at profile checkpoints and are terminally fenced offline.
+Backup restore/relaunch replaces the entire intended session. Historical milestone
+sections below describe their original scope; M6 supersedes their one-reader limits.
+
 ## Independent duplicate discussion tabs (M5)
 
 [ADR 0031](decisions/0031-independent-duplicate-discussion-tabs.md) enables multiple independent discussion views inside the one production

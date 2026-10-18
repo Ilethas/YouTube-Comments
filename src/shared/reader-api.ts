@@ -66,6 +66,10 @@ export interface AcquisitionResult {
 
 /** Intent-only capabilities. No generic invoke, SQL, executable input or Node handles. */
 export interface ReaderApi {
+  /** Payload-free readiness for this authenticated native window only. */
+  windowReady?(): Promise<Result<null>>;
+  /** Accept a Close request for this document's native window; M3 owns completion. */
+  closeWindow?(): Promise<Result<null>>;
   readonly lifecycle?: import('./profile-operation').ProfileLifecycleApi;
   onSharedCommit(listener: (commit: SharedCommit) => void): () => void;
   getSharedSnapshot(request?: RefreshRequest): Promise<Result<SharedSnapshot | SharedItemSnapshot>>;

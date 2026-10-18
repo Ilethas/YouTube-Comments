@@ -91,7 +91,7 @@ it('schema-13 verified backup and staged restore retain open order, active, dorm
   const id = repo.duplicateTab(request()).view.viewId; repo.changeWorkspace('closeTab', source); repo.changeWorkspace('moveTab', id, 0);
   repo.bulkSeen({ itemId: 'video-demo', seen: true, target: { kind: 'all' } });
   const before = repo.bootstrap(['en']), backup = path.join(root, 'snapshot.sqlite'); await repo.createBackup(backup);
-  expect(validateBackup(backup)).toBe(13);
+  expect(validateBackup(backup)).toBe(14);
   const stage = await prepareRestore(backup, path.join(root, 'reader.sqlite'));
   const restored = ReaderRepository.open(path.join(stage, 'candidate.sqlite')); repositories.push(restored);
   expect(restored.bootstrap(['en'])).toEqual(before); expect(restored.viewInstances(restored.initialWindowId())[source]).toBeDefined();

@@ -17,6 +17,14 @@ interface WindowRecord {
   closing: boolean;
   finishing?: boolean;
 }
+interface NativeWindowHooks {
+  geometry: (id: string) => Parameters<typeof createApplicationWindow>[1];
+  created: (window: BrowserWindow, id: string) => void;
+  failed: (id: string, restoring: boolean, asynchronous?: boolean) => void;
+  beforeClose: (id: string) => void;
+  cancelledClose: (id: string) => void;
+  ready: (window: BrowserWindow, id: string) => void;
+}
 
 /** Main-owned persistent window identities, independent of Electron native IDs.
  * Registration alone grants no authority: a trusted top-level document commit
@@ -24,20 +32,51 @@ interface WindowRecord {
 export class WindowCoordinator {
   private readonly records = new Map<WebContents, WindowRecord>();
   private lifecycle?: { close: (caller: ReaderCallerContext) => void; reload: (caller: ReaderCallerContext) => void; lost: (caller: ReaderCallerContext) => void;
-    restored: (caller: ReaderCallerContext) => void; canRecover: () => boolean };
+    restored: (caller: ReaderCallerContext) => void; canRecover: () => boolean; closeUnavailable?: (window: BrowserWindow) => void };
   setLifecycle(value: NonNullable<WindowCoordinator['lifecycle']>): void { this.lifecycle = value; }
 
   constructor(private readonly documentUrl: string, private readonly preloadPath: string) {}
 
   private identityProvider: () => string = randomUUID;
   setIdentityProvider(provider: () => string): void { this.identityProvider = provider; }
+  private native?: NativeWindowHooks;
+  private readonly loading = new Set<Promise<void>>();
+  setNativeHooks(hooks: NativeWindowHooks): void { this.native = hooks; }
 
-  createReaderWindow(): BrowserWindow {
-    const windowId = this.identityProvider();
-    const window = createApplicationWindow(this.preloadPath);
-    this.register(window, windowId);
-    void window.loadURL(this.documentUrl);
-    return window;
+  createReaderWindow(existingId?: string): BrowserWindow {
+    const windowId = existingId ?? this.identityProvider();
+    let window: BrowserWindow | undefined;
+    try {
+      window = createApplicationWindow(this.preloadPath, this.native?.geometry(windowId));
+      this.register(window, windowId);
+      this.native?.created(window, windowId);
+      const loading = window.loadURL(this.documentUrl);
+      const task = loading?.catch(error => {
+        if (window) { this.unregister(window); window.destroy(); }
+        this.native?.failed(windowId, !!existingId, true);
+        console.error('Reader document failed to load', error);
+      });
+      if (task) {
+        this.loading.add(task);
+        void task.then(() => this.loading.delete(task), error => { this.loading.delete(task); console.error('Reader creation compensation failed', error); });
+      }
+      return window;
+    } catch (error) {
+      if (window) { this.unregister(window); window.destroy(); }
+      this.native?.failed(windowId, !!existingId);
+      throw error;
+    }
+  }
+  /** Quit captures ALL remaining natives, including a newly requested reader.
+   * First settle document construction so failed provisional windows compensate
+   * before shutdown. A hung load fails Quit rather than silently discarding it. */
+  async settleCreation(deadlineMs = 15000): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([Promise.allSettled([...this.loading]), new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error('Reader creation unavailable')), deadlineMs);
+      })]);
+    } finally { clearTimeout(timer); }
   }
 
   /** Main-only registration, before load. Replacing a registration invalidates
@@ -68,6 +107,9 @@ export class WindowCoordinator {
     };
     const inPage = (_event: Electron.Event, _url: string, isMainFrame: boolean) => { if (isMainFrame) revoke(); };
     const close = (event: Electron.Event) => {
+      if (this.lifecycle && !record.finishing && (!record.caller || !this.live(record, record.caller)) && this.lifecycle.closeUnavailable) {
+        event.preventDefault(); this.lifecycle.closeUnavailable(window); return;
+      }
       if (this.lifecycle && !record.finishing && record.caller && this.live(record, record.caller)) {
         event.preventDefault(); this.lifecycle.close(record.caller); return;
       }
@@ -78,6 +120,7 @@ export class WindowCoordinator {
         queueMicrotask(() => {
           if (event.defaultPrevented && !window.isDestroyed() && this.records.get(contents) === record) {
             record.closing = false; record.finishing = false;
+            this.native?.cancelledClose(record.windowId);
             if (record.caller && this.live(record, record.caller)) this.lifecycle?.restored(record.caller);
           }
         });
@@ -156,8 +199,17 @@ export class WindowCoordinator {
   finishClose(caller: ReaderCallerContext): void {
     const window = this.originWindow(caller), record = window && this.records.get(window.webContents);
     if (!record) return;
+    this.native?.beforeClose(record.windowId);
     record.finishing = true; window?.close();
   }
+  finishUnavailableClose(window: BrowserWindow): void {
+    const record = this.records.get(window.webContents); if (!record) return;
+    this.native?.beforeClose(record.windowId); record.finishing = true; window.close();
+  }
+  ready(caller: ReaderCallerContext): void {
+    const window = this.originWindow(caller); if (window) this.native?.ready(window, caller.windowId);
+  }
+  nativeWindows(): readonly { window: BrowserWindow; windowId: string }[] { return [...this.records.values()].map(r => ({ window: r.window, windowId: r.windowId })); }
   finishReload(caller: ReaderCallerContext): void { this.originWindow(caller)?.webContents.reload(); }
   requestReload(window: BrowserWindow): void {
     const record = this.records.get(window.webContents), caller = record?.caller;

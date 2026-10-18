@@ -1,5 +1,22 @@
 # UI and navigation
 
+## Equal native reader windows (M6)
+
+Use native **File > New Window** / **Ctrl+N** (**Cmd+N** on macOS; Polish **Plik >
+Nowe okno**). Each new window starts empty, with its own Library/Settings tabs,
+discussion views, duplicates, active tab and reading state. Library content, seen,
+Undo, preferences, helpers and acquisition are shared. Windows have no special
+primary/child relationship. There is no tab transfer or drag-out detachment yet.
+
+Explicit Quit restores all open windows on next launch. Closing one among several
+excludes it; closing the last retains that last window. Crashes recover the last
+durably acknowledged session. Empty workspaces stay empty. Normal bounds and
+maximized/fullscreen state restore against currently available work areas; minimized
+windows reopen visible. Monitor evidence is a hint; unreachable saved geometry is
+clamped. Startup focuses the saved last-active window once. Native Close/Reload
+briefly drains every reader under M3; failed saves leave the reader usable for retry.
+See [ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) and [native evidence](TESTING.md).
+
 ## Duplicate discussion tabs (M5)
 
 Right-click a discussion tab, or focus it and use Shift+F10 / the context-menu key,

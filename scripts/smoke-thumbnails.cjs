@@ -38,6 +38,9 @@ if (process.versions.electron) {
     }
     const boot = () => js('window.reader.bootstrap().then(r=>r.value)');
     await wait(`${image}?.querySelector('img').naturalWidth===1280 && !${image}.parentElement.hidden`);
+    // M6 restores the preceding phase's deliberately narrow native geometry.
+    // Establish this layout assertion's wide viewport explicitly each phase.
+    window.setSize(1240, 900); contents.setZoomFactor(1); await pause(150);
     const before = await boot();
     const compact = await js(`${image}.getBoundingClientRect().width`); assert.ok(Math.abs(compact - 360) < 1);
     assert.equal(await js(`${image}.parentElement.previousElementSibling.className`), 'item-title');

@@ -1,5 +1,29 @@
 # Database and durable data
 
+## Native session metadata (schema 14, M6)
+
+[ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) adds strict `window_restore` (ordered intended members),
+singleton `window_session` (version 1, CAS revision, required focused-member FK)
+and required per-window `window_geometry` (independent CAS revision and optional
+bounded version-1 JSON). Geometry stores getNormalBounds() in DIP, separate
+maximized/fullscreen and optional display/scale/work-area evidence, never minimized.
+Geometry and session mutations publish M2 watermarks and do not advance tab/view CAS.
+
+Quit atomically captures live membership before teardown. Ordinary peer Close
+removes its member, last Close retains one, and a cancelled final Close re-enrolls
+it. Crash restores acknowledged membership, never every historical app_windows row.
+Closed window/tab/view data remains dormant and shared Library data is retained.
+New windows have empty workspaces. Full backup/restore preserves all these tables.
+
+Migration 14 is additive; historical migrations 1?13 keep their original meaning.
+Unrecorded v13 membership maps once to its former single startup choice, without
+inventing geometry or reopening dormant history. Exact historical validation,
+verified pre-migration safety and staged upgrades now cover schemas 1?14. Current
+validation additionally checks session membership/focus, required geometry rows and
+versioned finite bounded DIP data. M3 native checkpoints precede snapshots/offline
+replacement; no delayed native save can write a restored profile. Older sections
+below retain their historical schema contracts.
+
 ## M5 duplication on schema 13
 
 [ADR 0031](decisions/0031-independent-duplicate-discussion-tabs.md) uses the existing M4 tables without a schema migration. One transaction

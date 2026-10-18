@@ -218,7 +218,7 @@ if (process.versions.electron) {
       const child = spawn(require('electron'), [__filename], { env, stdio: 'inherit', windowsHide: true });
       await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error('M3 exited '+code))); });
       const { DatabaseSync } = require('node:sqlite'), db = new DatabaseSync(path.join(root, 'profile', 'reader.sqlite'), { readOnly: true });
-      try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 13); assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok'); assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []); } finally { db.close(); }
+      try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 14); assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok'); assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []); } finally { db.close(); }
     } finally {
       assert.ok(path.dirname(root) === os.tmpdir() && path.basename(root).startsWith('reader-m3-'));
       fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { migrations, migrateDatabase, schemaVersion } from './migrations';
 import { isDiscussionViewIntent, isViewIdentity } from '../../domain/discussion-view';
 import { normalizeTranslationCode } from '../../shared/preferences';
+import { isWindowGeometry } from '../../domain/window-geometry';
 
 export type BackupValidationReason = 'INVALID_BACKUP' | 'NEWER_BACKUP' | 'OLDER_BACKUP';
 export class BackupValidationError extends Error {
@@ -28,7 +29,7 @@ function requireEmpty(db: DatabaseSync, sql: string): void {
 
 /** Read-only validation uses only application-authored SQL. Unknown tables,
  * indexes, views and triggers are rejected before any staged migration runs.
- * Schemas 1–13 are recognized; only the staged copy may subsequently migrate. */
+ * Schemas 1–14 are recognized; only the staged copy may subsequently migrate. */
 export function validateBackup(file: string): number {
   let db: DatabaseSync | undefined;
   try {
@@ -87,6 +88,13 @@ export function validateBackup(file: string): number {
       if (!db.prepare('SELECT 1 FROM app_windows').get()) throw new BackupValidationError('INVALID_BACKUP');
       requireEmpty(db, `SELECT 1 FROM tab_instances t LEFT JOIN discussion_views v ON v.view_id=t.id WHERE t.kind='discussion' AND v.view_id IS NULL LIMIT 1`);
       requireEmpty(db, `SELECT 1 FROM tab_instances t LEFT JOIN item_resume_view r ON r.window_id=t.owner_window_id AND r.item_id=t.item_id WHERE t.kind='discussion' AND r.view_id IS NULL LIMIT 1`);
+    }
+    if (version >= 14) {
+      if (db.prepare('SELECT count(*) AS n FROM window_session WHERE id=1').get()?.n !== 1 || !db.prepare('SELECT 1 FROM window_restore').get()) throw new BackupValidationError('INVALID_BACKUP');
+      requireEmpty(db, 'SELECT 1 FROM app_windows w LEFT JOIN window_geometry g ON g.window_id=w.id WHERE g.window_id IS NULL LIMIT 1');
+      for (const row of db.prepare('SELECT geometry_json FROM window_geometry WHERE geometry_json IS NOT NULL').iterate()) {
+        if (!isWindowGeometry(JSON.parse(String(row.geometry_json)))) throw new BackupValidationError('INVALID_BACKUP');
+      }
     }
     return version;
   } catch (error) {

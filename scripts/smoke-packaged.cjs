@@ -15,7 +15,7 @@ let current;
 function tables(file) {
   const db = new DatabaseSync(file, { readOnly: true });
   try {
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 13);
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 14);
     assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     return Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
@@ -43,13 +43,13 @@ async function connect(url) {
     pending.set(key, {resolve,reject,timeout}); socket.send(JSON.stringify({id:key,method,params}));
   }) };
 }
-async function attach(profile, started, label) {
+async function attach(profile, started, label, targetId, ownedViewId) {
   const active = path.join(profile, 'DevToolsActivePort');
   for (let i = 0; i < 500; i++) {
     try {
       const port = fs.readFileSync(active, 'utf8').split('\n')[0];
       const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-      const target = targets.find(target=>target.type==='page' && target.url.startsWith('file:'));
+      const target = targets.find(target=>target.type==='page' && target.url.startsWith('file:') && (!targetId || target.id===targetId));
       if (!target) throw new Error('No renderer');
       const cdp = await connect(target.webSocketDebuggerUrl);
       const js = async expression => {
@@ -58,11 +58,21 @@ async function attach(profile, started, label) {
         return result.result.value;
       };
       if (!await js("!!document.querySelector('.app-shell')")) { cdp.socket.close(); throw new Error('Not ready'); }
+      if (ownedViewId && !await js('window.reader.bootstrap().then(r=>!!r.value.viewInstances['+JSON.stringify(ownedViewId)+'])')) {
+        cdp.socket.close();
+        const remaining=targets.filter(t=>t.id!==target.id&&t.type==='page'&&t.url.startsWith('file:'));
+        for(const candidate of remaining) {
+          const other=await attach(profile,started,label,candidate.id);
+          if(await other.js('window.reader.bootstrap().then(r=>!!r.value.viewInstances['+JSON.stringify(ownedViewId)+'])')) return other;
+          other.cdp.socket.close();
+        }
+        throw new Error('Owned window not ready');
+      }
       const browser = await connect((await (await fetch(`http://127.0.0.1:${port}/json/version`)).json()).webSocketDebuggerUrl);
       const processes = await browser.send('SystemInfo.getProcessInfo'); browser.socket.close();
       const pid = processes.processInfo.find(p=>p.type==='browser').id;
       report.starts.push({ label, milliseconds: Math.round(performance.now()-started), pid, url:target.url });
-      const session = {cdp,js,pid,profile};
+      const session = {cdp,js,pid,profile,port,targetId:target.id};
       current = session;
       session.wait = async expression => {
         for (let i=0;i<400;i++) { if (await js(expression)) return; await pause(40); }
@@ -84,13 +94,13 @@ async function attach(profile, started, label) {
 }
 const logDirectory = path.resolve(__dirname, '../.packaging-diagnostics');
 fs.mkdirSync(logDirectory, {recursive:true});
-async function start(executable, environment, profile, label, developmentEntry) {
+async function start(executable, environment, profile, label, developmentEntry, ownedViewId) {
   fs.rmSync(path.join(profile,'DevToolsActivePort'),{force:true});
   const started = performance.now();
   const child = spawn(executable,[...(developmentEntry?[developmentEntry]:[]),'--remote-debugging-address=127.0.0.1','--remote-debugging-port=0'],{cwd:root,env:environment,windowsHide:true,stdio:['ignore','pipe','pipe']});
   const log = fs.createWriteStream(path.join(logDirectory,`packaged-${label}.log`));
   child.stdout.pipe(log); child.stderr.pipe(log);
-  const session = await attach(profile,started,label); session.child=child;
+  const session = await attach(profile,started,label,undefined,ownedViewId); session.child=child;
   assert.match(await session.js('location.href'),developmentEntry?/\.vite/:/app\.asar/);
   assert.equal(await session.js("[typeof require,typeof process,typeof Buffer].join(',')"),'undefined,undefined,undefined');
   assert.equal(await session.js('Object.isFrozen(window.reader)'),true);
@@ -109,7 +119,7 @@ async function start(executable, environment, profile, label, developmentEntry) 
   return session;
 }
 async function close(session) {
-  await session.js('window.close()').catch(()=>undefined);
+  await closeNativeWindow(session);
   if (session.child) await new Promise((resolve,reject)=>{
     if(session.child.exitCode!==null) { assert.equal(session.child.exitCode,0);resolve();return; }
     const timer=setTimeout(()=>reject(new Error('Clean shutdown timeout')),15000);
@@ -124,6 +134,20 @@ async function close(session) {
     assert.ok(exited,'Relaunched application shuts down cleanly');
   }
   session.cdp.socket.close(); current=undefined; await pause(200);
+}
+async function closePeer(peer) {
+  await closeNativeWindow(peer);
+  for(let i=0;i<300;i++) {
+    const targets=await(await fetch(`http://127.0.0.1:${peer.port}/json/list`)).json();
+    if(!targets.some(t=>t.id===peer.targetId)) { peer.cdp.socket.close(); return; }
+    await pause(25);
+  }
+  throw new Error('Packaged peer did not close: '+JSON.stringify(await peer.js('window.reader.lifecycle.current()')));
+}
+async function closeNativeWindow(session) {
+  const title='Disposable packaged Close '+session.targetId;
+  await session.js('document.title='+JSON.stringify(title));
+  console.log(await command('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'packaged-native-dialog.ps1'),'-ApplicationPid',String(session.pid),'-Action','close-window','-WindowTitle',title]));
 }
 async function native(session, action, file) {
   console.log(`Native ${action}: PID ${session.pid}`);
@@ -154,6 +178,9 @@ function seed(file) {
     const rootComment=repo.bootstrap(['en']).comments[initial.itemId].find(comment=>comment.parentId===null);
     assert.ok(rootComment);
     repo.setDiscussionCollapse({viewId:viewId(repo.bootstrap(['en']),initial.itemId),expectedRevision:1,kind:'comments',ids:[rootComment.id],collapsed:false});
+    const primaryViewId=viewId(repo.bootstrap(['en']),initial.itemId);
+    for(let i=0;i<2;i++) { const id=repo.createPersistentWindow(); for(const name of ['openLibrary','openSettings','openStoredItem']) repo.changeWorkspace(name,name==='openStoredItem'?initial.itemId:undefined,undefined,id); }
+    fs.writeFileSync(path.join(root,'native-identities.json'),JSON.stringify({primaryViewId}));
     return initial.itemId;
   } finally {repo.close();}
 }
@@ -185,14 +212,15 @@ async function run() {
   assert.equal((await session.invoke('bootstrap')).items.length,0,'Fresh packaged production must not seed demo');
   assert.ok(fs.existsSync(database)); await close(session);
   tables(database); // Check current schema/integrity before adding any fixture.
-  report.checks.push('Fresh production schema 13 in independent disposable Windows profile environment; no demo');
+  report.checks.push('Fresh production schema 14 in independent disposable Windows profile environment; no demo');
   const itemId=seed(database);
-  session=await start(executable,environment,profile,'production-existing');
+  const {primaryViewId}=JSON.parse(fs.readFileSync(path.join(root,'native-identities.json')));
+  session=await start(executable,environment,profile,'production-existing',undefined,primaryViewId);
   let boot=await session.invoke('bootstrap'); assert.equal(boot.items.length,1);
   await session.wait("!!document.querySelector('.comment') && !!document.querySelector('.source-button')");
   assert.equal(boot.discussionCollapse[viewId(boot,itemId)].defaultCollapsed,true);
   assert.ok(boot.discussionCollapse[viewId(boot,itemId)].overrides.length>0);
-  report.checks.push('Existing schema 13 with sparse collapse default/exception, source header, real ASAR renderer/preload and node:sqlite');
+  report.checks.push('Existing schema 14 with sparse collapse default/exception, source header, real ASAR renderer/preload and node:sqlite');
   const panel='[role=tabpanel]:not([hidden])';
   // UI preferences, kept in React as well as persisted in SQLite.
   await session.js("document.getElementById('settings-toggle').click()");
@@ -272,10 +300,23 @@ async function run() {
   assert.equal(await session.js(`!!document.querySelector('${panel} .comment[data-selected=true]')`),true,'Virtual navigation reveals selection');
   report.checks.push('Removed row gestures, explicit Ctrl+checkbox subtree, atomic rejection, durable Undo, restrictive ASAR worker, publication/discovery, sort, ruler and virtual reveal');
   await session.js("document.getElementById('settings-toggle').click()"); await pause(600);
+  const peers=[], initialTargets=await(await fetch(`http://127.0.0.1:${session.port}/json/list`)).json();
+  const nativePeers=initialTargets.filter(t=>t.type==='page'&&t.url.startsWith('file:')&&t.id!==session.targetId);
+  assert.equal(nativePeers.length,2,'unmodified extracted EXE restores three independently seeded native windows');
+  for(const target of nativePeers) {
+    const peer=await attach(profile,performance.now(),'production-native-peer',target.id); peers.push(peer);
+    for(const name of ['openLibrary','openSettings','openStoredItem']) {
+      const state=await peer.invoke('bootstrap'); await peer.invoke(name,{expectedRevision:state.workspace.revision,...(name==='openStoredItem'?{itemId}:{})});
+      if(name==='openSettings') await peer.wait("document.querySelectorAll('.helper-tool[aria-busy=false]').length===2");
+    }
+  }
+  report.checks.push('Extracted EXE restores three independently seeded native windows; Library/Settings/discussion work in each; public New Window is tested separately by the production-entry M6 harness');
   const snapshot=path.join(root,'complete-backup.sqlite');
   await session.js("document.querySelector('.data-backups button').click()"); await native(session,'file',snapshot);
   await session.wait("document.querySelector('.data-backups > [role=status]')?.textContent.includes('complete-backup.sqlite')");
   const expected=tables(snapshot); assert.deepEqual(tables(database),expected);
+  assert.equal(expected.window_restore.length,3);
+  for(const peer of peers) await closePeer(peer);
   await close(session);
   session=await start(executable,environment,profile,'production-restart');
   boot=await session.invoke('bootstrap'); assert.equal(boot.preferences.translationTarget,'de');
@@ -315,7 +356,9 @@ async function run() {
   assert.ok(relaunchedPid,'Actual packaged relaunch process');
   current={pid:relaunchedPid,js:async()=>undefined,cdp:{socket:{close(){}}}};
   await native({pid:relaunchedPid},'acknowledge');
-  session=await attach(profile,started,'production-real-relaunch'); assert.notEqual(session.pid,oldPid);
+  session=await attach(profile,started,'production-real-relaunch',undefined,primaryViewId); assert.notEqual(session.pid,oldPid);
+  await session.wait("!document.querySelector('#panel-settings:not([hidden])') || document.querySelectorAll('.helper-tool[aria-busy=false]').length===2");
+  console.log(await command('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'packaged-native-dialog.ps1'),'-ApplicationPid',String(session.pid),'-Action','readers-ready','-ExpectedReaders','3']));
   assert.deepEqual(tables(database),expected); assert.equal((await session.invoke('bootstrap')).preferences.translationTarget,'de');
   const recovery=path.join(profile,'recovery');
   const transactions=fs.readdirSync(recovery).filter(name=>name.startsWith('restore-'));
@@ -323,6 +366,15 @@ async function run() {
   assert.deepEqual(tables(path.join(recovery,transactions[0],'safety.sqlite')),beforeRestore);
   assert.ok(fs.existsSync(path.join(recovery,transactions[0],'complete')));
   report.checks.push('Native Settings backup, confirmed restore, actual app.relaunch into extracted EXE, exact all-table restoration and independent safety');
+  const restoredTargets=await(await fetch(`http://127.0.0.1:${session.port}/json/list`)).json();
+  const restoredPeers=restoredTargets.filter(t=>t.type==='page'&&t.url.startsWith('file:')&&t.id!==session.targetId);
+  assert.equal(restoredPeers.length,2,'real extracted-EXE relaunch restores all three intended windows');
+  for(const target of restoredPeers) {
+    const peer=await attach(profile,performance.now(),'production-restored-peer',target.id);
+    assert.ok((await peer.invoke('bootstrap')).workspace.tabs.some(t=>t.kind==='discussion')); await closePeer(peer);
+  }
+  current=session;
+  report.checks.push('Real extracted-EXE relaunch restores exactly three windows and original owned view identities; peer Close leaves the retained window usable');
   // Process identity is observed externally without enabling Node inspection.
   const processInfo=await command('powershell.exe',['-NoProfile','-Command',`Get-CimInstance Win32_Process -Filter 'ProcessId = ${session.pid}' | Select-Object ExecutablePath,CommandLine | ConvertTo-Json -Compress`]);
   assert.ok(processInfo.includes('extracted application')); report.relaunch=JSON.parse(processInfo);

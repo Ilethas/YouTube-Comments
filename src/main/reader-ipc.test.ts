@@ -12,6 +12,29 @@ const { handlers } = vi.hoisted(() => ({ handlers: new Map<string, (event: IpcMa
 vi.mock('electron', () => ({ ipcMain: { handle: (channel: string, handler: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => { if (handlers.has(channel)) throw new Error('Duplicate handler'); handlers.set(channel, handler); } } }));
 beforeEach(() => handlers.clear());
 
+it('readiness can reveal only its authenticated origin and rejects every payload or stale incarnation', () => {
+  const windows = new WindowCoordinator('file:///app/index.html', ''), a = windowFixture(), b = windowFixture();
+  windows.register(a.window); a.commit(); windows.register(b.window); b.commit();
+  const ready = vi.spyOn(windows, 'ready'); registerReaderIpc({ dispatch: vi.fn() } as unknown as ReaderService, windows);
+  const handler = handlers.get('reader:window-ready'); if (!handler) throw new Error('Missing readiness');
+  expect(handler(a.event(), { windowId: windows.resolveCaller(b.event())?.windowId })).toEqual({ ok: false, error: { code: 'INVALID_REQUEST' } });
+  expect(handler(a.event())).toEqual({ ok: true, value: null });
+  expect(ready).toHaveBeenCalledExactlyOnceWith(windows.resolveCaller(a.event()));
+  const old = a.event(); a.reload();
+  expect(handler(old)).toEqual({ ok: false, error: { code: 'FORBIDDEN' } });
+});
+it('page Close routes only its authenticated native origin, rejects payloads/stale documents and stays fenced offline', () => {
+  const windows = new WindowCoordinator('file:///app/index.html', ''), a = windowFixture(), b = windowFixture();
+  const closeA = vi.fn(), closeB = vi.fn(); Object.assign(a.native, { close: closeA }); Object.assign(b.native, { close: closeB });
+  for (const f of [a, b]) { windows.register(f.window); f.commit(); }
+  const service = { dispatch: vi.fn(), restarting: false }; registerReaderIpc(service as unknown as ReaderService, windows);
+  const handler = handlers.get('reader:window-close'); if (!handler) throw new Error('Missing page Close');
+  expect(handler(a.event(), { windowId: 'foreign' })).toEqual({ ok: false, error: { code: 'INVALID_REQUEST' } });
+  expect(handler(a.event())).toEqual({ ok: true, value: null }); expect(closeA).toHaveBeenCalledOnce(); expect(closeB).not.toHaveBeenCalled();
+  const old = a.event(); a.reload(); expect(handler(old)).toEqual({ ok: false, error: { code: 'FORBIDDEN' } });
+  service.restarting = true; expect(handler(a.event())).toEqual({ ok: false, error: { code: 'DATA_BUSY' } }); expect(closeA).toHaveBeenCalledOnce();
+});
+
 it('routes only the expected window top-level application document and rejects foreign frames/windows/URLs', () => {
   const url = 'file:///app/index.html';
   const fixture = windowFixture(url), contents = fixture.contents, frame = contents.mainFrame;
@@ -53,9 +76,9 @@ it('registers every channel once independently of window creation/reload and ret
   const service = new ActualReaderService(() => { throw new Error('No storage needed'); }, ['en'], () => undefined);
   vi.spyOn(service, 'claimWindowIdentity').mockReturnValue('persisted-test-window');
   registerReaderIpc(service, windows);
-  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length - 1);
+  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 1);
   for (let i = 0; i < 2; i++) { windows.register(fixture.window); fixture.commit(); fixture.reload(); }
-  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length - 1);
+  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 1);
   for (const channel of Object.values(readerChannels)) {
     expect(await handlers.get(channel)?.(fixture.event(), { windowId: 'forged', executable: 'evil' }, 'extra'))
       .toEqual({ ok: false, error: { code: 'INVALID_REQUEST' } });

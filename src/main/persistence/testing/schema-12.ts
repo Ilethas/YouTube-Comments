@@ -7,6 +7,7 @@ export function downgradeWindowFixture(db: DatabaseSync): void {
   if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE name='app_windows'").get()) return;
   if (db.prepare('SELECT count(*) AS n FROM app_windows').get()?.n !== 1) throw new Error('Single-window fixture required');
   const reference = new DatabaseSync(':memory:');
+  if (db.prepare("SELECT 1 FROM sqlite_schema WHERE name='window_session'").get()) db.exec('DROP TRIGGER create_window_geometry; DROP TABLE window_session; DROP TABLE window_restore; DROP TABLE window_geometry;');
   try {
     migrateDatabase(reference, migrations.slice(0, 12));
     const sql = (name: string) => String(reference.prepare('SELECT sql FROM sqlite_schema WHERE name=?').get(name)?.sql);

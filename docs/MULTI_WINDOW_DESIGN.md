@@ -1,5 +1,15 @@
 # Multiple equal windows: proposed architecture
 
+**M6 progress, 2026-10-18:** [ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) implements equal public native
+windows, explicit versioned restore membership/last focus and safe normal DIP
+geometry with schema **14**. The proposed Close/Quit policy below is now accepted:
+Quit captures all live windows, ordinary peer Close removes its member, last Close
+retains one, and crash recovers acknowledged membership. New windows start empty.
+M3 all-participant drains remain; native saves join checkpoints and offline fencing.
+M7 atomic transfer, M8 native HTML dragging and M9 aggregate scale/release remain
+future work. Historical M1?M5 notes below retain their original scopes; current
+verification and native/manual limits are in [TESTING](TESTING.md).
+
 **M5 progress, 2026-10-18:** [ADR 0031](decisions/0031-independent-duplicate-discussion-tabs.md) implements explicit independent Duplicate Tab
 within one native window, source semantic checkpoint/copy with fresh evaluation,
 dynamic scoped hydration, view-owned DOM/accessibility identity and active-work

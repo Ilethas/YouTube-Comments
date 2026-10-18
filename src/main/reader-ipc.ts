@@ -11,6 +11,20 @@ import { profileChannels } from '../shared/profile-operation';
 export function registerReaderIpc(service: ReaderService, windows: WindowCoordinator): ProfileOperationCoordinator | undefined {
   if (service.claimWindowIdentity) windows.setIdentityProvider(() => service.claimWindowIdentity(windows.size > 0));
   service.onSharedCommit?.(commit => windows.sendSharedCommit(commit));
+  ipcMain.handle('reader:window-close', (event, ...args: unknown[]) => {
+    const caller = windows.resolveCaller(event);
+    if (!caller) return { ok: false, error: { code: 'FORBIDDEN' } };
+    if (args.length) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+    if (service.restarting) return { ok: false, error: { code: 'DATA_BUSY' } };
+    windows.originWindow(caller)?.close(); return { ok: true, value: null };
+  });
+  ipcMain.handle('reader:window-ready', (event, ...args: unknown[]) => {
+    const caller = windows.resolveCaller(event);
+    if (!caller) return { ok: false, error: { code: 'FORBIDDEN' } };
+    if (args.length) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+    if (service.restarting) return { ok: false, error: { code: 'DATA_BUSY' } };
+    windows.ready(caller); return { ok: true, value: null };
+  });
   for (const operation of Object.keys(readerChannels) as ReaderOperation[]) {
     ipcMain.handle(readerChannels[operation], (event, ...args: unknown[]) => {
       const caller = windows.resolveCaller(event);
@@ -38,28 +52,31 @@ export function registerReaderIpc(service: ReaderService, windows: WindowCoordin
     });
   }
   const pending = new Map<string, Promise<void>>();
-  const intentional = (caller: import('./caller-context').ReaderCallerContext, kind: 'close' | 'reload') => {
-    if (pending.has(caller.windowId) || service.restarting) return;
+  const intentional = (caller: import('./caller-context').ReaderCallerContext | undefined, kind: 'close' | 'reload', unavailable?: import('electron').BrowserWindow) => {
+    const key = caller?.windowId ?? windows.nativeWindows().find(w => w.window === unavailable)?.windowId;
+    if (!key || pending.has(key) || service.restarting) return;
     const task = lifecycle.scheduleIntentional(async () => {
       let ownedId: string | undefined;
       try {
         if (lifecycle.busy) lifecycle.cancelPreparation();
         await service.settleDataOperation();
-        if (!caller.isCurrent() || service.restarting) return;
+        if (caller && !caller.isCurrent() || unavailable?.isDestroyed() || service.restarting) return;
         await lifecycle.released();
         const previous = lifecycle.current()?.operationId, drained = lifecycle.begin(kind);
         if (lifecycle.current()?.operationId !== previous) ownedId = lifecycle.current()?.operationId;
-        await drained; lifecycle.executePhase();
+        await drained; service.flushNativeCheckpoint(); lifecycle.executePhase();
         // Finish once; the initial native close left the context fully authorized.
         lifecycle.accept();
-        if (kind === 'close') windows.finishClose(caller); else windows.finishReload(caller);
-      } catch { /* Failed saves leave the window open with the release error UI. */ }
+        if (unavailable) windows.finishUnavailableClose(unavailable);
+        else if (caller) { if (kind === 'close') windows.finishClose(caller); else windows.finishReload(caller); }
+      } catch { if (ownedId) lifecycle.release(true, ownedId); /* Keep failed native saves dirty and the window usable. */ }
       finally { if (ownedId) lifecycle.release(false, ownedId); }
-    }).finally(() => { pending.delete(caller.windowId); });
-    pending.set(caller.windowId, task);
+    }).finally(() => { pending.delete(key); });
+    pending.set(key, task);
   };
   windows.setLifecycle({ close: caller => intentional(caller, 'close'), reload: caller => intentional(caller, 'reload'), lost: caller => lifecycle.lost(caller),
     restored: caller => { const event = lifecycle.current(); if (event) windows.sendProfileEvent(caller, event); },
-    canRecover: () => !service.restarting && !lifecycle.busy });
+    canRecover: () => !service.restarting && !lifecycle.busy,
+    closeUnavailable: window => intentional(undefined, 'close', window) });
   return lifecycle;
 }

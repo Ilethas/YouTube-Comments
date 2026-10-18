@@ -17,6 +17,7 @@ import { backupText } from './shared/data-backup';
 import { initialLocale } from './shared/preferences';
 import identity from './shared/application-identity.json';
 import type { ProfileOperationCoordinator } from './main/profile-operation-coordinator';
+import { NativeWindowSession } from './main/native-window-session';
 
 // The startup helper owns shortcut creation/removal and quits after Update.exe
 // closes. Do not quit early or register ANY reader work during lifecycle events.
@@ -35,6 +36,8 @@ function startReader() {
   app.setPath('userData', path.dirname(databasePath));
   let service: ReaderService;
   let lifecycle: ProfileOperationCoordinator | undefined;
+  let nativeSession: NativeWindowSession | undefined;
+  let nativeStartupFailed = false;
   const documentPath = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
   const documentUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL ? new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).href : pathToFileURL(documentPath).href;
 
@@ -80,9 +83,20 @@ function startReader() {
       } catch { return new Response(null, { status: 404 }); }
     });
     lifecycle = registerReaderIpc(service, windows);
+    nativeSession = new NativeWindowSession(service, windows, restoring => {
+      dialog.showErrorBox(text.title, text.RECOVERY_REQUIRED);
+      if (restoring) { nativeStartupFailed = true; app.quit(); }
+    });
+    const newWindow = () => {
+      if (shutdownStarted || !service.nativeWritesAllowed()) return;
+      try { windows.createReaderWindow(); } catch (error) { console.error(error); dialog.showErrorBox(text.title, text.RECOVERY_REQUIRED); }
+    };
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
-      { role: 'fileMenu' }, { role: 'editMenu' },
+      { label: profileLocale === 'pl' ? 'Plik' : 'File', submenu: [
+        { id: 'new-reader-window', label: profileLocale === 'pl' ? 'Nowe okno' : 'New Window', accelerator: 'CmdOrCtrl+N', click: newWindow },
+        { type: 'separator' }, { role: 'close' }, { role: 'quit' },
+      ] }, { role: 'editMenu' },
       { label: 'View', submenu: [
         { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => {
           const window = BrowserWindow.getFocusedWindow();
@@ -91,9 +105,13 @@ function startReader() {
       ] }, { role: 'windowMenu' },
     ]));
     try {
-      const window = windows.createReaderWindow();
-      if (recovery) void dialog.showMessageBox(window, { type: 'info', message: backupText(profileLocale)[recovery] });
+      nativeSession.restore(window => {
+        // Native recovery dialogs must not run while the restore show batch is
+        // still hidden; Windows can retain hidden/disabled peer native widgets.
+        if (recovery && !window.isDestroyed()) void dialog.showMessageBox(window, { type: 'info', message: backupText(profileLocale)[recovery] });
+      });
     } catch (error) {
+      nativeStartupFailed = true;
       console.error(error);
       dialog.showErrorBox(text.title, service.storageFailure === 'UNSUPPORTED_SCHEMA' ? text.UNSUPPORTED_SCHEMA : text.RECOVERY_REQUIRED);
       app.quit();
@@ -116,9 +134,11 @@ function startReader() {
             await lifecycle.released();
             const previous = lifecycle.current()?.operationId, drained = lifecycle.begin('quit');
             if (lifecycle.current()?.operationId !== previous) ownedId = lifecycle.current()?.operationId;
-            await drained; lifecycle.executePhase(); lifecycle.accept();
+            await drained; await windows.settleCreation();
+            if (!nativeStartupFailed) service.flushNativeCheckpoint(); lifecycle.executePhase(); lifecycle.accept();
           }
         }
+        if (!service.restarting && !service.storageFailure && !nativeStartupFailed) nativeSession?.prepareQuit();
         shutdownStarted = true;
         await service.shutdown();
         windows.finishAll(); quitReady = true; app.quit();
@@ -140,8 +160,14 @@ function startReader() {
     // On OS X it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
     if (service && !shutdownStarted && windows.size === 0) {
-      windows.createReaderWindow();
+      if (service.nativeWritesAllowed()) nativeSession?.restore();
     }
+  });
+  app.on('second-instance', () => {
+    if (!service || shutdownStarted || service.restarting) return;
+    const window = windows.nativeWindows().find(w => w.windowId === service.readNativeSession().lastFocusedId)?.window;
+    if (window && !window.isDestroyed()) { if (window.isMinimized()) window.restore(); window.focus(); }
+    else if (!windows.size && service.nativeWritesAllowed()) nativeSession?.restore();
   });
 
   // In this file you can include the rest of your app's specific main process

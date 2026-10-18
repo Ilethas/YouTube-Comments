@@ -37,6 +37,9 @@ if (process.versions.electron) {
     async function invoke(w,name,payload){if(['openStoredItem','activateTab','closeTab','moveTab','openLibrary','openSettings'].includes(name))payload={...payload,expectedRevision:(await boot(w)).workspace.revision};const r=await js(w,'window.reader.'+name+'('+ (payload?JSON.stringify(payload):'')+')');assert.equal(r.ok,true,name+': '+JSON.stringify(r));return r.value;}
     const panel=id=>'document.getElementById('+JSON.stringify('panel-'+id)+')';
     const ready=w=>wait(()=>js(w,"!!document.querySelector('.app-shell')"),'reader ready'); await ready(a);
+    // M6's secured factory starts hidden. This custom M5 harness owns its show
+    // policy; establish a real focused native document for tab-focus assertions.
+    a.show(); a.focus();
     async function active(id){await invoke(a,'activateTab',{tabId:id});await wait(()=>js(a,panel(id)+"?.hidden===false && !!"+panel(id)+".querySelector('form')"),'active view hydrated');}
     const input=async(id,text)=>js(a,'(()=>{const e='+panel(id)+'.querySelector("input[type=search]");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(e,'+JSON.stringify(text)+');e.dispatchEvent(new Event("input",{bubbles:true}));})()');
     async function choose(id,selector,value){await js(a,'(()=>{const e='+panel(id)+'.querySelector('+JSON.stringify(selector)+');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value").set.call(e,'+JSON.stringify(value)+');e.dispatchEvent(new Event("change",{bubbles:true}));})()');}

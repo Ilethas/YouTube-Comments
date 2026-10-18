@@ -41,6 +41,7 @@ beforeEach(async () => {
   service = new ReaderService(() => repo, ['en'], vi.fn());
   const operations = new Map<string, ReaderOperation>(Object.entries(readerChannels).map(([key, channel]) => [channel, key as ReaderOperation]));
   api = createReaderBridge(async (channel, ...args) => {
+    if (channel === 'reader:window-ready') return { ok: true, value: null };
     const result = await service.dispatch(required(operations.get(channel)), args);
     if (channel === readerChannels.duplicateTab && holdDuplicateReply) { duplicateReplyHeld?.(); await holdDuplicateReply; }
     return result;

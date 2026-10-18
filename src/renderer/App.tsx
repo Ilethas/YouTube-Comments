@@ -48,6 +48,7 @@ export function App({ api: transport = window.reader }: { api?: ReaderApi }) {
     void load();
     return () => { cancelled = true; replica?.stop(); };
   }, [api, attempt, replica]);
+  useEffect(() => { if (state || error) void transport.windowReady?.().catch(() => undefined); }, [state, error, transport]);
   if (state) return <Reader initialState={state} api={api} replica={replica} />;
   return <div className="startup-state" role={error ? 'alert' : 'status'}>
     <p>{t(error === 'UNSUPPORTED_SCHEMA' ? 'unsupportedSchema' : error ? 'loadError' : 'loading')}</p>

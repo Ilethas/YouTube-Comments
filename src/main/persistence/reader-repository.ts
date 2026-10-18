@@ -32,6 +32,7 @@ import { commentActionAvailability } from '../comment-actions';
 import type { ActionComment } from '../comment-actions';
 import { sourceUrl } from '../source-url';
 import type { BackupTimings } from './sqlite-backup';
+import { WindowSessionStore } from './window-session';
 
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 function optionalText(row: Row, key: string): string | undefined {
@@ -366,18 +367,18 @@ export class ReaderRepository {
       preferences: this.preferences(languages), workspace: this.workspace(windowId), viewInstances: this.viewInstances(windowId), discussionViews: this.discussionViews(windowId), discussionCollapse: this.discussionCollapse(windowId) };
   }
 
-  /** M4 opens only this existing window at startup; M6 owns restore-set policy. */
+  /** Main-only native session persistence, using the same transaction authority. */
+  nativeSession(): WindowSessionStore { return new WindowSessionStore(this.db, action => this.commit({ kind: 'watermark' }, action)); }
+
+  /** Internal default follows intended session focus, never a dormant oldest row. */
   initialWindowId(): string {
-    const row = this.db.prepare('SELECT id FROM app_windows ORDER BY rowid LIMIT 1').get();
-    if (!row) throw new Error('Missing persistent window');
-    return String(row.id);
+    return this.nativeSession().read().lastFocusedId;
   }
 
-  /** Main-only construction seam for authorized test participants and future M6. */
+  /** Main-only intended-session construction for fixtures/internal callers.
+   * Public native creation allocates dormant identity, then enrolls after registration. */
   createPersistentWindow(): string {
-    return this.commit({ kind: 'workspace' }, () => {
-      const id = randomUUID(); this.db.prepare('INSERT INTO app_windows VALUES (?,NULL,0)').run(id); return id;
-    });
+    return this.nativeSession().create();
   }
 
   viewInstances(windowId: string): ReaderState['viewInstances'] {

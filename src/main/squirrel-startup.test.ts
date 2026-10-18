@@ -47,6 +47,6 @@ it('registers ordinary ZIP/first-run startup with fixed identity and established
     await import('../main');
     expect(setPath).toHaveBeenCalledWith('userData', path.resolve('isolated-roaming/youtube-comments-production'));
     if (process.platform === 'win32') expect(setAppUserModelId).toHaveBeenCalledWith(identity.appUserModelId);
-    expect(on.mock.calls.map(([name]) => name)).toEqual(['ready', 'before-quit', 'window-all-closed', 'activate']);
+    expect(on.mock.calls.map(([name]) => name)).toEqual(['ready', 'before-quit', 'window-all-closed', 'activate', 'second-instance']);
   } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
 });

@@ -56,7 +56,7 @@ it.each([false, true])('losslessly maps every durable field and dormant instance
   const f = fixture(empty), db = new DatabaseSync(f.file); db.exec('PRAGMA foreign_keys=ON');
   try {
     migrateDatabase(db);
-    expect(validateBackup(f.file)).toBe(13);
+    expect(validateBackup(f.file)).toBe(14);
     for (const table of sharedTables) expect(rows(db, table), table).toEqual(f.before[table]);
     const window = rows(db, 'app_windows')[0], instances = rows(db, 'tab_instances');
     expect(rows(db, 'app_windows')).toHaveLength(1);
@@ -175,7 +175,7 @@ it('verified v12 startup safety and staged restore preserve the selected source 
   expect(validateBackup(safety)).toBe(12); expect(readFileSync(f.file)).toEqual(bytes);
   const safetyBytes = readFileSync(safety);
   const staged = await prepareRestore(safety, f.file);
-  expect(validateBackup(path.join(staged,'candidate.sqlite'))).toBe(13);
+  expect(validateBackup(path.join(staged,'candidate.sqlite'))).toBe(14);
   expect(readFileSync(safety)).toEqual(safetyBytes); expect(readFileSync(f.file)).toEqual(bytes);
   const db = new DatabaseSync(path.join(staged,'candidate.sqlite'));
   try { for (const table of sharedTables) expect(rows(db,table)).toEqual(f.before[table]); } finally { db.close(); }

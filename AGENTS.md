@@ -1,5 +1,22 @@
 # Project guidance
 
+## M6 current boundary
+
+[ADR 0032](docs/decisions/0032-equal-native-windows-and-session-restoration.md)
+implements equal native production windows and schema **14**. Main owns one
+ReaderService/SQLite profile, per-window authenticated workspaces and independent
+views. File > New Window / Ctrl+N (Cmd+N) creates an empty workspace. Explicit
+window_restore/window_session membership is authoritative: Quit captures all live
+windows before teardown; ordinary peer Close removes one; last Close retains one;
+crash restores acknowledged membership. Dormant app_windows rows never imply live
+readers. Persist normal DIP bounds via getNormalBounds, separate maximize/fullscreen
+and display hints; validate current work areas without a global DPI multiplier.
+M3 all-participant drains remain, including native checkpoints before snapshots and
+Close/Quit. Terminal offline fencing covers every native save. Preserve exact
+migrations 1?13, verified safety/staged backups and empty/no-reseed rules. M7 transfer,
+M8 native HTML DnD/detachment and M9 scale/release remain outside M6. Earlier
+milestone notes below retain their original scopes and one-reader limitations.
+
 This project is a persistent YouTube discussion reader built toward Electron + React + TypeScript. The core loop is acquire, persist, refresh, identify changes, read in context, manually mark processed, and search/filter/navigate.
 
 ## Start here
@@ -9,7 +26,7 @@ This project is a persistent YouTube discussion reader built toward Electron + R
 - [Architecture and security boundary](docs/ARCHITECTURE.md)
 - [Open decisions and ADR process](docs/decisions/README.md)
 
-The current implementation includes main-owned SQLite ingestion/merge/history, isolated profiles, typed validated IPC, live public acquisition/refresh, compact English/Polish reading, real avatar evidence, schema-13 preserving history with unified draggable discussion/Library/Settings tabs, metadata Library filtering and confirmed local removal, Settings preferences, neutral ancestry rails and separate unseen row styling. External helper Settings uses main-owned native selection and profile-local SQLite configuration: startup environment > saved selection > safe direct PATH, with helper identity probes, tested/untested confidence and fail-closed configured paths (ADRs 0014/0015). See ADRs [0001](docs/decisions/0001-synthetic-reader-foundation.md), [0002](docs/decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](docs/decisions/0004-durable-observation-merge.md), [0005](docs/decisions/0005-live-helper-execution-and-acquisition-ipc.md), [0006](docs/decisions/0006-compact-reader-and-persistent-tabs.md), [0007](docs/decisions/0007-unified-workspace-and-library-removal.md), and [testing status](docs/TESTING.md). Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](docs/decisions/0008-active-discussion-applied-queries.md). Isolated discussion rendering and keyboard discovery are implemented (ADR 0009 and the shortcut registry). [ADR 0010](docs/decisions/0010-variable-height-discussion-virtualization.md) adds flat variable-height virtualization, neutral data-derived rails and unmounted-target reveal. [ADR 0011](docs/decisions/0011-virtualized-overview-and-durable-new.md) adds the applied-view, height-based three-lane ruler and durable latest-accepted post-baseline NEW cohort, using explicit attempt order. [ADR 0012](docs/decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date and latest-refresh discovery filters, with system-zone calendar boundaries and captured evaluation clocks. [ADR 0013](docs/decisions/0013-atomic-bulk-seen-and-durable-undo.md) implements atomic bulk all/frozen-matching/publication seen actions, one durable recovery per discussion, revision-owned partial Undo, subtree recovery and contextual Ctrl+Z. [ADR 0014](docs/decisions/0014-main-owned-helper-settings.md) adds durable helper Settings and immediate runtime resolution. [ADR 0015](docs/decisions/0015-safe-usability-intents-and-helper-confidence.md) adds secure original-source header actions, tolerant tested/untested helper versions, optional bulk local minutes with explicit DST rejection, and historical row marking gestures (removed by ADR 0022). [ADR 0016](docs/decisions/0016-whole-conversation-sorting.md) implements immediate whole-conversation sorting, sorted navigation/match position/ruler and identity/offset anchoring; Q-08 is resolved. Helpers and Python remain separately user-installed; public release distribution remains open. [ADR 0018](docs/decisions/0018-acquisition-progress-and-safe-cancellation.md) implements global coarse acquisition progress, exact-ID user cancellation before atomic saving, failed cancelled history, child/temp cleanup and nonpersisted monotonic stage timings. Do not optimize extraction speculatively. [ADR 0017](docs/decisions/0017-persistent-discussion-view-restoration.md) implements persistent per-discussion draft/applied queries, sort, stable comment anchor/offset and selection with lazy fresh restart reconstruction, resolving Q-10 for the current uncollapsed reader. ADR 0023 implements persistent reply collapse/expansion; optional badge details remain; Q-21 still covers bootstrap/clone/memory and SQLite/query scaling. Implement only the owner's requested increment.
+The current implementation includes main-owned SQLite ingestion/merge/history, isolated profiles, typed validated IPC, live public acquisition/refresh, compact English/Polish reading, real avatar evidence, schema-14 preserving history with unified draggable discussion/Library/Settings tabs, metadata Library filtering and confirmed local removal, Settings preferences, neutral ancestry rails and separate unseen row styling. External helper Settings uses main-owned native selection and profile-local SQLite configuration: startup environment > saved selection > safe direct PATH, with helper identity probes, tested/untested confidence and fail-closed configured paths (ADRs 0014/0015). See ADRs [0001](docs/decisions/0001-synthetic-reader-foundation.md), [0002](docs/decisions/0002-sqlite-and-typed-reader-boundary.md), [0004](docs/decisions/0004-durable-observation-merge.md), [0005](docs/decisions/0005-live-helper-execution-and-acquisition-ipc.md), [0006](docs/decisions/0006-compact-reader-and-persistent-tabs.md), [0007](docs/decisions/0007-unified-workspace-and-library-removal.md), and [testing status](docs/TESTING.md). Active-discussion search/seen filtering, stable session applied views and match/unseen navigation are implemented in [ADR 0008](docs/decisions/0008-active-discussion-applied-queries.md). Isolated discussion rendering and keyboard discovery are implemented (ADR 0009 and the shortcut registry). [ADR 0010](docs/decisions/0010-variable-height-discussion-virtualization.md) adds flat variable-height virtualization, neutral data-derived rails and unmounted-target reveal. [ADR 0011](docs/decisions/0011-virtualized-overview-and-durable-new.md) adds the applied-view, height-based three-lane ruler and durable latest-accepted post-baseline NEW cohort, using explicit attempt order. [ADR 0012](docs/decisions/0012-publication-date-and-latest-discovery-filters.md) implements publication-date and latest-refresh discovery filters, with system-zone calendar boundaries and captured evaluation clocks. [ADR 0013](docs/decisions/0013-atomic-bulk-seen-and-durable-undo.md) implements atomic bulk all/frozen-matching/publication seen actions, one durable recovery per discussion, revision-owned partial Undo, subtree recovery and contextual Ctrl+Z. [ADR 0014](docs/decisions/0014-main-owned-helper-settings.md) adds durable helper Settings and immediate runtime resolution. [ADR 0015](docs/decisions/0015-safe-usability-intents-and-helper-confidence.md) adds secure original-source header actions, tolerant tested/untested helper versions, optional bulk local minutes with explicit DST rejection, and historical row marking gestures (removed by ADR 0022). [ADR 0016](docs/decisions/0016-whole-conversation-sorting.md) implements immediate whole-conversation sorting, sorted navigation/match position/ruler and identity/offset anchoring; Q-08 is resolved. Helpers and Python remain separately user-installed; public release distribution remains open. [ADR 0018](docs/decisions/0018-acquisition-progress-and-safe-cancellation.md) implements global coarse acquisition progress, exact-ID user cancellation before atomic saving, failed cancelled history, child/temp cleanup and nonpersisted monotonic stage timings. Do not optimize extraction speculatively. [ADR 0017](docs/decisions/0017-persistent-discussion-view-restoration.md) implements persistent per-discussion draft/applied queries, sort, stable comment anchor/offset and selection with lazy fresh restart reconstruction, resolving Q-10 for the current uncollapsed reader. ADR 0023 implements persistent reply collapse/expansion; optional badge details remain; Q-21 still covers bootstrap/clone/memory and SQLite/query scaling. Implement only the owner's requested increment.
 
 [ADR 0022](docs/decisions/0022-reader-actions-external-links-and-translation-preferences.md) removes row-wide Shift marking, adds the reduced-motion CSS acquisition spinner, evidence-only video creator presentation, identity-only main-owned author/video-comment/Google Translate actions and schema-9 translation target preference. No Community comment permalink is invented. Translation is explicit browser opening with full UTF-8 text, 5000-unit text and 8000-character encoded URL bounds and localized full-copy fallback; never log text/generated URLs. Icons use the shared app-owned outline ActionIcon vocabulary. Preserve exact known older-schema validation, pre-migration safety and staged backup upgrade. Selection, menus and explicit scopes are implemented separately by ADR 0024.
 
@@ -32,9 +49,9 @@ ADR 0024 adds selection, menus and explicit selected/prefix scopes.
   upgrades. Main derives window ownership before authorizing a document; renderer
   IDs cannot grant ownership. Topology uses CAS; intent and collapse use separate
   CAS lanes, including M3 sealed checkpoints. M2 epochs/commit revisions and all
-  shared item/seen/history/Undo semantics remain. Production opens ONE reader;
-  M5 adds Duplicate Tab and per-view descendant DOM namespaces (ADR 0031), with no New Window UI. M6 owns
-  restore-set/geometry/monitor policy and M7 atomic transfer/generation handoff.
+  shared item/seen/history/Undo semantics remain. M5 adds Duplicate Tab and per-view
+  descendant DOM namespaces (ADR 0031). M6 adds equal native windows, restore sets
+  and geometry (ADR 0032); M7 owns atomic transfer/generation handoff.
 
 - [ADR 0029](docs/decisions/0029-global-profile-and-window-lifecycle-safety.md)
   implements M3 with main-owned all-participant profile/Close/Reload/Quit drains,
@@ -43,9 +60,9 @@ ADR 0024 adds selection, menus and explicit selected/prefix scopes.
   FIFO seen/preferences/Undo dispatch and preserve absent optional view/collapse
   rows when clean. Initial native Close retains authority until successful drain;
   failed or later-cancelled close must stay usable. A crash/uncontrolled reload
-  retains only committed data. Production still opens ONE reader. M4 now scopes test renderers to separate
-  persisted windows and independently owned discussion views. M5 adds independent
-  duplicates (ADR 0031); do not claim full session/geometry restoration or monitor safety.
+  retains only committed data. M4 scopes renderers to separate persisted windows
+  and owned views; M5 adds independent duplicates (ADR 0031). M6 supplies production
+  sessions/geometry (ADR 0032); preserve the exact native/manual evidence limits.
 
 - [ADR 0028](docs/decisions/0028-ordered-shared-state-synchronization.md) implements
   M2 with repository post-COMMIT epoch/revisions, bounded fixed notifications,
@@ -55,18 +72,17 @@ ADR 0024 adds selection, menus and explicit selected/prefix scopes.
   state. Undo requires the displayed expectedOperationId and rejects replaced
   recovery atomically. Peer seen changes keep frozen applied membership/order;
   accepted Refresh retains local applied criteria/drafts. Progress fans out to
-  all authorized test participants. Production still creates ONE reader. M3's
-  global profile/close/reload drains are implemented separately in ADR 0029;
-  do not expose extra production windows before later identity/view milestones.
+  all authorized participants. M3 global profile/close/reload drains are implemented
+  in ADR 0029; M6 equal production windows retain those contracts (ADR 0032).
 
 - [ADR 0027](docs/decisions/0027-secure-window-coordination-foundation.md) implements
   M1: one secured application-window factory, main-owned WindowCoordinator runtime
   identities/document leases and once-registered authenticated reader IPC. Native
   dialogs use the captured current caller only; origin loss cancels preflight and
   helper selection, never reparents. Confirmed restore/started backup retain existing
-  app-owned safety/shutdown. Production still opens ONE reader, schema 12. M2
-  synchronization is implemented by ADR 0028 and M3 barriers by ADR 0029; later
-  windows/topology/transfer are not implemented.
+  app-owned safety/shutdown. M2 synchronization is implemented by ADR 0028 and M3
+  barriers by ADR 0029; M4–M6 now supply topology/views/native sessions. Transfer
+  remains M7 work. Current schema is 14.
   Native HTML DnD is preferred for future M8; the owner accepts initial outside
   detachment where Escape may create a window. Keep outcome detection separate from
   durable transfer logic; M8 real native input testing remains required.
@@ -179,6 +195,9 @@ ADR 0024 adds selection, menus and explicit selected/prefix scopes.
 - Keep AI summarization, sentiment, automatic translation, posting/replying, likes/subscriptions, account integration, and other unrelated features outside the current scope.
 
 ## Useful commands at this milestone
+
+After a Forge build, `npm.cmd run test:m6` runs the disposable production-entry
+native-window/session/geometry harness. It is included in `test:electron`.
 
 After a Forge build, `npm.cmd run test:m5` runs the disposable duplicate-tab,
 two-renderer, restart and backup/restore harness. It is also in `test:electron`.

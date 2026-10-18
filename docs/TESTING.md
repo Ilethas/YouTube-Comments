@@ -1,5 +1,130 @@
 # Testing strategy
 
+## Equal native windows and intended session restoration (M6, 2026-10-18–19)
+
+[ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) implements
+schema **14**. All profiles here are newly owned OS-temp development data or
+independently redirected disposable Windows production environments. No owner
+profile, Setup, installation, commit or push is used. Historical evidence below
+retains its original date/schema and scope.
+
+M6 adds **38 deterministic cases** over M5: 14 pure geometry cases, 13 SQLite
+session/migration/backup cases, eight native-adapter cases, authenticated readiness/Close,
+and the schema-13 historical-backup case. They cover 2/3/7 logical windows,
+independent same-item ownership/placements/active tabs, empty workspaces, explicit
+Quit/peer Close/last Close/crash policy, macOS zero-live-window replacement and
+creation compensation, separate session/geometry CAS and failed COMMIT rollback.
+Both DDL and COMMIT failures during migration 14 preserve exact v13 closed-file
+bytes and retry safely. Current full backup/restore preserves session, geometry,
+all views and dormant topology. Historical versions 1–13 retain exact validation
+and immutable-source staged upgrades. Geometry cases include disconnected and
+rearranged monitors, negative origins, mixed scale metadata without multiplication,
+invalid/nonfinite values, tiny work areas, absent evidence and separate expanded
+states. Native cases cover hidden readiness/focus, constructor/load compensation,
+cancelled Close re-enrollment, debounced barrier checkpoints/offline rejection,
+and bounded construction settlement without discarding an acknowledged window.
+Crash between provisional identity allocation and native registration preserves
+the preceding intended set; the allocated empty row remains dormant.
+
+`npm.cmd run test:m6` runs `scripts/smoke-native-windows.cjs` against the actual
+built production main/preload/React/worker entry, with one service and real SQLite.
+It creates B/C using File > New Window and actual Electron Ctrl+N input after A's
+initial startup, verifies empty workspaces and per-window Library/Settings/discussion
+tabs, duplicates B, rejects a foreign view, interleaves seen/guarded Undo/preferences,
+and exercises production helper resolution/probing/extraction/merge with fixture
+process bytes. Acquisition/Refresh/progress reach every native reader. A (the
+first-created window) closes during acquisition while B/C stay usable; controlled
+reload and renderer crash/recovery affect one native window. B/C receive different
+pending drafts, a backup, native bounds/maximize and a third empty window, then
+repeated explicit Quit joins a held final checkpoint. Subsequent real processes
+check exact membership/IDs/order/active tabs, independent drafts, empty workspaces,
+actual safe normal bounds and maximize state, and visible restoration of previously
+minimized normal and maximized readers. An abrupt app.exit skips Quit; the following process restores
+acknowledged membership, then restores the earlier two-window backup. Terminal
+old-window mutation attempts and delayed native geometry events cannot change the
+replacement profile. Reverse native Close order, last Close and two further starts
+retain exactly the final window. A second process with the same demo root exits
+without creating another owner/window. Process exit checks exclude hidden readers.
+
+The focused harness substitutes native dialog answers, helper child output and
+the relaunch callback; the external packaged harness separately tests actual
+native dialogs and real extracted-EXE relaunch. Fixture helpers never execute an
+installed binary or make a live YouTube request. Public command testing belongs
+to the production-entry harness. The unmodified extracted EXE receives an offline,
+independently generated three-window SQLite fixture and must restore its real
+native readers and all view identities through actual backup/restore/relaunch.
+No test API or native input addon is shipped or installed.
+
+Connected Windows displays used by the native geometry harness (Electron screen
+metadata, not simulated displays):
+
+| Display label | Desktop bounds in DIP | Work area in DIP | Scale |
+| --- | --- | --- | --- |
+| HDMI | (0, 0), 1920x1080 | (0, 0), 1920x1032 | 1.0 / 100% |
+| T24C300 | (1920, 0), 1920x1080 | (1920, 0), 1920x1032 | 1.0 / 100% |
+| LG TV | (3840, 0), 1280x720 | (3840, 0), 1280x672 | 1.5 / 150% |
+
+The test places B on T24C300 and C on LG TV, maximizes C and checks actual restored
+native bounds against the current work-area clamp. Windows enlarged normal bounds
+while moving the fixture across scale factors in one run (1650x978 on LG TV);
+the next start correctly clamped them to 1280x672 rather than restoring an
+unreachable rectangle. Metadata identifies the displays as above; no additional
+physical model identification or human visual/input observation is claimed.
+
+Owner manual verification remains: physical unplug/reconnect during normal,
+maximized and fullscreen use; changing primary display, taskbar/work areas,
+negative/above-primary arrangements and scaling while running; movement by real
+mouse input; fullscreen transitions/Spaces and Activate/last-close on macOS;
+Linux/Wayland compositor restrictions. Negative origins, disconnection and tiny
+work areas have deterministic coverage only. Fullscreen geometry/flags have pure
+domain coverage; the live native fullscreen/platform matrix remains unverified.
+M9 aggregate multi-window 10k/50k memory/IPC/latency budgets remain unmeasured.
+M7 transfer and M8 native HTML DnD/detachment remain unimplemented.
+
+Intermediate verification corrected current-schema/preload allowlists and legacy
+fixture teardown while preserving historical migrations. A thumbnail restart
+assertion assumed default native width; it now explicitly establishes its wide
+layout before testing expansion, because the preceding phase deliberately saves
+a narrow window. The custom M5 harness now explicitly shows/focuses its ready
+reader because the secured M6 factory starts hidden. Native minimization testing
+also caught isMaximized=false while minimized; the adapter retains the underlying
+expanded intent, tested for both normal and maximized minimized readers.
+Direct test-side JavaScript window.close() was observed to
+destroy the native/WebContents without BrowserWindow Close in this Electron build.
+Preload now routes the existing window.close() affordance through authenticated
+native Close/M3; the production-entry harness verifies its restore membership.
+Packaged Close additionally uses the actual Windows path:
+WM_SYSCOMMAND / SC_CLOSE addressed to an exact uniquely titled window in the owned application
+PID. CDP key dispatch and foreground automation did not establish the native New
+Window command in the extracted harness; they are not claimed as passing evidence
+and no such input addon/production capability was added. Native File/Ctrl+N are
+verified in the production-entry harness instead.
+
+The extracted-EXE run exposed a startup ordering defect: opening the recovery
+acknowledgment before the hidden-reader show batch could leave peer native widgets
+hidden or disabled on Windows. The acknowledgment now follows the completed show
+batch. The final run checks all three native readers are visible and enabled before
+issuing Close; it does not force their native state to make the test pass.
+
+Final verification, completed 2026-10-19:
+
+| Check | Result |
+| --- | --- |
+| Full Vitest suite | **1,095 tests / 87 files PASS**, 130.68 s |
+| Typecheck and ESLint | PASS |
+| Production Windows x64 Forge build and ZIP | PASS; 73 application files, 386,010,200 bytes; ZIP 158,348,023 bytes; verified make 22.72 s |
+| Full `test:electron` chain | All **16 harnesses PASS**, including M1–M5 and all M6 process phases |
+| Extracted unmodified EXE | PASS; actual native dialogs, all-table backup/restore, real relaunch PID 56832 → 57836, exactly three visible/enabled native readers and original owned views, peer native Close and clean exit |
+| Presentation assets/local documentation | PASS; 11 README links/anchors, four decoded PNGs, seven CRC-checked ICO frames; changed Markdown relative links checked |
+| `git diff --check` | PASS |
+
+The final M6 chain used disposable root `reader-m6-electron-DgRc2X`; extracted-EXE
+evidence is in `.packaging-diagnostics/packaged-smoke.json` for disposable root
+`reader-packaged-NWAugz`. Ignored `.m6-*.log` files retain local execution details.
+The ZIP remains an unsigned development preview with scaffold version 1.0.0.
+Optional installed-helper live requests were not configured or executed. Genuine
+Squirrel lifecycle testing remains unverified; no Setup or installer ran.
+
 ## Independent duplicate discussion tabs (M5, 2026-10-18, ADR 0031)
 
 Current schema remains **13**. Production opens **one native reader window**.
