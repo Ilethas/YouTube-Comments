@@ -226,3 +226,16 @@ Built with Electron, React, and TypeScript. For dependencies, build commands,
 artifact paths, and Windows verification, see [Packaging](docs/PACKAGING.md).
 [Testing](docs/TESTING.md) covers checks; the [documentation map](docs/README.md)
 links the reader's behavior and architecture notes.
+
+## License
+
+I've left the source publicly viewable, but I'm not offering it under an
+open-source license at the moment (`UNLICENSED`). Third-party components keep
+their own licenses. The app includes `resources/THIRD_PARTY_NOTICES.md` and the
+license texts it points to; [the same index is here](THIRD_PARTY_NOTICES.md).
+
+yt-dlp and post-archiver-improved are separate, user-installed tools with
+[their own terms](THIRD_PARTY_NOTICES.md#external-acquisition-tools-not-distributed).
+The [distribution audit](docs/DISTRIBUTION_LICENSE_AUDIT.md) records the notice
+checks and remaining review, including installer licensing questions. The ZIP
+remains the recommended format; installed Squirrel behavior is still unverified.

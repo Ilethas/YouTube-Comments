@@ -1,0 +1,2 @@
+# Preserve reviewed upstream notice bytes and their SHA-256s on every platform.
+third-party/** -text

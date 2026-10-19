@@ -9,6 +9,7 @@ const yauzl = require('yauzl');
 const { getCurrentFuseWire, FuseV1Options } = require('@electron/fuses');
 const metadata = require('../package.json');
 const identity = require('../src/shared/application-identity.json');
+const { verifyNotices, verifySquirrelVendor } = require('./verify-notices.cjs');
 const packageDirectory = path.resolve(__dirname, '../out', `${identity.packageName}-win32-x64`);
 const zipFile = path.resolve(__dirname, '../out/make/zip/win32/x64', `${identity.packageName}-win32-x64-${metadata.version}.zip`);
 const squirrelDirectory = path.resolve(__dirname, '../out/make/squirrel.windows/x64');
@@ -74,6 +75,7 @@ async function verifyPackage(directory = packageDirectory) {
   assert.equal(pkg.productName, identity.displayName);
   assert.equal(pkg.version, metadata.version);
   assert.equal(pkg.main, '.vite/build/main.js');
+  verifyNotices(directory);
   for (const file of [pkg.main, '.vite/build/preload.js', '.vite/renderer/main_window/index.html']) assert.ok(read(file).length, file);
   const main = read(pkg.main);
   assert.match(main, /node:sqlite/);
@@ -184,6 +186,8 @@ async function verifySquirrel(directory = squirrelDirectory, application = packa
   const setup = requireFile(directory, identity.setupExe, 1000000);
   const nupkg = requireFile(directory, nupkgName, 1000000);
   const releases = requireFile(directory, 'RELEASES');
+  verifyNotices(application);
+  verifySquirrelVendor();
   const packageBytes = fs.readFileSync(nupkg), releasesBytes = fs.readFileSync(releases);
   verifyReleases(releasesBytes.toString('utf8'), packageBytes);
   const expected = new Set(filesUnder(application)), squirrelFiles = new Set();

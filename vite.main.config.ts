@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { noticeBundle } from './scripts/notice-bundle';
 
 // https://vitejs.dev/config
-export default defineConfig({ build: { rollupOptions: { external: ['node:sqlite'] } } });
+export default defineConfig({ plugins: [noticeBundle('main')], build: { rollupOptions: { external: ['node:sqlite'] } } });

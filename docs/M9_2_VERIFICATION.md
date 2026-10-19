@@ -1,5 +1,10 @@
 # M9.2 final verification and release review
 
+Follow-up dated 2026-10-20: [distribution license audit](DISTRIBUTION_LICENSE_AUDIT.md)
+corrects original-code metadata to `UNLICENSED`, supplies third-party notices and
+records new artifact checks and unresolved installer/legal review. The M9.2
+results below remain historical; they did not verify that later work.
+
 Date: 2026-10-19. Status: **ready for owner review; release candidate pending
 physical verification and license/notice resolution**.
 

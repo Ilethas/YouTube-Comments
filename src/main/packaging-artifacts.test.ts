@@ -9,6 +9,9 @@ import { selectedMakers } from '../../scripts/forge-verified.cjs';
 import metadata from '../../package.json';
 import identity from '../shared/application-identity.json';
 import forge from '../../forge.config';
+import { verifyMetadata, verifyNotices } from '../../scripts/verify-notices.cjs';
+import noticeManifest from '../../third-party/manifest.json';
+import { createPackage, uncacheAll } from '@electron/asar';
 
 // Exercise missing, empty, incomplete and changed output independently of Forge.
 // The installed maker's own ZIP utility produces test archives on Windows.
@@ -21,6 +24,52 @@ afterEach(() => {
   }
 });
 afterAll(() => fs.rmdirSync(directory));
+it('rejects MIT, non-private and inconsistent root package/lockfile metadata', () => {
+  const lock = JSON.parse(fs.readFileSync(path.resolve('package-lock.json'), 'utf8'));
+  expect(() => verifyMetadata(metadata, lock)).not.toThrow();
+  expect(() => verifyMetadata({ ...metadata, license: 'MIT' }, lock)).toThrow(/UNLICENSED/);
+  expect(() => verifyMetadata({ ...metadata, private: false }, lock)).toThrow(/private/);
+  for (const patch of [{ license: 'MIT' }, { version: '9.9.9' }, { dependencies: {} }]) {
+    const changed = structuredClone(lock);
+    Object.assign(changed.packages[''], patch);
+    expect(() => verifyMetadata(metadata, changed)).toThrow();
+  }
+});
+
+it('rejects lost/truncated notices and inaccurate packaged bundle inventory', async () => {
+  const folder = path.join(directory, 'app'), resources = path.join(folder, 'resources');
+  const source = path.join(directory, 'archive-source');
+  fs.mkdirSync(resources, { recursive: true });
+  fs.cpSync(path.resolve('third-party'), path.join(resources, 'third-party'), { recursive: true });
+  fs.copyFileSync(path.resolve('THIRD_PARTY_NOTICES.md'), path.join(resources, 'THIRD_PARTY_NOTICES.md'));
+  for (const file of ['LICENSE', 'LICENSES.chromium.html']) fs.copyFileSync(path.resolve('node_modules/electron/dist', file), path.join(folder, file));
+  fs.mkdirSync(source);
+  fs.writeFileSync(path.join(source, 'package.json'), JSON.stringify(metadata));
+  const graphs = ['.vite/build/third-party-main.json', '.vite/build/third-party-preload.json',
+    '.vite/renderer/main_window/third-party-renderer.json', '.vite/renderer/main_window/third-party-worker.json'];
+  for (const [index, file] of graphs.entries()) {
+    fs.mkdirSync(path.dirname(path.join(source, file)), { recursive: true });
+    fs.writeFileSync(path.join(source, file), JSON.stringify({ packages: index === 0 ? noticeManifest.packages
+      .filter(entry => entry.name !== 'vite').map(entry => ({ name: entry.name, version: entry.version, modules: ['fixture.js'] })) : [], generated: [] }));
+  }
+  const archive = path.join(resources, 'app.asar');
+  await createPackage(source, archive);
+  expect(() => verifyNotices(folder)).not.toThrow();
+  const notice = path.join(resources, 'third-party/react-LICENSE.txt'), original = fs.readFileSync(notice);
+  fs.writeFileSync(notice, original.subarray(0, 20));
+  expect(() => verifyNotices(folder)).toThrow(/notice missing\/incomplete/);
+  fs.rmSync(notice);
+  expect(() => verifyNotices(folder)).toThrow(/inventory/);
+  fs.writeFileSync(notice, original);
+  fs.writeFileSync(path.join(source, graphs[0]), JSON.stringify({ packages: [{ name: 'unreviewed', version: '1', modules: ['index.js'] }], generated: [] }));
+  await createPackage(source, archive);
+  uncacheAll();
+  expect(() => verifyNotices(folder)).toThrow(/inventory changed/);
+  fs.writeFileSync(path.join(source, 'package.json'), JSON.stringify({ ...metadata, license: 'MIT' }));
+  await createPackage(source, archive);
+  uncacheAll();
+  expect(() => verifyNotices(folder)).toThrow(/UNLICENSED/);
+});
 it('rejects absent and executable-only package output', async () => {
   await expect(verifyPackage(path.join(directory,'missing'))).rejects.toThrow();
   const executable=Buffer.alloc(1000001);

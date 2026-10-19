@@ -14,6 +14,7 @@ const config: ForgeConfig = {
     name: identity.packageName,
     executableName: identity.executableName,
     icon: path.resolve(__dirname, 'assets/application.ico'),
+    extraResource: [path.resolve(__dirname, 'THIRD_PARTY_NOTICES.md'), path.resolve(__dirname, 'third-party')],
     win32metadata: { ProductName: identity.displayName, FileDescription: identity.displayName },
   },
   rebuildConfig: {},

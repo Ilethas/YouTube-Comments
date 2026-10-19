@@ -5,8 +5,9 @@ artifacts under [ADR 0020](decisions/0020-windows-packaged-application-and-zip-d
 [ADR 0021](decisions/0021-windows-squirrel-installer-and-application-identity.md) adds
 real Squirrel artifacts and stable identity. This is an unsigned development preview;
 genuine installation behavior remains **UNVERIFIED** and acquisition needs helpers.
-The [M9.2 review](M9_2_VERIFICATION.md) records the current ZIP/extracted-EXE audit,
-manual release gates and outstanding project-license/dependency-notice review.
+The [M9.2 review](M9_2_VERIFICATION.md) records the earlier ZIP/extracted-EXE audit
+and manual release gates. The [license follow-up](DISTRIBUTION_LICENSE_AUDIT.md)
+records the later metadata/notice work and remaining legal review.
 Version `1.0.0` is not a stable-release declaration; no hosted download is implied.
 
 ## Build and verify
@@ -248,10 +249,25 @@ Retention management, future format portability/export, portable data, other pla
 and public publishing remain separate. Unsigned Setup/EXE may trigger SmartScreen;
 do not bypass protection. Setup existing is not public release readiness.
 
-The current runtime preserves Electron and Chromium notices, but that does not
-establish complete application/dependency attribution. The M9.2 audit found no
-repository project `LICENSE` and no standalone notice files inside ASAR, despite
-`package.json` declaring MIT. Resolve project licensing and bundled dependency
-notices before publishing a ZIP; this review does not select a license or certify
-legal compliance. Installer verification remains separate from that distribution
-review and from the pending physical Windows input checks.
+The original application now declares `UNLICENSED` in package/lockfile metadata
+and remains private. Publicly viewable source has no current open-source grant;
+no project LICENSE or EULA is added. Third-party licenses apply to their components.
+Recipients can read `resources/THIRD_PARTY_NOTICES.md` and `resources/third-party/`
+directly in the extracted app. Electron's original `LICENSE` and
+`LICENSES.chromium.html` remain beside the EXE. The complete-runtime nuspec retains
+these files in NuGet and Setup's embedded payload as well.
+
+`node scripts/verify-notices.cjs --metadata-only` checks package/lockfile consistency.
+`node scripts/verify-notices.cjs` checks actual application output, reviewed text
+hashes, documented locations, packaged metadata and rendered-module inventories.
+The existing `verify:artifacts` runs this check, then compares every ZIP runtime
+entry; `--squirrel` adds the complete NuGet/Setup byte comparisons and pinned
+vendor hashes. Verification is offline once dependencies/artifacts exist. Changed
+dependencies or notice texts need review and an intentional inventory update;
+do not regenerate hashes merely to silence a failure.
+
+ZIP remains recommended. Installed Squirrel behavior remains **UNVERIFIED**;
+installer licensing also has unresolved blockers in the follow-up report. External
+yt-dlp, post-archiver-improved and Python remain user-installed and absent from
+both distributions. Successful notice checks establish delivery/integrity, not
+complete legal compliance or authorization to publish.

@@ -1,0 +1,135 @@
+{
+  "packages": [
+    {
+      "name": "react",
+      "version": "18.3.1",
+      "license": "MIT",
+      "packagePath": "react",
+      "upstreamFile": "LICENSE",
+      "file": "react-LICENSE.txt",
+      "sha256": "52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85"
+    },
+    {
+      "name": "react-dom",
+      "version": "18.3.1",
+      "license": "MIT",
+      "packagePath": "react-dom",
+      "upstreamFile": "LICENSE",
+      "file": "react-dom-LICENSE.txt",
+      "sha256": "52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85"
+    },
+    {
+      "name": "scheduler",
+      "version": "0.23.2",
+      "license": "MIT",
+      "packagePath": "scheduler",
+      "upstreamFile": "LICENSE",
+      "file": "scheduler-LICENSE.txt",
+      "sha256": "52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85"
+    },
+    {
+      "name": "@js-temporal/polyfill",
+      "version": "0.5.1",
+      "license": "ISC",
+      "packagePath": "@js-temporal/polyfill",
+      "upstreamFile": "LICENSE",
+      "file": "temporal-polyfill-LICENSE.txt",
+      "sha256": "ffc4aee7f1279fc0494ff2b27f6829e6b4d16c20aa93aa008c3bd8d8af176387"
+    },
+    {
+      "name": "jsbi",
+      "version": "4.3.2",
+      "license": "Apache-2.0",
+      "packagePath": "jsbi",
+      "upstreamFile": "LICENSE",
+      "file": "jsbi-LICENSE.txt",
+      "sha256": "9568a2b155e66ac3e0ba1fd80b52b827b9460e6cf6f233125e7cbca8e206ddc3"
+    },
+    {
+      "name": "@tanstack/react-virtual",
+      "version": "3.14.13",
+      "license": "MIT",
+      "packagePath": "@tanstack/react-virtual",
+      "upstreamFile": "LICENSE",
+      "file": "tanstack-react-virtual-LICENSE.txt",
+      "sha256": "a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7"
+    },
+    {
+      "name": "@tanstack/virtual-core",
+      "version": "3.17.11",
+      "license": "MIT",
+      "packagePath": "@tanstack/virtual-core",
+      "upstreamFile": "LICENSE",
+      "file": "tanstack-virtual-core-LICENSE.txt",
+      "sha256": "a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7"
+    },
+    {
+      "name": "electron-squirrel-startup",
+      "version": "1.0.1",
+      "license": "Apache-2.0",
+      "packagePath": "electron-squirrel-startup",
+      "upstreamFile": "LICENSE",
+      "file": "electron-squirrel-startup-LICENSE.txt",
+      "sha256": "9cf5de169b595cdae317551ef69a794b59fa3d1e151db4190d337fe08d13d5f8"
+    },
+    {
+      "name": "debug",
+      "version": "2.6.9",
+      "license": "MIT",
+      "packagePath": "electron-squirrel-startup/node_modules/debug",
+      "upstreamFile": "LICENSE",
+      "file": "debug-LICENSE.txt",
+      "sha256": "98c970de440dcfc77471610aec2377c9d9b0db2b3be6d1add524a586e1d7f422"
+    },
+    {
+      "name": "ms",
+      "version": "2.0.0",
+      "license": "MIT",
+      "packagePath": "electron-squirrel-startup/node_modules/ms",
+      "upstreamFile": "license.md",
+      "file": "ms-LICENSE.txt",
+      "sha256": "6652830c2607c722b66f1b57de15877ab8fc5dca406cc5b335afeb365d0f32c1"
+    },
+    {
+      "name": "vite",
+      "version": "5.4.21",
+      "license": "MIT",
+      "packagePath": "vite",
+      "upstreamFile": "LICENSE.md",
+      "file": "vite-helpers-LICENSE.txt",
+      "sha256": "444c5ec3bf7f798af5c5179d734673cbcb115b22b1ef48e6d85bc941ac8777a2",
+      "section": "before bundled dependencies"
+    }
+  ],
+  "additionalFiles": {
+    "CPL-1.0.txt": "9698f2ba346a875a47a9cc6bb602e3d126758774dde1f575b4f3369dc3f2574f",
+    "squirrel-COPYING.txt": "6ec2f61e4e21623d0c008af4d664db8bb029bca354c09ed54926e04a4d9e8a24",
+    "squirrel-stub-semver-LICENSE.txt": "691cf3071a5094a7e0508b275efdd4573c31f7ed6f917f5320d4aa913e601283",
+    "squirrel-unzip-NOTICE.txt": "f7b9b06555d21bbbfc101aac733b1830e7835603a7b81bae375c26e28d2a8784",
+    "squirrel-wtl-NOTICE.txt": "1663f9c4f66ac5c523669606802a05b07cd8b85bd261e82b3c267eb0a30ac676",
+    "jsbi-NOTICE.txt": "ef8e6f3f131e73a1fab171864bc451519e4d56c93520fb871744a5131132fa67",
+    "squirrel-cecil-LICENSE.txt": "13d58ecbed676511c0c4c4009bff107025e50007ff5e7901dc562700ec62509e",
+    "squirrel-sharpcompress-LICENSE.txt": "b7ca2b6174cee11afe41d78b48527e3d7659a4435c25019a4a5e072299a2f8ed",
+    "squirrel-nuget-LICENSE.txt": "63ade0c646a86d07504178b55683652f7210d574d94977ede105f6e8d52c8a36",
+    "squirrel-wpf-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "electron-winstaller-LICENSE.txt": "379ecb81d11a2c2a72225e0cf8cd04803b220da64e1668042ddd0d04bd1c8666",
+    "rollup-commonjs-helpers-LICENSE.txt": "b707cdbc11f41505137a0ca6362e3749b30086c8fde15ad460b727882a2b5164",
+    "modernizr-NOTICE.txt": "6913ed09b6fcc3b58c186657aad013e506911093fdfa8d1a167ab047da5f5526"
+  },
+  "electron": {
+    "version": "44.4.5",
+    "files": {
+      "LICENSE": "5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d",
+      "LICENSES.chromium.html": "7b328b8c7463ac9bfc7dc648c751533517c8441a0b5b21047d6c0b2620e60d70"
+    }
+  },
+  "squirrelVendor": {
+    "package": "electron-winstaller",
+    "version": "5.4.4",
+    "files": {
+      "Setup.exe": "1e47eb606dad4c5c1568cfb8f4e970e1051ba5806aedb1ff3256284a8280d83b",
+      "Squirrel.exe": "76359cd4b0349a83337b941332ad042c90351c2bb0a4628307740324c97984cc",
+      "StubExecutable.exe": "d823e6d954f7e445fbbb5c04e40a39cf248a3621f9eccbafdf3f0f1e7acb11dd"
+    }
+  }
+}
