@@ -34,10 +34,12 @@ export function WorkspaceTabs({ workspace, locale, disabled, label, icon, activa
   }
   const { strip, dragging, shown, suppressClick, begin, newPress, pointerUp, pointerCancel, dragStart, dragOver, dragLeave, drop, dragEnd, insertion, status } = useTabStrip(workspace, disabled, move, dragApi);
   return <><div ref={strip} className="tabs" role="tablist" aria-label={t('discussions')} aria-describedby="tab-reorder-help"
+    data-empty={shown.tabs.length === 0} data-drop-active={insertion !== undefined}
     data-insert-end={insertion === null} onPointerDownCapture={newPress} onPointerUp={pointerUp} onPointerCancel={pointerCancel}
     onDragOver={dragOver} onDragLeave={dragLeave} onDrop={drop} onDragEnd={dragEnd}
     onClickCapture={event => { if (suppressClick.current && event.detail > 0) { event.preventDefault(); event.stopPropagation(); } }}>
     <span id="tab-reorder-help" className="visually-hidden">{reorderHelp(locale)}</span>
+    {!shown.tabs.length && <span className="tab-drop-empty" aria-hidden="true"><ActionIcon name="plus" />{t(insertion !== undefined ? 'tabDropReady' : 'tabDropEmpty')}</span>}
     {shown.tabs.map((tab, index) => <div key={tab.id} className="tab" role="presentation" data-tab-id={tab.id} data-tab-item-id={tab.kind === 'discussion' ? tab.itemId : undefined}
       data-active={workspace.activeTabId === tab.id} data-dragging={dragging === tab.id} data-insert-before={insertion === tab.id}>
       <button role="tab" id={`tab-${tab.id}`} aria-controls={`panel-${tab.kind === 'discussion' ? tab.id : tab.kind}`}

@@ -65,6 +65,16 @@ not native passes. Repeat directions A -> B, B -> A and C -> B where appropriate
 
 ## Observation ledger (copy a row per actual trial)
 
+M8.1 follow-up within P02/P04/P17/P23: after drag/reorder and after keyboard menu
+dismissal, check that keyboard focus surrounds the whole tab without a vertical
+edge immediately left of Close. Drag into a completely empty reader's labeled
+drop area, leave it, cancel and repeat in both directions. Check its hover
+highlight clears. In English/Polish, open Move to Window, compare source title and
+destination tab counts/active titles, select rows with arrows/Space, cancel with
+Escape, then confirm separately with Move. Repeat with long titles, a narrow
+window/app zoom and dirty Settings preserve/discard. These remain pending physical
+checks; the M8.1 Electron regressions do not establish a native OS drag-loop pass.
+
 | Date/runtime/OS | Category B/C | ID/repetition and physical ground truth | Source/target + display/work area/scale/zoom | Ledger timestamp range | Actual result and failure details |
 | --- | --- | --- | --- | --- | --- |
 | Not performed | Not performed | P01-P23 pending | Inventory below only | None | No physical pass claimed |

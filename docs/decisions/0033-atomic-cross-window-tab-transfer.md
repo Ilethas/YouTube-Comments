@@ -14,6 +14,16 @@ for this selection; neither numbers nor persistent window IDs authorize a comman
 The public chooser appends. The protocol also supports a destination neighbor ID
 with expected topology CAS, so later gesture adapters can choose insertion.
 
+M8.1 polishes this chooser with a source-title summary, selectable native radio
+rows, bounded main-owned active-tab labels and tab counts, a separate plus-icon
+New Window option, and an explicit Cancel/Move footer. Selection alone never
+begins a reservation. Display hints are captured with the destination revision;
+the same M7 validation rejects stale destinations at confirmation. The responsive
+dialog retains native modality, initial Cancel focus, Escape and focus restoration,
+English/Polish strings and theme tokens. Dirty Settings still gates selection on
+explicit discard; an already offered drag destination stays fixed, including its
+exact neighbor/revision. There is no new transfer authority or persistence.
+
 Main excludes destroyed, unauthenticated, not-ready, restoring and provisional
 readers from ordinary destinations. M3 excludes all transfers during preparation,
 draining, execution and unreconciled release; terminal offline fencing is retained.

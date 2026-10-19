@@ -7,6 +7,12 @@ native/physical drag verification remains pending. See [testing](TESTING.md) and
 [manual verification](M8_MANUAL_VERIFICATION.md). M9 remains future work. Earlier
 milestone sections below retain their historical scope.
 
+The **M8.1 UI polish** adds a responsive, localized Move Tab chooser with source
+context, destination-window details, radio selection and explicit Move confirmation,
+plus whole-tab keyboard focus and a visible empty-window drop area. Transfer
+authority and schema remain unchanged; see [UI](UI_AND_NAVIGATION.md) and
+[validation](TESTING.md). Awaiting owner review; M9 remains future work.
+
 [ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) implements **M7**:
 explicit keyboard/menu movement between equal reader windows, live frozen-view
 handoff, atomic ownership and singleton merge, generation/ABA fencing and safe

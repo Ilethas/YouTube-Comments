@@ -228,3 +228,19 @@ it('leaving the strip for the reader stops insertion preview and auto-scroll wit
   expect(strip.getAttribute('data-insert-end')).toBe('false'); expect(cancelFrame).toHaveBeenCalled();
   expect(document.querySelector('[data-dragging=true]')).toBeTruthy(); expect(move).not.toHaveBeenCalled();
 });
+
+it.each(['en', 'pl'] as const)('empty windows expose a drop area and clear its highlight on leave, drop and exact gesture end in %s', locale => {
+  render(<WorkspaceTabs workspace={{ tabs: [], activeTabId: null, revision: 9 }} locale={locale} disabled={false} dragApi={dragApi}
+    label={() => ''} icon={() => 'video'} move={move} activate={activate} close={close} />);
+  const strip = screen.getByRole('tablist'), dataTransfer = dataStore();
+  expect(strip.querySelector('.tab-drop-empty')?.textContent).toContain(locale === 'en' ? 'Drop a tab here' : 'Upuść kartę tutaj');
+  fireEvent.dragOver(strip, { dataTransfer }); expect(strip.dataset.dropActive).toBe('false');
+  act(() => emit({ kind: 'drag-started', token })); fireEvent.dragOver(strip, { dataTransfer });
+  expect(strip.dataset.dropActive).toBe('true');
+  fireEvent.dragLeave(strip, { relatedTarget: document.body, dataTransfer }); expect(strip.dataset.dropActive).toBe('false');
+  fireEvent.dragOver(strip, { dataTransfer }); fireEvent.drop(strip, { dataTransfer });
+  expect(dragApi.offerDrag).toHaveBeenCalledExactlyOnceWith({ token, expectedRevision: 9, beforeTabId: null });
+  expect(strip.dataset.dropActive).toBe('false'); expect(move).not.toHaveBeenCalled(); expect(activate).not.toHaveBeenCalled();
+  fireEvent.dragOver(strip, { dataTransfer }); act(() => emit({ kind: 'drag-cleared', token }));
+  expect(strip.dataset.dropActive).toBe('false');
+});

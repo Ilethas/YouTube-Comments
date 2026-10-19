@@ -10,6 +10,11 @@ physical gesture target; pen/touch behavior is unverified. Keyboard/menu alterna
 below remain available. A very fast drag before token preparation cancels safely;
 an ordinary click continues to activate normally.
 
+An empty reader keeps a full-width, labeled tab drop area. It highlights only
+during a supported app-tab hover and clears on leave/drop/gesture cancellation.
+Keyboard focus surrounds the whole tab, including the separate close control;
+it does not leave an internal vertical edge beside Close after a gesture.
+
 Release outside the app to request a new equal reader near the native cursor.
 This uses an intentional guarded drag-end heuristic: **Escape outside may also
 create a detached window** when no reliable cancellation event arrives. Desktop,
@@ -25,8 +30,16 @@ state and original identity follow M7; source-empty windows remain open. See
 Open any tab's menu with right-click, Shift+F10 or the context-menu key. Choose
 **Move to Window...** (Polish: **Przenieś do okna...**) to select another ready
 numbered reader, or **Move to New Window** (**Przenieś do nowego okna**). The
-source is excluded; New Window remains available when no peer exists. Cancel starts
-focused. A successful move activates/focuses the destination tab and announces it;
+source is excluded; New Window remains available when no peer exists. The dialog
+shows the source title (ellipsis with its full title available on hover), numbered
+destination rows with tab counts and active-tab labels, and a separate plus-icon
+New Window option. Native radio controls support Tab, Space and arrow navigation.
+Selecting a row only selects it; the footer's **Move** (**Przenieś**) confirms it.
+Cancel starts focused; Escape cancels and returns focus to the invoking tab.
+The dialog follows System/Light/Dark, scrolls its body in small windows and keeps
+its footer reachable. Destination hints describe the displayed snapshot; main
+still rejects closed or changed destinations rather than silently retargeting.
+A successful move activates/focuses the destination tab and announces it;
 a failed move keeps the source usable with feedback and retry through the same menu.
 
 Discussion moves preserve the same view identity, draft/applied filters, frozen

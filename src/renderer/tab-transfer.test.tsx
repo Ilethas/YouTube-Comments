@@ -128,19 +128,20 @@ it.each(['discussion', 'library', 'settings'] as const)('Shift+F10 exposes both 
 });
 it('dirty Settings requires explicit preserve/discard; no destinations still offers a new window and Cancel starts focused', async () => {
   const move = vi.fn(), cancel = vi.fn(), api = { destinations: vi.fn(async () => ({ ok: true, value: [] })) } as unknown as TabTransferApi;
-  render(<MoveTabDialog api={api} locale="en" dirty newWindow={false} move={move} cancel={cancel} />);
+  render(<MoveTabDialog tabTitle="Settings" tabKind="settings" api={api} locale="en" dirty newWindow={false} move={move} cancel={cancel} />);
   expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Keep editing' }));
-  expect(screen.queryByRole('button', { name: 'Move to New Window' })).toBeNull(); expect(move).not.toHaveBeenCalled();
+  expect(screen.queryByRole('radio', { name: /Move to New Window/ })).toBeNull(); expect(move).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Discard draft and continue' }));
   await waitFor(() => expect(screen.getByText('No other window is available.')).toBeTruthy());
-  fireEvent.click(screen.getByRole('button', { name: 'Move to New Window' })); expect(move).toHaveBeenCalledWith('new');
+  fireEvent.click(screen.getByRole('radio', { name: /Move to New Window/ })); expect(move).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Move' })); expect(move).toHaveBeenCalledWith('new');
 });
 
 it('dragged dirty Settings keeps its exact offered destination after explicit discard', async () => {
   const move = vi.fn(), destination = { windowId: 'recipient', expectedRevision: 12, beforeTabId: 'neighbor' };
   const api = { destinations: vi.fn(async () => ({ ok: true, value: [] })) } as unknown as TabTransferApi;
-  render(<MoveTabDialog api={api} locale="en" dirty newWindow={false} fixedDestination={destination} move={move} cancel={vi.fn()} />);
+  render(<MoveTabDialog tabTitle="Settings" tabKind="settings" api={api} locale="en" dirty newWindow={false} fixedDestination={destination} move={move} cancel={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: 'Discard draft and continue' }));
-  expect(screen.queryByRole('button', { name: 'Move to New Window' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: /Move to Window/ })); expect(move).toHaveBeenCalledExactlyOnceWith(destination);
+  expect(screen.queryByRole('radio', { name: /Move to New Window/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Move' })); expect(move).toHaveBeenCalledExactlyOnceWith(destination);
 });

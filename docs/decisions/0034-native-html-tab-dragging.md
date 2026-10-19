@@ -34,6 +34,13 @@ once, after main acknowledges a current unexpired local end token. Late replies 
 an earlier local gesture cannot reorder a later one. A no-op invokes no SQL reorder. It preserves active identity and session,
 and never enters the ownership transfer transaction.
 
+M8.1 keeps the same adapter and protocol. Empty strips now retain a labeled,
+full-width drop area with a supported-hover highlight and ordinary terminal cleanup.
+Tab-title keyboard focus paints around the whole tab instead of the inner title
+button, removing the vertical focus edge beside the close control seen after drag.
+The explicit Move chooser gains selectable destination rows and a confirmation
+footer (see ADR 0033). These are presentation changes, not new native outcome rules.
+
 ## Source-only reservation and one target offer
 
 Main extends the existing M7 reservation, retaining its exact authenticated source

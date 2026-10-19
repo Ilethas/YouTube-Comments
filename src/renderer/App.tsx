@@ -16,7 +16,7 @@ import { TabIcon } from './TabIcon';
 import { ActionIcon } from './ActionIcon';
 import { filterLibrary } from './library';
 import { RemovalDialog } from './RemovalDialog';
-import type { WorkspaceState } from '../domain/workspace';
+import type { WorkspaceState, WorkspaceTab } from '../domain/workspace';
 import { useDiscussionViews } from './use-discussion-views';
 import { DiscussionPanel } from './DiscussionPanel';
 import { navigateDiscussion } from './discussion-navigation';
@@ -502,6 +502,15 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const isOpen = (id: string) => workspace.tabs.some(tab => tab.kind === 'discussion' && tab.itemId === id);
   const itemLabel = (item: ReaderState['items'][number]) => item.kind === 'video' ? item.title
     : `${item.author?.displayName ?? item.author?.handle ?? t('unknownAuthor')} · ${item.text.replace(/\s+/g, ' ').slice(0, 80)}`;
+  const tabLabel = (tab: WorkspaceTab) => {
+    if (tab.kind !== 'discussion') return t(tab.kind);
+    const item = items.find(item => item.id === tab.itemId);
+    const siblings = workspace.tabs.filter(t => t.kind === 'discussion' && t.itemId === tab.itemId);
+    const title = item ? itemLabel(item) : t('itemNotFound');
+    return siblings.length > 1 ? t('discussionInstance', { title, number: siblings.findIndex(t => t.id === tab.id) + 1 }) : title;
+  };
+  const tabIcon = (tab: WorkspaceTab) => tab.kind === 'discussion' ? items.find(item => item.id === tab.itemId)?.kind ?? 'video' : tab.kind;
+  const movingTab = workspace.tabs.find(tab => tab.id === moveDialog?.id);
   const errorKey = acquisitionError === 'HELPER_UNAVAILABLE' ? 'helperUnavailable'
     : acquisitionError === 'INVALID_REQUEST' ? 'invalidUrl' : acquisitionError === 'ACQUISITION_BUSY' ? 'acquisitionBusy'
       : acquisitionError === 'NOT_REFRESHABLE' ? 'notRefreshable' : acquisitionError === 'NOT_FOUND' ? 'itemNotFound'
@@ -634,14 +643,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     <WorkspaceTabs workspace={workspace} locale={locale} disabled={workspaceSaving || profileBusy || cloning || !!movingId}
       dragApi={api.transfers}
       transfer={api.transfers ? (id, newWindow) => { setMoveDialog({ id, newWindow }); } : undefined}
-      label={tab => {
-        if (tab.kind !== 'discussion') return t(tab.kind);
-        const item = items.find(item => item.id === tab.itemId);
-        const siblings = workspace.tabs.filter(t => t.kind === 'discussion' && t.itemId === tab.itemId);
-        const title = item ? itemLabel(item) : t('itemNotFound');
-        return siblings.length > 1 ? t('discussionInstance', { title, number: siblings.findIndex(t => t.id === tab.id) + 1 }) : title;
-      }}
-      icon={tab => tab.kind === 'discussion' ? items.find(item => item.id === tab.itemId)?.kind ?? 'video' : tab.kind}
+      label={tabLabel} icon={tabIcon}
       activate={activate} close={close} duplicate={id => { void duplicate(id); }}
       move={(tabId, toIndex) => { void workspaceAction(() => api.moveTab({ tabId, toIndex, expectedRevision: workspace.revision })); }} />
     {saveError && <div className="save-error" role="alert">{t('saveError')}</div>}
@@ -727,7 +729,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   {movingId && !profileBusy && <div className="profile-operation-overlay" role="dialog" aria-modal="true" aria-label={t('movingTab')}>
     <p>{t('movingTab')}</p><button autoFocus onClick={() => { cancelledMove.current = true; moveAbort.current?.abort(); if (movingToken.current) void api.transfers?.cancel({ token: movingToken.current }); }}>{t('cancel')}</button>
   </div>}
-  {moveDialog && api.transfers && !profileBusy && <MoveTabDialog api={api.transfers} locale={locale} newWindow={moveDialog.newWindow}
+  {moveDialog && movingTab && api.transfers && !profileBusy && <MoveTabDialog key={moveDialog.id} api={api.transfers} locale={locale} newWindow={moveDialog.newWindow}
+    tabTitle={tabLabel(movingTab)} tabKind={tabIcon(movingTab)}
     fixedDestination={moveDialog.reserved?.start.destination}
     dirty={workspace.tabs.find(t => t.id === moveDialog.id)?.kind === 'settings' && settingsDirty.current}
     cancel={() => { if (moveDialog.reserved) void api.transfers?.cancel({ token: moveDialog.reserved.token }); setMoveDialog(undefined); }} move={destination => { void transfer(moveDialog.id, destination, moveDialog.reserved); }} />}

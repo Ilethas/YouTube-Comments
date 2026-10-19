@@ -26,7 +26,12 @@ export interface LiveViewHandoff {
   readonly selectionMode: boolean;
   readonly discoveryId: string | null;
 }
-export interface TransferDestination { readonly windowId: string; readonly number: number; readonly revision: number }
+/** Display hints from the main-owned workspace snapshot; never transfer authority. */
+export interface TransferDestination {
+  readonly windowId: string; readonly number: number; readonly revision: number;
+  readonly tabCount: number;
+  readonly activeTab: { readonly kind: 'discussion' | 'library' | 'settings'; readonly title?: string } | null;
+}
 export interface TransferRequest {
   readonly tabId: string;
   readonly expectedRevision: number;

@@ -4,6 +4,12 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  moveTabTitle: 'Move Tab', moveTabHelp: 'Choose a destination for this tab, then select Move.',
+  moveTabFixedHelp: 'Confirm the destination chosen by your drop.', moveTabSource: 'Tab to move', moveTabDestination: 'Destination', moveTabConfirm: 'Move',
+  moveTabFixedDestination: 'Window selected by your drop', moveWindowActive: 'Active: {title}', moveWindowEmpty: 'Empty window',
+  moveWindowTabs_one: '{count} tab', moveWindowTabs_other: '{count} tabs',
+  moveNewWindowHelp: 'Open a separate window with this tab.', moveDestinationsFailed: 'Could not load windows. Cancel and try again, or move to a new window.',
+  tabDropEmpty: 'Drop a tab here', tabDropReady: 'Release to move the tab here',
   tabDragStarted: 'Dragging tab. Drop in a tab strip to move it, or outside to open a window.',
   tabDragInsert: 'Drop to insert the tab at this position.', tabDragCancelled: 'Tab drag cancelled. The source was preserved.',
   tabDragFinished: 'Tab drag finished.',
@@ -179,6 +185,12 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  moveTabTitle: 'Przenieś kartę', moveTabHelp: 'Wybierz miejsce docelowe dla tej karty, a następnie przycisk Przenieś.',
+  moveTabFixedHelp: 'Potwierdź miejsce docelowe wybrane przez upuszczenie karty.', moveTabSource: 'Karta do przeniesienia', moveTabDestination: 'Miejsce docelowe', moveTabConfirm: 'Przenieś',
+  moveTabFixedDestination: 'Okno wybrane przez upuszczenie karty', moveWindowActive: 'Aktywna karta: {title}', moveWindowEmpty: 'Puste okno',
+  moveWindowTabs_one: '{count} karta', moveWindowTabs_few: '{count} karty', moveWindowTabs_many: '{count} kart', moveWindowTabs_other: '{count} karty',
+  moveNewWindowHelp: 'Otwórz tę kartę w osobnym oknie.', moveDestinationsFailed: 'Nie udało się wczytać okien. Anuluj i spróbuj ponownie lub przenieś kartę do nowego okna.',
+  tabDropEmpty: 'Upuść kartę tutaj', tabDropReady: 'Zwolnij przycisk, aby przenieść kartę tutaj',
   tabDragStarted: 'Przeciąganie karty. Upuść na pasku kart, aby ją przenieść, lub poza oknem, aby otworzyć nowe okno.',
   tabDragInsert: 'Upuść, aby wstawić kartę w tym miejscu.', tabDragCancelled: 'Anulowano przeciąganie karty. Zachowano kartę źródłową.',
   tabDragFinished: 'Zakończono przeciąganie karty.',
@@ -371,7 +383,7 @@ export function translator(locale: Locale) {
   };
 }
 
-export function countLabel(locale: Locale, key: 'comments' | 'unseenCount' | 'matchingComments' | 'containingThreads', count: number): string {
+export function countLabel(locale: Locale, key: 'comments' | 'unseenCount' | 'matchingComments' | 'containingThreads' | 'moveWindowTabs', count: number): string {
   const category = new Intl.PluralRules(locale).select(count);
   const template = messages[locale][`${key}_${category}`] ?? messages.en[`${key}_other`];
   return template.replace('{count}', new Intl.NumberFormat(locale).format(count));

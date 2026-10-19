@@ -70,7 +70,13 @@ export class TabTransferCoordinator {
     if (!source.isCurrent() || !this.allowed()) return [];
     const reserved = new Set([...this.reservations.values()].filter(r => !r.cancelled).flatMap(r => [r.source.windowId, ...(r.target ? [r.target.windowId] : [])]));
     return this.windows.eligible().map((caller, i) => ({ caller, number: i + 1 })).filter(v => v.caller !== source && !reserved.has(v.caller.windowId))
-      .map(({ caller, number }) => ({ windowId: caller.windowId, number, revision: this.repository.workspace(caller.windowId).revision }));
+      .map(({ caller, number }) => {
+        const workspace = this.repository.workspace(caller.windowId), active = workspace.tabs.find(tab => tab.id === workspace.activeTabId);
+        const item = active?.kind === 'discussion' ? this.repository.getStoredItem(active.itemId) : undefined;
+        const title = item ? (item.kind === 'video' ? item.title : item.author?.displayName ?? item.author?.handle ?? item.text).replace(/\s+/g, ' ').slice(0, 160) : undefined;
+        return { windowId: caller.windowId, number, revision: workspace.revision, tabCount: workspace.tabs.length,
+          activeTab: active ? { kind: active.kind, ...(title ? { title } : {}) } : null };
+      });
   }
   liveHandoffs(caller: ReaderCallerContext): Readonly<Record<string, LiveViewHandoff>> {
     const entries: [string, LiveViewHandoff][] = [];

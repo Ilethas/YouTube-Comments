@@ -106,6 +106,15 @@ if (process.versions.electron) {
     await wait(() => js(w, '!!document.querySelector("dialog[open]")'), 'move dialog');
   }
   async function choose(w, label) {
+    if (label.startsWith('Window ') || label === 'Move to New Window') {
+      const option = 'Array.from(document.querySelectorAll(".move-tab-option")).find(e=>e.querySelector("strong")?.textContent===' + JSON.stringify(label) + ')?.querySelector("input")';
+      await wait(() => js(w, '!!(' + option + ')'), 'destination ' + label);
+      const before = (await boot(w)).workspace;
+      await js(w, option + '.focus();void 0'); await press(w, 'Space');
+      assert.equal(await js(w, option + '.checked'), true);
+      assert.deepEqual((await boot(w)).workspace, before, 'selecting a destination never starts transfer');
+      await choose(w, 'Move'); return;
+    }
     await wait(() => js(w, 'Array.from(document.querySelectorAll("dialog[open] button")).some(b=>b.textContent===' + JSON.stringify(label) + ')'), 'destination ' + label);
     await js(w, 'Array.from(document.querySelectorAll("dialog[open] button")).find(b=>b.textContent===' + JSON.stringify(label) + ').focus();void 0');
     await press(w, 'Enter');
@@ -119,6 +128,51 @@ if (process.versions.electron) {
     const destinations = await js(source, 'window.reader.transfers.destinations()'); assert.equal(destinations.ok, true);
     const number = destinations.value.find(d => d.windowId === targetId)?.number; assert.ok(number);
     await choose(source, 'Window ' + number);
+  }
+  async function verifyMoveChooser(w, id) {
+    const baseline = (await boot(w)).workspace, zoom = w.webContents.getZoomFactor(), bounds = w.getBounds();
+    const screenshots = path.resolve(__dirname, '../.vite/m81-review'); fs.mkdirSync(screenshots, { recursive: true });
+    for (const locale of ['en', 'pl']) {
+      await invoke(w, 'updatePreferences', { locale }); await invoke(w, 'updatePreferences', { appearance: 'dark' });
+      await wait(() => js(w, `document.documentElement.lang===${JSON.stringify(locale)}`), 'chooser locale');
+      await menu(w, id);
+      await wait(() => js(w, 'document.querySelectorAll(".move-tab-window-list input").length===2'), 'chooser window rows');
+      assert.equal(await js(w, 'document.activeElement===document.querySelector(".move-tab-footer button")'), true, 'Cancel initially focused');
+      assert.equal(await js(w, 'document.querySelector(".move-tab-primary").disabled'), true, 'Move needs selection');
+      assert.equal(await js(w, 'document.querySelectorAll(".move-tab-count").length'), 2);
+      await js(w, 'document.querySelector(".move-tab-window-list input").focus();void 0'); await press(w, 'Space');
+      assert.equal(await js(w, 'document.querySelectorAll(".move-tab-option input:checked").length'), 1);
+      await press(w, 'Down');
+      assert.equal(await js(w, 'document.activeElement===document.querySelectorAll(".move-tab-window-list input")[1]'), true,
+        'native arrows select next window: ' + await js(w, 'JSON.stringify({active:document.activeElement?.outerHTML,selected:document.querySelector(".move-tab-option input:checked")?.value})'));
+      await press(w, 'Down');
+      assert.equal(await js(w, 'document.querySelector(".move-tab-new input").checked'), true);
+      assert.deepEqual((await boot(w)).workspace, baseline, 'keyboard selection preserves source');
+      fs.writeFileSync(path.join(screenshots, 'move-tab-' + locale + '-dark.png'), (await w.webContents.capturePage()).toPNG());
+      // App zoom exercises a small CSS viewport without changing native session policy.
+      w.setBounds({ width: 720, height: 1000 }); w.webContents.setZoomFactor(2); await pause(100);
+      const layout = await js(w, `(()=>{const d=document.querySelector('dialog'),f=d.querySelector('footer'),r=d.getBoundingClientRect(),s=d.querySelector('.move-tab-source strong');return {width:innerWidth,height:innerHeight,left:r.left,right:r.right,top:r.top,bottom:r.bottom,footerBottom:f.getBoundingClientRect().bottom,overflow:d.scrollWidth>d.clientWidth,sourceTruncated:s.scrollWidth>s.clientWidth};})()`);
+      assert.ok(layout.left>=0 && layout.top>=0 && layout.right<=layout.width && layout.bottom<=layout.height, JSON.stringify(layout));
+      assert.equal(layout.overflow, false, JSON.stringify(layout)); assert.equal(layout.sourceTruncated, true, JSON.stringify(layout)); assert.ok(layout.footerBottom<=layout.height);
+      fs.writeFileSync(path.join(screenshots, 'move-tab-' + locale + '-small.png'), (await w.webContents.capturePage()).toPNG());
+      w.webContents.setZoomFactor(zoom); w.setBounds(bounds); await press(w, 'Escape');
+      await wait(() => js(w, '!document.querySelector("dialog[open]")'), 'Escape dismisses chooser');
+      assert.deepEqual((await boot(w)).workspace, baseline);
+      assert.equal(await js(w, 'document.activeElement===' + tabSelector(id)), true, 'chooser returns focus to source');
+      const focus = await js(w, `(()=>{const t=${tabSelector(id)};return {visible:t.matches(':focus-visible'),title:getComputedStyle(t).outlineStyle,tab:getComputedStyle(t.closest('.tab')).outlineStyle};})()`);
+      assert.deepEqual(focus, { visible: true, title: 'none', tab: 'solid' }, 'focus ring surrounds the tab, with no edge beside Close');
+      fs.writeFileSync(path.join(screenshots, 'tab-focus-' + locale + '.png'), (await w.webContents.capturePage()).toPNG());
+    }
+    for (const locale of ['en', 'pl']) {
+      await invoke(w, 'updatePreferences', { locale }); await invoke(w, 'updatePreferences', { appearance: 'light' });
+      await wait(() => js(w, `document.documentElement.lang===${JSON.stringify(locale)} && document.documentElement.dataset.appearance==='light'`), 'light chooser');
+      await menu(w, id); await wait(() => js(w, 'document.querySelectorAll(".move-tab-window-list input").length===2'), 'light rows');
+      fs.writeFileSync(path.join(screenshots, 'move-tab-' + locale + '-light.png'), (await w.webContents.capturePage()).toPNG());
+      await choose(w, locale === 'en' ? 'Cancel' : 'Anuluj');
+      assert.deepEqual((await boot(w)).workspace, baseline);
+    }
+    await invoke(w, 'updatePreferences', { locale: 'en' });
+    await invoke(w, 'updatePreferences', { appearance: 'dark' });
   }
   async function holdMove(source, id, target) {
     let reached = false;
@@ -163,6 +217,7 @@ if (process.versions.electron) {
       await js(a, 'Array.from(' + panelSelector(video) + '.querySelectorAll("button")).find(b=>b.textContent==="Select comments").click();void 0');
       await js(a, panelSelector(video) + '.querySelector(".selection-circle").click();void 0');
       await press(a, 'F3');
+      await verifyMoveChooser(a, video);
       // A dirty draft stays separate from the accepted unseen result.
       await js(a, '(()=>{const e=' + panelSelector(video) + '.querySelector("input[type=search]");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(e,"M7 unsent draft");e.dispatchEvent(new Event("input",{bubbles:true}));})()');
       await menu(a, video); holdReady = true;
@@ -269,7 +324,7 @@ if (process.versions.electron) {
         await js(w, '(()=>{const e=document.querySelector(".translation-settings input");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(e,' + JSON.stringify(draft) + ');e.dispatchEvent(new Event("input",{bubbles:true}));})()');
       };
       await customDraft(a, 'pt-BR'); await customDraft(b, 'ja-Kana');
-      await menu(a, settings); assert.equal(await js(a, 'Array.from(document.querySelectorAll("dialog[open] button")).some(b=>b.textContent.startsWith("Window "))'), false);
+      await menu(a, settings); assert.equal(await js(a, '!!document.querySelector("dialog[open] input[type=radio]")'), false);
       await choose(a, 'Keep editing'); assert.equal(await js(a, 'document.querySelector(".translation-settings input").value'), 'pt-BR');
       await menu(a, settings); await choose(a, 'Discard draft and continue'); await choose(a, 'Window 2');
       await wait(async () => !(await boot(a)).workspace.tabs.some(t => t.id === settings), 'Settings merged'); assert.equal((await boot(b)).workspace.activeTabId, targetSettings);

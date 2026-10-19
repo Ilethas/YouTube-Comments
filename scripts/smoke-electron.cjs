@@ -55,8 +55,9 @@ async function verifyTabHover(window) {
         assert.equal(geometry.hit, true, 'Accent overlay does not intercept button input');
         if (selector.endsWith('.tab-close')) { assert.equal(geometry.inset, true, 'Close hover stays inside tab'); assert.equal(geometry.rounded, true); }
         await debuggerApi.sendCommand('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['focus-visible'] });
-        const focus = await js(`(() => {const button=document.querySelector(${JSON.stringify(selector)});button.focus();const s=getComputedStyle(button);return {focused:document.activeElement===button,width:s.outlineWidth,style:s.outlineStyle,overflow:getComputedStyle(button.parentElement).overflow};})()`);
+        const focus = await js(`(() => {const button=document.querySelector(${JSON.stringify(selector)});button.focus();const title=button.getAttribute('role')==='tab',s=getComputedStyle(title?button.parentElement:button);return {focused:document.activeElement===button,width:s.outlineWidth,style:s.outlineStyle,innerStyle:getComputedStyle(button).outlineStyle,overflow:getComputedStyle(button.parentElement).overflow};})()`);
         assert.equal(focus.focused, true); assert.equal(focus.width, '2px'); assert.equal(focus.style, 'solid'); assert.equal(focus.overflow, 'visible', 'Tab does not clip focus outlines');
+        if (!selector.endsWith('.tab-close')) assert.equal(focus.innerStyle, 'none', 'Title focus uses the whole tab, without an internal edge beside Close');
         await debuggerApi.sendCommand('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: [] });
       }
     }

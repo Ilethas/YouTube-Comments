@@ -22,6 +22,12 @@ describe('localization', () => {
     expect(countLabel('pl', 'comments', 2)).toBe('2 komentarze');
     expect(countLabel('pl', 'comments', 5)).toBe('5 komentarzy');
     expect(countLabel('pl', 'comments', 22)).toBe('22 komentarze');
+    expect(countLabel('en', 'moveWindowTabs', 1)).toBe('1 tab');
+    expect(countLabel('en', 'moveWindowTabs', 0)).toBe('0 tabs');
+    expect(countLabel('pl', 'moveWindowTabs', 1)).toBe('1 karta');
+    expect(countLabel('pl', 'moveWindowTabs', 2)).toBe('2 karty');
+    expect(countLabel('pl', 'moveWindowTabs', 5)).toBe('5 kart');
+    expect(countLabel('pl', 'moveWindowTabs', 22)).toBe('22 karty');
     expect(countLabel('en', 'matchingComments', 1)).toBe('1 matching comment');
     expect(countLabel('pl', 'matchingComments', 2)).toBe('2 pasujące komentarze');
     expect(countLabel('pl', 'matchingComments', 5)).toBe('5 pasujących komentarzy');

@@ -42,6 +42,22 @@ function fixture(deadline = 100, now?: () => number) {
     barrier: () => { available = false; coordinator.cancelAll(); }, loseA: () => { liveA = false; }, loseB: () => { liveB = false; },
     readyAutomatically: () => { onPrepare = () => { const event = events.at(-1); if (event) coordinator.ready(event.caller, { token: event.event.token, accept: true }); }; } };
 }
+it('destination hints describe live workspaces without changing authority or admitting stale topology', () => {
+  const f = fixture();
+  expect(f.coordinator.destinations(f.a)).toEqual([
+    { windowId: f.b.windowId, number: 2, revision: 0, tabCount: 0, activeTab: null },
+    { windowId: f.c.windowId, number: 3, revision: 0, tabCount: 0, activeTab: null },
+  ]);
+  f.repo.changeWorkspace('openStoredItem', f.tab.itemId, undefined, f.b.windowId, 0);
+  const hint = f.coordinator.destinations(f.a)[0];
+  expect(hint).toMatchObject({ tabCount: 1, activeTab: { kind: 'discussion', title: expect.any(String) } });
+  f.repo.changeWorkspace('openLibrary', undefined, undefined, f.b.windowId, hint.revision);
+  expect(f.coordinator.begin(f.a, { tabId: f.tab.id, expectedRevision: f.repo.workspace(f.a.windowId).revision,
+    destination: { windowId: hint.windowId, expectedRevision: hint.revision, beforeTabId: null } }).ok).toBe(false);
+  expect(f.coordinator.destinations(f.a)[0]).toMatchObject({ tabCount: 2, activeTab: { kind: 'library' } });
+  f.loseB(); expect(f.coordinator.destinations(f.a)).toHaveLength(1);
+  f.barrier(); expect(f.coordinator.destinations(f.a)).toEqual([]);
+});
 it('prepares without authority, commits once, publishes topology and rejects replay/forged/wrong-lease readiness', async () => {
   const f = fixture(), before = f.repo.workspace(f.a.windowId), moving = f.move(f.a, f.request), token = await f.preparation();
   expect(f.repo.workspace(f.a.windowId)).toEqual(before); expect(f.repo.workspace(f.b.windowId).tabs).toHaveLength(0);

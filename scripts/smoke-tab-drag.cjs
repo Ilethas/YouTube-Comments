@@ -32,7 +32,7 @@ if (process.versions.electron) {
 
   let verified = false, holdReady, releaseReady, readyReached, failLoad = false, cursor;
 
-  const tickets = new Map(), handoffs = new Map(), created = [], gestures = new Map();
+  const tickets = new Map(), preparations = new Map(), handoffs = new Map(), created = [], gestures = new Map();
 
   const fail = error => { console.error('M8', phase, error); app.exit(1); };
 
@@ -50,7 +50,7 @@ if (process.versions.electron) {
 
     const result = await handler(event, ...args);
 
-    if (channel === 'reader:transfer-drag-prepare' && result.ok) tickets.set(event.sender, result.value);
+    if (channel === 'reader:transfer-drag-prepare') { preparations.set(event.sender, result); if (result.ok) tickets.set(event.sender, result.value); }
 
     if (channel === 'reader:transfer-drag-start' && result.ok) gestures.set(event.sender, args[0].token);
 
@@ -102,11 +102,20 @@ if (process.versions.electron) {
 
   async function begin(w, id) {
 
-    tickets.delete(w.webContents); gestures.delete(w.webContents);
+    // An acknowledged close/transfer can precede its React topology render.
+    // Wait for the displayed topology before preparing its exact revision.
+    const workspace = (await boot(w)).workspace;
+    await wait(() => js(w, `JSON.stringify(Array.from(document.querySelectorAll('.tab'),t=>t.dataset.tabId))===${JSON.stringify(JSON.stringify(workspace.tabs.map(t => t.id)))} && !!${tab(id)} && !${tab(id)}.disabled && !document.querySelector('.app-shell').inert`), 'rendered source topology');
+    tickets.delete(w.webContents); preparations.delete(w.webContents); gestures.delete(w.webContents);
 
     await js(w, `(()=>{const t=${tab(id)},r=t.getBoundingClientRect();t.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,isPrimary:true,pointerType:'mouse',clientX:r.left+20,clientY:r.top+10}));})()`);
 
-    await wait(() => tickets.has(w.webContents), 'prepared ticket');
+    await wait(() => preparations.has(w.webContents), 'preparation response');
+    assert.equal(preparations.get(w.webContents).ok, true, 'drag preparation: ' + JSON.stringify(preparations.get(w.webContents).error));
+    // Main's test-side observation precedes delivery of the isolated preload
+    // promise. Give the renderer its reply/paint turns before synthetic dragstart;
+    // production deliberately rejects a genuinely too-fast native start.
+    await js(w, 'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
 
     await js(w, `(()=>{window.__m8=new DataTransfer();${tab(id)}.dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:window.__m8}));})()`);
 
@@ -148,7 +157,9 @@ if (process.versions.electron) {
 
     if (kind === 'discussion') await moved(b, id); else await wait(async () => !(await boot(a)).workspace.tabs.some(t => t.id === id) && (await boot(b)).workspace.tabs.some(t => t.kind === kind), 'singleton merge');
 
-    await settled(a); return ticket;
+    await settled(a);
+    for (const w of [a, b]) assert.equal(await js(w, '!!document.querySelector("[data-dragging=true], [data-insert-before=true], [data-insert-end=true], .tabs[data-drop-active=true]")'), false, 'terminal transfer clears drag styling');
+    return ticket;
 
   }
 
@@ -266,7 +277,7 @@ if (process.versions.electron) {
 
       const st = await begin(a, settings); await targetDrop(b, st.token, null); await end(a, settings); await button(a, 'Keep editing'); assert.equal((await boot(a)).workspace.tabs.some(t => t.id === settings), true);
 
-      const st2 = await begin(a, settings); await targetDrop(b, st2.token, null); await end(a, settings); await button(a, 'Discard draft and continue'); await button(a, 'Move to Window\u2026');
+      const st2 = await begin(a, settings); await targetDrop(b, st2.token, null); await end(a, settings); await button(a, 'Discard draft and continue'); await button(a, 'Move');
 
       await wait(async () => !(await boot(a)).workspace.tabs.some(t => t.id === settings), 'Settings merged');
 
@@ -289,6 +300,12 @@ if (process.versions.electron) {
       assert.ok(bounds.x >= display.x && bounds.y >= display.y && bounds.x + bounds.width <= display.x + display.width && bounds.y + bounds.height <= display.y + display.height);
 
       assert.equal(c.isVisible(), true); assert.deepEqual((await boot(c)).workspace.tabs, [], 'empty source stays open after detach');
+      assert.ok(await js(c, 'document.querySelector(".tabs").getBoundingClientRect().height>=50'), 'empty strip remains a reachable drop target');
+      assert.equal(await js(c, '!!document.querySelector(".tab-drop-empty")'), true);
+      // A genuine authenticated recipient offer can attach into the empty strip;
+      // repeat in reverse so the existing empty-source Close evidence is retained.
+      await attach(d, c, post); await attach(c, d, post);
+      assert.deepEqual((await boot(c)).workspace.tabs, []);
       const priorCount = created.length; Menu.getApplicationMenu().getMenuItemById('new-reader-window').click();
       await wait(() => created.length === priorCount + 1, 'extra equal empty reader'); await ready(created.at(-1));
       c.close(); await wait(() => c.isDestroyed() && live().length === 4, 'ordinary Close removes the empty former source'); await settled(b);

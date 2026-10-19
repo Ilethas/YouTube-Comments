@@ -323,8 +323,12 @@ async function run() {
     await source.js('document.getElementById(' + JSON.stringify('tab-' + id) + ').dispatchEvent(new KeyboardEvent("keydown",{key:"F10",shiftKey:true,bubbles:true,cancelable:true}));void 0');
     await source.wait('!!document.querySelector("[role=menu]")');
     await source.js('Array.from(document.querySelectorAll("[role=menuitem]")).find(b=>b.textContent.startsWith("Move to Window")).click();void 0');
-    await source.wait('Array.from(document.querySelectorAll("dialog[open] button")).some(b=>b.textContent===' + JSON.stringify('Window ' + number) + ')');
-    await source.js('Array.from(document.querySelectorAll("dialog[open] button")).find(b=>b.textContent===' + JSON.stringify('Window ' + number) + ').click();void 0');
+    const option = 'Array.from(document.querySelectorAll(".move-tab-option")).find(e=>e.querySelector("strong")?.textContent===' + JSON.stringify('Window ' + number) + ')?.querySelector("input")';
+    await source.wait('!!(' + option + ')');
+    const beforeSelection = (await source.invoke('bootstrap')).workspace;
+    await source.js(option + '.click();void 0');
+    assert.deepEqual((await source.invoke('bootstrap')).workspace, beforeSelection, 'destination selection leaves the source unchanged');
+    await source.js('document.querySelector(".move-tab-footer button[type=submit]").click();void 0');
     await target.wait('document.getElementById(' + JSON.stringify('tab-' + id) + ')?.getAttribute("aria-selected")==="true"');
     await source.wait('!document.getElementById(' + JSON.stringify('tab-' + id) + ') && !document.querySelector(".app-shell").inert');
     await target.wait('!!document.getElementById(' + JSON.stringify('panel-' + id) + ')?.querySelector("form")');

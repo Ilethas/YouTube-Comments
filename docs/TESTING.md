@@ -1,5 +1,74 @@
 # Testing strategy
 
+## Move Tab dialog and gesture presentation (M8.1, 2026-10-19)
+
+The focused UI pass retains schema **14**, M7 reservations/CAS/atomic ownership,
+M8 source-only tickets and one-use target offers, and all existing lifecycle/save
+fences. It adds a source-title summary, destination radio rows with main-owned
+tab counts/bounded active-tab labels, a separate plus-icon New Window option and
+an explicit Cancel/Move footer. Native radio selection never begins a transfer.
+Dirty Settings still requires explicit discard and retains an already offered
+destination's exact window, revision and neighbor.
+
+The reported vertical line beside Close was the inner title button's keyboard
+focus outline. Focus now surrounds the whole tab, with Close retaining its own
+focus indication. Empty readers retain a labeled full-width drop area instead of
+a nearly collapsed strip. Supported hover highlights it; terminal paths clear
+drag styling. No native outcome heuristic or transfer transaction changed.
+
+React regressions cover English/Polish source/destination context and counts,
+initial Cancel focus, native arrow/Space selection, separate confirmation and
+duplicate-submit suppression, Escape/Cancel/focus restoration, loading/failure
+and New Window fallback, direct New Window confirmation, fixed dirty-Settings
+destinations, and empty-strip hover/leave/drop/cancel. The main coordinator test
+checks snapshot hints, stale revision rejection and eligibility exclusion.
+
+Electron M7 checks native keyboard selection and cancellation, both locales in
+Light/Dark, a **352 x 480 CSS-pixel viewport** via controlled bounds/app zoom,
+title ellipsis, no horizontal dialog overflow, reachable footer and source focus
+restoration. Chromium paint checks require a whole-tab focus ring, no internal
+title edge and unchanged continuous active accent under title/Close hover.
+Screenshots are generated under ignored `.vite/m81-review/`; they are visual
+review artifacts rather than pixel snapshots; reviewed copies also live under
+ignored `.packaging-diagnostics/m81-review/`. Electron M8 adds attachment to a
+fully empty strip and back plus terminal drag-style assertions. Its test driver
+waits for acknowledged topology to render before the next synthetic pointer-down;
+the first run exposed that fixture race after closing a peer tab. It also allows
+renderer reply/paint turns after test-side main observes preparation, before
+synthetic dragstart; an immediate synthetic start had raced preload reply delivery.
+Production revision validation and too-fast cancellation were preserved, not
+relaxed. The packaged EXE driver also
+requires selection followed by explicit Move.
+
+| Check | Result |
+| --- | --- |
+| Final full Vitest | **1,190 tests / 92 files PASS**, 143.80 s (9 added cases) |
+| Focused dialog/strip/transfer/localization/coordinator | **101/101 PASS** |
+| Typecheck / ESLint | **PASS**, no lint warnings |
+| Fresh Windows x64 application / ZIP | **PASS**, 73 runtime files / 386,069,701 bytes; ZIP 158,364,121 bytes |
+| Focused M7 | **PASS**, chooser presentation/keyboard plus write / restart+offline restore / restored |
+| Focused M8 | **PASS**, category A synthetic DragEvents, empty-strip out/back, write / restart+offline restore / restored |
+| Broader Electron chain | First 14 harnesses **PASS**; stopped at an M5 duplicate-tab focus timeout. M5 passed its isolated rerun; M6, final M7 and final M8 passed separately. **Not a clean aggregate-command pass.** |
+| Unmodified ZIP-extracted EXE | **PASS**, separate selection/Move, same-view out/back and stale-authority rejection, three native readers, native backup/restore, all-table equality and actual relaunch |
+| Presentation assets / script syntax / whitespace | **PASS**, 11 README links/anchors, four decoded PNGs, seven ICO frames; modified CJS parse checks; git diff --check |
+
+All test profiles are disposable OS-temp roots. No owner profile, Setup, install,
+commit or push. Physical OS drag-loop/ghost/cursor verification remains pending;
+synthetic M8 events do not establish a physical-input pass. The existing physical
+matrix now includes the focus edge, empty target and chooser follow-up. The
+accepted Escape-outside ambiguity is unchanged. M9 remains outside this pass.
+
+Remaining verification limitation: the aggregate M5 focus timeout did not
+reproduce in isolation; its cause is unconfirmed and no unrelated duplicate-focus
+implementation change was made. Native Copy in the general Electron smoke was
+also **UNVERIFIED** because the owner's current clipboard formats could not be
+safely snapshotted; the clipboard was preserved. Expected rejection/failure
+injections and non-failing GPU teardown diagnostics remain in the logs.
+
+Ignored logs: `.m81-vitest-final.log`, `.m81-typecheck.log`, `.m81-lint.log`,
+`.m81-build.log`, `.m81-zip.log`, `.m81-electron.log`, `.m81-m5.log`,
+`.m81-m6.log`, `.m81-m7-final.log`, `.m81-m8-final.log`, `.m81-packaged.log`.
+
 ## Native HTML tab gestures (M8, 2026-10-19)
 
 [ADR 0034](decisions/0034-native-html-tab-dragging.md) implements M8 over M7 on

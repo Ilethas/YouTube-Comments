@@ -312,3 +312,56 @@ button > .action-icon { margin-right: 4px; }
 .tab { position: relative; }
 .tab[data-insert-before=true]::before { content: ''; position: absolute; inset: 0 auto 0 -2px; width: 3px; background: var(--accent); pointer-events: none; z-index: 2; }
 .tab[data-dragging=true] { opacity: .65; }
+/* Focus belongs to the whole tab, including its separate close control. Painting
+   the inner title button's outline leaves a vertical edge beside the close icon. */
+.tabs button[role='tab']:focus-visible { outline: none; }
+.tab:has(> button[role='tab']:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
+.tabs[data-empty=true] { min-height: 58px; padding: 6px 16px; }
+.tab-drop-empty { display: flex; flex: 1; align-items: center; justify-content: center; gap: 8px; padding: 8px; border: 1px dashed var(--border); border-radius: 5px; color: var(--muted); pointer-events: none; }
+.tabs[data-empty=true][data-drop-active=true] .tab-drop-empty { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.tabs[data-empty=true]::after { content: none; }
+
+.move-tab-dialog { width: min(560px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); padding: 0; overflow: hidden; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 16px 56px rgb(0 0 0 / .3); }
+.move-tab-dialog::backdrop { background: rgb(0 0 0 / .55); }
+.move-tab-dialog form { display: flex; flex-direction: column; max-height: calc(100dvh - 34px); }
+.move-tab-header { padding: 24px 24px 0; flex-shrink: 0; }
+.move-tab-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.move-tab-header p { margin: 8px 0 0; color: var(--muted); line-height: 1.5; }
+.move-tab-body { padding: 20px 24px 24px; overflow-y: auto; min-height: 0; }
+.move-tab-source { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); }
+.move-tab-source > div { min-width: 0; }
+.move-tab-source > .action-icon { color: var(--muted); }
+.move-tab-caption { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.move-tab-source strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.move-tab-destinations { margin: 20px 0 0; padding: 0; border: 0; min-width: 0; }
+.move-tab-destinations legend { padding: 0; margin-bottom: 10px; font-weight: 600; font-size: 13px; }
+.move-tab-window-list { display: grid; gap: 8px; }
+.move-tab-window-list p { margin: 0 0 6px; color: var(--muted); line-height: 1.5; }
+.move-tab-option { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); cursor: pointer; min-width: 0; }
+.move-tab-option:hover { background: var(--surface-raised); }
+.move-tab-option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.move-tab-option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.move-tab-option input { margin: 0; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+.move-tab-option input:focus-visible { outline: none; }
+.move-tab-option > .action-icon { color: var(--muted); }
+.move-tab-option-text { display: grid; gap: 4px; flex: 1; min-width: 0; }
+.move-tab-option-text strong { font-weight: 600; }
+.move-tab-option-text > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.move-tab-count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.move-tab-new { margin-top: 14px; }
+.move-tab-new .action-icon { color: var(--accent); }
+.move-tab-warning { margin: 20px 0 0; line-height: 1.6; }
+.move-tab-fixed { display: flex; align-items: center; gap: 10px; margin: 20px 0 0; color: var(--muted); }
+.move-tab-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--border); background: var(--surface-raised); flex-shrink: 0; }
+.move-tab-footer button { padding: 8px 18px; border: 1px solid var(--border); border-radius: 5px; color: var(--text); background: var(--surface); }
+.move-tab-footer button:hover { background: var(--background); }
+.move-tab-footer .move-tab-primary { font-weight: 600; color: var(--surface); background: var(--accent); border-color: var(--accent); }
+.move-tab-footer .move-tab-primary:hover { background: var(--accent); filter: brightness(1.08); }
+.move-tab-footer :disabled { cursor: default; opacity: .5; }
+@media (max-width: 420px) {
+  .move-tab-header { padding: 16px 16px 0; }
+  .move-tab-body { padding: 16px; }
+  .move-tab-footer { padding: 12px 16px; }
+  .move-tab-option { gap: 8px; padding: 10px; flex-wrap: wrap; }
+  .move-tab-count { width: 100%; padding-left: 47px; }
+}
