@@ -90,7 +90,8 @@ if (process.versions.electron) {
     await wait(() => lifecycle.phase === 'DRAINING' && commandCount > 0, 'first participant drained');
     assert.equal(saveCount, 0, 'no dialog/snapshot before slow accepted save drains');
     assert.equal((await invoke(b, 'updatePreferences', { appearance: 'dark' })).error.code, 'DATA_BUSY');
-    assert.equal(await js(b, "document.querySelector('.app-shell').inert && !!document.querySelector('[role=dialog][aria-modal=true]')"), true);
+    assert.equal(await js(b, "document.querySelector('.app-shell').inert"), true, 'logical freeze is immediate');
+    await wait(() => js(b, "!!document.querySelector('[role=dialog][aria-modal=true]')"), 'slow lifecycle progress becomes visible');
     // The IPC caller guard protects every new channel too.
     for (const channel of ['reader:profile-current', 'reader:profile-stage', 'reader:profile-submit', 'reader:profile-plan', 'reader:profile-drain', 'reader:profile-ack', 'reader:profile-refuse', 'reader:profile-resume']) {
       assert.equal((await handlers.get(channel)({ sender: {}, senderFrame: senders.get(b.webContents).senderFrame })).error.code, 'FORBIDDEN');

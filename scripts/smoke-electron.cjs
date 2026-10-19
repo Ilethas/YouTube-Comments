@@ -249,7 +249,10 @@ async function verifyWindow(window, nativeTheme) {
     key('W', ['control']); await active('library'); // closing Settings chooses right
     key('F1'); await waitFor("document.activeElement.id === 'keyboard-shortcuts' && !document.querySelector('.tabs button:disabled')", 'F1 reopens singleton');
     const rows = await js("Array.from(document.querySelectorAll('#panel-settings tr[data-shortcut-id]'),row=>({id:row.dataset.shortcutId,keys:row.querySelector('td').textContent}))");
-    assert.equal(rows.length, 24); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
+    assert.equal(rows.length, 27); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
+    assert.equal(rows.find(row => row.id === 'new-window').keys, 'Ctrl+N');
+    assert.equal(rows.find(row => row.id === 'close-window').keys, 'Ctrl+Shift+W');
+    assert.equal(rows.find(row => row.id === 'quit-application').keys, 'Ctrl+Shift+Q');
     assert.equal(rows.find(row => row.id === 'selection-range').keys, 'Shift+Click');
     assert.equal(rows.find(row => row.id === 'comment-menu').keys, 'Shift+F10');
     assert.equal(rows.some(row => row.id === 'comment-toggle-row'), false);
@@ -287,7 +290,7 @@ async function verifyWindow(window, nativeTheme) {
   await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .query-controls') !== null", 'bootstrap');
   await verifyHelperSettings();
   if (phase === 'environment') return;
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'closeWindow', 'createBackup', 'duplicateTab', 'getAcquisitionProgress', 'getDiscussionView', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'lifecycle', 'moveTab', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'transfers', 'undoSeen', 'updatePreferences', 'windowReady']);
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'closeWindow', 'createBackup', 'duplicateTab', 'getAcquisitionProgress', 'getDiscussionView', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'lifecycle', 'moveTab', 'newWindow', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'quitApplication', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'transfers', 'undoSeen', 'updatePreferences', 'windowReady']);
   assert.equal(await js('Object.isFrozen(window.reader.transfers)'), true);
   assert.deepEqual(await js('Object.keys(window.reader.transfers).sort()'), ['adopted', 'begin', 'cancel', 'destinations', 'endDrag', 'hoverDrag', 'move', 'offerDrag', 'onEvent', 'prepareDrag', 'ready', 'startDrag']);
   assert.deepEqual(await js('Object.keys(window.reader.lifecycle).sort()'), ['ack', 'command', 'current', 'onEvent', 'plan', 'refuse', 'resume', 'settleAccepted', 'stage', 'submit']);

@@ -27,6 +27,29 @@ import { dateTestComment, dateTestItem } from '../fixtures/date-discussion';
 // jsdom has no dedicated Web Worker; worker lifecycle/deadline has its own tests.
 vi.mock('./query-executor', () => ({ createQueryExecutor: vi.fn() }));
 
+it('M3 freezes the reader immediately, delays only presentation, and restores focus after release', async () => {
+  let receive!: (event: import('../shared/profile-operation').ProfileEvent) => void;
+  api = { ...api, lifecycle: {
+    onEvent: (listener: typeof receive) => { receive = listener; return () => undefined; }, current: async () => ({ ok: true, value: null }),
+    resume: vi.fn(async () => ({ ok: true, value: null })), settleAccepted: async () => true,
+  } as unknown as import('../shared/profile-operation').ProfileLifecycleApi };
+  await showReader(); const origin = screen.getAllByRole('tab')[0]; origin.focus();
+  const event: import('../shared/profile-operation').ProfileEvent = { operationId: 'operation-a', profileEpoch: 'epoch', stamp: { profileEpoch: 'epoch', commitRevision: 0 }, kind: 'close', phase: 'PREPARING', failed: false };
+  vi.useFakeTimers();
+  try {
+    act(() => receive(event));
+    expect(document.querySelector<HTMLElement>('.app-shell')?.inert).toBe(true);
+    expect(document.querySelector('.profile-operation-overlay')).toBeNull();
+    fireEvent.keyDown(document.body, { key: 'w', ctrlKey: true }); expect(api.closeTab).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(179)); expect(document.querySelector('.profile-operation-overlay')).toBeNull();
+    act(() => vi.advanceTimersByTime(1)); expect(document.querySelector('.profile-operation-overlay')).toBeTruthy();
+    await act(async () => receive({ ...event, phase: 'RELEASED' }));
+    expect(document.querySelector<HTMLElement>('.app-shell')?.inert).toBe(false);
+    expect(document.querySelector('.profile-operation-overlay')).toBeNull(); expect(document.activeElement).toBe(origin);
+    act(() => vi.advanceTimersByTime(500)); expect(document.querySelector('.profile-operation-overlay')).toBeNull();
+  } finally { vi.useRealTimers(); }
+});
+
 let api: ReaderApi;
 let state: ReaderState;
 beforeEach(() => {

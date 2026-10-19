@@ -18,6 +18,7 @@ import { initialLocale } from './shared/preferences';
 import identity from './shared/application-identity.json';
 import type { ProfileOperationCoordinator } from './main/profile-operation-coordinator';
 import { NativeWindowSession } from './main/native-window-session';
+import { fileMenu } from './main/application-menu';
 
 // The startup helper owns shortcut creation/removal and quits after Update.exe
 // closes. Do not quit early or register ANY reader work during lifecycle events.
@@ -82,21 +83,18 @@ function startReader() {
           : new Response(null, { status: 404 });
       } catch { return new Response(null, { status: 404 }); }
     });
-    lifecycle = registerReaderIpc(service, windows);
-    nativeSession = new NativeWindowSession(service, windows, restoring => {
-      dialog.showErrorBox(text.title, text.RECOVERY_REQUIRED);
-      if (restoring) { nativeStartupFailed = true; app.quit(); }
-    });
     const newWindow = () => {
       if (shutdownStarted || !service.nativeWritesAllowed()) return;
       try { windows.createReaderWindow(); } catch (error) { console.error(error); dialog.showErrorBox(text.title, text.RECOVERY_REQUIRED); }
     };
+    lifecycle = registerReaderIpc(service, windows, { newWindow, quitApplication: () => app.quit() });
+    nativeSession = new NativeWindowSession(service, windows, restoring => {
+      dialog.showErrorBox(text.title, text.RECOVERY_REQUIRED);
+      if (restoring) { nativeStartupFailed = true; app.quit(); }
+    });
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
-      { label: profileLocale === 'pl' ? 'Plik' : 'File', submenu: [
-        { id: 'new-reader-window', label: profileLocale === 'pl' ? 'Nowe okno' : 'New Window', accelerator: 'CmdOrCtrl+N', click: newWindow },
-        { type: 'separator' }, { role: 'close' }, { role: 'quit' },
-      ] }, { role: 'editMenu' },
+      fileMenu(profileLocale, newWindow, process.platform === 'darwin'), { role: 'editMenu' },
       { label: 'View', submenu: [
         { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => {
           const window = BrowserWindow.getFocusedWindow();

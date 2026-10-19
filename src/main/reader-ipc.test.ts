@@ -13,6 +13,27 @@ const { handlers } = vi.hoisted(() => ({ handlers: new Map<string, (event: IpcMa
 vi.mock('electron', () => ({ ipcMain: { handle: (channel: string, handler: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => { if (handlers.has(channel)) throw new Error('Duplicate handler'); handlers.set(channel, handler); } } }));
 beforeEach(() => handlers.clear());
 
+it('application intents are payload-free, current-document authenticated, ready-only and reuse creation/quit callbacks', async () => {
+  const windows = new WindowCoordinator('file:///app/index.html', ''), fixture = windowFixture(); windows.register(fixture.window); fixture.commit();
+  let allowed = true;
+  const service = { dispatch: vi.fn(), nativeWritesAllowed: () => allowed, restarting: false } as unknown as ReaderService;
+  const application = { newWindow: vi.fn(), quitApplication: vi.fn() }; registerReaderIpc(service, windows, application);
+  const newWindow = handlers.get('reader:window-new'), quit = handlers.get('reader:application-quit');
+  expect(newWindow?.(fixture.event())).toEqual({ ok: false, error: { code: 'FORBIDDEN' } });
+  const caller = windows.resolveCaller(fixture.event()); if (!caller) throw Error('caller'); windows.ready(caller);
+  for (const handler of [newWindow, quit]) {
+    expect(handler?.(fixture.event(), {})).toEqual({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(handler?.({ sender: {}, senderFrame: fixture.contents.mainFrame } as IpcMainInvokeEvent)).toEqual({ ok: false, error: { code: 'FORBIDDEN' } });
+    expect(handler?.({ sender: fixture.contents, senderFrame: { url: 'file:///app/index.html' } } as IpcMainInvokeEvent)).toEqual({ ok: false, error: { code: 'FORBIDDEN' } });
+    expect(handler?.({ sender: fixture.contents, senderFrame: null } as IpcMainInvokeEvent)).toEqual({ ok: false, error: { code: 'FORBIDDEN' } });
+    expect(handler?.(fixture.event())).toEqual({ ok: true, value: null });
+  }
+  expect(application.newWindow).toHaveBeenCalledOnce(); expect(application.quitApplication).toHaveBeenCalledOnce();
+  allowed = false; expect(newWindow?.(fixture.event())).toEqual({ ok: false, error: { code: 'DATA_BUSY' } });
+  const old = fixture.event(); fixture.reload();
+  expect(quit?.(old)).toEqual({ ok: false, error: { code: 'FORBIDDEN' } });
+});
+
 it('readiness can reveal only its authenticated origin and rejects every payload or stale incarnation', () => {
   const windows = new WindowCoordinator('file:///app/index.html', ''), a = windowFixture(), b = windowFixture();
   windows.register(a.window); a.commit(); windows.register(b.window); b.commit();
@@ -77,9 +98,9 @@ it('registers every channel once independently of window creation/reload and ret
   const service = new ActualReaderService(() => { throw new Error('No storage needed'); }, ['en'], () => undefined);
   vi.spyOn(service, 'claimWindowIdentity').mockReturnValue('persisted-test-window');
   registerReaderIpc(service, windows);
-  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 1 + 11);
+  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 3 + 11);
   for (let i = 0; i < 2; i++) { windows.register(fixture.window); fixture.commit(); fixture.reload(); }
-  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 1 + 11);
+  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 3 + 11);
   for (const channel of Object.values(readerChannels)) {
     expect(await handlers.get(channel)?.(fixture.event(), { windowId: 'forged', executable: 'evil' }, 'extra'))
       .toEqual({ ok: false, error: { code: 'INVALID_REQUEST' } });

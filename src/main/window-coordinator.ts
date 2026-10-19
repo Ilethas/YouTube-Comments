@@ -137,6 +137,12 @@ export class WindowCoordinator {
       record.closing = true; revoke();
     };
     const keyboard = (event: Electron.Event, input: Electron.Input) => {
+      // Native menu accelerators own window commands, once. IME composition
+      // must not accidentally turn a composing chord into window destruction.
+      if (input.isComposing && (input.control || input.meta) && !input.alt
+        && (input.key.toLowerCase() === 'n' && !input.shift || ['w', 'q'].includes(input.key.toLowerCase()) && input.shift || input.meta && input.key.toLowerCase() === 'q')) {
+        event.preventDefault(); return;
+      }
       if (input.type === 'keyDown' && input.key === 'Escape' && record.caller && this.live(record, record.caller) && this.cancelDrag?.(record.caller)) event.preventDefault();
       if (input.type === 'keyDown' && (input.key === 'F5' || (input.control || input.meta) && input.key.toLowerCase() === 'r') && record.caller && this.lifecycle) {
         event.preventDefault(); this.lifecycle.reload(record.caller);

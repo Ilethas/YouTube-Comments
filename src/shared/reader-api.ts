@@ -72,6 +72,9 @@ export interface ReaderApi {
   windowReady?(): Promise<Result<null>>;
   /** Accept a Close request for this document's native window; M3 owns completion. */
   closeWindow?(): Promise<Result<null>>;
+  /** Payload-free authenticated application-menu intents; main owns lifecycle. */
+  newWindow?(): Promise<Result<null>>;
+  quitApplication?(): Promise<Result<null>>;
   readonly lifecycle?: import('./profile-operation').ProfileLifecycleApi;
   onSharedCommit(listener: (commit: SharedCommit) => void): () => void;
   getSharedSnapshot(request?: RefreshRequest): Promise<Result<SharedSnapshot | SharedItemSnapshot>>;

@@ -1,5 +1,34 @@
 # UI and navigation
 
+## Application menu and window commands (M8.2)
+
+The menu button beside Discussion reader / Czytnik dyskusji opens a compact menu:
+
+| Action | Polish | Windows shortcut |
+| --- | --- | --- |
+| New Window | Nowe okno | Ctrl+N |
+| Close Window | Zamknij okno | Ctrl+Shift+W |
+| Quit Application | Zakończ aplikację | Ctrl+Shift+Q |
+
+The native File menu remains available. **Ctrl+W still closes the active tab.**
+Alt+F4 keeps ordinary OS window-close behavior. macOS uses Cmd+N, Cmd+Shift+W and
+the standard app-menu Cmd+Q. Main executes native shortcuts; the renderer does not
+add a second accelerator handler.
+
+Click or press Enter/Space to open; ArrowDown starts at the first command and
+ArrowUp at the last. Up/Down wrap, Home/End choose the endpoints, Enter/Space
+activate once, and Escape restores trigger focus. Outside click/resize dismisses
+the menu. Quit is separated by a divider. Labels, hints and colors follow locale
+and theme, and the menu stays inside the current viewport. Composition keys do
+not activate commands.
+
+New Window creates an equal empty reader. Close removes only that window from
+next-launch membership when peers remain; last Close retains the last window.
+Quit drains/captures all currently open readers for next launch. M3 still freezes
+input immediately. Quickly completed operations keep the reader visible; only a
+pending operation longer than 180 ms presents full-screen themed progress. Errors
+and reconciliation Retry remain immediate. See [ADR 0035](decisions/0035-reader-menu-selection-and-lifecycle-presentation.md).
+
 ## Drag tabs (M8)
 
 Drag a tab with the primary mouse button. Release in its strip to reorder, or in
@@ -106,7 +135,12 @@ Video headers order actions/status/Refresh, title with source-opening button,
 optional thumbnail, description, metadata. Community headers stay unchanged.
 Thumbnail compact/expanded sizing, keyboard/menu/cache behavior and no-image spacing
 stay unchanged; header reflow preserves virtual comment anchors. Selection circles
-occupy an outer lane independent of nesting and align vertically with avatars.
+follow each comment's effective nesting indentation immediately left of its
+avatar, with a constant 10 px gap. They share the existing compact/clamped row
+indentation and stay vertically centered on the avatar. The gutter remains
+reserved while on-demand circles are hidden, preventing selection-mode reflow.
+Neutral rails/elbows and comment backgrounds retain their existing geometry;
+the circle's opaque surround keeps connectors out of the control's hit target.
 Avatar gutters, rails/elbows and compact deep returns share layout variables and
 responsive indentation bounds. Existing measurement/anchor handling covers controls
 shown/hidden, locale and width changes without changing selection or hierarchy.
@@ -365,6 +399,9 @@ Background close controls omit Ctrl+W because that command closes the active tab
 | --- | --- |
 | Ctrl+Tab / Ctrl+Shift+Tab | Activate next/previous workspace tab, wrapping across discussion, Library and Settings tabs. |
 | Ctrl+W | Close active tab using the existing right-then-left neighbor rule; empty workspace does nothing. Stored discussions are retained. |
+| Ctrl+N | New equal native window, also available in the application menu. |
+| Ctrl+Shift+W | Close this native window through M3; other readers remain open. |
+| Ctrl+Shift+Q | Quit the application through M3, preserving all intended native windows. |
 | Ctrl+F | Focus/select the active discussion search or Library metadata filter. Settings and empty workspace leave browser/default behavior alone. |
 | Ctrl+L | Reveal the existing URL form and focus/select its input; repeat selects existing text. Subsequent typing/navigation remains ordinary input editing. |
 | F1 | Open/activate singleton Settings and scroll/focus the stable `keyboard-shortcuts` heading after acknowledged activation and committed rendering, including when Settings is already active. |

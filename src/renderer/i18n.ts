@@ -4,6 +4,8 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  applicationMenu: 'Application menu', newWindow: 'New Window', closeWindow: 'Close Window', quitApplication: 'Quit Application',
+  windowActionFailed: 'The window command could not be completed. Try again.', shortcutNativeWindow: 'Native application command',
   moveTabTitle: 'Move Tab', moveTabHelp: 'Choose a destination for this tab, then select Move.',
   moveTabFixedHelp: 'Confirm the destination chosen by your drop.', moveTabSource: 'Tab to move', moveTabDestination: 'Destination', moveTabConfirm: 'Move',
   moveTabFixedDestination: 'Window selected by your drop', moveWindowActive: 'Active: {title}', moveWindowEmpty: 'Empty window',
@@ -185,6 +187,8 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  applicationMenu: 'Menu aplikacji', newWindow: 'Nowe okno', closeWindow: 'Zamknij okno', quitApplication: 'Zakończ aplikację',
+  windowActionFailed: 'Nie udało się wykonać polecenia okna. Spróbuj ponownie.', shortcutNativeWindow: 'Natywne polecenie aplikacji',
   moveTabTitle: 'Przenieś kartę', moveTabHelp: 'Wybierz miejsce docelowe dla tej karty, a następnie przycisk Przenieś.',
   moveTabFixedHelp: 'Potwierdź miejsce docelowe wybrane przez upuszczenie karty.', moveTabSource: 'Karta do przeniesienia', moveTabDestination: 'Miejsce docelowe', moveTabConfirm: 'Przenieś',
   moveTabFixedDestination: 'Okno wybrane przez upuszczenie karty', moveWindowActive: 'Aktywna karta: {title}', moveWindowEmpty: 'Puste okno',

@@ -311,6 +311,26 @@ async function run() {
     }
   }
   report.checks.push('Extracted EXE restores three independently seeded native windows; Library/Settings/discussion work in each; public New Window is tested separately by the production-entry M6 harness');
+  // M8.2 toolbar menu reaches the same secured native creation/Close paths.
+  async function applicationCommand(source, label) {
+    await source.js('document.querySelector(".application-menu-trigger").click();void 0');
+    await source.wait('!!document.querySelector("[role=menu]")');
+    await source.js('Array.from(document.querySelectorAll("[role=menuitem]")).find(b=>b.querySelector("span")?.textContent===' + JSON.stringify(label) + ').click();void 0');
+  }
+  await applicationCommand(session, 'New Window');
+  let extraTarget;
+  for (let n = 0; n < 500; n++) {
+    const targets = await (await fetch(`http://127.0.0.1:${session.port}/json/list`)).json();
+    extraTarget = targets.find(t => t.type === 'page' && t.url.startsWith('file:') && !initialTargets.some(old => old.id === t.id));
+    if (extraTarget) break; await pause(10);
+  }
+  assert.ok(extraTarget, 'toolbar New Window creates one native reader');
+  const extra = await attach(profile, performance.now(), 'application-menu-peer', extraTarget.id);
+  assert.deepEqual((await extra.invoke('bootstrap')).workspace.tabs, []);
+  await applicationCommand(extra, 'Close Window'); extra.cdp.socket.close();
+  for (let n = 0; n < 500 && tables(database).window_restore.length !== 3; n++) await pause(10);
+  assert.equal(tables(database).window_restore.length, 3, 'toolbar Close restores the original intended set');
+  report.checks.push('M8.2 extracted EXE toolbar New/Close routes authenticated lifecycle intents, creates an equal empty reader and removes only that peer from restoration');
   // Exercise the compiled M7 menu/chooser against the unmodified extracted EXE.
   // Renderer key/menu activation here is CDP automation; real native keyboard
   // input, provisional windows and crash injection are covered by test:m7.

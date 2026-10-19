@@ -1,5 +1,10 @@
 # Decisions and open questions
 
+[ADR 0035: Reader UI and lifecycle presentation](0035-reader-menu-selection-and-lifecycle-presentation.md)
+implements M8.2: per-comment selection circles, a native-command application menu
+and delayed visual progress over immediate M3 freezing. Schema 14 and M7/M8
+transfer authority remain unchanged; M9 remains future work.
+
 [ADR 0034: Native HTML tab gestures](0034-native-html-tab-dragging.md) implements
 M8 over M7 with schema **14**, source-only tokens, exact recipient offers, local
 CAS reorder and an isolated VS Code-inspired outside heuristic. Escape outside may

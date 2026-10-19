@@ -10,6 +10,9 @@ afterEach(cleanup);
 it('has unique stable IDs and familiar Windows labels with independent naming overrides', () => {
   expect(new Set(shortcuts.map(definition => definition.id)).size).toBe(shortcuts.length);
   expect(formatShortcut('previous-tab')).toBe('Ctrl+Shift+Tab');
+  expect(formatShortcut('new-window')).toBe('Ctrl+N');
+  expect(formatShortcut('close-window')).toBe('Ctrl+Shift+W');
+  expect(formatShortcut('quit-application')).toBe('Ctrl+Shift+Q');
   expect(formatShortcut('move-tab-left')).toBe('Alt+Left');
   expect(formatShortcut('previous-match')).toBe('Shift+F3');
   expect(formatShortcut('comment-subtree')).toBe('Ctrl+Click');

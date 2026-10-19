@@ -92,7 +92,7 @@ if (process.versions.electron) {
       const oldEvent = events.get(a.webContents), caller = callers.get(first.value.windowId);
       await js(a, "const child=document.createElement('iframe');child.srcdoc='<p>subframe</p>';document.body.append(child);void 0");
       await wait(() => a.webContents.mainFrame.frames.length === 1, 'real child frame');
-      for (const channel of Object.values(readerChannels)) {
+      for (const channel of [...Object.values(readerChannels), 'reader:window-new', 'reader:application-quit']) {
         assert.deepEqual(await handlers.get(channel)({ sender: a.webContents, senderFrame: a.webContents.mainFrame.frames[0] }), forbidden);
         assert.deepEqual(await handlers.get(channel)({ sender: stranger.webContents, senderFrame: stranger.webContents.mainFrame }), forbidden);
       }
@@ -100,7 +100,7 @@ if (process.versions.electron) {
       const fresh = await js(a); assert.equal(fresh.value.windowId, first.value.windowId); assert.notEqual(fresh.value.rendererLease, first.value.rendererLease);
       assert.equal(caller.isCurrent(), false); assert.equal(windows.originWindow(caller), undefined);
       assert.deepEqual(await handlers.get(readerChannels.bootstrap)(oldEvent), forbidden, 'stale real Electron event denied');
-      assert.equal(handlers.size, Object.keys(readerChannels).length + 2);
+      assert.equal(handlers.size, Object.keys(readerChannels).length + 4);
       let finish;
       dialog.showSaveDialog = (owner) => { assert.equal(owner, a); return new Promise(resolve => { finish = resolve; }); };
       const save = dialogs.save('en', callers.get(fresh.value.windowId));

@@ -12,14 +12,17 @@ export interface CommentMenuTarget {
 export interface CommentMenuItem {
   readonly label: string; readonly icon: Parameters<typeof ActionIcon>[0]['name'];
   readonly run: () => void; readonly disabled?: boolean;
+  readonly separatorBefore?: boolean; readonly shortcut?: string;
 }
 /** Small focus-managed menu. Text is captured at invocation; focusing menu items
  * never substitutes full-comment text for the explicit Copy selection command. */
-export function CommentContextMenu({ target, items, locale, dismiss, label }: {
+export function CommentContextMenu({ target, items, locale, dismiss, label, menuId, toggleOrigin = false, initialLast = false }: {
   target: CommentMenuTarget; items: readonly CommentMenuItem[]; locale: Locale; dismiss: () => void; label?: string;
+  menuId?: string;
+  toggleOrigin?: boolean; initialLast?: boolean;
 }) {
   const menu = useRef<HTMLDivElement>(null);
-  const [active, setActive] = useState(() => items.findIndex(item => !item.disabled));
+  const [active, setActive] = useState(() => initialLast ? items.findLastIndex(item => !item.disabled) : items.findIndex(item => !item.disabled));
   // Coordinates change only on actual pointer movement. Focus/layout/rendering
   // cannot reclaim activity from the keyboard under a stationary pointer.
   const pointer = useRef<{ x: number; y: number }>({ x: target.x, y: target.y });
@@ -38,8 +41,10 @@ export function CommentContextMenu({ target, items, locale, dismiss, label }: {
     const rect = element.getBoundingClientRect();
     setPosition({ left: Math.max(4, Math.min(target.x, window.innerWidth - rect.width - 4)),
       top: Math.max(4, Math.min(target.y, window.innerHeight - rect.height - 4)) });
-    focusPreservingText(element.querySelector<HTMLElement>('button:not(:disabled)'));
+    const firstFocus = initialLast ? element.querySelectorAll<HTMLElement>('button:not(:disabled)').item(items.filter(item => !item.disabled).length - 1) : element.querySelector<HTMLElement>('button:not(:disabled)');
+    focusPreservingText(firstFocus ?? element);
     const outside = (event: PointerEvent) => {
+      if (toggleOrigin && target.origin.contains(event.target as Node)) return;
       if (!element.contains(event.target as Node)) { restore.current = false; close.current(); }
     };
     const invalidate = () => { restore.current = false; close.current(); };
@@ -62,9 +67,10 @@ export function CommentContextMenu({ target, items, locale, dismiss, label }: {
       if (restore.current && target.origin.isConnected && !target.origin.closest('[hidden]')) focusPreservingText(target.origin);
     };
   }, [target]);
-  return createPortal(<div ref={menu} role="menu" aria-label={label ?? translator(locale)('commentMenu')} className="comment-context-menu"
+  return createPortal(<div ref={menu} id={menuId} role="menu" tabIndex={-1} aria-label={label ?? translator(locale)('commentMenu')} className="comment-context-menu"
     style={position} onContextMenu={event => event.preventDefault()} onMouseDown={event => event.preventDefault()}
     onKeyDown={event => {
+      if (event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); return; }
       if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); event.stopPropagation(); dismiss(); return; }
       const enabled = items.flatMap((item, index) => item.disabled ? [] : [index]);
       const current = enabled.indexOf(active);
@@ -80,6 +86,7 @@ export function CommentContextMenu({ target, items, locale, dismiss, label }: {
       }
     }}>
     {items.map((item, index) => <button key={index} type="button" role="menuitem" tabIndex={-1} disabled={item.disabled}
+      className={item.separatorBefore ? 'menu-separated' : undefined}
       data-active={active === index && !item.disabled}
       onFocus={() => { if (!item.disabled) setActive(index); }}
       onPointerMove={event => {
@@ -87,6 +94,6 @@ export function CommentContextMenu({ target, items, locale, dismiss, label }: {
         pointer.current = { x: event.clientX, y: event.clientY };
         if (!item.disabled) { setActive(index); focusPreservingText(event.currentTarget); }
       }}
-      onClick={() => { dismiss(); item.run(); }}><ActionIcon name={item.icon} />{item.label}</button>)}
+      onClick={() => { dismiss(); item.run(); }}><ActionIcon name={item.icon} /><span>{item.label}</span>{item.shortcut && <span className="menu-shortcut">{item.shortcut}</span>}</button>)}
   </div>, document.body);
 }

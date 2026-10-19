@@ -1,4 +1,6 @@
 import { MoveTabDialog } from './MoveTabDialog';
+import { ApplicationMenu } from './ApplicationMenu';
+import { useProfileProgress } from './use-profile-progress';
 import { DiscussionViewSession } from './discussion-view-session';
 import { createQueryExecutor } from './query-executor';
 import type { TransferRequest, TransferStart } from '../shared/tab-transfer';
@@ -131,12 +133,16 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const profileOverlay = useRef<HTMLDivElement>(null);
   const profilePreviousFocus = useRef<HTMLElement | null>(null);
   const [profileBusy, setProfileBusy] = useState(false);
+  const [profileIdentity, setProfileIdentity] = useState<string>();
   const [profileFailed, setProfileFailed] = useState(false);
   const profileController = useRef<RendererProfileLifecycle>();
   const [releaseFailed, setReleaseFailed] = useState(false);
   const otherSaveFailed = useRef(false);
   useLayoutEffect(() => { if (shell.current) shell.current.inert = profileBusy || cloning || !!movingId; }, [profileBusy, cloning, movingId]);
-  useLayoutEffect(() => { if (profileBusy) profileOverlay.current?.focus({ preventScroll: true }); }, [profileBusy]);
+  const showProfileProgress = useProfileProgress(profileBusy, profileIdentity, releaseFailed);
+  useLayoutEffect(() => {
+    if (showProfileProgress) (releaseFailed ? profileOverlay.current?.querySelector<HTMLButtonElement>('[data-profile-retry]') : profileOverlay.current)?.focus({ preventScroll: true });
+  }, [showProfileProgress, releaseFailed]);
   const afterData = useRef(new Set<() => void>());
   const acknowledgedSeen = useRef(new Map<string, boolean>());
   const sharedState = useRef(initialState);
@@ -469,7 +475,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       do { pending = submittedSave.current; await pending.catch(() => undefined); } while (pending !== submittedSave.current);
     };
     const lifecycle = new RendererProfileLifecycle(api.lifecycle, {
-      freeze: () => {
+      freeze: event => {
+        setProfileIdentity(`${event.profileEpoch}:${event.operationId}`);
         cancelledMove.current = true; moveAbort.current?.abort(); setMoveDialog(undefined);
         if (!dataBusy.current) profilePreviousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         dataBusy.current = true;
@@ -617,7 +624,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   return <><div className="app-shell" ref={shell}>
     {profileFailed && <p role="alert">{t('profileDrainFailed')}</p>}
     <header className="app-toolbar">
-      <div className="brand"><span className="brand-icon" aria-hidden="true">≡</span><strong>{t('appName')}</strong></div>
+      <div className="brand"><ApplicationMenu api={api} locale={locale} disabled={profileBusy || cloning || !!movingId} /><strong>{t('appName')}</strong></div>
       <div className="workspace-actions">
         <button title={shortcutHint(locale, 'open-url')} disabled={!!acquiring || !!progress} aria-expanded={showAcquisition} aria-controls="acquisition-form" onClick={() => { setShowAcquisition(value => !value); }}>{t('acquire')}</button>
         <button id="library-toggle" disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openLibrary({ expectedRevision: workspace.revision })); }}><ActionIcon name="library" />{t('library')}</button>
@@ -734,7 +741,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     fixedDestination={moveDialog.reserved?.start.destination}
     dirty={workspace.tabs.find(t => t.id === moveDialog.id)?.kind === 'settings' && settingsDirty.current}
     cancel={() => { if (moveDialog.reserved) void api.transfers?.cancel({ token: moveDialog.reserved.token }); setMoveDialog(undefined); }} move={destination => { void transfer(moveDialog.id, destination, moveDialog.reserved); }} />}
-  {profileBusy && <div className="profile-operation-overlay" role="dialog" aria-modal="true" tabIndex={-1} ref={profileOverlay} aria-label={t('profileQuiescing')}>
+  {profileBusy && !showProfileProgress && <span className="visually-hidden" role="status">{t('profileQuiescing')}</span>}
+  {showProfileProgress && <div className="profile-operation-overlay" role="dialog" aria-modal="true" tabIndex={-1} ref={profileOverlay} aria-label={t('profileQuiescing')}>
     <p role="status"><span className="acquisition-spinner" aria-hidden="true" /> {t('profileQuiescing')}</p>
     {releaseFailed && <div role="alert"><p>{t('profileReconcileFailed')}</p><button autoFocus data-profile-retry onClick={() => profileController.current?.retryRelease()}>{t('retry')}</button></div>}
   </div>}</>;

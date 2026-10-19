@@ -1,7 +1,8 @@
 import { translator } from './i18n';
 import type { Locale, TranslationKey } from './i18n';
+import { windowShortcutLabel } from '../shared/window-actions';
 
-type ShortcutKey = 'Ctrl' | 'Shift' | 'Alt' | 'Tab' | 'W' | 'F' | 'L' | 'Z' | 'Enter' | 'F1' | 'F3' | 'F10' | 'ContextMenu' | 'Left' | 'Right' | 'Home' | 'End' | 'Click' | 'Escape' | 'Space';
+type ShortcutKey = 'Ctrl' | 'Shift' | 'Alt' | 'Tab' | 'N' | 'Q' | 'W' | 'F' | 'L' | 'Z' | 'Enter' | 'F1' | 'F3' | 'F10' | 'ContextMenu' | 'Left' | 'Right' | 'Home' | 'End' | 'Click' | 'Escape' | 'Space';
 interface ShortcutDefinition {
   readonly id: string;
   readonly keys: readonly ShortcutKey[];
@@ -12,6 +13,9 @@ interface ShortcutDefinition {
 
 /** Renderer presentation metadata only. Contextual handlers own availability and effects. */
 export const shortcuts = [
+  { id: 'new-window', keys: ['Ctrl', 'N'], description: 'newWindow', group: 'shortcutWorkspace', scope: 'shortcutNativeWindow' },
+  { id: 'close-window', keys: ['Ctrl', 'Shift', 'W'], description: 'closeWindow', group: 'shortcutWorkspace', scope: 'shortcutNativeWindow' },
+  { id: 'quit-application', keys: ['Ctrl', 'Shift', 'Q'], description: 'quitApplication', group: 'shortcutWorkspace', scope: 'shortcutNativeWindow' },
   { id: 'next-tab', keys: ['Ctrl', 'Tab'], description: 'shortcutNextTab', group: 'shortcutWorkspace' },
   { id: 'previous-tab', keys: ['Ctrl', 'Shift', 'Tab'], description: 'shortcutPreviousTab', group: 'shortcutWorkspace' },
   { id: 'close-tab', keys: ['Ctrl', 'W'], description: 'shortcutCloseTab', group: 'shortcutWorkspace' },
@@ -46,11 +50,14 @@ export function shortcut(id: ShortcutId): ShortcutDefinition {
 }
 
 const windowsNames: Readonly<Record<ShortcutKey, string>> = {
+  N: 'N', Q: 'Q',
   Space: 'Space', Ctrl: 'Ctrl', Shift: 'Shift', Alt: 'Alt', Tab: 'Tab', W: 'W', F: 'F', L: 'L', Z: 'Z', Enter: 'Enter',
   F1: 'F1', F3: 'F3', F10: 'F10', ContextMenu: 'Context Menu', Left: 'Left', Right: 'Right', Home: 'Home', End: 'End', Click: 'Click', Escape: 'Escape',
 };
 /** Display names are independent of bindings, ready for a future platform naming map. */
 export function shortcutKeyLabels(id: ShortcutId, names: Partial<Record<ShortcutKey, string>> = {}): string[] {
+  const action = id === 'new-window' ? 'newWindow' : id === 'close-window' ? 'closeWindow' : id === 'quit-application' ? 'quitApplication' : undefined;
+  if (action && !Object.keys(names).length) return windowShortcutLabel(action, typeof navigator !== 'undefined' && /Mac/.test(navigator.platform)).split('+');
   return shortcut(id).keys.map(key => names[key] ?? windowsNames[key]);
 }
 export function formatShortcut(id: ShortcutId, names?: Partial<Record<ShortcutKey, string>>): string {

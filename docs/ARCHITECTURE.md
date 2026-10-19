@@ -1,5 +1,16 @@
 # Architecture
 
+## Reader polish over the existing lifecycle (M8.2)
+
+[ADR 0035](decisions/0035-reader-menu-selection-and-lifecycle-presentation.md)
+reuses the shared virtual-row indentation for selection controls and exposes two
+additional payload-free, exact-document-authenticated application intents. New
+Window and Quit reuse the native File callbacks; Close retains its origin-native
+M3 path. Renderer menus display accelerators while main executes them once.
+M3 input freeze/inert/drain/acknowledgment/reconciliation remain immediate. Only
+visual progress waits 180 ms, fenced by operation identity; failure/Retry remains
+immediate. Schema, restore-set policy and M7/M8 authority are unchanged.
+
 ## Native HTML gestures (M8)
 
 [ADR 0034](decisions/0034-native-html-tab-dragging.md) layers a lightweight source-only

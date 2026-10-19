@@ -11,9 +11,21 @@ import { profileChannels } from '../shared/profile-operation';
 
 /** Register once for the application, independently of window creation. Every
  * invocation requires a registered top-level exact document and current lease. */
-export function registerReaderIpc(service: ReaderService, windows: WindowCoordinator): ProfileOperationCoordinator | undefined {
+export function registerReaderIpc(service: ReaderService, windows: WindowCoordinator,
+  application?: { newWindow: () => void; quitApplication: () => void }): ProfileOperationCoordinator | undefined {
   if (service.claimWindowIdentity) windows.setIdentityProvider(() => service.claimWindowIdentity(windows.size > 0));
   service.onSharedCommit?.(commit => windows.sendSharedCommit(commit));
+  for (const [channel, action] of [['reader:window-new', 'newWindow'], ['reader:application-quit', 'quitApplication']] as const) {
+    ipcMain.handle(channel, (event, ...args: unknown[]) => {
+      const caller = windows.resolveCaller(event);
+      if (!caller) return { ok: false, error: { code: 'FORBIDDEN' } };
+      if (args.length) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+      if (!application) return { ok: false, error: { code: 'FORBIDDEN' } };
+      if (!windows.transferParticipants().includes(caller)) return { ok: false, error: { code: 'FORBIDDEN' } };
+      if (service.restarting || action === 'newWindow' && !service.nativeWritesAllowed()) return { ok: false, error: { code: 'DATA_BUSY' } };
+      application[action](); return { ok: true, value: null };
+    });
+  }
   ipcMain.handle('reader:window-close', (event, ...args: unknown[]) => {
     const caller = windows.resolveCaller(event);
     if (!caller) return { ok: false, error: { code: 'FORBIDDEN' } };

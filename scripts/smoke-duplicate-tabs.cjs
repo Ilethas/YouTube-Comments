@@ -40,6 +40,9 @@ if (process.versions.electron) {
     // M6's secured factory starts hidden. This custom M5 harness owns its show
     // policy; establish a real focused native document for tab-focus assertions.
     a.show(); a.focus();
+    // Diagnose a possible aggregate-only focus failure without changing readiness
+    // conditions or the production focus implementation. No waits are added.
+    await js(a, `window.__m5Focus=[];(()=>{const original=HTMLElement.prototype.focus;HTMLElement.prototype.focus=function(...args){if(window.__m5Focus.length<100)window.__m5Focus.push({id:this.id,disabled:!!this.disabled,inert:!!this.closest('[inert]'),at:performance.now()});return original.apply(this,args);};})()`);
     async function active(id){await invoke(a,'activateTab',{tabId:id});await wait(()=>js(a,panel(id)+"?.hidden===false && !!"+panel(id)+".querySelector('form')"),'active view hydrated');}
     const input=async(id,text)=>js(a,'(()=>{const e='+panel(id)+'.querySelector("input[type=search]");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(e,'+JSON.stringify(text)+');e.dispatchEvent(new Event("input",{bubbles:true}));})()');
     async function choose(id,selector,value){await js(a,'(()=>{const e='+panel(id)+'.querySelector('+JSON.stringify(selector)+');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value").set.call(e,'+JSON.stringify(value)+');e.dispatchEvent(new Event("change",{bubbles:true}));})()');}
@@ -54,7 +57,8 @@ if (process.versions.electron) {
       assert.notEqual(next,id); assert.equal(state.viewInstances[next].itemId,state.viewInstances[id].itemId);
       assert.equal(state.workspace.tabs.findIndex(t=>t.id===next),before.workspace.tabs.findIndex(t=>t.id===id)+1);
       await wait(()=>js(a,'!!'+panel(next)+'?.querySelector("form")'),'dynamic hydration');
-      await wait(()=>js(a,'document.activeElement?.id==='+JSON.stringify('tab-'+next)),'focus new tab');
+      try { await wait(()=>js(a,'document.activeElement?.id==='+JSON.stringify('tab-'+next)),'focus new tab'); }
+      catch (error) { throw Error(String(error) + ': ' + await js(a, 'JSON.stringify({focused:document.hasFocus(),active:document.activeElement?.id,calls:window.__m5Focus})')); }
       return next;
     }
     if(phase==='write'){

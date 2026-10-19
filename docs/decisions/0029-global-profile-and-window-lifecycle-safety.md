@@ -25,6 +25,12 @@ timers, captures the active logical anchor while retaining hidden anchors, lets 
 settle, and waits submitted seen/preferences/workspace/helper operations. It never
 uses beforeunload or unmount to guarantee persistence.
 
+M8.2 [ADR 0035](0035-reader-menu-selection-and-lifecycle-presentation.md) retains
+that synchronous freeze and the complete drain protocol while delaying only the
+full-screen visual progress layer by 180 ms. Fast operations keep content visible;
+long operations show themed feedback, and errors/reconciliation Retry remain
+immediate. This supersedes the original always-immediate visual overlay only.
+
 ## Bounded drain authorization and FIFO
 
 The existing seen/preferences/bulk/Undo queue keeps FIFO dispatch and acknowledgment

@@ -76,7 +76,7 @@ export function readerIndent(depth: number): number {
   return Math.min(340, Math.min(depth, 4) * 44 + Math.max(0, Math.min(depth, 9) - 4) * 10 + Math.max(0, depth - 9) * 3);
 }
 /** CSS shares the same responsive indentation budget for articles and rails.
- * Selection occupies a separate outer lane, independent of avatar geometry. */
+ * Selection controls use this same clamped indent beside their own avatars. */
 export function readerIndentCss(depth: number): string {
   return `min(${readerIndent(depth)}px, var(--indent-budget))`;
 }

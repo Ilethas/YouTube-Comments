@@ -1,6 +1,7 @@
 /** One app-owned outline vocabulary. Decorative vectors inherit currentColor;
  * every containing control owns its localized accessible name. */
 const paths = {
+  menu: 'M4 6h16 M4 12h16 M4 18h16', quit: 'M12 3v9 M6 5a9 9 0 1 0 12 0',
   chevronRight: 'm9 5 7 7-7 7', chevronDown: 'm5 9 7 7 7-7',
   chevronUp: 'm5 15 7-7 7 7', select: 'm3 6 2 2 4-4 M12 6h9 M3 13l2 2 4-4 M12 13h9 M3 20h6 M12 20h9',
   expandAll: 'm5 4 7 7 7-7 M5 13l7 7 7-7', collapseAll: 'm5 11 7-7 7 7 M5 20l7-7 7 7',

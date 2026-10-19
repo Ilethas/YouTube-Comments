@@ -8,7 +8,7 @@ import { transferChannels } from '../shared/tab-transfer';
 it('exposes only explicit intent and progress methods without a generic privileged transport', async () => {
   const invoke = vi.fn(async () => ({ ok: true, value: {} }));
   const api = createReaderBridge(invoke);
-  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'closeWindow', 'createBackup', 'duplicateTab', 'getAcquisitionProgress', 'getDiscussionView', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'moveTab', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences', 'windowReady']);
+  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'closeWindow', 'createBackup', 'duplicateTab', 'getAcquisitionProgress', 'getDiscussionView', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'moveTab', 'newWindow', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'quitApplication', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences', 'windowReady']);
   await api.getDiscussionView({ viewId: 'owned-view' });
   await api.duplicateTab({ sourceViewId: 'owned-view', expectedRevision: 3, intentRevision: 2, collapseRevision: 1 });
   expect(invoke.mock.calls.splice(0)).toEqual([[readerChannels.getDiscussionView, { viewId: 'owned-view' }], [readerChannels.duplicateTab, { sourceViewId: 'owned-view', expectedRevision: 3, intentRevision: 2, collapseRevision: 1 }]]);
@@ -16,6 +16,8 @@ it('exposes only explicit intent and progress methods without a generic privileg
   await api.chooseHelper({ kind: 'post-archiver' });
   await api.clearHelper({ kind: 'yt-dlp' });
   expect(Object.isFrozen(api)).toBe(true);
+  await api.newWindow?.(); await api.closeWindow?.(); await api.quitApplication?.();
+  expect(invoke.mock.calls.splice(-3)).toEqual([['reader:window-new'], ['reader:window-close'], ['reader:application-quit']]);
   await api.openCommentAction({ itemId: 'stored-item', commentId: 'stored-comment', action: 'translate' });
   await api.openSource({ itemId: 'stored-item' });
   await api.bootstrap();

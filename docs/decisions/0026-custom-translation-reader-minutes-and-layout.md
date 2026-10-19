@@ -64,4 +64,9 @@ refresh a snapshot of only the mounted rows on the next animation frame in that
 case. This prevents estimate-height overlap after narrow/locale/zoom reflow without
 adding per-scroll projection or unbounded measurement work.
 
+M8.2 [ADR 0035](0035-reader-menu-selection-and-lifecycle-presentation.md) supersedes
+the fixed-column choice: circles now use the same effective row indentation next
+to their own avatars, with a reserved gutter and no selection-mode text reflow.
+Rail/avatar projection and virtual measurement remain unchanged.
+
 See [Testing](../TESTING.md) for deterministic and disposable Electron evidence.

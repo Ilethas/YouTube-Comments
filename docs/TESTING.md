@@ -1,5 +1,105 @@
 # Testing strategy
 
+## Reader UI and multi-window lifecycle polish (M8.2, 2026-10-19)
+
+[ADR 0035](decisions/0035-reader-menu-selection-and-lifecycle-presentation.md)
+keeps schema **14** and the M3–M8 persistence/authority contracts. The new toolbar
+menu calls the existing secured native New/Close/Quit paths. Native File uses
+explicit distinct accelerators; Ctrl+W stays with tab closing. Selection circles
+share the virtual row's compact/clamped indent and reserved gutter. Only the visual
+M3 progress layer waits 180 ms; inert/input blocking and drains remain synchronous.
+
+Before source changes, `smoke-reader-polish.cjs --baseline` ran against the M8.1
+build, held an actual native Close at drain acknowledgment and captured the
+survivor. `baseline.json` records Close PREPARING/DRAINING, immediate inert state,
+an immediate overlay, and an unchanged document time origin after release.
+`baseline-close.png` reproduces the black Canvas-colored progress surface. This
+confirms presentation as the cause; it does not reconstruct the owner's physical
+60 FPS recording or establish its exact one-frame timing. The baseline mode is an
+old-build diagnostic, not a test expected to pass against the corrected build.
+
+`npm.cmd run test:m82` (also included in `test:electron`) uses the real production
+entry, React, preload, authenticated IPC, SQLite and native reader windows. It
+seeds a fictional 24-comment chain from the saved sanitized yt-dlp fixture in an
+independently owned OS-temp profile. No live acquisition or owner profile is used.
+The focused harness checks:
+
+- EN/light and PL/dark at normal width, PL/light at 720 DIP / 125% app zoom,
+  EN/dark at 720 DIP / 200% app zoom; shallow, depth 5+, and depth 9+ compact rows.
+- Actual circle/avatar gap **10 CSS px**, aligned vertical centers, avatar/child
+  rail centers, reachable control hit targets, no reader horizontal overflow,
+  bounded comment width, both visibility preferences and stable avatar positions
+  across selection-mode changes. Shift range selects the expected three rows.
+  Full `comment_state` equality and zero seen/bulk-seen IPC prove no seen writes.
+- Localized themed menu captures, viewport clamping, Escape/focus restoration,
+  pointer actions, equal empty New Window and origin-only native Close.
+- Native Electron key events for Ctrl+W (tab only), one Ctrl+N creation,
+  Ctrl+Shift+W (one window) and Ctrl+Shift+Q (Quit all). UI Quit and native Quit
+  both restore the complete intended three-window set in later real processes.
+- Immediate inert state with absent quick progress, no late overlay, a held slow
+  Close showing themed feedback, a refused save checkpoint retaining the native
+  and immediate error, failed release retaining freeze/Retry, then successful retry.
+
+The quick-Close evidence uses mutation observation and animation-frame samples
+plus actual Electron compositor captures before/during/after Close. An ungated
+ordinary Close is checked as well as a controlled quick drain. The survivor's
+document is retained; a cropped reader region is compared pixel-for-pixel. This
+is native-window/DOM/IPC/compositor evidence, **not physical desktop video** or a
+guarantee about every OS compositor/display configuration. Physical re-recording
+of the owner's Close gesture remains a separate confirmation.
+
+React tests cover native-style menu keyboard traversal/activation/dismissal,
+disabled and all-unavailable states, composing-key default prevention, EN/PL labels,
+error feedback, synchronous App freeze, delayed presentation, focus restoration,
+short/long/repeated operation identities, teardown and immediate failure display.
+Main/preload tests cover the exact new payload-free methods, unregistered/subframe/
+stale senders, ready-only eligibility, creation barriers, composing native window
+chords and nonconflicting Windows/macOS accelerator metadata. Existing virtualization,
+range selection, seen/Undo and historical SQLite safety suites remain enabled.
+
+| Check | Result |
+| --- | --- |
+| Final full Vitest | **1,204 tests / 95 files PASS**, 129.65 s |
+| Typecheck / ESLint | **PASS**, no lint warnings |
+| Final Windows x64 application / verified ZIP | **PASS**, 73 runtime files / 386,075,584 bytes; ZIP 158,365,636 bytes; make 21.17 s |
+| Production-entry M8.2 | **PASS**, including populated-survivor/ungated-Close checks and two real restarts |
+| Final aggregate Electron | **PASS**, all 19 harnesses, including M5–M8; M5 focus timeout did not recur |
+| Unmodified extracted EXE | **PASS**, including toolbar New/Close, M7 transfer, native backup/restore and real relaunch |
+| Presentation assets / diff whitespace | **PASS**, existing README links/PNG/ICO validation and `git diff --check` |
+
+Reviewed captures and JSON evidence live under ignored
+`.packaging-diagnostics/m82/`: `selection-en-light-1.png`,
+`selection-deep-pl-dark-1.png`, `selection-pl-light-1.25.png`,
+`selection-en-dark-2.png`, `menu-en-light-1.png`, `menu-pl-dark-1.png`,
+the corresponding other locale/zoom captures, and baseline/quick/slow Close images.
+No README screenshot/release overhaul is included.
+
+The unchanged M5 focus assertion now captures attempted focus/disabled/inert state
+on failure. The prior M8.1 timeout did not recur in the final aggregate run; its
+cause remains unconfirmed and no production focus fix is claimed. Intermediate
+runs exposed old fixed preload-method/shortcut-row/channel-count expectations,
+updated to require precisely the added intents and chords rather than weakening
+checks. Native Copy was **UNVERIFIED** in the aggregate: the existing Windows
+clipboard had formats the harness could not snapshot, so it preserved the clipboard.
+No live-helper smoke or physical M8 drag-loop certification was added. macOS
+accelerators were checked as metadata, not on a native macOS system.
+
+The ordinary native Close progressed from PREPARING to RELEASED in about 8 ms
+in `ordinary-close.json`; neither transition nor animation-frame samples mounted
+an overlay, and the surviving reader crop remained byte-identical. Slow/failing
+Close tests retained progress, immediate error feedback and usable Retry. Thus
+the confirmed overlay flicker is resolved in the captured Electron presentation;
+a new physical desktop recording remains unverified.
+
+Final local logs are `.m82-vitest-final.log`, `.m82-typecheck.log`,
+`.m82-lint.log`, `.m82-build-final.log`, `.m82-electron-final.log` and
+`.m82-packaged.log`; extracted-EXE details are in
+`.packaging-diagnostics/packaged-smoke.json`. Logs and review captures are ignored
+local artifacts; the harness regenerates them using disposable profiles.
+
+All profiles are disposable. No schema migration, M7/M8 protocol/heuristic change,
+M9 optimization, Setup execution, installation, commit, push or release.
+
 ## Move Tab dialog and gesture presentation (M8.1, 2026-10-19)
 
 The focused UI pass retains schema **14**, M7 reservations/CAS/atomic ownership,

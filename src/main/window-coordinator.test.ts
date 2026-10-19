@@ -4,6 +4,15 @@ import { windowFixture } from './testing/window-fixture';
 
 vi.mock('electron', () => ({}));
 const url = 'file:///app/index.html';
+it('composing native window chords are suppressed while ordinary Ctrl+W and completed chords stay with their owners', () => {
+  const coordinator = new WindowCoordinator(url, ''), fixture = windowFixture(); coordinator.register(fixture.window); fixture.commit();
+  const event = { preventDefault: vi.fn() };
+  for (const [key, shift] of [['n', false], ['w', true], ['q', true]] as const) fixture.contents.emit('before-input-event', event, { type: 'keyDown', key, control: true, shift, isComposing: true });
+  expect(event.preventDefault).toHaveBeenCalledTimes(3);
+  fixture.contents.emit('before-input-event', event, { type: 'keyDown', key: 'w', control: true, shift: false, isComposing: true });
+  fixture.contents.emit('before-input-event', event, { type: 'keyDown', key: 'n', control: true, shift: false, isComposing: false });
+  expect(event.preventDefault).toHaveBeenCalledTimes(3);
+});
 it('binds the persistent identity before authorization, keeps reload leases fresh and rejects a second live owner', () => {
   const coordinator = new WindowCoordinator(url, ''), a = windowFixture(), b = windowFixture();
   coordinator.setIdentityProvider(() => 'persisted-window');

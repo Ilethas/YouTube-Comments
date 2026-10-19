@@ -133,8 +133,7 @@ h1 { font-size: 20px; line-height: 1.3; margin: 5px 0; }
 h2 { font-size: 15px; margin: 0; }
 .discussion-heading > span, .reader-help { color: var(--muted); font-size: 12px; }
 .reader-help { line-height: 1.4; margin: 4px 0 10px; }
-.root-tree { --avatar-size: 32px; --row-pad-x: 6px; --row-pad-y: 7px; --branch-gap: 4px; --selection-size: 20px; --selection-gutter: 0px; --row-gap: 10px; --rail-x: calc(var(--row-pad-x) + var(--avatar-size) / 2); --elbow-y: calc(var(--row-pad-y) + var(--avatar-size) / 2); }
-.root-tree[data-selection='true'] { --selection-gutter: calc(var(--selection-size) + var(--row-gap)); }
+.root-tree { --avatar-size: 32px; --row-pad-x: 6px; --row-pad-y: 7px; --branch-gap: 4px; --selection-size: 20px; --row-gap: 10px; --selection-gutter: calc(var(--selection-size) + var(--row-gap)); --rail-x: calc(var(--row-pad-x) + var(--avatar-size) / 2); --elbow-y: calc(var(--row-pad-y) + var(--avatar-size) / 2); }
 .comment-tree { list-style: none; margin: 0; padding: 0; }
 .comment-branch { position: relative; }
 .comment-body { min-width: 100px; }
@@ -216,7 +215,7 @@ time, .muted { color: var(--muted); }
 .raw-match-badge { border: 1px dashed var(--border); background: transparent; }
 .comment[data-selected='true'] { outline: 2px solid var(--focus); outline-offset: -2px; }
 .comment[data-bulk-selected='true'] { box-shadow: inset 3px 0 var(--accent); }
-.selection-circle { position: absolute; left: var(--row-pad-x); top: calc(var(--elbow-y) - var(--selection-size) / 2); width: var(--selection-size); height: var(--selection-size); padding: 0; border-radius: 50%; border: 1px solid var(--muted); color: var(--accent); background: var(--surface); line-height: 1; }
+.selection-circle { position: absolute; left: calc(var(--reader-indent, 0px) + var(--row-pad-x)); top: calc(var(--elbow-y) - var(--selection-size) / 2); width: var(--selection-size); height: var(--selection-size); padding: 0; border-radius: 50%; border: 1px solid var(--muted); color: var(--accent); background: var(--surface); line-height: 1; z-index: 1; box-shadow: 0 0 0 3px var(--background); }
 .selection-circle[aria-pressed='true'] { border: 2px solid currentColor; }
 .selection-circle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .selection-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; font-size: 12px; }
@@ -242,7 +241,8 @@ time, .muted { color: var(--muted); }
 @media (forced-colors: active) { .comment[data-bulk-selected='true'] { border-left: 3px solid Highlight; } .selection-circle[aria-pressed='true'] { color: Highlight; } }
 .virtual-reader { position: relative; overflow-anchor: none; container-type: inline-size; --indent-budget: max(0px, calc(100cqw - var(--selection-gutter) - 210px)); }
 .virtual-reader > .virtual-comment { position: absolute; top: 0; left: 0; width: 100%; margin: 0; padding: 0 0 var(--branch-gap) calc(var(--reader-indent) + var(--selection-gutter)); }
-/* A shared outer selection lane leaves avatar-based tree geometry uninterrupted. */
+/* Reserved gutter avoids selection-mode reflow. Controls follow the SAME clamped
+   row indent; their opaque surround keeps connectors clear of the hit target. */
 .reader-rails { position: absolute; inset: 0 var(--selection-gutter) 0 0; transform: translateX(var(--selection-gutter)); pointer-events: none; }
 .ancestor-rail, .parent-rail, .child-rail { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--border); }
 .parent-rail[data-last='true'] { bottom: auto; height: var(--elbow-y); }
@@ -305,9 +305,18 @@ button > .action-icon { margin-right: 4px; }
   z-index: 10000;
   display: grid;
   place-items: center;
-  background: Canvas;
-  color: CanvasText;
+  align-content: center;
+  gap: 12px;
+  background: var(--background);
+  color: var(--text);
 }
+.profile-operation-overlay > p { display: flex; align-items: center; gap: 8px; margin: 0; }
+.application-menu-trigger { display: grid; place-items: center; width: 24px; height: 28px; padding: 2px; color: var(--accent); background: transparent; border: 0; border-radius: 4px; }
+.application-menu-trigger .action-icon { width: 20px; height: 20px; }
+.application-menu-trigger:hover { background: var(--accent-soft); }
+.comment-context-menu button.menu-separated { margin-top: 5px; border-top: 1px solid var(--border); border-radius: 0 0 3px 3px; padding-top: 10px; }
+.menu-shortcut { margin-left: auto; padding-left: 20px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.application-menu-error { font-size: 12px; color: var(--danger); }
 .tabs[data-insert-end=true]::after { content: ''; flex: 0 0 3px; background: var(--accent); align-self: stretch; }
 .tab { position: relative; }
 .tab[data-insert-before=true]::before { content: ''; position: absolute; inset: 0 auto 0 -2px; width: 3px; background: var(--accent); pointer-events: none; z-index: 2; }
