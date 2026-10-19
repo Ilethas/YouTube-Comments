@@ -1,5 +1,11 @@
 # Decisions and open questions
 
+[ADR 0033: Atomic cross-window tab transfer](0033-atomic-cross-window-tab-transfer.md)
+implements M7 on schema **14**, unchanged: explicit keyboard/menu moves, main-issued
+one-use reservations, final source saves, frozen runtime handoff, generation/ABA
+fencing, singleton merge and atomic new-window restore enrollment. M3 drains and
+M2 ordering remain. M8 gestures and M9 aggregate scale/release remain future work.
+
 [ADR 0032: Equal native windows and safe session restoration](0032-equal-native-windows-and-session-restoration.md)
 implements M6 on schema **14**: empty New Window, durable Close/Quit/crash restore
 sets, normal DIP geometry and display validation, hidden bootstrap/readiness and

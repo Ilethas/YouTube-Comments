@@ -1,5 +1,28 @@
 # Database and durable data
 
+## Atomic tab ownership movement (M7, schema 14 unchanged)
+
+[ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) uses the existing
+composite keys and deferred active-membership FK. One outer transaction checks
+both topology revisions, exact source placement/owner and final intent/collapse
+counters, removes affected placements/resume references, updates the instance
+owner, rebuilds both lists/active IDs and repairs owned resume pointers. Optional
+private rows never rebuild or cascade away. Discussion identity stays unchanged;
+same-item views never merge. Existing destination Library/Settings singletons
+survive source merging, including dormant instances.
+
+Both discussion save lanes advance and a main-owned runtime token rotates on every
+transfer, including A -> B -> A. Token changes roll back on failed SQL/COMMIT. M1
+incarnations plus current owner/token/CAS fence ordinary and M3 checkpoint writes.
+A newly created provisional native joins window_restore inside the ownership
+transaction, so crashes cannot leave committed ownership in an unintended reader.
+One M2 workspace notification follows COMMIT; failed transactions publish nothing.
+
+No schema increment or migration changes: exact migrations 1-14, historical backup
+validation, staged upgrades, pre-migration safety, offline fencing and no-reseed
+rules remain. Backups contain committed topology/private state, never transfer
+reservations, frozen result IDs, temporary selection or ownership tokens.
+
 ## Native session metadata (schema 14, M6)
 
 [ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) adds strict `window_restore` (ordered intended members),

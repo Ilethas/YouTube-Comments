@@ -1,3 +1,4 @@
+import type { TransferRequest } from '../../shared/tab-transfer';
 import type { SharedChange, SharedCommit, SharedStamp, SharedItemSnapshot, SharedViewSnapshot } from '../../shared/reader-sync';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
@@ -100,6 +101,14 @@ export function openReaderDatabase(databasePath: string): DatabaseSync {
  * separate operations; no row type or driver handle is exposed through IPC. */
 export class ReaderRepository {
   readonly profileEpoch = randomUUID();
+  private readonly ownerGenerations = new Map<string, string>();
+  ownerAuthority(viewId: string): { ownerGeneration?: string } {
+    const ownerGeneration = this.ownerGenerations.get(viewId);
+    return ownerGeneration ? { ownerGeneration } : {};
+  }
+  validateOwnerAuthority(viewId: string, generation?: string | null): void {
+    if (this.ownerGenerations.get(viewId) !== (generation ?? undefined)) throw new ViewOwnershipError('Revoked view generation');
+  }
   private commitRevision = 0;
   private readonly observers = new Set<(commit: SharedCommit) => void>();
   private lastCommit?: SharedCommit;
@@ -383,7 +392,7 @@ export class ReaderRepository {
 
   viewInstances(windowId: string): ReaderState['viewInstances'] {
     return Object.fromEntries(this.db.prepare(`SELECT v.* FROM discussion_views v JOIN tab_instances t ON t.id=v.view_id WHERE t.owner_window_id=?`).all(windowId)
-      .map(row => [String(row.view_id), { itemId: String(row.item_id), intentRevision: Number(row.intent_revision), collapseRevision: Number(row.collapse_revision) }]));
+      .map(row => [String(row.view_id), { itemId: String(row.item_id), intentRevision: Number(row.intent_revision), collapseRevision: Number(row.collapse_revision), ...this.ownerAuthority(String(row.view_id)) }]));
   }
 
   /** Dormant instances retain their owner; close never revokes a queued final save.
@@ -392,6 +401,11 @@ export class ReaderRepository {
     const row = this.db.prepare(`SELECT v.item_id FROM discussion_views v JOIN tab_instances t ON t.id=v.view_id WHERE v.view_id=? AND t.owner_window_id=?`).get(viewId, windowId);
     if (!row) throw new ViewOwnershipError('Unowned view');
     return String(row.item_id);
+  }
+  /** Identity-only validation for transient handoffs; never materialize text or
+   * evidence merely to move a view of a large discussion. */
+  ownedCommentIds(itemId: string): ReadonlySet<string> {
+    return new Set(this.db.prepare('SELECT id FROM comments WHERE item_id=?').all(itemId).map(row => String(row.id)));
   }
   private advanceView(windowId: string, viewId: string, expected: number, column: 'intent_revision' | 'collapse_revision'): string {
     const itemId = this.ownedView(windowId, viewId);
@@ -410,6 +424,7 @@ export class ReaderRepository {
   setDiscussionCollapse(request: SetDiscussionCollapseRequest, windowId = this.initialWindowId()): null {
     if (!isSetDiscussionCollapseRequest(request)) throw new InvalidDiscussionViewError();
     return this.commit({ kind: 'watermark' }, () => {
+      this.validateOwnerAuthority(request.viewId, request.ownerGeneration);
       const itemId = this.advanceView(windowId, request.viewId, request.expectedRevision, 'collapse_revision');
       if (request.kind === 'comments') {
         const owns = this.db.prepare('SELECT 1 FROM comments WHERE item_id=? AND id=?');
@@ -458,6 +473,7 @@ export class ReaderRepository {
   saveDiscussionView(request: SaveDiscussionViewRequest, windowId = this.initialWindowId()): null {
     if (!isSaveDiscussionViewRequest(request)) throw new InvalidDiscussionViewError('Invalid view intent');
     return this.commit({ kind: 'watermark' }, () => {
+      this.validateOwnerAuthority(request.viewId, request.ownerGeneration);
       const itemId = this.advanceView(windowId, request.viewId, request.expectedRevision, 'intent_revision');
       if (!this.ownsViewIdentities(itemId, request)) throw new InvalidDiscussionViewError('Unowned comment');
       this.db.prepare(`INSERT INTO discussion_view_intent VALUES (?,?,?,?,?,?,?,?)
@@ -472,7 +488,7 @@ export class ReaderRepository {
     const itemId = this.ownedView(windowId, viewId);
     const row = this.db.prepare('SELECT intent_revision,collapse_revision FROM discussion_views WHERE view_id=?').get(viewId);
     if (!row) throw new ViewOwnershipError();
-    return { ...this.stamp(), viewId, instance: { itemId, intentRevision: Number(row.intent_revision), collapseRevision: Number(row.collapse_revision) },
+    return { ...this.stamp(), viewId, instance: { itemId, intentRevision: Number(row.intent_revision), collapseRevision: Number(row.collapse_revision), ...this.ownerAuthority(viewId) },
       intent: this.discussionViews(windowId, viewId)[viewId], collapse: this.discussionCollapse(windowId, viewId)[viewId] };
   }
   /** Copy acknowledged semantic SQL rows and place a new identity in ONE commit.
@@ -495,6 +511,56 @@ export class ReaderRepository {
       return id;
     });
     return { workspace: this.workspace(windowId), view: this.viewSnapshot(windowId, viewId) };
+  }
+  /** One short synchronous transaction. Placement/resume references are removed
+   * before updating the composite owner key; private view children never rebuild.
+   * Runtime authority rotates before post-COMMIT observers, and rolls back on error. */
+  transferTab(sourceId: string, targetId: string, request: TransferRequest, guard: () => void): { tabId: string; mergedIntoTabId: string | null } {
+    const previous = this.ownerGenerations.get(request.tabId);
+    try { return this.commit({ kind: 'workspace' }, () => {
+      guard();
+      if (sourceId === targetId || request.destination === 'new') throw new ViewOwnershipError('Invalid destination');
+      const source = this.workspace(sourceId), target = this.workspace(targetId), destination = request.destination;
+      if (source.revision !== request.expectedRevision || target.revision !== destination.expectedRevision) throw new StateConflictError('Stale topology');
+      const tab = source.tabs.find(t => t.id === request.tabId);
+      if (!tab) throw new ViewOwnershipError('Source is not placed');
+      const owner = this.db.prepare('SELECT owner_window_id FROM tab_instances WHERE id=?').get(tab.id);
+      if (owner?.owner_window_id !== sourceId) throw new ViewOwnershipError('Source owner changed');
+      const slot = destination.beforeTabId === null ? target.tabs.length : target.tabs.findIndex(t => t.id === destination.beforeTabId);
+      if (slot < 0) throw new StateConflictError('Insertion neighbor changed');
+      if (tab.kind === 'discussion') {
+        this.validateOwnerAuthority(tab.id, request.ownerGeneration);
+        const view = this.viewSnapshot(sourceId, tab.id);
+        if (view.instance.intentRevision !== request.intentRevision || view.instance.collapseRevision !== request.collapseRevision) throw new StateConflictError('Unacknowledged final save');
+        if (view.instance.intentRevision >= Number.MAX_SAFE_INTEGER - 1 || view.instance.collapseRevision >= Number.MAX_SAFE_INTEGER - 1) throw new StateConflictError('View revision exhausted');
+      }
+      const existing = tab.kind === 'discussion' ? undefined : this.db.prepare('SELECT id FROM tab_instances WHERE owner_window_id=? AND kind=?').get(targetId, tab.kind);
+      const mergedIntoTabId = existing ? String(existing.id) : null, id = mergedIntoTabId ?? tab.id;
+      const nextSource = closeWorkspaceTab(source, tab.id);
+      // Active membership is deferred, but placement -> owner is immediate.
+      this.db.prepare('DELETE FROM window_tabs WHERE window_id IN (?,?)').run(sourceId, targetId);
+      this.db.prepare('DELETE FROM item_resume_view WHERE view_id=?').run(tab.id);
+      if (existing) this.db.prepare('DELETE FROM tab_instances WHERE id=?').run(tab.id);
+      else this.db.prepare('UPDATE tab_instances SET owner_window_id=? WHERE id=?').run(targetId, tab.id);
+      if (tab.kind === 'discussion') {
+        this.db.prepare('UPDATE discussion_views SET intent_revision=intent_revision+1,collapse_revision=collapse_revision+1 WHERE view_id=?').run(tab.id);
+        this.ownerGenerations.set(tab.id, randomUUID());
+        const fallback = this.db.prepare("SELECT id FROM tab_instances WHERE owner_window_id=? AND item_id=? ORDER BY id LIMIT 1").get(sourceId, tab.itemId);
+        if (fallback) this.db.prepare('INSERT OR IGNORE INTO item_resume_view VALUES (?,?,?)').run(sourceId, tab.itemId, fallback.id);
+      }
+      const tabs = target.tabs.filter(t => t.id !== id);
+      if (!existing || !target.tabs.some(t => t.id === id)) tabs.splice(slot, 0, { ...tab, id });
+      else tabs.splice(0, tabs.length, ...target.tabs);
+      this.writeWorkspace(sourceId, { ...nextSource, revision: source.revision + 1 });
+      this.writeWorkspace(targetId, { tabs, activeTabId: id, revision: target.revision + 1 });
+      const session = new WindowSessionStore(this.db, action => action()), restored = session.read();
+      if (!restored.windowIds.includes(targetId)) session.quit([...restored.windowIds, targetId], targetId, restored.revision);
+      guard();
+      return { tabId: id, mergedIntoTabId };
+    }); } catch (error) {
+      if (previous) this.ownerGenerations.set(request.tabId, previous); else this.ownerGenerations.delete(request.tabId);
+      throw error;
+    }
   }
   workspace(windowId = this.initialWindowId()): WorkspaceState {
     const row = this.db.prepare('SELECT active_tab_id,topology_revision FROM app_windows WHERE id=?').get(windowId);

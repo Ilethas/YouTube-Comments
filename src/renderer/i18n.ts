@@ -4,6 +4,12 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  moveToWindow: 'Move to Window…', moveToNewWindow: 'Move to New Window', moveWindowLabel: 'Window {number}',
+  noMoveWindows: 'No other window is available.', moveFailed: 'The tab could not be moved. Its source is preserved. Try again from the tab menu.',
+  movingTab: 'Moving tab…', tabMoved: 'Tab moved to the destination window.', tabReceived: 'Moved tab activated in this window.',
+  moveDirtySettings: 'This Settings tab has an unsaved translation draft. Keep editing to preserve it, or explicitly discard the draft before moving.',
+  keepEditing: 'Keep editing', discardDraft: 'Discard draft and continue',
+
   duplicateTab: 'Duplicate Tab', tabActions: 'Tab actions', tabActionsHint: 'Tab actions: right-click or Shift+F10',
   discussionInstance: '{title} \u00b7 {number}',
   profileQuiescing: 'Finishing saved changes. Please wait…',
@@ -170,6 +176,12 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  moveToWindow: 'Przenieś do okna…', moveToNewWindow: 'Przenieś do nowego okna', moveWindowLabel: 'Okno {number}',
+  noMoveWindows: 'Brak innych dostępnych okien.', moveFailed: 'Nie udało się przenieść karty. Karta źródłowa została zachowana. Spróbuj ponownie z menu karty.',
+  movingTab: 'Przenoszenie karty…', tabMoved: 'Karta przeniesiona do okna docelowego.', tabReceived: 'Przeniesiona karta jest aktywna w tym oknie.',
+  moveDirtySettings: 'Ta karta Ustawień zawiera niezapisany szkic celu tłumaczenia. Kontynuuj edycję, aby go zachować, lub jawnie odrzuć szkic przed przeniesieniem.',
+  keepEditing: 'Kontynuuj edycję', discardDraft: 'Odrzuć szkic i kontynuuj',
+
   duplicateTab: 'Duplikuj kartę', tabActions: 'Działania karty', tabActionsHint: 'Działania karty: prawy przycisk lub Shift+F10',
   discussionInstance: '{title} \u00b7 {number}',
   profileQuiescing: 'Kończenie zapisu zmian. Proszę czekać…',

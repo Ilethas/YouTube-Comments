@@ -100,6 +100,7 @@ export class ProfileOperationCoordinator {
     if (!legal[op.phase].includes(next)) throw new Error('Illegal profile transition');
     op.phase = next; this.publish();
   }
+  onPreparing?: () => void;
   /** Starts synchronously: ordinary mutations stop before the first notification. */
   begin(kind: ProfileKind): Promise<void> {
     if (this.busy) return Promise.reject(new Error('Profile busy'));
@@ -107,6 +108,7 @@ export class ProfileOperationCoordinator {
     if (this.operation?.participants.some(p => p.caller.isCurrent() && !p.resumed)) return Promise.reject(new Error('Release pending'));
     let resolve!: () => void, reject!: (error: Error) => void;
     const drained = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+    this.onPreparing?.();
     const op: Operation = { id: randomUUID(), epoch: this.stamp().profileEpoch, kind, phase: 'PREPARING', failed: false, appOwned: false,
       participants: this.participants().map(caller => ({ caller, sequence: 0, acknowledged: false, resumed: false, failed: false })), resolve, reject, drained };
     this.operation = op;

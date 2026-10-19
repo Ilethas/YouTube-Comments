@@ -24,6 +24,7 @@ import { VideoThumbnail } from './VideoThumbnail';
 interface Props {
   viewId?: string;
   active?: boolean;
+  frozen?: boolean;
   selectionControls?: SelectionControls;
   includeCollapsedInPrefix?: boolean;
   onAction?: OpenCommentAction;
@@ -55,12 +56,12 @@ function VideoDescription({ id, text, locale }: { id: string; text: string; loca
 
 /** Mounted content is independent of its workspace visibility wrapper.
  * Session notifications update only this discussion; draft edits reuse the forest. */
-export const DiscussionPanel = memo(function DiscussionPanel({ viewId, active = true, selectionControls = 'on-demand', includeCollapsedInPrefix = true, item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onOpenSource, onToggle, onAction, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
+export const DiscussionPanel = memo(function DiscussionPanel({ viewId, active = true, frozen = false, selectionControls = 'on-demand', includeCollapsedInPrefix = true, item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onOpenSource, onToggle, onAction, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
   recordRenderWork('panel', viewId ?? item.id);
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const [menu, setMenu] = useState<CommentMenuTarget>();
   const dismissMenu = useCallback(() => setMenu(undefined), []);
-  useEffect(() => { setMenu(undefined); }, [active, view.result, view.sort, view.collapse, comments]);
+  useEffect(() => { setMenu(undefined); }, [active, frozen, view.result, view.sort, view.collapse, comments]);
   const presentation = session.presentation(comments);
   const t = translator(locale);
   const now = useMemo(() => item.isDemo ? demoNow : Date.now(), [item]);
@@ -94,15 +95,15 @@ export const DiscussionPanel = memo(function DiscussionPanel({ viewId, active = 
             <div className="discussion-heading"><h2>{countLabel(locale, 'comments', comments.length)}</h2>
               <span>{countLabel(locale, 'unseenCount', comments.filter(comment => !comment.seen).length)}</span></div>
             <p className="reader-help">{seenHelp(locale)}</p>
-            {onBulk && onUndo && onBulkModal && <BulkSeenControls itemId={item.id} title={item.kind === 'video' ? item.title : item.author?.displayName ?? t('unknownAuthor')} comments={comments} result={view.result} locale={locale} disabled={saving}
+            {!frozen && onBulk && onUndo && onBulkModal && <BulkSeenControls itemId={item.id} title={item.kind === 'video' ? item.title : item.author?.displayName ?? t('unknownAuthor')} comments={comments} result={view.result} locale={locale} disabled={saving}
               undo={undo} feedback={feedback} execute={onBulk} recover={onUndo} modalChanged={onBulkModal} />}
             <DiscussionQueryControls setCollapsed={collapsed => session.setCollapsed({ kind: 'all', collapsed })} state={view} presentation={presentation} sort={sort => session.setSort(sort)} locale={locale} edit={draft => session.edit(draft)}
               apply={() => { void session.apply(comments, false, item); }} navigate={(kind, direction) => navigateDiscussion(session, comments, kind, direction)}
               unseenCount={visibleUnseenIds(view.result, comments).length} />
             {view.result.restrictive && !view.result.matchCount && <p className="reader-help">{t('noDiscussionMatches')}</p>}
-            <DiscussionActions item={item} comments={comments} session={session} locale={locale} disabled={saving}
+            {!frozen && <DiscussionActions item={item} comments={comments} session={session} locale={locale} disabled={saving}
               includeCollapsedInPrefix={includeCollapsedInPrefix} menu={active ? menu : undefined} dismissMenu={dismissMenu}
-              onAction={onAction} execute={onBulk} modalChanged={onBulkModal} />
+              onAction={onAction} execute={onBulk} modalChanged={onBulkModal} />}
             <VirtualCommentList viewId={viewId} active={active} itemId={item.id} isDemo={item.isDemo} comments={comments} result={view.result} selected={view.selected} session={session} scrollRequest={view.scrollRequest}
               showSelection={selectionControls === 'always' || view.selectionMode} bulkSelected={view.bulkSelected} onContextMenu={setMenu}
               locale={locale} disabled={saving} onToggle={toggle} onAction={onAction} now={now} newIds={newIds} />

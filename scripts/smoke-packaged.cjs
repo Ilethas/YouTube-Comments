@@ -311,6 +311,35 @@ async function run() {
     }
   }
   report.checks.push('Extracted EXE restores three independently seeded native windows; Library/Settings/discussion work in each; public New Window is tested separately by the production-entry M6 harness');
+  // Exercise the compiled M7 menu/chooser against the unmodified extracted EXE.
+  // Renderer key/menu activation here is CDP automation; real native keyboard
+  // input, provisional windows and crash injection are covered by test:m7.
+  const movingView = viewId(await session.invoke('bootstrap'), itemId), destination = peers[0];
+  async function packagedMove(source, target, id) {
+    const targetState = await target.invoke('bootstrap'), targetTab = targetState.workspace.tabs[0];
+    const targetWindowId = tables(database).tab_instances.find(t => t.id === targetTab.id).owner_window_id;
+    const destinations = await source.js('window.reader.transfers.destinations()'); assert.equal(destinations.ok, true);
+    const number = destinations.value.find(d => d.windowId === targetWindowId)?.number; assert.ok(number);
+    await source.js('document.getElementById(' + JSON.stringify('tab-' + id) + ').dispatchEvent(new KeyboardEvent("keydown",{key:"F10",shiftKey:true,bubbles:true,cancelable:true}));void 0');
+    await source.wait('!!document.querySelector("[role=menu]")');
+    await source.js('Array.from(document.querySelectorAll("[role=menuitem]")).find(b=>b.textContent.startsWith("Move to Window")).click();void 0');
+    await source.wait('Array.from(document.querySelectorAll("dialog[open] button")).some(b=>b.textContent===' + JSON.stringify('Window ' + number) + ')');
+    await source.js('Array.from(document.querySelectorAll("dialog[open] button")).find(b=>b.textContent===' + JSON.stringify('Window ' + number) + ').click();void 0');
+    await target.wait('document.getElementById(' + JSON.stringify('tab-' + id) + ')?.getAttribute("aria-selected")==="true"');
+    await source.wait('!document.getElementById(' + JSON.stringify('tab-' + id) + ') && !document.querySelector(".app-shell").inert');
+    await target.wait('!!document.getElementById(' + JSON.stringify('panel-' + id) + ')?.querySelector("form")');
+  }
+  await packagedMove(session, destination, movingView);
+  const firstOwner = (await destination.invoke('bootstrap')).viewInstances[movingView];
+  assert.equal((await destination.invoke('bootstrap')).workspace.tabs.filter(t => t.kind === 'discussion' && t.itemId === itemId).length, 2);
+  await packagedMove(destination, session, movingView);
+  const returned = await session.invoke('bootstrap'); assert.notEqual(returned.viewInstances[movingView].ownerGeneration, firstOwner.ownerGeneration);
+  const stale = await session.js('window.reader.saveDiscussionView(' + JSON.stringify({ ...returned.discussionViews[movingView], viewId: movingView,
+    expectedRevision: returned.viewInstances[movingView].intentRevision, ownerGeneration: firstOwner.ownerGeneration }) + ')');
+  assert.equal(stale.ok, false); assert.equal(stale.error.code, 'FORBIDDEN');
+  await session.js("document.getElementById('settings-toggle').click()");
+  await session.wait("document.querySelectorAll('.helper-tool[aria-busy=false]').length===2");
+  report.checks.push('Unmodified extracted EXE M7 menu/chooser transfers the same view out/back, retains independent same-item destination tabs and rejects stale owner authority before native backup/relaunch');
   const snapshot=path.join(root,'complete-backup.sqlite');
   await session.js("document.querySelector('.data-backups button').click()"); await native(session,'file',snapshot);
   await session.wait("document.querySelector('.data-backups > [role=status]')?.textContent.includes('complete-backup.sqlite')");

@@ -17,11 +17,13 @@ export interface DiscussionViewIntent {
   readonly selected: string | null;
 }
 /** One tab/view instance references shared content. Independent CAS lanes allow
- * full semantic saves and sparse collapse assignments to serialize separately. */
-export interface ViewInstance { readonly itemId: string; readonly intentRevision: number; readonly collapseRevision: number }
+ * full semantic saves and sparse collapse assignments to serialize separately.
+ * ownerGeneration is main-issued runtime authority after a transfer, absent for
+ * an untouched ownership incarnation. It is never a durable schema field. */
+export interface ViewInstance { readonly itemId: string; readonly intentRevision: number; readonly collapseRevision: number; readonly ownerGeneration?: string }
 /** Main resolves the item's identity and the caller's retained ownership from
  * viewId. An instance identifier never establishes authorization by itself. */
-export interface SaveDiscussionViewRequest extends DiscussionViewIntent { readonly viewId: string; readonly expectedRevision: number }
+export interface SaveDiscussionViewRequest extends DiscussionViewIntent { readonly viewId: string; readonly expectedRevision: number; readonly ownerGeneration?: string }
 export const isRevision = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) < Number.MAX_SAFE_INTEGER;
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -52,8 +54,8 @@ export function isDiscussionQuery(value: unknown): value is DiscussionQuery {
 }
 /** Main checks exact runtime shape and then separately checks same-item ownership. */
 export function isSaveDiscussionViewRequest(value: unknown): value is SaveDiscussionViewRequest {
-  if (!keys(value, ['viewId', 'expectedRevision', 'draft', 'applied', 'sort', 'anchor', 'selected'])) return false;
-  return isViewIdentity(value.viewId) && isRevision(value.expectedRevision) && isDiscussionViewIntent({ draft: value.draft, applied: value.applied, sort: value.sort, anchor: value.anchor, selected: value.selected });
+  if (!keys(value, ['viewId', 'expectedRevision', 'draft', 'applied', 'sort', 'anchor', 'selected'], ['ownerGeneration'])) return false;
+  return (value.ownerGeneration === undefined || isViewIdentity(value.ownerGeneration)) && isViewIdentity(value.viewId) && isRevision(value.expectedRevision) && isDiscussionViewIntent({ draft: value.draft, applied: value.applied, sort: value.sort, anchor: value.anchor, selected: value.selected });
 }
 /** Semantic validation shared with exact historical backup shapes. */
 export function isDiscussionViewIntent(value: unknown): value is DiscussionViewIntent {

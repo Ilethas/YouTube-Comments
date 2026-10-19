@@ -7,6 +7,7 @@ import type { ReaderService } from './reader-service';
 import { registerReaderIpc } from './reader-ipc';
 import { readerChannels } from '../shared/reader-api';
 import { profileChannels } from '../shared/profile-operation';
+import { transferChannels } from '../shared/tab-transfer';
 
 const { handlers } = vi.hoisted(() => ({ handlers: new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>() }));
 vi.mock('electron', () => ({ ipcMain: { handle: (channel: string, handler: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => { if (handlers.has(channel)) throw new Error('Duplicate handler'); handlers.set(channel, handler); } } }));
@@ -76,9 +77,9 @@ it('registers every channel once independently of window creation/reload and ret
   const service = new ActualReaderService(() => { throw new Error('No storage needed'); }, ['en'], () => undefined);
   vi.spyOn(service, 'claimWindowIdentity').mockReturnValue('persisted-test-window');
   registerReaderIpc(service, windows);
-  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 1);
+  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 1 + 6);
   for (let i = 0; i < 2; i++) { windows.register(fixture.window); fixture.commit(); fixture.reload(); }
-  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 1);
+  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 1 + 6);
   for (const channel of Object.values(readerChannels)) {
     expect(await handlers.get(channel)?.(fixture.event(), { windowId: 'forged', executable: 'evil' }, 'extra'))
       .toEqual({ ok: false, error: { code: 'INVALID_REQUEST' } });
@@ -87,5 +88,21 @@ it('registers every channel once independently of window creation/reload and ret
   for (const channel of Object.values(readerChannels)) expect(await handlers.get(channel)?.(fixture.event()))
     .toEqual({ ok: false, error: { code: 'FORBIDDEN' } });
   expect(() => registerReaderIpc(service, windows)).toThrow('Duplicate handler');
+  await service.shutdown();
+});
+it('all transfer intents authenticate the exact current top frame even while storage is unavailable', async () => {
+  const url = 'file:///app/index.html', fixture = windowFixture(url), windows = new WindowCoordinator(url, '');
+  const service = new ActualReaderService(() => { throw Error('Unavailable'); }, ['en'], () => undefined);
+  vi.spyOn(service, 'claimWindowIdentity').mockReturnValue('registered-unavailable-window');
+  registerReaderIpc(service, windows); windows.register(fixture.window); fixture.commit();
+  const old = fixture.event();
+  for (const [name, channel] of Object.entries(transferChannels)) if (name !== 'event') {
+    const handler = handlers.get(channel); expect(handler).toBeTypeOf('function');
+    for (const event of [{ sender: {}, senderFrame: fixture.contents.mainFrame }, { sender: fixture.contents, senderFrame: { url } }, { sender: fixture.contents, senderFrame: null }]) {
+      expect(await handler?.(event as unknown as IpcMainInvokeEvent, { token: 'forged' })).toEqual({ ok: false, error: { code: 'FORBIDDEN' } });
+    }
+  }
+  fixture.reload();
+  for (const [name, channel] of Object.entries(transferChannels)) if (name !== 'event') expect(await handlers.get(channel)?.(old, { token: 'old' })).toEqual({ ok: false, error: { code: 'FORBIDDEN' } });
   await service.shutdown();
 });

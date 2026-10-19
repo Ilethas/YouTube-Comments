@@ -65,7 +65,10 @@ it('snapshots both pending checkpoints only after the second participant; new mu
   expect(commits).toEqual([4, 5]);
   const copy = ReaderRepository.open(s.backup);
   try { const state = copy.bootstrap(['en'], s.callers[0].windowId), peer = copy.bootstrap(['en'], s.callers[1].windowId); expect(Object.values(state.discussionViews)[0].draft.text).toBe('pending-0'); expect(Object.values(peer.discussionViews)[0].draft.text).toBe('pending-1'); } finally { copy.close(); }
+  expect(s.service.transfersAllowed(s.callers[0])).toBe(false);
+  expect(s.service.transfersAllowed(s.callers[1])).toBe(false);
   s.resume(); expect(s.lifecycle.blocks(s.callers[1])).toBe(false);
+  expect(s.service.transfersAllowed(s.callers[0])).toBe(true);
 });
 it('failed COMMIT publishes nothing, aborts preflight, preserves storage and permits a reconciled retry', async () => {
   const s = setup(), before = s.repository.stamp(), events = vi.fn(); s.service.onSharedCommit(events);

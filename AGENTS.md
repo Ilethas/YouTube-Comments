@@ -1,6 +1,28 @@
 # Project guidance
 
-## M6 current boundary
+## M7 current boundary
+
+[ADR 0033](docs/decisions/0033-atomic-cross-window-tab-transfer.md) implements explicit
+Move to Window/New Window on schema **14**, unchanged. Main owns short-lived one-use
+reservations bound to exact authenticated source/target documents, topology,
+profile epoch and ownership generation. Discussion moves preserve the SAME tab/view
+ID and bounded live frozen results/selection/anchor; never substitute restart query
+reconstruction for an uninterrupted handoff. Source final intent/collapse saves must
+acknowledge before readiness/COMMIT. The single repository transaction moves owner,
+placements/active IDs, revisions/resume pointers and new-native restore enrollment;
+private view children survive. Normal same-item views NEVER merge. Library/Settings
+merge into existing target singleton identity/state; dirty source Settings requires
+explicit preserve/discard. Empty source natives remain open.
+
+Every transfer rotates runtime owner authority and advances both save lanes. Preserve
+ABA rejection for intent/collapse and sealed M3 checkpoints. M3 cancels precommit
+reservations before capturing participants; transfer cancellation must NEVER release
+a concurrent profile queue pause. New natives stay hidden/dormant until COMMIT and
+failed creation never leaves restore membership. Transient tokens/results never enter
+SQLite/backups. Preserve exact migrations 1-14 and all older safety tests. M8 native
+HTML DnD/detachment and M9 scale/release remain outside M7. No drag adapter yet.
+
+## M6 foundation (historical scope)
 
 [ADR 0032](docs/decisions/0032-equal-native-windows-and-session-restoration.md)
 implements equal native production windows and schema **14**. Main owns one

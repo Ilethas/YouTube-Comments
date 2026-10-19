@@ -56,6 +56,14 @@ export class ReaderReplica {
   }
   get current(): ReaderState { if (!this.snapshot) throw new Error('Replica unavailable'); return this.snapshot.state; }
   get stamp(): SharedStamp | undefined { return this.snapshot ? { profileEpoch: this.snapshot.profileEpoch, commitRevision: this.snapshot.commitRevision } : undefined; }
+  /** Session adoption consumes its transient seed, without a shared commit or
+   * observable semantic change. Do not retain old result arrays after transfer. */
+  releaseHandoff(viewId: string, generation: string): void {
+    const snapshot = this.snapshot;
+    if (!snapshot?.state.liveHandoffs?.[viewId] || snapshot.state.viewInstances[viewId]?.ownerGeneration !== generation) return;
+    const liveHandoffs = { ...snapshot.state.liveHandoffs }; delete liveHandoffs[viewId];
+    this.snapshot = { ...snapshot, state: { ...snapshot.state, liveHandoffs } };
+  }
   subscribe(listener: Listener): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   private publish(change?: SharedChange): void { for (const listener of this.listeners) { try { listener(this.current, change); } catch { /* A consumer cannot stop shared reconciliation. */ } } }
   async start(): Promise<void> {
@@ -140,16 +148,18 @@ export class ReaderReplica {
    * read only the new semantic view, never a Library-sized comment snapshot. */
   private async hydrateNewViews(state: ReaderState, stamp: SharedStamp): Promise<ReaderState | undefined> {
     const previous = this.snapshot?.state.viewInstances ?? {};
-    const newIds = Object.keys(state.viewInstances).filter(id => !previous[id]);
+    const newIds = Object.keys(state.viewInstances).filter(id => !previous[id] || previous[id].ownerGeneration !== state.viewInstances[id].ownerGeneration);
     const seeds = await Promise.all(newIds.map(viewId => this.transport.getDiscussionView({ viewId })));
     let discussionViews = state.discussionViews, discussionCollapse = state.discussionCollapse;
+    let liveHandoffs = state.liveHandoffs ? Object.fromEntries(Object.entries(state.liveHandoffs).filter(([id]) => state.viewInstances[id])) : undefined;
     for (let index = 0; index < seeds.length; index++) {
       const seed = seeds[index];
       if (!seed.ok || seed.value.viewId !== newIds[index] || seed.value.profileEpoch !== stamp.profileEpoch || seed.value.commitRevision !== stamp.commitRevision) return;
+      if (seed.value.handoff) liveHandoffs = { ...liveHandoffs, [seed.value.viewId]: seed.value.handoff };
       if (seed.value.intent) discussionViews = { ...discussionViews, [seed.value.viewId]: seed.value.intent };
       if (seed.value.collapse) discussionCollapse = { ...discussionCollapse, [seed.value.viewId]: seed.value.collapse };
     }
-    return { ...state, discussionViews, discussionCollapse };
+    return { ...state, discussionViews, discussionCollapse, liveHandoffs };
   }
   private async run(): Promise<void> {
     const incarnation = this.incarnation;

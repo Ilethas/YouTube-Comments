@@ -1,5 +1,31 @@
 # UI and navigation
 
+## Move a tab between windows (M7)
+
+Open any tab's menu with right-click, Shift+F10 or the context-menu key. Choose
+**Move to Window...** (Polish: **Przenieś do okna...**) to select another ready
+numbered reader, or **Move to New Window** (**Przenieś do nowego okna**). The
+source is excluded; New Window remains available when no peer exists. Cancel starts
+focused. A successful move activates/focuses the destination tab and announces it;
+a failed move keeps the source usable with feedback and retry through the same menu.
+
+Discussion moves preserve the same view identity, draft/applied filters, frozen
+matches/order/stale state, sort/collapse, logical anchor/offset, navigation selection
+and temporary bulk IDs/range anchor. They do not rerun a query merely because the
+window changed. Menus, unsubmitted confirmations and native text selections are
+cancelled. Shared Refresh after the handoff retains its normal per-view behavior.
+A crashed/restarted renderer reconstructs durable semantics as before.
+
+A discussion never merges with another view of the same item. Library/Settings
+merge into the destination's existing instance when present, retaining its filter,
+editor and other local controls. An unsaved source custom translation draft requires
+Keep editing (cancel/preserve) or explicit Discard draft and continue; it is never
+silently lost or saved. An empty source window stays visible/open. A failed new
+window is cleaned up before it can become a restored reader.
+
+See [ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) and
+[verification](TESTING.md). Native cross-window dragging/detachment remains M8.
+
 ## Equal native reader windows (M6)
 
 Use native **File > New Window** / **Ctrl+N** (**Cmd+N** on macOS; Polish **Plik >

@@ -5,8 +5,9 @@ import type { PreferenceChange } from '../shared/reader-api';
 import { translator } from './i18n';
 
 /** A custom draft becomes active only after an acknowledged atomic save. */
-export function TranslationSettings({ preferences, locale, disabled, save }: {
+export function TranslationSettings({ preferences, locale, disabled, save, onDirty }: {
   preferences: Pick<Preferences, 'translationTarget' | 'customTranslationTarget'>; locale: Locale; disabled: boolean;
+  onDirty?: (dirty: boolean) => void;
   save: (change: PreferenceChange) => Promise<boolean>;
 }) {
   const t = translator(locale), helpId = useId(), errorId = useId();
@@ -17,6 +18,7 @@ export function TranslationSettings({ preferences, locale, disabled, save }: {
     if (!dirty && draft !== (preferences.customTranslationTarget ?? '')) setDraft(preferences.customTranslationTarget ?? '');
   }, [preferences.customTranslationTarget, dirty, draft]);
   const [help, setHelp] = useState(false), [invalid, setInvalid] = useState(false), [failed, setFailed] = useState(false);
+  useEffect(() => { onDirty?.(dirty || choosingCustom); return () => onDirty?.(false); }, [dirty, choosingCustom, onDirty]);
   const custom = choosingCustom || preferences.translationTarget === 'custom';
   async function select(next: TranslationTarget) {
     setInvalid(false); setFailed(false);

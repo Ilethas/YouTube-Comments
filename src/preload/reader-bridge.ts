@@ -1,3 +1,5 @@
+import { isTransferEvent, transferChannels } from '../shared/tab-transfer';
+import type { TabTransferApi } from '../shared/tab-transfer';
 import { isSharedCommit } from '../shared/reader-sync';
 import { isAcquisitionNotification } from '../shared/acquisition';
 import { readerChannels } from '../shared/reader-api';
@@ -9,7 +11,8 @@ import type { ProfileLifecycleApi } from '../shared/profile-operation';
 export function createReaderBridge(rawInvoke: (channel: string, ...args: unknown[]) => Promise<unknown>,
   subscribe: (listener: (value: unknown) => void) => () => void = () => () => undefined,
   sharedSubscribe: (listener: (value: unknown) => void) => () => void = () => () => undefined,
-  profileSubscribe?: (listener: (value: unknown) => void) => () => void): ReaderApi {
+  profileSubscribe?: (listener: (value: unknown) => void) => () => void,
+  transferSubscribe?: (listener: (value: unknown) => void) => () => void): ReaderApi {
   const pending = new Set<Promise<unknown>>();
   const tracked = new Set<string>(['duplicateTab', 'toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'openStoredItem', 'activateTab', 'closeTab', 'openLibrary', 'openSettings', 'moveTab', 'removeLibraryItem', 'chooseHelper', 'clearHelper', 'getHelperStatus'].map(key => readerChannels[key as keyof typeof readerChannels]));
   const invoke = (channel: string, ...args: unknown[]) => {
@@ -32,7 +35,17 @@ export function createReaderBridge(rawInvoke: (channel: string, ...args: unknown
     refuse: identity => invoke(profileChannels.refuse, identity) as ReturnType<ProfileLifecycleApi['refuse']>,
     resume: identity => invoke(profileChannels.resume, identity) as ReturnType<ProfileLifecycleApi['resume']>,
   } satisfies ProfileLifecycleApi) : undefined;
+  const transfers: TabTransferApi | undefined = transferSubscribe ? Object.freeze({
+    destinations: () => invoke(transferChannels.destinations) as ReturnType<TabTransferApi['destinations']>,
+    begin: request => invoke(transferChannels.begin, request) as ReturnType<TabTransferApi['begin']>,
+    adopted: request => invoke(transferChannels.adopted, request) as ReturnType<TabTransferApi['adopted']>,
+    move: request => invoke(transferChannels.move, request) as ReturnType<TabTransferApi['move']>,
+    ready: request => invoke(transferChannels.ready, request) as ReturnType<TabTransferApi['ready']>,
+    cancel: request => invoke(transferChannels.cancel, request) as ReturnType<TabTransferApi['cancel']>,
+    onEvent: listener => transferSubscribe(value => { if (isTransferEvent(value)) listener(value); }),
+  } satisfies TabTransferApi) : undefined;
   return Object.freeze({
+    ...(transfers ? { transfers } : {}),
     windowReady: () => invoke('reader:window-ready') as Promise<import('../shared/reader-api').Result<null>>,
     closeWindow: () => invoke('reader:window-close') as Promise<import('../shared/reader-api').Result<null>>,
     ...(lifecycle ? { lifecycle } : {}),

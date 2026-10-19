@@ -1,3 +1,5 @@
+import { transferChannels } from '../shared/tab-transfer';
+import type { TransferEvent } from '../shared/tab-transfer';
 import { sharedCommitChannel } from '../shared/reader-sync';
 import type { SharedCommit } from '../shared/reader-sync';
 import type { BrowserWindow, IpcMainInvokeEvent, WebContents, WebFrameMain } from 'electron';
@@ -15,11 +17,14 @@ interface WindowRecord {
   frame?: WebFrameMain;
   caller?: ReaderCallerContext;
   closing: boolean;
+  shellReady?: boolean;
+  provisional?: boolean;
   finishing?: boolean;
 }
 interface NativeWindowHooks {
+  available?: (id: string) => boolean;
   geometry: (id: string) => Parameters<typeof createApplicationWindow>[1];
-  created: (window: BrowserWindow, id: string) => void;
+  created: (window: BrowserWindow, id: string, provisional?: boolean) => void;
   failed: (id: string, restoring: boolean, asynchronous?: boolean) => void;
   beforeClose: (id: string) => void;
   cancelledClose: (id: string) => void;
@@ -43,13 +48,14 @@ export class WindowCoordinator {
   private readonly loading = new Set<Promise<void>>();
   setNativeHooks(hooks: NativeWindowHooks): void { this.native = hooks; }
 
-  createReaderWindow(existingId?: string): BrowserWindow {
+  createReaderWindow(existingId?: string, provisional = false): BrowserWindow {
     const windowId = existingId ?? this.identityProvider();
     let window: BrowserWindow | undefined;
     try {
       window = createApplicationWindow(this.preloadPath, this.native?.geometry(windowId));
       this.register(window, windowId);
-      this.native?.created(window, windowId);
+      const record = this.records.get(window.webContents); if (record) record.provisional = provisional;
+      this.native?.created(window, windowId, provisional);
       const loading = window.loadURL(this.documentUrl);
       const task = loading?.catch(error => {
         if (window) { this.unregister(window); window.destroy(); }
@@ -89,7 +95,7 @@ export class WindowCoordinator {
     const record: WindowRecord = { windowId, window, closing: false };
     this.records.set(contents, record);
     const revoke = () => {
-      const previous = record.caller; record.caller = undefined; record.frame = undefined;
+      const previous = record.caller; record.caller = undefined; record.frame = undefined; record.shellReady = false;
       if (previous) this.lifecycle?.lost(previous);
     };
     const start = (event: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>) => {
@@ -207,8 +213,26 @@ export class WindowCoordinator {
     this.native?.beforeClose(record.windowId); record.finishing = true; window.close();
   }
   ready(caller: ReaderCallerContext): void {
-    const window = this.originWindow(caller); if (window) this.native?.ready(window, caller.windowId);
+    const window = this.originWindow(caller), record = window && this.records.get(window.webContents);
+    if (record) record.shellReady = true;
+    if (window) this.native?.ready(window, caller.windowId);
   }
+  transferParticipants(includeProvisional = false): readonly ReaderCallerContext[] {
+    return [...this.records.values()].flatMap(r => r.shellReady && (r.provisional ? includeProvisional : this.native?.available?.(r.windowId) !== false)
+      && r.caller && this.live(r, r.caller) ? [r.caller] : []);
+  }
+  sendTransfer(caller: ReaderCallerContext, event: TransferEvent): void {
+    const window = this.originWindow(caller); if (!window) throw new Error('Destination unavailable');
+    window.webContents.send(transferChannels.event, event);
+  }
+  promoteTransfer(caller: ReaderCallerContext): void {
+    const window = this.originWindow(caller), record = window && this.records.get(window.webContents);
+    if (!window || !record) return;
+    record.provisional = false; this.native?.ready(window, caller.windowId);
+    if (window.isMinimized()) window.restore();
+    window.focus();
+  }
+  isTransferProvisional(id: string): boolean { return [...this.records.values()].some(r => r.windowId === id && r.provisional); }
   nativeWindows(): readonly { window: BrowserWindow; windowId: string }[] { return [...this.records.values()].map(r => ({ window: r.window, windowId: r.windowId })); }
   finishReload(caller: ReaderCallerContext): void { this.originWindow(caller)?.webContents.reload(); }
   requestReload(window: BrowserWindow): void {

@@ -1,5 +1,23 @@
 # Architecture
 
+## Atomic cross-window transfer (M7)
+
+[ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) adds a main-owned
+TabTransferCoordinator and explicit keyboard/menu moves. Main reserves exact
+source/target document leases, topology, epoch and ownership generation before
+source checkpointing. A bounded memory-only snapshot preserves frozen results,
+logical reading state and temporary selection. Destination reconciliation and
+provisional construction precede readiness; neither grants write authority.
+
+One repository transaction moves the same instance, repairs both workspaces/resume
+pointers and advances topology/save fencing. Library/Settings merge into an existing
+local singleton; normal same-item discussions never merge. New hidden natives stay
+outside restore membership until that same transaction commits. Source-empty windows
+remain open. M2 disposes/adopts sessions by ownership generation; M3 synchronously
+cancels precommit transfers before sealing drains, with independent transfer/profile
+queue pauses. Schema remains **14**; tokens and live results never persist. Native
+gestures remain M8; aggregate scale/release remains M9.
+
 ## Equal native windows and session restoration (M6)
 
 [ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) implements schema **14**, equal production BrowserWindows and

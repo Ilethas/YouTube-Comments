@@ -5,7 +5,7 @@ import { createQueryExecutor } from './query-executor';
 import type { ReaderApi, ReaderState } from '../shared/reader-api';
 
 /** Registry survives tab close/reopen; explicit Library removal disposes its worker/state. */
-export function useDiscussionViews(options?: { readonly collapse?: ReaderState['discussionCollapse']; readonly saveCollapse?: ReaderApi['setDiscussionCollapse']; readonly instances?: ReaderState['viewInstances']; readonly saved: ReaderState['discussionViews']; readonly save: ReaderApi['saveDiscussionView'] }) {
+export function useDiscussionViews(options?: { readonly collapse?: ReaderState['discussionCollapse']; readonly saveCollapse?: ReaderApi['setDiscussionCollapse']; readonly instances?: ReaderState['viewInstances']; readonly handoffs?: ReaderState['liveHandoffs']; readonly adopted?: (viewId: string, ownerGeneration: string) => void; readonly saved: ReaderState['discussionViews']; readonly save: ReaderApi['saveDiscussionView'] }) {
   const itemIds = useRef(new Map<string, string>());
   const revisions = useRef(new Map<string, { intent: number; collapse: number }>());
   const sessions = useRef(new Map<string, DiscussionViewSession>());
@@ -25,8 +25,12 @@ export function useDiscussionViews(options?: { readonly collapse?: ReaderState['
   }, []);
   return useMemo(() => ({
     /** Only future sessions consume seeds. Acknowledgments never rehydrate a live view. */
-    hydrate(state: Pick<ReaderState, 'viewInstances' | 'discussionViews' | 'discussionCollapse'>) {
-      if (initial.current) initial.current = { ...initial.current, instances: state.viewInstances, saved: state.discussionViews, collapse: state.discussionCollapse };
+    hydrate(state: Pick<ReaderState, 'viewInstances' | 'discussionViews' | 'discussionCollapse' | 'liveHandoffs'>) {
+      for (const [id, session] of sessions.current) {
+        const before = initial.current?.instances?.[id], after = state.viewInstances[id];
+        if (before && (!after || before.ownerGeneration !== after.ownerGeneration)) { session.dispose(); sessions.current.delete(id); itemIds.current.delete(id); revisions.current.delete(id); }
+      }
+      if (initial.current) initial.current = { ...initial.current, instances: state.viewInstances, handoffs: state.liveHandoffs, saved: state.discussionViews, collapse: state.discussionCollapse };
     },
     hydrateView(seed: import('../shared/reader-sync').SharedViewSnapshot) {
       const configuration = initial.current;
@@ -35,8 +39,19 @@ export function useDiscussionViews(options?: { readonly collapse?: ReaderState['
       if (prior && (prior.intentRevision > seed.instance.intentRevision || prior.collapseRevision > seed.instance.collapseRevision)) return;
       initial.current = { ...configuration, instances: { ...configuration.instances, [seed.viewId]: seed.instance },
         saved: seed.intent ? { ...configuration.saved, [seed.viewId]: seed.intent } : configuration.saved,
-        collapse: seed.collapse ? { ...configuration.collapse, [seed.viewId]: seed.collapse } : configuration.collapse };
+        collapse: seed.collapse ? { ...configuration.collapse, [seed.viewId]: seed.collapse } : configuration.collapse,
+        handoffs: seed.handoff ? { ...configuration.handoffs, [seed.viewId]: seed.handoff } : configuration.handoffs };
     },
+    async prepareTransfer(id: string, comments: readonly Comment[], item: ContentItem, stamp: import('../shared/reader-sync').SharedStamp, signal?: AbortSignal) {
+      const session = this.get(id, comments, item.id);
+      await session.restore(comments, item);
+      if (signal?.aborted) throw new Error('Transfer cancelled');
+      const handoff = await session.prepareTransfer(id, item.id, stamp, item.latestAcceptedDiscoveryId ?? null, signal);
+      const revision = revisions.current.get(id), instance = initial.current?.instances?.[id];
+      if (!revision || !instance || sessions.current.get(id) !== session) throw new Error('Source removed');
+      return { handoff, intentRevision: revision.intent, collapseRevision: revision.collapse, ownerGeneration: instance.ownerGeneration ?? null };
+    },
+    resumeTransfer(id: string) { sessions.current.get(id)?.resumeTransfer(); },
     async prepareDuplicate(id: string) {
       const session = sessions.current.get(id);
       if (session && !await session.checkpointForDuplicate()) throw new Error('Source checkpoint failed');
@@ -56,15 +71,21 @@ export function useDiscussionViews(options?: { readonly collapse?: ReaderState['
         session = new DiscussionViewSession(comments, createQueryExecutor(), undefined, undefined, {
           collapse: removed.current.has(id) ? undefined : configuration?.collapse?.[id],
           saveCollapse: saveCollapse ? async change => {
-            const result = await saveCollapse({ viewId: id, expectedRevision: revision.collapse, ...change });
+            const result = await saveCollapse({ viewId: id, expectedRevision: revision.collapse, ...(instance?.ownerGeneration ? { ownerGeneration: instance.ownerGeneration } : {}), ...change });
             if (result.ok) revision.collapse++; return result;
           } : undefined,
           saved: removed.current.has(id) ? undefined : configuration?.saved[id],
           save: configuration ? async intent => {
-            const result = await configuration.save({ viewId: id, expectedRevision: revision.intent, ...intent });
+            const result = await configuration.save({ viewId: id, expectedRevision: revision.intent, ...(instance?.ownerGeneration ? { ownerGeneration: instance.ownerGeneration } : {}), ...intent });
             if (result.ok) revision.intent++; return result;
           } : undefined,
         });
+        const handoff = configuration?.handoffs?.[id];
+        if (handoff) {
+          session.adoptTransfer(handoff, comments);
+          const generation = instance?.ownerGeneration;
+          if (generation) queueMicrotask(() => configuration?.adopted?.(id, generation));
+        }
         sessions.current.set(id, session);
       }
       return session;
@@ -81,7 +102,7 @@ export function useDiscussionViews(options?: { readonly collapse?: ReaderState['
           if (command.kind !== 'view' && command.kind !== 'collapse') return entry;
           const lane = command.kind === 'view' ? 'intent' : 'collapse';
           const expectedRevision = lane === 'intent' ? revision.intent : collapse++;
-          return { command: { ...command, request: { ...command.request, expectedRevision } } as typeof command,
+          return { command: { ...command, request: { ...command.request, expectedRevision, ...(initial.current?.instances?.[id]?.ownerGeneration ? { ownerGeneration: initial.current.instances[id].ownerGeneration } : {}) } } as typeof command,
             accept: (result: Parameters<typeof entry.accept>[0]) => { if (result.ok) revision[lane] = expectedRevision + 1; entry.accept(result); } };
         });
       }))).flat();

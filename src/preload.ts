@@ -1,3 +1,4 @@
+import { transferChannels } from './shared/tab-transfer';
 import { sharedCommitChannel } from './shared/reader-sync';
 import { profileChannels } from './shared/profile-operation';
 import { acquisitionProgressChannel } from './shared/acquisition';
@@ -18,6 +19,10 @@ contextBridge.exposeInMainWorld('reader', createReaderBridge((channel, ...args) 
   const receive = (_event: Electron.IpcRendererEvent, value: unknown) => listener(value);
   ipcRenderer.on(profileChannels.event, receive);
   return () => { ipcRenderer.removeListener(profileChannels.event, receive); };
+}, listener => {
+  const receive = (_event: Electron.IpcRendererEvent, value: unknown) => listener(value);
+  ipcRenderer.on(transferChannels.event, receive);
+  return () => { ipcRenderer.removeListener(transferChannels.event, receive); };
 }));
 
 // A fixed main-world adapter, never a renderer evaluation capability. Chromium's

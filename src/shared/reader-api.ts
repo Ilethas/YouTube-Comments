@@ -19,6 +19,7 @@ export type Result<T> = { readonly ok: true; readonly value: T; readonly sync?: 
   | { readonly ok: false; readonly sync?: SharedStamp | SharedCommit; readonly error: { readonly code: ErrorCode } };
 
 export interface ReaderState {
+  readonly liveHandoffs?: Readonly<Record<string, import('./tab-transfer').LiveViewHandoff>>;
   /** Items include a main-derived latest accepted discovery attempt; NEW can be
    * reconstructed after restart without a renderer flag or extra IPC command. */
   readonly items: readonly ContentItem[];
@@ -66,6 +67,7 @@ export interface AcquisitionResult {
 
 /** Intent-only capabilities. No generic invoke, SQL, executable input or Node handles. */
 export interface ReaderApi {
+  readonly transfers?: import('./tab-transfer').TabTransferApi;
   /** Payload-free readiness for this authenticated native window only. */
   windowReady?(): Promise<Result<null>>;
   /** Accept a Close request for this document's native window; M3 owns completion. */

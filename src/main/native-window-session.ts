@@ -25,10 +25,11 @@ export class NativeWindowSession {
       this.provisional.set(id, previous); return id;
     }));
     windows.setNativeHooks({
-      geometry: id => this.placement(id), created: (window, id) => {
+      available: id => !this.restoring && !!this.states.get(id)?.shown && !!this.states.get(id)?.ready,
+      geometry: id => this.placement(id), created: (window, id, transferProvisional) => {
         this.bind(window, id);
         // Publish live membership only AFTER native construction + registration.
-        if (this.provisional.has(id)) service.mutateNativeSession(store => store.quit(windows.nativeWindows().map(w => w.windowId), this.focused));
+        if (!transferProvisional && this.provisional.has(id)) service.mutateNativeSession(store => store.quit(windows.nativeWindows().filter(w => !this.windows.isTransferProvisional(w.windowId)).map(w => w.windowId), this.focused));
       },
       failed: (id, restoring, asynchronous) => {
         this.states.delete(id);
@@ -76,7 +77,7 @@ export class NativeWindowSession {
       if (!state.ready || this.restoring || this.quitting || this.service.restarting) return;
       this.focused = id; this.focusDirty = true; this.schedule(state);
     });
-    window.once('closed', () => { clearTimeout(state.timer); this.states.delete(id); });
+    window.once('closed', () => { clearTimeout(state.timer); this.states.delete(id); this.provisional.delete(id); });
   }
   private capture(state: NativeState): void {
     if (!state.shown || this.service.restarting || this.quitting || state.window.isDestroyed()) return;
@@ -120,7 +121,7 @@ export class NativeWindowSession {
   /** Called after the M3 Quit drain, BEFORE shutdown or native destruction. */
   prepareQuit(): void {
     this.flush(true);
-    this.service.mutateNativeSession(store => store.quit(this.windows.nativeWindows().map(w => w.windowId), this.focused), true);
+    this.service.mutateNativeSession(store => store.quit(this.windows.nativeWindows().filter(w => !this.windows.isTransferProvisional(w.windowId)).map(w => w.windowId), this.focused), true);
     this.stop();
   }
   stop(): void { this.quitting = true; for (const state of this.states.values()) clearTimeout(state.timer); }
@@ -136,8 +137,9 @@ export class NativeWindowSession {
     this.capture(state); this.schedule(state);
   }
   private ready(id: string): void {
-    const state = this.states.get(id); if (!state || state.ready || this.service.restarting) return;
+    const state = this.states.get(id); if (!state || state.shown || this.service.restarting) return;
     state.ready = true;
+    if (this.windows.isTransferProvisional(id)) return;
     this.provisional.delete(id);
     if (this.restoring) {
       if (!this.restoring.ids.every(value => this.states.get(value)?.ready)) return;

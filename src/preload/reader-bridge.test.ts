@@ -3,6 +3,7 @@ import { createReaderBridge } from './reader-bridge';
 import { readerChannels } from '../shared/reader-api';
 import { defaultQuery } from '../domain/discussion-query';
 import { profileChannels } from '../shared/profile-operation';
+import { transferChannels } from '../shared/tab-transfer';
 
 it('exposes only explicit intent and progress methods without a generic privileged transport', async () => {
   const invoke = vi.fn(async () => ({ ok: true, value: {} }));
@@ -77,6 +78,21 @@ it('progress subscription validates exact payloads and returns transport cleanup
   cleanup(); expect(unsubscribe).toHaveBeenCalledTimes(1);
   await api.cancelAcquisition({ operationId: 'opaque-id' }); await api.getAcquisitionProgress();
   expect(invoke.mock.calls).toEqual([[readerChannels.cancelAcquisition, { operationId: 'opaque-id' }], [readerChannels.getAcquisitionProgress]]);
+});
+it('transfer namespace is frozen and narrow; notifications validate before exposing data and listeners clean up', async () => {
+  const invoke = vi.fn(async () => ({ ok: true, value: null })), unsubscribe = vi.fn();
+  let receive!: (value: unknown) => void;
+  const api = createReaderBridge(invoke, undefined, undefined, undefined, listener => { receive = listener; return unsubscribe; });
+  const transfers = api.transfers; if (!transfers) throw Error('Missing transfer namespace');
+  expect(Object.isFrozen(transfers)).toBe(true);
+  expect(Object.keys(transfers).sort()).toEqual(['adopted', 'begin', 'cancel', 'destinations', 'move', 'onEvent', 'ready']);
+  await transfers.begin({ tabId: 'owned', expectedRevision: 2, destination: 'new' });
+  expect(invoke).toHaveBeenLastCalledWith(transferChannels.begin, { tabId: 'owned', expectedRevision: 2, destination: 'new' });
+  await transfers.cancel({ token: 'exact-token' }); expect(invoke).toHaveBeenLastCalledWith(transferChannels.cancel, { token: 'exact-token' });
+  const listener = vi.fn(), remove = transfers.onEvent(listener);
+  receive({ kind: 'prepare', token: 'x', tabKind: 'discussion', handoff: { version: 99 } });
+  receive({ kind: 'committed', token: 'x', tabId: 'owned', handle: 'untrusted' }); expect(listener).not.toHaveBeenCalled();
+  receive({ kind: 'committed', token: 'x', tabId: 'owned' }); expect(listener).toHaveBeenCalledOnce(); remove(); expect(unsubscribe).toHaveBeenCalledOnce();
 });
 
 it('M3 exposes only fixed lifecycle intents and validates lifecycle notifications and cleanup', async () => {

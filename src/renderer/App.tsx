@@ -1,3 +1,7 @@
+import { MoveTabDialog } from './MoveTabDialog';
+import { DiscussionViewSession } from './discussion-view-session';
+import { createQueryExecutor } from './query-executor';
+import type { TransferRequest } from '../shared/tab-transfer';
 import { ReaderReplica } from './reader-replica';
 import { AcquisitionStatus } from './AcquisitionStatus';
 import { useAcquisitionProgress } from './use-acquisition-progress';
@@ -57,7 +61,9 @@ export function App({ api: transport = window.reader }: { api?: ReaderApi }) {
 }
 
 function Reader({ initialState, api, replica }: { initialState: ReaderState; api: ReaderApi; replica?: ReaderReplica }) {
-  const views = useDiscussionViews({ instances: initialState.viewInstances, collapse: initialState.discussionCollapse, saveCollapse: request => api.setDiscussionCollapse(request), saved: initialState.discussionViews, save: request => api.saveDiscussionView(request) });
+  const views = useDiscussionViews({ instances: initialState.viewInstances, handoffs: initialState.liveHandoffs, adopted: (viewId, ownerGeneration) => {
+    replica?.releaseHandoff(viewId, ownerGeneration); void api.transfers?.adopted({ viewId, ownerGeneration });
+  }, collapse: initialState.discussionCollapse, saveCollapse: request => api.setDiscussionCollapse(request), saved: initialState.discussionViews, save: request => api.saveDiscussionView(request) });
   const [items, setItems] = useState(initialState.items);
   const [locale, setLocale] = useState<Locale>(initialState.preferences.locale);
   const [appearance, setAppearance] = useState<Appearance>(initialState.preferences.appearance);
@@ -71,6 +77,18 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const activeTab = workspace.tabs.find(tab => tab.id === activeId);
   activeDiscussion.current = activeTab?.kind === 'discussion' ? activeTab.id : undefined;
   const [cloning, setCloning] = useState(false);
+  const [moveDialog, setMoveDialog] = useState<{ id: string; newWindow: boolean }>();
+  const [movingId, setMovingId] = useState<string>();
+  const moving = useRef<string>();
+  const cancelledMove = useRef(false);
+  const movingToken = useRef<string>();
+  const moveAbort = useRef<AbortController>();
+  const [moveFeedback, setMoveFeedback] = useState<'movingTab' | 'tabMoved' | 'tabReceived' | 'moveFailed'>();
+  const [transferFocus, setTransferFocus] = useState<string>();
+  const provisional = useRef<{ token: string; session?: DiscussionViewSession }>();
+  const settingsDirty = useRef(false);
+  const markSettingsDirty = useCallback((value: boolean) => { settingsDirty.current = value; }, []);
+
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const workspaceBusy = useRef(false);
   const [showAcquisition, setShowAcquisition] = useState(false);
@@ -116,7 +134,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const profileController = useRef<RendererProfileLifecycle>();
   const [releaseFailed, setReleaseFailed] = useState(false);
   const otherSaveFailed = useRef(false);
-  useLayoutEffect(() => { if (shell.current) shell.current.inert = profileBusy || cloning; }, [profileBusy, cloning]);
+  useLayoutEffect(() => { if (shell.current) shell.current.inert = profileBusy || cloning || !!movingId; }, [profileBusy, cloning, movingId]);
   useLayoutEffect(() => { if (profileBusy) profileOverlay.current?.focus({ preventScroll: true }); }, [profileBusy]);
   const afterData = useRef(new Set<() => void>());
   const acknowledgedSeen = useRef(new Map<string, boolean>());
@@ -257,6 +275,106 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       }, '@active');
     } finally { setCloning(false); }
   }
+  async function transfer(tabId: string, destination: TransferRequest['destination']) {
+    const transferApi = api.transfers;
+    if (!transferApi || moving.current || workspaceBusy.current || dataBusy.current) return;
+    const tab = workspace.tabs.find(tab => tab.id === tabId); if (!tab) return;
+    moving.current = tabId; cancelledMove.current = false; setMovingId(tabId); setMoveDialog(undefined); setMoveFeedback('movingTab');
+    if (shell.current) shell.current.inert = true;
+    document.getSelection()?.removeAllRanges(); setRemoving(undefined);
+    const controller = new AbortController(); moveAbort.current = controller;
+    const timer = setTimeout(() => controller.abort(), 15000);
+    let committed = false;
+    const check = () => { if (controller.signal.aborted || cancelledMove.current || dataBusy.current) throw new Error('Transfer cancelled'); };
+    try {
+      const prepare = async () => {
+        const begun = await transferApi.begin({ tabId, destination, expectedRevision: workspace.revision });
+        if (!begun.ok) throw new Error('Reservation failed');
+        if (controller.signal.aborted || moveAbort.current !== controller) {
+          void transferApi.cancel({ token: begun.value.token }); throw new Error('Obsolete reservation reply');
+        }
+        movingToken.current = begun.value.token;
+        await saveQueue.current; check();
+        if (lastSaveFailed.current || api.lifecycle && !await api.lifecycle.settleAccepted()) throw new Error('Pending command failed');
+        await replica?.check(); check();
+        // Shared Refresh reconciliation queues its worker after React promotes
+        // the new content props. Wait for that accepted work before capturing
+        // the source, rather than stamping old results with newer metadata.
+        if (tab.kind === 'discussion') {
+          for (;;) {
+            const refreshing = sharedRefreshes.current.get(tab.itemId);
+            if (!refreshing) break;
+            await refreshing; check();
+          }
+        }
+        const stamp = replica?.stamp;
+        const current = replica?.current ?? sharedState.current;
+        const item = tab.kind === 'discussion' ? current.items.find(item => item.id === tab.itemId) : undefined;
+        const live = item && stamp ? await views.prepareTransfer(tab.id, current.comments[item.id], item, stamp, controller.signal) : undefined;
+        if (tab.kind === 'discussion' && !live) throw new Error('Transfer unavailable');
+        check();
+        return { token: begun.value.token, request: { tabId, destination, expectedRevision: workspace.revision,
+          intentRevision: live?.intentRevision ?? null, collapseRevision: live?.collapseRevision ?? null,
+          ownerGeneration: live?.ownerGeneration ?? null, handoff: live?.handoff ?? null } };
+      };
+      const cancelled = new Promise<never>((_resolve, reject) => controller.signal.addEventListener('abort', () => reject(new Error('Transfer cancelled')), { once: true }));
+      const submission = await Promise.race([prepare(), cancelled]);
+      clearTimeout(timer);
+      const result = await api.transfers.move(submission);
+      committed = result.ok;
+      if (result.sync) await replica?.reconcile(result.sync);
+      setMoveFeedback(result.ok ? 'tabMoved' : 'moveFailed');
+    } catch { setMoveFeedback(committed ? 'tabMoved' : 'moveFailed'); }
+    finally {
+      clearTimeout(timer); controller.abort();
+      if (movingToken.current) void api.transfers.cancel({ token: movingToken.current });
+      movingToken.current = undefined; moveAbort.current = undefined;
+      views.resumeTransfer(tabId); moving.current = undefined; setMovingId(undefined);
+      if (shell.current) shell.current.inert = dataBusy.current;
+      requestAnimationFrame(() => {
+        if (moving.current || dataBusy.current || document.querySelector('[role=menu], dialog[open]')) return;
+        (document.getElementById(`tab-${tabId}`) ?? document.querySelector<HTMLElement>('[role=tab][aria-selected=true]') ?? document.getElementById('library-toggle'))?.focus();
+      });
+    }
+  }
+  useEffect(() => {
+    if (!api.transfers) return;
+    const unsubscribe = api.transfers.onEvent(event => {
+      if (event.kind === 'cancelled' && movingToken.current === event.token) moveAbort.current?.abort();
+      if (event.kind === 'prepare') {
+        if (dataBusy.current || workspaceBusy.current || moving.current || provisional.current) {
+          void api.transfers?.ready({ token: event.token, accept: false }); return;
+        }
+        const prepared: { token: string; session?: DiscussionViewSession } = { token: event.token };
+        provisional.current = prepared;
+        void (async () => {
+          let accept = false;
+          try {
+            const h = event.handoff;
+            if (h) {
+              await replica?.reconcile(h.stamp);
+              if (provisional.current !== prepared || dataBusy.current) throw new Error('Readiness cancelled');
+              const rows = replica?.current.comments[h.itemId] ?? displayedComments.current[h.itemId];
+              const owned = new Set(rows?.map(c => c.id));
+              if (!rows || h.result.visibleCommentIds.some(id => !owned.has(id))) throw new Error('Item unavailable');
+              prepared.session = new DiscussionViewSession(rows, createQueryExecutor()); prepared.session.adoptTransfer(h, rows);
+            }
+            accept = provisional.current === prepared && !dataBusy.current;
+          } catch { prepared.session?.dispose(); }
+          if (!accept && provisional.current === prepared) provisional.current = undefined;
+          void api.transfers?.ready({ token: event.token, accept });
+        })();
+      } else if (provisional.current?.token === event.token) {
+        provisional.current.session?.dispose(); provisional.current = undefined;
+        if (event.kind === 'committed') { setTransferFocus(event.tabId); setMoveFeedback('tabReceived'); }
+      }
+    });
+    return () => { unsubscribe(); provisional.current?.session?.dispose(); provisional.current = undefined; moveAbort.current?.abort(); };
+  }, [api, replica]);
+  useLayoutEffect(() => {
+    if (!transferFocus || !workspace.tabs.some(t => t.id === transferFocus)) return;
+    document.getElementById(`tab-${transferFocus}`)?.focus(); setTransferFocus(undefined);
+  }, [workspace, transferFocus]);
   function close(tabId: string) {
     const tab = workspace.tabs.find(tab => tab.id === tabId);
     if (tab?.kind === 'discussion') void views.flush(tab.id);
@@ -340,6 +458,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     };
     const lifecycle = new RendererProfileLifecycle(api.lifecycle, {
       freeze: () => {
+        cancelledMove.current = true; moveAbort.current?.abort(); setMoveDialog(undefined);
         if (!dataBusy.current) profilePreviousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         dataBusy.current = true;
         if (shell.current) shell.current.inert = true;
@@ -439,9 +558,9 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   }, [workspace, activeId, helpRequest, removing]);
   useEffect(() => {
     function keyboard(event: KeyboardEvent) {
-      if (dataBusy.current) return;
+      if (dataBusy.current || moving.current || provisional.current) return;
       const tab = workspace.tabs.find(tab => tab.id === activeId);
-      const command = readerShortcut(event, { activeKind: tab?.kind, modalOpen: !!removing || bulkModalOpen, workspaceBusy: workspaceBusy.current, undoAvailable: tab?.kind === 'discussion' && !!seenUndo[tab.itemId] });
+      const command = readerShortcut(event, { activeKind: tab?.kind, modalOpen: !!removing || bulkModalOpen || !!moveDialog, workspaceBusy: workspaceBusy.current, undoAvailable: tab?.kind === 'discussion' && !!seenUndo[tab.itemId] });
       if (!command) return;
       if (command === 'next-tab' || command === 'previous-tab') {
         const index = workspace.tabs.findIndex(value => value.id === activeId);
@@ -500,7 +619,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     {completion && <div className="acquisition-completion" aria-live="polite">{t('acquisitionSummary', { inserted: completion.summary.inserted, updated: completion.summary.updated, warnings: completion.summary.warnings })}
       {completion.timings && <> {t('acquisitionCompleted', { seconds: new Intl.NumberFormat(locale, { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(completion.timings.totalMs / 1000) })}</>}</div>}
     {acquisitionError && <div className="save-error" role="alert">{t(errorKey)}</div>}
-    <WorkspaceTabs workspace={workspace} locale={locale} disabled={workspaceSaving}
+    <WorkspaceTabs workspace={workspace} locale={locale} disabled={workspaceSaving || !!movingId}
+      transfer={api.transfers ? (id, newWindow) => { setMoveDialog({ id, newWindow }); } : undefined}
       label={tab => {
         if (tab.kind !== 'discussion') return t(tab.kind);
         const item = items.find(item => item.id === tab.itemId);
@@ -553,7 +673,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
         }}>
           {(['system', 'light', 'dark'] as const).map(value => <option key={value} value={value}>{t(value)}</option>)}
         </select></label>
-        <TranslationSettings preferences={{ translationTarget, customTranslationTarget }} locale={locale} disabled={saving}
+        <TranslationSettings preferences={{ translationTarget, customTranslationTarget }} onDirty={markSettingsDirty} locale={locale} disabled={saving}
           save={change => save(() => api.updatePreferences(change), value => {
             if (!replica) { setTranslationTarget(value.translationTarget); setCustomTranslationTarget(value.customTranslationTarget); }
           }, undefined, { kind: 'updatePreferences', request: change })} />
@@ -584,13 +704,20 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       cancel={() => setRemoving(undefined)} remove={() => { void removeItem(); }} />}
     {openItems.map(({ tab, item }) => <main key={tab.id} id={`panel-${tab.id}`} data-item-id={item.id} data-view-id={tab.id} role="tabpanel" aria-labelledby={`tab-${tab.id}`}
       className="reader-panel" hidden={activeId !== tab.id} tabIndex={0}>
-      {(activeId === tab.id || views.has(tab.id)) && <DiscussionPanel viewId={tab.id} active={activeId === tab.id} item={item} comments={comments[item.id]} session={views.get(tab.id, comments[item.id], item.id)}
+      {(activeId === tab.id || views.has(tab.id)) && <DiscussionPanel viewId={tab.id} active={activeId === tab.id} frozen={movingId === tab.id} item={item} comments={comments[item.id]} session={views.get(tab.id, comments[item.id], item.id)}
         selectionControls={selectionControls} includeCollapsedInPrefix={includeCollapsedInPrefix}
         locale={locale} saving={saving && savingItemId === item.id} refreshDisabled={!!acquiring || !!progress}
         coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onAction={openCommentAction} onToggle={toggleComment}
         undo={seenUndo[item.id]} feedback={seenFeedback[item.id]} onBulk={bulkSeen} onUndo={undoSeen} onBulkModal={setBulkModalOpen} />}
     </main>)}
-  </div>{profileBusy && <div className="profile-operation-overlay" role="dialog" aria-modal="true" tabIndex={-1} ref={profileOverlay} aria-label={t('profileQuiescing')}>
+  </div>{moveFeedback && <p role="status" aria-live="polite">{t(moveFeedback)}</p>}
+  {movingId && !profileBusy && <div className="profile-operation-overlay" role="dialog" aria-modal="true" aria-label={t('movingTab')}>
+    <p>{t('movingTab')}</p><button autoFocus onClick={() => { cancelledMove.current = true; moveAbort.current?.abort(); if (movingToken.current) void api.transfers?.cancel({ token: movingToken.current }); }}>{t('cancel')}</button>
+  </div>}
+  {moveDialog && api.transfers && !profileBusy && <MoveTabDialog api={api.transfers} locale={locale} newWindow={moveDialog.newWindow}
+    dirty={workspace.tabs.find(t => t.id === moveDialog.id)?.kind === 'settings' && settingsDirty.current}
+    cancel={() => setMoveDialog(undefined)} move={destination => { void transfer(moveDialog.id, destination); }} />}
+  {profileBusy && <div className="profile-operation-overlay" role="dialog" aria-modal="true" tabIndex={-1} ref={profileOverlay} aria-label={t('profileQuiescing')}>
     <p role="status"><span className="acquisition-spinner" aria-hidden="true" /> {t('profileQuiescing')}</p>
     {releaseFailed && <div role="alert"><p>{t('profileReconcileFailed')}</p><button autoFocus data-profile-retry onClick={() => profileController.current?.retryRelease()}>{t('retry')}</button></div>}
   </div>}</>;

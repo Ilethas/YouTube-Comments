@@ -1,3 +1,4 @@
+import type { TabTransferCoordinator } from './tab-transfer-coordinator';
 import type { SharedCommit, SharedSnapshot, SharedItemSnapshot, SharedMetadata, SharedViewSnapshot } from '../shared/reader-sync';
 import type { ReaderCallerContext } from './caller-context';
 import { isCancelAcquisitionRequest } from '../shared/acquisition';
@@ -71,6 +72,10 @@ export class ReaderService {
   private nativeCheckpoint?: () => void;
   setNativeCheckpoint(flush: () => void): void { this.nativeCheckpoint = flush; }
   flushNativeCheckpoint(): void { if (!this.restartPending) this.nativeCheckpoint?.(); }
+  private transfers?: TabTransferCoordinator;
+  attachTransfers(value: TabTransferCoordinator): void { this.transfers = value; }
+  transferRepository(): ReaderRepository { if (!this.repository) throw new Error('Storage unavailable'); return this.repository; }
+  transfersAllowed(caller?: ReaderCallerContext): boolean { return this.nativeWritesAllowed() && !this.lifecycle?.blocks(caller); }
   private lifecycle?: ProfileOperationCoordinator;
   attachLifecycle(coordinator: ProfileOperationCoordinator): void { this.lifecycle = coordinator; }
   private lastProfileStamp?: import('../shared/reader-sync').SharedStamp;
@@ -88,7 +93,7 @@ export class ReaderService {
   get restarting(): boolean { return this.restartPending; }
   profileCheckpointAllowed(command: DrainCommand, caller?: ReaderCallerContext): boolean {
     if ('ticket' in command) return true;
-    try { return !!this.repository?.ownedView(caller?.windowId ?? this.repository.initialWindowId(), command.request.viewId); } catch { return false; }
+    try { this.repository?.validateOwnerAuthority(command.request.viewId, command.request.ownerGeneration); return !!this.repository?.ownedView(caller?.windowId ?? this.repository.initialWindowId(), command.request.viewId); } catch { return false; }
   }
   async settleDataOperation(): Promise<void> { await this.dataPending; }
   private readonly helperEvidence = new Map<string, string>();
@@ -261,6 +266,12 @@ export class ReaderService {
       else if (operation === 'moveTab' && isMoveTabRequest(args[0])) value = this.repository.changeWorkspace(operation, args[0].tabId, args[0].toIndex, windowId, args[0].expectedRevision);
       else if ((operation === 'openLibrary' || operation === 'openSettings') && isTopologyRequest(args[0])) value = this.repository.changeWorkspace(operation, undefined, undefined, windowId, args[0].expectedRevision);
       else return { ok: false, error: { code: 'INVALID_REQUEST' } };
+      if (caller && this.transfers) {
+        const liveHandoffs = this.transfers.liveHandoffs(caller);
+        if (operation === 'bootstrap') value = { ...(value as ReaderState), liveHandoffs };
+        else if (operation === 'getSharedSnapshot' && value && 'state' in value) value = { ...value, state: { ...value.state, liveHandoffs } };
+        else if (operation === 'getDiscussionView' && value && 'viewId' in value && liveHandoffs[value.viewId]) value = { ...value, handoff: liveHandoffs[value.viewId] };
+      }
       return { ok: true, value };
     } catch (error) {
       if (!(error instanceof UndoConflictError)) this.diagnose(error);

@@ -1,5 +1,13 @@
 # Multi-window readiness audit
 
+**M7 implementation, 2026-10-19:**
+[ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) implements atomic
+explicit cross-window moves, frozen runtime handoff, owner-generation/ABA fencing,
+singleton merge and secured provisional natives without a schema increment.
+[TESTING](TESTING.md) is the current evidence ledger. The original audit and earlier
+milestone findings below remain historical. M8 native gestures and M9 aggregate
+scale/release remain outside M7.
+
 **M6 update, 2026-10-18:** [ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) implements equal production native
 windows, explicit restore membership and safe DIP geometry on schema **14**. B8's
 code foundation is implemented; physical/manual limitations are recorded in

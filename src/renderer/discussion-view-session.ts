@@ -1,3 +1,5 @@
+import type { LiveViewHandoff } from '../shared/tab-transfer';
+import type { SharedStamp } from '../shared/reader-sync';
 import { expandedDiscussion, changeCollapse } from '../domain/discussion-collapse';
 import { toggleBulkSelection } from './comment-selection';
 import type { DiscussionCollapse, CollapseChange } from '../domain/discussion-collapse';
@@ -50,6 +52,11 @@ export interface ReaderScrollAnchor { readonly id?: string; readonly offset: num
  * applied criteria at invocation, preserving controls and errors without emptying results. */
 export class DiscussionViewSession {
   state: DiscussionViewState;
+  private transferFrozen = false;
+  private profileFrozen = false;
+  private transferSequence = 0;
+  private transferredDiscovery?: { id: string | null };
+  private deferredRefresh?: { comments: readonly Comment[]; item?: ContentItem };
   private readonly listeners = new Set<() => void>();
   /** Stable subscription functions let a panel observe only its own session. */
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -65,15 +72,18 @@ export class DiscussionViewSession {
   private bulkAnchor?: string;
   /** Session-only bulk identity, independent of durable navigation selection. */
   setSelectionMode(selectionMode: boolean): void {
+    if (this.transferFrozen || this.disposed) return;
     this.state = { ...this.state, selectionMode, bulkSelected: selectionMode ? this.state.bulkSelected : new Set() };
     if (!selectionMode) this.bulkAnchor = undefined;
     this.changed();
   }
   clearBulkSelection(): void {
+    if (this.transferFrozen || this.disposed) return;
     this.bulkAnchor = undefined;
     this.state = { ...this.state, bulkSelected: new Set() }; this.changed();
   }
   toggleBulk(id: string, shift: boolean): void {
+    if (this.transferFrozen || this.disposed) return;
     const displayed = this.displayed(this.currentComments);
     if (!displayed.indexById.has(id)) return;
     const bulkSelected = toggleBulkSelection(this.state.bulkSelected, id, this.bulkAnchor, shift, displayed);
@@ -96,6 +106,7 @@ export class DiscussionViewSession {
   /** Explicit header scrolling supersedes an unfinished sort/collapse reveal,
    * retaining logical navigation selection, criteria and settled-anchor saving. */
   scrollToStart(): void {
+    if (this.transferFrozen || this.disposed) return;
     this.state = { ...this.state, scrollRequest: { revision: ++this.scrollRevision, kind: 'restore', offset: 0 } };
     this.changed();
   }
@@ -134,7 +145,7 @@ export class DiscussionViewSession {
   /** Manual changes retain hidden selection and restore a hidden anchor to its
    * visible hiding ancestor. Navigation alone opens ancestors of its exact ID. */
   setCollapsed(change: CollapseChange): void {
-    if (this.state.restoring) return;
+    if (this.state.restoring || this.transferFrozen) return;
     const anchor = this.captureAnchor?.() ?? { id: this.anchor.commentId ?? undefined, offset: this.anchor.offset };
     this.state = { ...this.state, collapse: changeCollapse(this.state.collapse, change) };
     const projected = this.displayed(this.currentComments);
@@ -156,7 +167,7 @@ export class DiscussionViewSession {
   /** Capture identity before explicit reorder; retain selection without navigating
    * to a match. No attached/valid anchor means discussion start. */
   setSort(sort: DiscussionSort): void {
-    if (this.state.restoring) return;
+    if (this.state.restoring || this.transferFrozen) return;
     if (this.state.sort === sort) return;
     const anchor = this.captureAnchor?.();
     const kept = anchor?.id !== undefined && this.state.result.visibleCommentIds.includes(anchor.id) ? anchor : undefined;
@@ -200,6 +211,10 @@ export class DiscussionViewSession {
   }
   /** Fresh resolver/worker evaluation is lazy and idempotent under StrictMode. */
   restore(comments: readonly Comment[], item?: ContentItem): Promise<void> {
+    if (this.transferredDiscovery) {
+      const prior = this.transferredDiscovery; this.transferredDiscovery = undefined;
+      if (item && (item.latestAcceptedDiscoveryId ?? null) !== prior.id) return this.apply(comments, true, item);
+    }
     if (!this.saved) return Promise.resolve();
     if (this.restoreStarted) return this.restoreTask ?? Promise.resolve();
     this.restoreStarted = true;
@@ -209,6 +224,7 @@ export class DiscussionViewSession {
   /** A committed Refresh arriving during initial reconstruction must still
    * reevaluate its current durable rows after that reconstruction completes. */
   async refresh(comments: readonly Comment[], item?: ContentItem): Promise<void> {
+    if (this.transferFrozen || this.profileFrozen) { this.deferredRefresh = { comments, item }; return; }
     if (this.state.restoring) await this.restore(comments, item);
     await this.apply(comments, true, item);
   }
@@ -243,9 +259,38 @@ export class DiscussionViewSession {
     } while (this.state.pending || this.saveQueue?.dirty || this.collapseQueue?.dirty);
     return true;
   }
+  /** Input freezes first; accepted evaluation may finish, then both FIFO writers
+   * must acknowledge the captured logical state before main gets a snapshot. */
+  async prepareTransfer(viewId: string, itemId: string, stamp: SharedStamp, discoveryId: string | null, signal?: AbortSignal): Promise<LiveViewHandoff> {
+    this.transferFrozen = true; const sequence = ++this.transferSequence;
+    if (!await this.checkpointForDuplicate()) throw new Error('Final source save failed');
+    if (signal?.aborted || sequence !== this.transferSequence) throw new Error('Transfer cancelled');
+    this.readerSettled(); this.saveQueue?.schedule(0); await this.flush();
+    if (this.state.saveFailed || this.state.collapseSaveFailed || this.disposed || this.draining || !this.transferFrozen || sequence !== this.transferSequence || signal?.aborted) throw new Error('Final source save failed');
+    const presentation = this.presentation(this.currentComments);
+    this.freeze(false, false);
+    return { version: 1, viewId, itemId, stamp, discoveryId, intent: this.persistentIntent(), result: this.state.result, runtimeApplied: this.state.applied, restoreFailed: !!this.state.restoreFailed, error: this.state.error ?? null,
+      orderedIds: presentation.orderedIds, mostLikedAvailable: presentation.mostLikedAvailable, seenStale: this.state.seenStale,
+      bulkSelected: [...this.state.bulkSelected], bulkAnchor: this.bulkAnchor ?? null, selectionMode: this.state.selectionMode };
+  }
+  /** Adoption skips semantic reconstruction. Only application identities/results
+   * cross the process boundary; a new worker and new queues remain local. */
+  adoptTransfer(handoff: LiveViewHandoff, comments: readonly Comment[]): void {
+    this.restoreStarted = true; this.restoreTask = Promise.resolve();
+    this.transferredDiscovery = { id: handoff.discoveryId };
+    this.anchor = handoff.intent.anchor; this.durableApplied = handoff.intent.applied;
+    this.bulkAnchor = handoff.bulkAnchor ?? undefined;
+    this.state = { ...this.state, draft: handoff.intent.draft, applied: handoff.runtimeApplied, restoreFailed: handoff.restoreFailed, error: handoff.error ?? undefined, sort: handoff.intent.sort,
+      result: handoff.result, restoring: false, pending: false, seenStale: handoff.seenStale,
+      selected: handoff.intent.selected ?? undefined, bulkSelected: new Set(handoff.bulkSelected), selectionMode: handoff.selectionMode,
+      scrollRequest: { revision: ++this.scrollRevision, kind: 'restore', id: handoff.intent.anchor.commentId ?? undefined, offset: handoff.intent.anchor.offset } };
+    const value = projectReaderRows(comments, handoff.result, handoff.intent.sort, handoff);
+    this.presentationCache = { comments, result: handoff.result, sort: handoff.intent.sort, value };
+  }
   /** Freeze asynchronous timers before waiting for accepted worker intent. The
    * checkpoint uses the captured logical anchor, never an unmount side effect. */
-  freeze(capture = true): void {
+  freeze(capture = true, profile = true): void {
+    if (profile) this.profileFrozen = true;
     if (capture) this.readerSettled();
     this.draining = true; this.saveQueue?.pause(); this.collapseQueue?.pause();
   }
@@ -267,13 +312,28 @@ export class DiscussionViewSession {
     }
     return entries;
   }
-  resume(): void { this.draining = false; this.saveQueue?.resume(); this.collapseQueue?.resume(); }
+  /** Transfer cancellation cannot release a concurrent M3 queue pause. */
+  resumeTransfer(): void {
+    this.transferFrozen = false; this.transferSequence++;
+    if (!this.profileFrozen) { this.draining = false; this.saveQueue?.resume(); this.collapseQueue?.resume(); }
+    this.resumeRefresh();
+  }
+  resume(): void {
+    this.profileFrozen = false;
+    if (!this.transferFrozen) { this.draining = false; this.saveQueue?.resume(); this.collapseQueue?.resume(); }
+    this.resumeRefresh();
+  }
+  private resumeRefresh(): void {
+    if (this.disposed || this.transferFrozen || this.profileFrozen || !this.deferredRefresh) return;
+    const refresh = this.deferredRefresh; this.deferredRefresh = undefined;
+    void this.refresh(refresh.comments, refresh.item);
+  }
   edit(draft: DiscussionQuery): void {
-    if (this.state.restoring) return;
+    if (this.state.restoring || this.transferFrozen) return;
     this.state = { ...this.state, draft }; this.saveQueue?.schedule(draftSaveDelay); this.changed();
   }
   select(selected: string): void {
-    if (this.state.restoring || !this.state.result.visibleCommentIds.includes(selected)) return;
+    if (this.state.restoring || this.transferFrozen || !this.state.result.visibleCommentIds.includes(selected)) return;
     this.revealAncestors(selected);
     this.saveQueue?.schedule(intentSaveDelay);
     this.state = { ...this.state, selected, scrollRequest: { revision: ++this.scrollRevision, kind: 'navigate', id: selected } }; this.changed();
@@ -283,7 +343,7 @@ export class DiscussionViewSession {
     if (this.state.applied.seen !== 'all') { this.state = { ...this.state, seenStale: true }; this.changed(); }
   }
   async apply(comments: readonly Comment[], refresh = false, item?: ContentItem, restore = false): Promise<void> {
-    if (this.disposed) return;
+    if (this.disposed || this.transferFrozen) return;
     if (this.state.restoring && !restore) return;
     const restoreIntent = restore ? this.saved : undefined;
     const criteria = restoreIntent?.applied ?? (refresh ? this.state.applied : this.state.draft);

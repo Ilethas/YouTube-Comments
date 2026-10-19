@@ -1,5 +1,124 @@
 # Testing strategy
 
+## Atomic cross-window transfer (M7, 2026-10-19)
+
+[ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) implements M7 only,
+on schema **14** without migration changes. All added tests use independently
+owned OS-temp SQLite/native profiles. No owner production profile, Setup, installer,
+commit, push or publication is used. Historical milestone evidence below keeps its
+original scope.
+
+M7 adds **47 deterministic cases** over M6 (1,095 -> 1,142): 14 repository cases,
+19 coordinator cases, 12 renderer/session cases (including six real React component/
+hook cases), and two additional IPC/preload security cases. Repository cases cover
+exact same-identity ownership, order/active IDs and both topology revisions, retained
+intent/collapse/sparse rows, same-item nonmerge, source/target/neighbor conflicts,
+source/target singleton move/dormant merge, empty source and resume invariants,
+current full backup, reopen/crash ownership and rollback after owner/lane/placement/
+COMMIT failures. ABA tests reject old intent/collapse authority even with current
+CAS counters and reject old sealed M3 checkpoint authority.
+
+Coordinator cases cover source/target leases, forged/expired/replayed/mismatched
+reservation/readiness tokens, pre-submission expiry, exact cancellation (an old
+Cancel cannot affect a later reservation), overlap/reverse requests, item seen/
+removal changes, source/target topology conflicts/death, readiness refusal, profile
+barriers, new-native construction/cleanup and committed-recipient failure. Only
+current issued ownership/document can acknowledge transient handoff adoption.
+Reserved readers are not offered as destinations. Existing M3 SQLite assertions
+also verify that transfer authority stays blocked until release reconciliation.
+
+Renderer cases retain exact frozen result membership/order/roles, stale state,
+draft/applied criteria, logical anchor/offset, navigation, temporary IDs/range
+anchor, restoration/errors and current generation in checkpoints. Adoption never
+runs the worker merely for movement. A 50k generated discussion fits the identity-
+only bounded snapshot without comment text. Final save failure preserves the old
+working session; source remains mounted while frozen. Cancelled async checkpoints
+cannot refreeze a later session, and transfer cancellation cannot release an M3
+queue pause. A shared Refresh deferred during the frozen handoff replays once on
+release. Real React tests exercise source freeze/unfreeze, registry disposal/adoption,
+Shift+F10 move commands for all three tab kinds and explicit dirty-Settings decisions.
+All prior M1-M6 tests remain enabled; no migration, recovery or safety assertion is
+removed. The ordinary unavailable-storage fixture now supplies a main-owned window
+identity; exact preload allowlists add the frozen narrow transfer namespace.
+
+`npm.cmd run test:m7` runs `scripts/smoke-tab-transfer.cjs` using the actual built
+production main, React, workers, preload, authenticated IPC and SQLite. It starts
+three equal secured native readers using the public File command and operates the
+move menu with actual Electron Shift+F10/arrow/Enter input (including the native
+Enter character event needed for ordinary button activation). Numbered destinations
+come from main. The source stays mounted and owns its view while readiness is held.
+It moves video and Community discussions, keeps independent same-item destination
+views, checks frozen unseen results after a shared seen change, temporary selection,
+draft and destination focus, and moves back/forth before rejecting obsolete intent
+and collapse tokens. Exporting the moved destination again checks the complete
+frozen result rather than only currently mounted virtual rows.
+
+Native failure injection throws at owner change, save-lane change and COMMIT and
+compares both topologies/owners/resume pointers afterward. Actual source/target
+renderer crashes and controlled source/target Reload during readiness cancel before
+COMMIT. Target native Close and a global backup overlap cancel, drain and retain
+source usability. A real production helper/acquisition path uses saved fixture
+process bytes (a dummy EXE is never executed): progress reaches all readers and
+accepted Refresh cancels a handoff, replays the source query, then permits a safe
+retry. Shared seen/guarded Undo still work.
+
+The same harness verifies Library merge retains the destination's filter, Settings
+merge retains its independent unsaved custom draft, and a dirty source must choose
+Keep editing or explicit Discard. Failed provisional loading destroys the hidden
+native without restore membership. Successful Move to New Window leaves its source
+empty, visible and open. Crashing the old source and the new target immediately
+after COMMIT retains the sole committed owner. Four ordinary visible readers then
+undergo backup, explicit Quit, actual subsequent process startup, a further renderer
+crash, full offline restore and another actual process startup. Exact membership,
+identities, order, active tabs and private state survive; dormant failed/closed rows
+never become phantom restored windows.
+
+The native harness substitutes dialog answers, public extractor child output and
+the relaunch callback only in its external test process. No shipped fault-injection
+capability exists. The separate packaged harness exercises an **unmodified extracted
+EXE**: menu/chooser moves the same discussion out/back among its three native readers,
+retains the peer's independent same-item view and rejects stale owner authority,
+then uses real native backup/restore dialogs, all-table equality and actual EXE
+relaunch. Packaged menu/key activation uses renderer CDP automation; real native
+keyboard and Move to New Window are established separately by test:m7.
+
+Executed results (final runtime and disposable data):
+
+| Check | Result |
+| --- | --- |
+| Full Vitest suite | **1,142 tests / 90 files PASS**, 121.92 s |
+| Typecheck / ESLint | PASS, no lint warnings |
+| Windows x64 Forge application / verified ZIP | PASS; 73 runtime files / 386,047,448 bytes; ZIP 158,358,269 bytes; verified make 22.58 s |
+| Full Electron chain | All **17 harnesses PASS**, including all prior M1-M6 phases and M7 |
+| Focused M7 native harness | Final-artifact rerun PASS: write / restart+offline restore / restored; exact owner, restore-set and crash/failure cases |
+| Unmodified extracted EXE | PASS: M7 menu/chooser out/back + stale authority, three native readers, native backup/restore, exact all-table equality, real relaunch PID 28448 -> 11188 |
+| Documentation links / diff whitespace | PASS: 525 local Markdown targets; presentation verifier 11 README links/anchors, four PNGs, seven ICO frames; git diff --check |
+
+The final-source unit run is recorded in `.m7-handoff-vitest.log`; the full
+Electron chain in `.m7-electron-final2.log` and the final-artifact M7 rerun in
+`.m7-handoff-native.log` (owned root `reader-m7-electron-VSCGmM`). The latter includes
+both controlled source/target Reload cases. `.m7-handoff-build.log` records the
+verified ZIP. `.packaging-diagnostics/packaged-smoke.json` records the unmodified
+extracted run in disposable root `reader-packaged-G4HIvy`; `.m7-handoff-packaged.log` retains
+its command output. A targeted 113-case App/session/coordinator/M3 SQLite run
+also passed. Logs are ignored diagnostics; this ledger is the durable evidence.
+No earlier harness or safety check was disabled to obtain these results.
+
+The three available displays were reported as 1920x1080 DIP at (0,0), 100%;
+1920x1080 DIP at (1920,0), 100%; and 1280x720 DIP at (3840,0), 150%. The M7 video
+move crosses the first and second displays using real native windows. Existing M6
+native geometry tests also retain their mixed-scale/restore cases. This is automated
+native evidence, not physical mouse/monitor-unplug observation. Expected injected
+failures, stale-owner diagnostics and occasional Chromium GPU/frame-loss warnings
+are recorded in ignored .m7-*.log diagnostics, not treated as passing application
+assertions by themselves.
+
+Manual verification remains physical monitor rearrangement/unplug/scaling/fullscreen
+and platform-specific focus/window management. M8 native drag/release/cancel outcomes
+and M9 aggregate multi-window memory/IPC/latency/release remain unverified and
+outside M7. No drag adapter, detachment heuristic or new native input dependency
+is added. Squirrel installation lifecycle remains unverified; no Setup was run.
+
 ## Equal native windows and intended session restoration (M6, 2026-10-18–19)
 
 [ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) implements

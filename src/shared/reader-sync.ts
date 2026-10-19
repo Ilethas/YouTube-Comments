@@ -11,6 +11,7 @@ export interface SharedCommit extends SharedStamp { readonly change: SharedChang
 /** One owned semantic seed: no comments, geometry, or evaluated result IDs. */
 export interface SharedViewSnapshot extends SharedStamp {
   readonly viewId: string;
+  readonly handoff?: import('./tab-transfer').LiveViewHandoff;
   readonly instance: ReaderState['viewInstances'][string];
   readonly intent?: ReaderState['discussionViews'][string];
   readonly collapse?: ReaderState['discussionCollapse'][string];

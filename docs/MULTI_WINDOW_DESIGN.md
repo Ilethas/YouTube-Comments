@@ -1,5 +1,13 @@
 # Multiple equal windows: proposed architecture
 
+**M7 implementation, 2026-10-19:**
+[ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) implements explicit
+Move to Window/New Window, token-bound source/target preflight, exact live frozen
+handoff, singleton merge, atomic ownership/restore enrollment and runtime generation
+fencing on schema **14**. The M7 row below is implemented; the older proposal text
+retains its historical context. [TESTING](TESTING.md) records exact executed evidence
+and limits. M8 gestures and M9 aggregate scale/release remain future work.
+
 **M6 progress, 2026-10-18:** [ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) implements equal public native
 windows, explicit versioned restore membership/last focus and safe normal DIP
 geometry with schema **14**. The proposed Close/Quit policy below is now accepted:

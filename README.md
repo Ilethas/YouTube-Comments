@@ -24,6 +24,8 @@ The screenshots use invented discussions and people in the actual Electron app.
 - Restores tabs, searches, filters, sort, collapsed replies, and reading position.
 - Opens independent reader windows through **File > New Window / Ctrl+N**. Quit
   restores all open windows; closing one among several excludes it next launch.
+- Moves tabs through **Move to Window… / Move to New Window** in the tab menu
+  (Shift+F10). Discussion matches, selection and reading position move with the tab.
 - Offers comment selection, right-click actions, bulk marking, and Undo for bulk changes.
 - Opens author channels and original video comments in your browser. Google Translate
   also opens there, sending comment text only when you explicitly choose Translate.

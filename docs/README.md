@@ -1,5 +1,13 @@
 # Documentation map
 
+[ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) implements **M7**:
+explicit keyboard/menu movement between equal reader windows, live frozen-view
+handoff, atomic ownership and singleton merge, generation/ABA fencing and safe
+Move to New Window. Schema remains **14**. See [UI](UI_AND_NAVIGATION.md),
+[architecture](ARCHITECTURE.md), [database](DATABASE.md) and [testing](TESTING.md).
+M8 gestures and M9 aggregate scale/release remain future work. Earlier sections
+retain their original milestone scope.
+
 [ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) implements **M6**, equal production native windows,
 File > New Window / Ctrl+N, persistent intended session restoration and safe DIP
 geometry. Current schema is **14**. One shared service/profile serves independent
