@@ -1,5 +1,25 @@
 # UI and navigation
 
+## Drag tabs (M8)
+
+Drag a tab with the primary mouse button. Release in its strip to reorder, or in
+another reader's strip to attach the same instance at the insertion marker. Hold
+near strip edges to scroll. The native ghost and localized status accompany the
+gesture; hover does not activate another discussion. Mouse is the established
+physical gesture target; pen/touch behavior is unverified. Keyboard/menu alternatives
+below remain available. A very fast drag before token preparation cancels safely;
+an ordinary click continues to activate normally.
+
+Release outside the app to request a new equal reader near the native cursor.
+This uses an intentional guarded drag-end heuristic: **Escape outside may also
+create a detached window** when no reliable cancellation event arrives. Desktop,
+external applications and taskbar release are not perfectly distinguishable.
+Delivered Escape cancels; no geometry-only attachment is allowed. Dirty Settings
+requires preserve/discard for its already offered destination. Exact frozen reading
+state and original identity follow M7; source-empty windows remain open. See
+[ADR 0034](decisions/0034-native-html-tab-dragging.md), [testing](TESTING.md) and the
+[pending physical matrix](M8_MANUAL_VERIFICATION.md).
+
 ## Move a tab between windows (M7)
 
 Open any tab's menu with right-click, Shift+F10 or the context-menu key. Choose
@@ -24,7 +44,7 @@ silently lost or saved. An empty source window stays visible/open. A failed new
 window is cleaned up before it can become a restored reader.
 
 See [ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) and
-[verification](TESTING.md). Native cross-window dragging/detachment remains M8.
+[verification](TESTING.md). M8 native dragging is described above.
 
 ## Equal native reader windows (M6)
 
@@ -32,7 +52,7 @@ Use native **File > New Window** / **Ctrl+N** (**Cmd+N** on macOS; Polish **Plik
 Nowe okno**). Each new window starts empty, with its own Library/Settings tabs,
 discussion views, duplicates, active tab and reading state. Library content, seen,
 Undo, preferences, helpers and acquisition are shared. Windows have no special
-primary/child relationship. There is no tab transfer or drag-out detachment yet.
+primary/child relationship. M7/M8 add transfer and drag-out detachment as described above.
 
 Explicit Quit restores all open windows on next launch. Closing one among several
 excludes it; closing the last retains that last window. Crashes recover the last
@@ -565,11 +585,8 @@ See [exact semantics](FILTERING_AND_SEARCH.md#publication-dates-and-time-adr-001
 ## Navigate data, then reveal the row
 
 [ADR 0009](decisions/0009-isolated-discussion-rendering-and-tab-input.md) keeps
-discussion content mounted while isolating rendering from activation. The stable
-strip owns pointer capture: movement into the reader and back continues dragging.
-Release commits once; Escape, pointer/lifecycle cancellation or actual strip
-capture loss cancels. Capture outside the native window depends on OS/browser
-behavior. Vertical wheel over an overflowing strip scrolls horizontally
+discussion content mounted while isolating rendering from activation. M8 replaces the historical pointer-capture adapter with native HTML DnD
+(as described above); no pointer capture runs during a native tab drag. Vertical wheel over an overflowing strip scrolls horizontally
 immediately; horizontal deltas also work. Motion at an immovable edge or without
 overflow is not consumed. Wheel outside the strip retains normal panel scrolling.
 

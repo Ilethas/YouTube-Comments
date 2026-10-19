@@ -1,7 +1,7 @@
 import { MoveTabDialog } from './MoveTabDialog';
 import { DiscussionViewSession } from './discussion-view-session';
 import { createQueryExecutor } from './query-executor';
-import type { TransferRequest } from '../shared/tab-transfer';
+import type { TransferRequest, TransferStart } from '../shared/tab-transfer';
 import { ReaderReplica } from './reader-replica';
 import { AcquisitionStatus } from './AcquisitionStatus';
 import { useAcquisitionProgress } from './use-acquisition-progress';
@@ -77,7 +77,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const activeTab = workspace.tabs.find(tab => tab.id === activeId);
   activeDiscussion.current = activeTab?.kind === 'discussion' ? activeTab.id : undefined;
   const [cloning, setCloning] = useState(false);
-  const [moveDialog, setMoveDialog] = useState<{ id: string; newWindow: boolean }>();
+  const [moveDialog, setMoveDialog] = useState<{ id: string; newWindow: boolean; reserved?: { token: string; start: TransferStart } }>();
+  const offeredTransfer = useRef<(token: string, start: TransferStart) => void>();
   const [movingId, setMovingId] = useState<string>();
   const moving = useRef<string>();
   const cancelledMove = useRef(false);
@@ -275,9 +276,11 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       }, '@active');
     } finally { setCloning(false); }
   }
-  async function transfer(tabId: string, destination: TransferRequest['destination']) {
+  async function transfer(tabId: string, destination: TransferRequest['destination'], reserved?: { token: string; start: TransferStart }) {
     const transferApi = api.transfers;
-    if (!transferApi || moving.current || workspaceBusy.current || dataBusy.current) return;
+    if (!transferApi || moving.current || workspaceBusy.current || dataBusy.current || reserved && workspace.revision !== reserved.start.expectedRevision) {
+      if (reserved) void transferApi?.cancel({ token: reserved.token }); return;
+    }
     const tab = workspace.tabs.find(tab => tab.id === tabId); if (!tab) return;
     moving.current = tabId; cancelledMove.current = false; setMovingId(tabId); setMoveDialog(undefined); setMoveFeedback('movingTab');
     if (shell.current) shell.current.inert = true;
@@ -288,7 +291,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     const check = () => { if (controller.signal.aborted || cancelledMove.current || dataBusy.current) throw new Error('Transfer cancelled'); };
     try {
       const prepare = async () => {
-        const begun = await transferApi.begin({ tabId, destination, expectedRevision: workspace.revision });
+        const begun = reserved ? { ok: true as const, value: { token: reserved.token } } : await transferApi.begin({ tabId, destination, expectedRevision: workspace.revision });
         if (!begun.ok) throw new Error('Reservation failed');
         if (controller.signal.aborted || moveAbort.current !== controller) {
           void transferApi.cancel({ token: begun.value.token }); throw new Error('Obsolete reservation reply');
@@ -333,13 +336,22 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       if (shell.current) shell.current.inert = dataBusy.current;
       requestAnimationFrame(() => {
         if (moving.current || dataBusy.current || document.querySelector('[role=menu], dialog[open]')) return;
-        (document.getElementById(`tab-${tabId}`) ?? document.querySelector<HTMLElement>('[role=tab][aria-selected=true]') ?? document.getElementById('library-toggle'))?.focus();
+        if (!committed) (document.getElementById(`tab-${tabId}`) ?? document.querySelector<HTMLElement>('[role=tab][aria-selected=true]') ?? document.getElementById('library-toggle'))?.focus();
       });
     }
   }
+  offeredTransfer.current = (token, start) => {
+    if (dataBusy.current || workspaceBusy.current || moving.current || !workspace.tabs.some(tab => tab.id === start.tabId)) { void api.transfers?.cancel({ token }); return; }
+    if (workspace.tabs.find(tab => tab.id === start.tabId)?.kind === 'settings' && settingsDirty.current) {
+      setMoveDialog({ id: start.tabId, newWindow: start.destination === 'new', reserved: { token, start } });
+    } else void transfer(start.tabId, start.destination, { token, start });
+  };
   useEffect(() => {
     if (!api.transfers) return;
     const unsubscribe = api.transfers.onEvent(event => {
+      if (event.kind === 'offered') { offeredTransfer.current?.(event.token, event.start); return; }
+      if (event.kind === 'drag-started' || event.kind === 'drag-cleared') return;
+      if (event.kind === 'cancelled') setMoveDialog(current => current?.reserved?.token === event.token ? undefined : current);
       if (event.kind === 'cancelled' && movingToken.current === event.token) moveAbort.current?.abort();
       if (event.kind === 'prepare') {
         if (dataBusy.current || workspaceBusy.current || moving.current || provisional.current) {
@@ -619,7 +631,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     {completion && <div className="acquisition-completion" aria-live="polite">{t('acquisitionSummary', { inserted: completion.summary.inserted, updated: completion.summary.updated, warnings: completion.summary.warnings })}
       {completion.timings && <> {t('acquisitionCompleted', { seconds: new Intl.NumberFormat(locale, { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(completion.timings.totalMs / 1000) })}</>}</div>}
     {acquisitionError && <div className="save-error" role="alert">{t(errorKey)}</div>}
-    <WorkspaceTabs workspace={workspace} locale={locale} disabled={workspaceSaving || !!movingId}
+    <WorkspaceTabs workspace={workspace} locale={locale} disabled={workspaceSaving || profileBusy || cloning || !!movingId}
+      dragApi={api.transfers}
       transfer={api.transfers ? (id, newWindow) => { setMoveDialog({ id, newWindow }); } : undefined}
       label={tab => {
         if (tab.kind !== 'discussion') return t(tab.kind);
@@ -715,8 +728,9 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     <p>{t('movingTab')}</p><button autoFocus onClick={() => { cancelledMove.current = true; moveAbort.current?.abort(); if (movingToken.current) void api.transfers?.cancel({ token: movingToken.current }); }}>{t('cancel')}</button>
   </div>}
   {moveDialog && api.transfers && !profileBusy && <MoveTabDialog api={api.transfers} locale={locale} newWindow={moveDialog.newWindow}
+    fixedDestination={moveDialog.reserved?.start.destination}
     dirty={workspace.tabs.find(t => t.id === moveDialog.id)?.kind === 'settings' && settingsDirty.current}
-    cancel={() => setMoveDialog(undefined)} move={destination => { void transfer(moveDialog.id, destination); }} />}
+    cancel={() => { if (moveDialog.reserved) void api.transfers?.cancel({ token: moveDialog.reserved.token }); setMoveDialog(undefined); }} move={destination => { void transfer(moveDialog.id, destination, moveDialog.reserved); }} />}
   {profileBusy && <div className="profile-operation-overlay" role="dialog" aria-modal="true" tabIndex={-1} ref={profileOverlay} aria-label={t('profileQuiescing')}>
     <p role="status"><span className="acquisition-spinner" aria-hidden="true" /> {t('profileQuiescing')}</p>
     {releaseFailed && <div role="alert"><p>{t('profileReconcileFailed')}</p><button autoFocus data-profile-retry onClick={() => profileController.current?.retryRelease()}>{t('retry')}</button></div>}

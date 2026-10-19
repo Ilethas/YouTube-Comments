@@ -85,7 +85,7 @@ it('transfer namespace is frozen and narrow; notifications validate before expos
   const api = createReaderBridge(invoke, undefined, undefined, undefined, listener => { receive = listener; return unsubscribe; });
   const transfers = api.transfers; if (!transfers) throw Error('Missing transfer namespace');
   expect(Object.isFrozen(transfers)).toBe(true);
-  expect(Object.keys(transfers).sort()).toEqual(['adopted', 'begin', 'cancel', 'destinations', 'move', 'onEvent', 'ready']);
+  expect(Object.keys(transfers).sort()).toEqual(['adopted', 'begin', 'cancel', 'destinations', 'endDrag', 'hoverDrag', 'move', 'offerDrag', 'onEvent', 'prepareDrag', 'ready', 'startDrag']);
   await transfers.begin({ tabId: 'owned', expectedRevision: 2, destination: 'new' });
   expect(invoke).toHaveBeenLastCalledWith(transferChannels.begin, { tabId: 'owned', expectedRevision: 2, destination: 'new' });
   await transfers.cancel({ token: 'exact-token' }); expect(invoke).toHaveBeenLastCalledWith(transferChannels.cancel, { token: 'exact-token' });

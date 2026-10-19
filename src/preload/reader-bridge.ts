@@ -38,6 +38,11 @@ export function createReaderBridge(rawInvoke: (channel: string, ...args: unknown
   const transfers: TabTransferApi | undefined = transferSubscribe ? Object.freeze({
     destinations: () => invoke(transferChannels.destinations) as ReturnType<TabTransferApi['destinations']>,
     begin: request => invoke(transferChannels.begin, request) as ReturnType<TabTransferApi['begin']>,
+    prepareDrag: request => invoke(transferChannels.prepareDrag, request) as ReturnType<TabTransferApi['prepareDrag']>,
+    startDrag: request => invoke(transferChannels.startDrag, request) as ReturnType<TabTransferApi['startDrag']>,
+    hoverDrag: request => invoke(transferChannels.hoverDrag, request) as ReturnType<TabTransferApi['hoverDrag']>,
+    offerDrag: request => invoke(transferChannels.offerDrag, request) as ReturnType<TabTransferApi['offerDrag']>,
+    endDrag: request => invoke(transferChannels.endDrag, request) as ReturnType<TabTransferApi['endDrag']>,
     adopted: request => invoke(transferChannels.adopted, request) as ReturnType<TabTransferApi['adopted']>,
     move: request => invoke(transferChannels.move, request) as ReturnType<TabTransferApi['move']>,
     ready: request => invoke(transferChannels.ready, request) as ReturnType<TabTransferApi['ready']>,

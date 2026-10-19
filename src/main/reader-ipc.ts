@@ -1,6 +1,7 @@
 import { TabTransferCoordinator } from './tab-transfer-coordinator';
 import { transferChannels } from '../shared/tab-transfer';
-import { ipcMain } from 'electron';
+import { ipcMain, screen } from 'electron';
+import { restoreWindowGeometry } from '../domain/window-geometry';
 import type { WindowCoordinator } from './window-coordinator';
 import { readerChannels } from '../shared/reader-api';
 import type { ReaderOperation } from '../shared/reader-api';
@@ -47,8 +48,21 @@ export function registerReaderIpc(service: ReaderService, windows: WindowCoordin
       send: (caller, event) => windows.sendTransfer(caller, event),
       focus: caller => windows.promoteTransfer(caller),
       exists: id => windows.nativeWindows().some(value => value.windowId === id && !value.window.isDestroyed()),
-      create: () => {
-        const window = windows.createReaderWindow(undefined, true);
+      sampleDrag: source => {
+        const window = windows.originWindow(source);
+        if (!window) throw new Error('Source unavailable');
+        const bounds = window.getBounds(), content = window.getContentBounds();
+        return { cursor: screen.getCursorScreenPoint(), sourceVisible: window.isVisible() && !window.isMinimized(), zoom: window.webContents.getZoomFactor(),
+          inset: { x: content.x - bounds.x, y: content.y - bounds.y },
+          windows: windows.nativeWindows().map(({ window: w }) => ({ bounds: w.getBounds(), visible: w.isVisible(), minimized: w.isMinimized(), focused: w.isFocused() })) };
+      },
+      acceptsDrop: caller => { const w = windows.originWindow(caller); return !!w && w.isVisible() && !w.isMinimized(); },
+      create: position => {
+        const displays = position && screen.getAllDisplays().map(d => ({ id: String(d.id), workArea: d.workArea, scaleFactor: d.scaleFactor }));
+        const display = position && screen.getDisplayNearestPoint(position.cursor);
+        const geometry = position && displays && display ? restoreWindowGeometry({ version: 1, normal: { x: position.x, y: position.y, width: 1240, height: 900 }, maximized: false, fullscreen: false,
+          display: { id: String(display.id), workArea: display.workArea, scaleFactor: display.scaleFactor } }, displays) : undefined;
+        const window = windows.createReaderWindow(undefined, true, geometry);
         const id = windows.nativeWindows().find(value => value.window === window)?.windowId;
         if (!id) throw new Error('Window registration failed');
         return { windowId: id, dispose: () => {
@@ -62,7 +76,8 @@ export function registerReaderIpc(service: ReaderService, windows: WindowCoordin
     return transfers;
   };
   lifecycle.onPreparing = () => transfers?.cancelAll();
-  for (const action of ['destinations', 'begin', 'move', 'ready', 'cancel', 'adopted'] as const) {
+  windows.setDragCancellation(caller => transfers?.cancelObservedDrag(caller) ?? false);
+  for (const action of ['destinations', 'begin', 'move', 'ready', 'cancel', 'adopted', 'prepareDrag', 'startDrag', 'hoverDrag', 'offerDrag', 'endDrag'] as const) {
       ipcMain.handle(transferChannels[action], (event, ...args: unknown[]) => {
         const caller = windows.resolveCaller(event);
         if (!caller) return { ok: false, error: { code: 'FORBIDDEN' } };
@@ -70,6 +85,11 @@ export function registerReaderIpc(service: ReaderService, windows: WindowCoordin
         const transfers = transferCoordinator();
         if (!transfers) return { ok: false, error: { code: service.storageFailure ?? 'STORAGE_UNAVAILABLE' } };
         if (action === 'begin' && args.length === 1) return transfers.begin(caller, args[0]);
+        if (action === 'prepareDrag' && args.length === 1) return transfers.prepareDrag(caller, args[0]);
+        if (action === 'startDrag' && args.length === 1) return transfers.startDrag(caller, args[0]);
+        if (action === 'hoverDrag' && args.length === 1) return transfers.hoverDrag(caller, args[0]);
+        if (action === 'offerDrag' && args.length === 1) return transfers.offerDrag(caller, args[0]);
+        if (action === 'endDrag' && args.length === 1) return transfers.endDrag(caller, args[0]);
         if (action === 'adopted' && args.length === 1) return transfers.adopted(caller, args[0]);
         if (action === 'destinations' && !args.length) return { ok: true, value: transfers.destinations(caller) };
         if (action === 'move' && args.length === 1) return transfers.move(caller, args[0]);

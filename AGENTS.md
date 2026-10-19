@@ -1,6 +1,30 @@
 # Project guidance
 
-## M7 current boundary
+## M8 current boundary
+
+[ADR 0034](docs/decisions/0034-native-html-tab-dragging.md) implements HTML DnD over
+M7 on schema **14**, unchanged. Primary mouse pointer-down prepares a source-only
+main ticket before synchronous dragstart writes ONLY the opaque UUID custom MIME
+token. No pointer-capture adapter runs alongside HTML. Genuine authenticated
+recipient drop binds exact topology/neighbor/document once; source terminal event
+must arrive before M7 freeze/checkpoint/readiness/COMMIT. Local reorder uses its
+existing CAS lane with no-op suppression; ordinary hover never freezes reading.
+
+The isolated outside drag-end detector uses bounded sequenced app hover and native
+cursor/visibility/focus DIP evidence. It is a heuristic: unobserved Escape outside,
+foreign-app/taskbar and desktop release may detach identically by accepted owner
+policy. Delivered DOM/native Escape cancels. Never infer correct Escape detection,
+positive desktop release or topmost recipient from coordinates. New reader creation
+uses M6 current work-area clamping and M7 hidden readiness/atomic restore enrollment.
+M3 revokes tokens before drain manifests. Preserve M7 live frozen results, same ID,
+owner-generation/ABA and both save-lane fences. No hook/addon/overlay/file drag.
+
+`test:m8` is category A synthetic DragEvents through real production windows/IPC/DB;
+it is NOT an OS drag-loop or physical pass. See `docs/M8_MANUAL_VERIFICATION.md` and
+the OS-temp-only `node scripts/manual-tab-drag.cjs` launcher. Physical input remains
+pending. M9 aggregate scale/release remains outside M8. Preserve M0/M0.5 ledgers.
+
+## M7 foundation (historical scope)
 
 [ADR 0033](docs/decisions/0033-atomic-cross-window-tab-transfer.md) implements explicit
 Move to Window/New Window on schema **14**, unchanged. Main owns short-lived one-use
@@ -19,8 +43,7 @@ ABA rejection for intent/collapse and sealed M3 checkpoints. M3 cancels precommi
 reservations before capturing participants; transfer cancellation must NEVER release
 a concurrent profile queue pause. New natives stay hidden/dormant until COMMIT and
 failed creation never leaves restore membership. Transient tokens/results never enter
-SQLite/backups. Preserve exact migrations 1-14 and all older safety tests. M8 native
-HTML DnD/detachment and M9 scale/release remain outside M7. No drag adapter yet.
+SQLite/backups. Preserve exact migrations 1-14 and all older safety tests. M8 now layers gestures over this protocol; M9 scale/release remains future work.
 
 ## M6 foundation (historical scope)
 
@@ -217,6 +240,10 @@ ADR 0024 adds selection, menus and explicit selected/prefix scopes.
 - Keep AI summarization, sentiment, automatic translation, posting/replying, likes/subscriptions, account integration, and other unrelated features outside the current scope.
 
 ## Useful commands at this milestone
+
+After a Forge build, `npm.cmd run test:m8` runs the OS-temp production-entry
+synthetic drag/restart/restore harness, included in `test:electron`. It does not
+certify native mouse input.
 
 After a Forge build, `npm.cmd run test:m6` runs the disposable production-entry
 native-window/session/geometry harness. It is included in `test:electron`.

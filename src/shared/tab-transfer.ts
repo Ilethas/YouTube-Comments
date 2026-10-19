@@ -38,19 +38,34 @@ export interface TransferRequest {
 }
 /** Main reserves exact endpoints before the source starts its final checkpoint. */
 export type TransferStart = Pick<TransferRequest, 'tabId' | 'expectedRevision' | 'destination'>;
+/** Native data store contains this token only. Hover never reads protected data. */
+export const TAB_DRAG_MIME = 'application/x-youtube-comments-tab-v1';
+export const isDragToken = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+export interface DragPreparation { readonly tabId: string; readonly expectedRevision: number; readonly hotspot: { readonly x: number; readonly y: number } }
+export interface DragTicket { readonly token: string; readonly gestureId: string }
+export interface DragHover { readonly gestureId: string; readonly sequence: number; readonly inside: boolean; readonly cancel?: true }
+export interface DragOffer { readonly token: string; readonly expectedRevision: number; readonly beforeTabId: string | null }
+export interface DragEnd { readonly token: string; readonly outcome: 'unclaimed' | 'cancel' | 'local' }
 export interface TransferSubmission { readonly token: string; readonly request: TransferRequest }
 export type TransferEvent = { readonly kind: 'prepare'; readonly token: string; readonly tabKind: 'discussion' | 'library' | 'settings'; readonly handoff: LiveViewHandoff | null }
+  | { readonly kind: 'drag-started' | 'drag-cleared'; readonly token: string }
+  | { readonly kind: 'offered'; readonly token: string; readonly start: TransferStart }
   | { readonly kind: 'cancelled' | 'committed'; readonly token: string; readonly tabId: string };
 export interface TabTransferApi {
   destinations(): Promise<Result<readonly TransferDestination[]>>;
   begin(request: TransferStart): Promise<Result<{ readonly token: string }>>;
+  prepareDrag(request: DragPreparation): Promise<Result<DragTicket>>;
+  startDrag(request: { readonly token: string }): Promise<Result<null>>;
+  hoverDrag(request: DragHover): Promise<Result<null>>;
+  offerDrag(request: DragOffer): Promise<Result<null>>;
+  endDrag(request: DragEnd): Promise<Result<null>>;
   move(submission: TransferSubmission): Promise<Result<{ readonly tabId: string; readonly mergedIntoTabId: string | null }>>;
   ready(request: { readonly token: string; readonly accept: boolean }): Promise<Result<null>>;
   cancel(request: { readonly token: string }): Promise<Result<null>>;
   adopted(request: { readonly viewId: string; readonly ownerGeneration: string }): Promise<Result<null>>;
   onEvent(listener: (event: TransferEvent) => void): () => void;
 }
-export const transferChannels = { destinations: 'reader:transfer-destinations', begin: 'reader:transfer-begin', move: 'reader:transfer-move', ready: 'reader:transfer-ready', cancel: 'reader:transfer-cancel', adopted: 'reader:transfer-adopted', event: 'reader:transfer-event' } as const;
+export const transferChannels = { destinations: 'reader:transfer-destinations', begin: 'reader:transfer-begin', prepareDrag: 'reader:transfer-drag-prepare', startDrag: 'reader:transfer-drag-start', hoverDrag: 'reader:transfer-drag-hover', offerDrag: 'reader:transfer-drag-offer', endDrag: 'reader:transfer-drag-end', move: 'reader:transfer-move', ready: 'reader:transfer-ready', cancel: 'reader:transfer-cancel', adopted: 'reader:transfer-adopted', event: 'reader:transfer-event' } as const;
 export const exactTransferKeys = (v: unknown, keys: readonly string[]): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
   && Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v, k));
 const ids = (v: unknown): v is readonly string[] => Array.isArray(v) && v.length <= 100000 && v.every(isViewIdentity) && new Set(v).size === v.length;
@@ -90,6 +105,8 @@ export function isTransferStart(v: unknown): v is TransferStart {
 export function isTransferEvent(v: unknown): v is TransferEvent {
   if (!v || typeof v !== 'object') return false;
   const r = v as Record<string, unknown>;
+  if (r.kind === 'drag-started' || r.kind === 'drag-cleared') return exactTransferKeys(r, ['kind', 'token']) && isDragToken(r.token);
+  if (r.kind === 'offered') return exactTransferKeys(r, ['kind', 'token', 'start']) && isDragToken(r.token) && isTransferStart(r.start);
   return isViewIdentity(r.token) && (r.kind === 'prepare' ? exactTransferKeys(r, ['kind', 'token', 'tabKind', 'handoff'])
     && ['discussion', 'library', 'settings'].includes(String(r.tabKind)) && (r.handoff === null || isLiveViewHandoff(r.handoff))
     : exactTransferKeys(r, ['kind', 'token', 'tabId']) && ['cancelled', 'committed'].includes(String(r.kind)) && isViewIdentity(r.tabId));

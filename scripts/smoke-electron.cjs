@@ -11,6 +11,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const dateEvaluationNow = Date.parse('2026-10-07T12:00:00Z');
 const helperChoices = [], helperExecutions = [];
 const browserDestinations = [];
+const tabDragPrepared = new Set();
 
 // A real Chromium paint check: jsdom cannot verify hover/pseudo-element layering.
 async function verifyTabHover(window) {
@@ -93,7 +94,7 @@ async function verifyWindow(window, nativeTheme) {
     // Normalize absent optional values for the serialized restart checkpoint.
     // Legacy content/seen/helper checks compare durable discussion data. The
     // separate view-restoration harness verifies independently changing intent.
-    const { discussionViews, viewInstances, ...content } = result.value;
+    const { discussionViews, viewInstances, liveHandoffs, ...content } = result.value;
     return JSON.parse(JSON.stringify({ ...content, viewInstances: Object.fromEntries(Object.entries(viewInstances).map(([id,v])=>[id,{itemId:v.itemId}])) }));
   }
   const currentSort = () => js("document.querySelector('[role=tabpanel]:not([hidden]) .discussion-sort select').value");
@@ -287,7 +288,7 @@ async function verifyWindow(window, nativeTheme) {
   if (phase === 'environment') return;
   assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'closeWindow', 'createBackup', 'duplicateTab', 'getAcquisitionProgress', 'getDiscussionView', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'lifecycle', 'moveTab', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'transfers', 'undoSeen', 'updatePreferences', 'windowReady']);
   assert.equal(await js('Object.isFrozen(window.reader.transfers)'), true);
-  assert.deepEqual(await js('Object.keys(window.reader.transfers).sort()'), ['adopted', 'begin', 'cancel', 'destinations', 'move', 'onEvent', 'ready']);
+  assert.deepEqual(await js('Object.keys(window.reader.transfers).sort()'), ['adopted', 'begin', 'cancel', 'destinations', 'endDrag', 'hoverDrag', 'move', 'offerDrag', 'onEvent', 'prepareDrag', 'ready', 'startDrag']);
   assert.deepEqual(await js('Object.keys(window.reader.lifecycle).sort()'), ['ack', 'command', 'current', 'onEvent', 'plan', 'refuse', 'resume', 'settleAccepted', 'stage', 'submit']);
   assert.deepEqual(await js("window.reader.acquire({url:'https://www.youtube.com/watch?v=abcdefghijk',executable:'evil'})"),
     { ok: false, error: { code: 'INVALID_REQUEST' } });
@@ -530,17 +531,18 @@ async function verifyWindow(window, nativeTheme) {
     assert.deepEqual(state.comments, priorComments);
     assert.equal(state.items.length, 4);
     assert.equal(state.workspace.tabs.filter(tab => tab.kind === 'discussion').length, 3);
-    // Real mouse dragging reorders a background app tab without activating it.
+    // M8: category A synthetic HTML DragEvents replace the retired pointer-
+    // capture test input. sendInputEvent mouse motion does not establish an OS
+    // HTML drag loop. Preserve the reorder/active/session assertions below.
     const activeBefore = state.workspace.activeTabId;
-    const start = await js("(() => { const r=document.querySelector('[role=tab][aria-controls=panel-library]').getBoundingClientRect(); return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}; })()");
-    const target = await js("Math.round(document.querySelector('.tabs').getBoundingClientRect().left+4)");
-    contents.sendInputEvent({ type: 'mouseMove', ...start });
-    contents.sendInputEvent({ type: 'mouseDown', ...start, button: 'left', clickCount: 1 });
-    await pause(30);
-    contents.sendInputEvent({ type: 'mouseMove', x: target, y: start.y, button: 'left' });
-    await pause(50);
-    contents.sendInputEvent({ type: 'mouseUp', x: target, y: start.y, button: 'left', clickCount: 1 });
-    await waitFor("document.querySelector('.tab [role=tab]').getAttribute('aria-controls') === 'panel-library' && !document.querySelector('[role=tab]:disabled')", 'native pointer reorder');
+    window.showInactive(); await waitFor("document.visibilityState==='visible'", 'visible HTML drag strip');
+    tabDragPrepared.delete(contents);
+    await js("(() => { const t=document.querySelector('[role=tab][aria-controls=panel-library]'),r=t.getBoundingClientRect(); t.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,isPrimary:true,pointerType:'mouse',clientX:r.left+20,clientY:r.top+10})); })()");
+    for (let n = 0; n < 150 && !tabDragPrepared.has(contents); n++) await pause(10);
+    assert.equal(tabDragPrepared.has(contents), true);
+    await js("(() => {const t=document.querySelector('[role=tab][aria-controls=panel-library]'),strip=document.querySelector('.tabs'),d=new DataTransfer(),x=strip.getBoundingClientRect().left+4; t.dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:d})); if(!d.types.includes('application/x-youtube-comments-tab-v1')) throw Error('Unprepared HTML drag');strip.dispatchEvent(new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer:d,clientX:x}));strip.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:d,clientX:x}));t.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:d}));})()");
+    await waitFor("document.querySelector('.tab [role=tab]').getAttribute('aria-controls') === 'panel-library' && !document.querySelector('[role=tab]:disabled')", 'synthetic HTML reorder');
+    window.hide();
     state = await snapshot(); assert.equal(state.workspace.activeTabId, activeBefore);
     await js("document.querySelector('[role=tab][aria-controls=panel-settings]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',altKey:true,bubbles:true}))");
     await waitFor("!document.querySelector('[role=tab]:disabled')", 'keyboard reorder');
@@ -747,6 +749,12 @@ async function verifyWindow(window, nativeTheme) {
 }
 
 if (process.versions.electron && process.type === 'browser') {
+  const ipc = require('electron').ipcMain, handle = ipc.handle.bind(ipc);
+  ipc.handle = (channel, handler) => handle(channel, async (event, ...args) => {
+    const result = await handler(event, ...args);
+    if (channel === 'reader:transfer-drag-prepare' && result.ok) tabDragPrepared.add(event.sender);
+    return result;
+  });
   require('./thumbnail-fixture-network.cjs').installThumbnailNetwork();
   // Test-only process injection before the built entry imports node:child_process.
   // No fake-execution switch or generic process capability is shipped in the app.

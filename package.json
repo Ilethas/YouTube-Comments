@@ -19,7 +19,7 @@
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "vitest run",
-    "test:electron": "node scripts/smoke-electron.cjs && node scripts/smoke-view-restoration.cjs && node scripts/smoke-backup-restore.cjs && node scripts/smoke-reader-actions.cjs && node scripts/smoke-collapse.cjs && node scripts/smoke-selection.cjs && node scripts/smoke-reader-usability.cjs && node scripts/smoke-thumbnails.cjs && node scripts/smoke-usability-milestone.cjs && node scripts/smoke-window-coordination.cjs && node scripts/smoke-shared-sync.cjs && node scripts/smoke-profile-lifecycle.cjs && node scripts/smoke-profile-quit.cjs && node scripts/smoke-m4-migration.cjs && node scripts/smoke-duplicate-tabs.cjs && node scripts/smoke-native-windows.cjs && node scripts/smoke-tab-transfer.cjs",
+    "test:electron": "node scripts/smoke-electron.cjs && node scripts/smoke-view-restoration.cjs && node scripts/smoke-backup-restore.cjs && node scripts/smoke-reader-actions.cjs && node scripts/smoke-collapse.cjs && node scripts/smoke-selection.cjs && node scripts/smoke-reader-usability.cjs && node scripts/smoke-thumbnails.cjs && node scripts/smoke-usability-milestone.cjs && node scripts/smoke-window-coordination.cjs && node scripts/smoke-shared-sync.cjs && node scripts/smoke-profile-lifecycle.cjs && node scripts/smoke-profile-quit.cjs && node scripts/smoke-m4-migration.cjs && node scripts/smoke-duplicate-tabs.cjs && node scripts/smoke-native-windows.cjs && node scripts/smoke-tab-transfer.cjs && node scripts/smoke-tab-drag.cjs",
     "test:profile-lifecycle": "node scripts/smoke-profile-lifecycle.cjs && node scripts/smoke-profile-quit.cjs",
     "typecheck": "tsc --noEmit",
     "build:renderer": "vite build --config vite.renderer.config.ts --outDir .vite/renderer-preview",
@@ -28,7 +28,8 @@
     "test:window-coordination": "node scripts/smoke-window-coordination.cjs",
     "test:m5": "node scripts/smoke-duplicate-tabs.cjs",
     "test:m6": "node scripts/smoke-native-windows.cjs",
-    "test:m7": "node scripts/smoke-tab-transfer.cjs"
+    "test:m7": "node scripts/smoke-tab-transfer.cjs",
+    "test:m8": "node scripts/smoke-tab-drag.cjs"
   },
   "overrides": {
     "extract-zip": {

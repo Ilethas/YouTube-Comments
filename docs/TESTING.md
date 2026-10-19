@@ -1,5 +1,119 @@
 # Testing strategy
 
+## Native HTML tab gestures (M8, 2026-10-19)
+
+[ADR 0034](decisions/0034-native-html-tab-dragging.md) implements M8 over M7 on
+schema **14**, unchanged. All automated profiles are independently owned OS-temp
+roots. No owner production profile, Setup, install, commit, push or publication.
+M0/M0.5 experiments and ledgers remain unchanged and available.
+
+M8 adds **39 net deterministic cases** over M7 (1,142 -> 1,181): 22 coordinator,
+seven isolated outcome-policy cases, nine net tab-strip cases replacing obsolete
+pointer-capture expectations, and one fixed-destination dirty-Settings case.
+The existing 50k frozen handoff, zero-query adoption, source checkpoint failure,
+M3 independent queue pause, repository rollback/ABA/sealed-checkpoint and historical
+migration/recovery tests remain enabled. This is correctness evidence, not an M9
+aggregate performance budget.
+
+Gesture cases cover primary preparation, too-fast synchronous dragstart, exact
+opaque MIME data, external/file/text/forged payloads, local reorder and no-op,
+main-acknowledged expiry rejection before local SQL, rapid second gestures and late
+preparation/start/end replies, duplicate delivery, nested enter/leave, strip-leave
+scroll cleanup, unchanged activation, wheel/keyboard/context-menu alternatives,
+hidden/disabled recipients, exact insertion neighbor and protected hover payloads.
+Coordinator cases cover source-only reservations with no freeze/window construction,
+exact once-bound recipient documents/topology, end-before-offer/offer-before-end,
+forged/replayed/expired tokens, wrong leases/ownership, stale source/target/neighbor,
+hidden target, source/target reload/death, M3 revocation, observed DOM/native Escape,
+sequenced/expiring hover and DIP hotspot calculation. The pure detector explicitly
+gives the same candidate classification to desktop, unobserved Escape, another app
+and taskbar evidence; this is ambiguity coverage, not release detection.
+
+`npm.cmd run test:m8` runs [smoke-tab-drag.cjs](../scripts/smoke-tab-drag.cjs) against
+actual production main, React, workers, preload, authenticated IPC and SQLite.
+It uses three equal readers, then detaches to a fourth; it later creates an extra
+empty equal reader and ordinarily closes the empty source, ending with four.
+It verifies one local reorder/no-op, video/post attachment and precise insertion
+into a populated strip, same-item nonmerge, frozen Unseen membership after peer
+seen/Undo, temporary selection, exact handoff intent/results through out/back
+transfers, ABA stale authority, replay rejection, delivered synthetic Escape,
+backup revocation, Library/Settings merge and dirty-source preserve/discard.
+A held readiness gate proves source ownership/DOM retention until terminal/COMMIT.
+A failed new-native load leaves no restore member; successful outside intent uses
+normal DIP-clamped native geometry and leaves an empty source visible/open.
+Ordinary Close then removes only that source. Backup, explicit Quit, actual new
+process startup, offline restore and another new process preserve final topology,
+private state and intended membership. The harness substitutes dialog answers,
+failed loading and outside cursor samples only in its external test process.
+
+**Evidence classification:** M8 dispatches **synthetic DOM DragEvents (category A)**.
+Native windows/IPC/SQLite/process restarts are real, but this does not run or certify
+the OS HTML drag loop/protected native store, native ghost/cursor, physical mouse,
+Escape delivery or mixed-DPI dragging. Categories **B (authentic OS drag loop)**
+and **C (physical mouse/keyboard M8 matrix)** remain **NOT PERFORMED**. The accepted
+Escape-outside limitation is implemented deliberately; no correct cancellation or
+positive desktop-release claim follows from an accepted heuristic result.
+
+The [physical checklist](M8_MANUAL_VERIFICATION.md) includes the safe temporary
+launcher `node scripts/manual-tab-drag.cjs`, marked-root resume instructions,
+P01-P23 exact actions/outcomes and a blank ground-truth ledger. It covers
+100/125/150/200%, cross-DPI and negative/above-primary layouts, source/target zoom,
+auto-scroll, occlusion/minimize/hide, desktop/external/taskbar release, delivered
+and unobserved Escape, Alt+Tab, closing/reloading/crashing, rapid gestures, display
+removal, native visuals, keyboard/Polish feedback and restart/backup/restore.
+Available display **inventory only** during the automated run: (0,0) 1920x1032 DIP
+at 100%; (1920,0) 1920x1032 at 100%; (3840,0) 1280x672 at 150%. 125%/200%, negative
+layouts, unplug/reconnect and physical drag-loop behavior are untested.
+
+Executed final-source results:
+
+| Check | Actual result |
+| --- | --- |
+| Full Vitest | **1,181 tests / 91 files PASS**, 130.36 s |
+| Final focused gesture/coordinator/outcome suite | **81/81 PASS** |
+| Typecheck / ESLint | **PASS**, no lint warnings |
+| Original M0/M0.5 deterministic experiments | **32/32 PASS** |
+| Windows x64 Forge production application / verified ZIP | **PASS**, 73 runtime files / 386,061,618 bytes; ZIP 158,361,979 bytes; verified make 26.62 s |
+| Final-artifact focused M7 | **PASS**, write / restart+offline restore / restored |
+| Final-artifact focused M8 | **PASS**, write / ordinary Close / restart+offline restore / restored; category A input |
+| Full Electron chain | **PASS**, all **17 existing harnesses plus M8 (18 total)** |
+| Unmodified extracted EXE | **PASS**, unmodified ZIP-extracted EXE; M7 out/back + stale authority, three native readers, native backup/restore, exact all-table equality, actual relaunch PID 40872 -> 36408 |
+| Local links/assets / whitespace | **PASS**, 793 local Markdown file targets; 11 README links/anchors, four decoded PNGs, seven ICO frames; git diff --check |
+
+Final-source logs are ignored local diagnostics: `.m8-vitest-final.log`,
+`.m8-focused-final.log`, `.m8-lint.log`, `.m8-m0.log`, `.m8-build-final.log`,
+`.m8-m7-final.log`, `.m8-native-final.log`, `.m8-electron-final.log` and
+`.m8-packaged-final.log`. The packaged report is `.packaging-diagnostics/packaged-smoke.json` (owned root
+`reader-packaged-fqKfqi`); focused M8 used `reader-m8-electron-aDjZmp`, and the full
+chain M8 used `reader-m8-electron-xKwEmZ`. These are diagnostics, not physical input
+certifications. The durable evidence is this ledger; temp profile roots
+are deleted by automated launchers after their owned runs.
+
+Verification corrected an empty drag live-region that confused existing acquisition
+status assertions, fenced late callbacks/local expiry, stopped preview auto-scroll
+on strip exit, retained in-app drop evidence until the recipient offer, and added
+conservative visible-peer containment against cross-process end/drop ordering.
+The legacy production smoke's exact preload allowlist now includes the five narrow
+M8 intents. Its old sendInputEvent pointer-reorder stimulus is replaced with
+explicitly **category A synthetic HTML input**, retaining one reorder/active-tab/
+persistence assertions; injected mouse motion was not claimed to establish a native
+HTML OS loop. Its restart comparison omits optional transient `liveHandoffs`.
+M7's restart visibility assertion now waits for the actual M6 native show batch;
+a mounted React shell can precede main's windowReady IPC. No ownership, restore,
+backup, migration, sandbox, seen/Undo or historical safety assertion was removed.
+
+Existing native harnesses retain their own evidence bounds. The ordinary Copy
+subcheck may report UNVERIFIED when the existing Windows clipboard has formats
+Electron cannot safely snapshot; it preserves that clipboard rather than replacing
+unknown data. Expected injected invalid-backup/load/stale-owner and Chromium GPU
+shutdown diagnostics do not themselves constitute passing assertions.
+
+M9 remains unstarted: aggregate multi-window memory/IPC/main-stall/input-latency
+budgets and release hardening remain future work. The physical M8 matrix is pending
+review/owner execution; a future higher-fidelity native cancellation adapter would
+be a separate scoped improvement. Squirrel install lifecycle remains unverified.
+
+
 ## Atomic cross-window transfer (M7, 2026-10-19)
 
 [ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) implements M7 only,

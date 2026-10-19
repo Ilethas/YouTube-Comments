@@ -77,9 +77,9 @@ it('registers every channel once independently of window creation/reload and ret
   const service = new ActualReaderService(() => { throw new Error('No storage needed'); }, ['en'], () => undefined);
   vi.spyOn(service, 'claimWindowIdentity').mockReturnValue('persisted-test-window');
   registerReaderIpc(service, windows);
-  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 1 + 6);
+  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 1 + 11);
   for (let i = 0; i < 2; i++) { windows.register(fixture.window); fixture.commit(); fixture.reload(); }
-  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 1 + 6);
+  expect(handlers.size).toBe(Object.keys(readerChannels).length + Object.keys(profileChannels).length + 1 + 11);
   for (const channel of Object.values(readerChannels)) {
     expect(await handlers.get(channel)?.(fixture.event(), { windowId: 'forged', executable: 'evil' }, 'extra'))
       .toEqual({ ok: false, error: { code: 'INVALID_REQUEST' } });

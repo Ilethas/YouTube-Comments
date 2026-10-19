@@ -4,14 +4,16 @@ import type { ReaderRepository } from './persistence/reader-repository';
 import { StateConflictError, ViewOwnershipError } from './persistence/reader-repository';
 import type { Result } from '../shared/reader-api';
 import type { LiveViewHandoff, TransferDestination, TransferEvent, TransferRequest, TransferStart } from '../shared/tab-transfer';
-import { exactTransferKeys, isTransferRequest, isTransferStart } from '../shared/tab-transfer';
-import { isViewIdentity } from '../domain/discussion-view';
+import { exactTransferKeys, isTransferRequest, isTransferStart, isDragToken } from '../shared/tab-transfer';
+import { acceptsOutsideDetach } from './tab-drag-outcome';
+import type { DragNativeSample } from './tab-drag-outcome';
+import { isViewIdentity, isRevision } from '../domain/discussion-view';
 
 interface Reservation {
   readonly token: string;
   readonly source: ReaderCallerContext;
-  readonly start: TransferStart;
-  readonly target?: ReaderCallerContext;
+  start: TransferStart;
+  target?: ReaderCallerContext;
   readonly epoch: string;
   readonly revision: number;
   readonly expires: number;
@@ -19,6 +21,9 @@ interface Reservation {
   timer?: ReturnType<typeof setTimeout>;
   executing: boolean;
   cancelled: boolean;
+  gesture?: { id: string; started: boolean; ended: boolean; bound: boolean; notified: boolean;
+    hotspot: { x: number; y: number }; hover: Map<ReaderCallerContext, { sequence: number; inside: boolean; at: number }> };
+  position?: { x: number; y: number; cursor: { x: number; y: number } };
 }
 interface Transfer {
   readonly reservation: Reservation;
@@ -37,8 +42,10 @@ export interface TransferWindows {
   eligible(includeProvisional?: boolean): readonly ReaderCallerContext[];
   send(caller: ReaderCallerContext, event: TransferEvent): void;
   focus(caller: ReaderCallerContext): void;
-  create(): { windowId: string; dispose: () => void };
+  create(position?: { x: number; y: number; cursor: { x: number; y: number } }): { windowId: string; dispose: () => void };
+  sampleDrag?(source: ReaderCallerContext): DragNativeSample & { zoom: number; inset: { x: number; y: number } };
   exists?(windowId: string): boolean;
+  acceptsDrop?(caller: ReaderCallerContext): boolean;
 }
 /** Main-owned one-use rendezvous. Locks both windows during preparation, never
  * keeps a SQL transaction open across IPC, and treats committed DB ownership as
@@ -48,6 +55,7 @@ export class TabTransferCoordinator {
   private readonly pending = new Map<string, Transfer>();
   private readonly handoffs = new Map<string, { caller: ReaderCallerContext; value: LiveViewHandoff }>();
   private readonly itemChanges = new Map<string, number>();
+  private activeGesture?: Reservation;
   constructor(private readonly repository: ReaderRepository, private readonly windows: TransferWindows,
     private readonly allowed: () => boolean, private readonly deadlineMs = 30000, private readonly now: () => number = Date.now) {
     repository.onCommit(commit => {
@@ -95,10 +103,106 @@ export class TabTransferCoordinator {
       return { ok: true, value: { token } };
     } catch (error) { return { ok: false, error: { code: error instanceof StateConflictError ? 'STATE_CONFLICT' : 'FORBIDDEN' } }; }
   }
+  /** Lightweight source reservation. No session checkpoint, input freeze or native
+   * construction occurs until a target is bound and the source drag has ended. */
+  prepareDrag(source: ReaderCallerContext, value: unknown): Result<{ token: string; gestureId: string }> {
+    if (!exactTransferKeys(value, ['tabId', 'expectedRevision', 'hotspot']) || !exactTransferKeys(value.hotspot, ['x', 'y'])
+      || ![value.hotspot.x, value.hotspot.y].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 2000)) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+    const result = this.begin(source, { tabId: value.tabId, expectedRevision: value.expectedRevision, destination: 'new' });
+    if (!result.ok) return result;
+    const r = this.reservations.get(result.value.token);
+    if (!r) return { ok: false, error: { code: 'FORBIDDEN' } };
+    r.gesture = { id: randomUUID(), started: false, ended: false, bound: false, notified: false,
+      hotspot: value.hotspot as { x: number; y: number }, hover: new Map() };
+    return { ok: true, value: { token: r.token, gestureId: r.gesture.id } };
+  }
+  private validGesture(r?: Reservation): r is Reservation & { gesture: NonNullable<Reservation['gesture']> } {
+    return !!r?.gesture && !r.cancelled && !r.executing && r.source.isCurrent() && this.windows.eligible().includes(r.source)
+      && this.allowed() && r.epoch === this.repository.profileEpoch && this.now() < r.expires
+      && this.repository.workspace(r.source.windowId).revision === r.start.expectedRevision;
+  }
+  startDrag(source: ReaderCallerContext, value: unknown): Result<null> {
+    if (!exactTransferKeys(value, ['token']) || !isDragToken(value.token)) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+    const r = this.reservations.get(value.token);
+    if (!this.validGesture(r) || r.source !== source || r.gesture.started) return { ok: false, error: { code: 'FORBIDDEN' } };
+    if (this.activeGesture) this.cancelReservation(this.activeGesture);
+    this.activeGesture = r; r.gesture.started = true;
+    for (const caller of this.windows.eligible()) this.sendSafely(caller, { kind: 'drag-started', token: r.gesture.id });
+    return { ok: true, value: null };
+  }
+  hoverDrag(caller: ReaderCallerContext, value: unknown): Result<null> {
+    if (!(exactTransferKeys(value, ['gestureId', 'sequence', 'inside']) || exactTransferKeys(value, ['gestureId', 'sequence', 'inside', 'cancel']) && value.cancel === true) || !isDragToken(value.gestureId) || !isRevision(value.sequence) || typeof value.inside !== 'boolean') return { ok: false, error: { code: 'INVALID_REQUEST' } };
+    const r = this.activeGesture;
+    if (r?.gesture) for (const c of r.gesture.hover.keys()) if (!c.isCurrent() || c.windowId === caller.windowId && c !== caller) r.gesture.hover.delete(c);
+    if (!this.validGesture(r) || r.gesture.id !== value.gestureId || !caller.isCurrent() || !this.windows.eligible().includes(caller)
+      || value.sequence <= (r.gesture.hover.get(caller)?.sequence ?? -1)) return { ok: false, error: { code: 'FORBIDDEN' } };
+    if (value.cancel === true) {
+      const previous = r.gesture.hover.get(caller);
+      if (caller !== r.source && (!previous?.inside || this.now() - previous.at >= 800)) return { ok: false, error: { code: 'FORBIDDEN' } };
+      this.cancelReservation(r);
+    } else r.gesture.hover.set(caller, { sequence: value.sequence, inside: value.inside, at: this.now() });
+    return { ok: true, value: null };
+  }
+  private notifyOffer(r: Reservation): void {
+    const g = r.gesture;
+    if (!g || !g.bound || !g.ended || g.notified) return;
+    g.notified = true;
+    this.clearDragHover(r);
+    this.sendSafely(r.source, { kind: 'offered', token: r.token, start: r.start });
+  }
+  offerDrag(caller: ReaderCallerContext, value: unknown): Result<null> {
+    if (!exactTransferKeys(value, ['token', 'expectedRevision', 'beforeTabId']) || !isDragToken(value.token) || !isRevision(value.expectedRevision)
+      || !(value.beforeTabId === null || isViewIdentity(value.beforeTabId))) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+    const r = this.reservations.get(value.token);
+    if (!this.validGesture(r) || !r.gesture.started || r.gesture.bound || !caller.isCurrent() || caller === r.source || !this.windows.eligible().includes(caller) || this.windows.acceptsDrop?.(caller) === false) return { ok: false, error: { code: 'FORBIDDEN' } };
+    const target = this.repository.workspace(caller.windowId);
+    if (target.revision !== value.expectedRevision || value.beforeTabId !== null && !target.tabs.some(t => t.id === value.beforeTabId)
+      || [...this.reservations.values()].some(other => other !== r && !other.cancelled && (other.source === caller || other.target === caller))) {
+      this.cancelReservation(r); return { ok: false, error: { code: 'STATE_CONFLICT' } };
+    }
+    r.target = caller; r.start = { ...r.start, destination: { windowId: caller.windowId, expectedRevision: value.expectedRevision, beforeTabId: value.beforeTabId } };
+    r.gesture.bound = true; this.notifyOffer(r);
+    return { ok: true, value: null };
+  }
+  endDrag(source: ReaderCallerContext, value: unknown): Result<null> {
+    if (!exactTransferKeys(value, ['token', 'outcome']) || !isDragToken(value.token) || !['unclaimed', 'cancel', 'local'].includes(String(value.outcome))) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+    const r = this.reservations.get(value.token);
+    if (!this.validGesture(r) || r.source !== source || !r.gesture.started || r.gesture.ended) return { ok: false, error: { code: 'FORBIDDEN' } };
+    r.gesture.ended = true;
+    if (value.outcome !== 'unclaimed') { this.cancelReservation(r); return { ok: true, value: null }; }
+    if (!r.gesture.bound) {
+      const recent = [...r.gesture.hover].some(([c, h]) => c.isCurrent() && h.inside && this.now() - h.at < 800);
+      const sample = this.windows.sampleDrag?.(source);
+      if (sample && acceptsOutsideDetach(sample, recent)) {
+        r.position = { x: Math.round(sample.cursor.x - r.gesture.hotspot.x * sample.zoom - sample.inset.x),
+          y: Math.round(sample.cursor.y - r.gesture.hotspot.y * sample.zoom - sample.inset.y), cursor: sample.cursor };
+        r.gesture.bound = true; // Existing 'new' destination, never a guessed peer.
+      }
+      // An end can reach main before a peer's drop IPC. Retain a guarded unbound
+      // ticket until its deadline so that genuine recipient offer can still win.
+    }
+    this.notifyOffer(r);
+    return { ok: true, value: null };
+  }
+  private clearDragHover(r: Reservation): void {
+    if (!r.gesture) return;
+    if (this.activeGesture === r) this.activeGesture = undefined;
+    for (const caller of this.windows.eligible()) this.sendSafely(caller, { kind: 'drag-cleared', token: r.gesture.id });
+    r.gesture.hover.clear();
+  }
+  /** A delivered native Escape is evidence; absence of this callback is not. */
+  cancelObservedDrag(caller: ReaderCallerContext): boolean {
+    const r = this.activeGesture;
+    if (!this.validGesture(r) || !caller.isCurrent()) return false;
+    const hover = r.gesture.hover.get(caller);
+    if (caller !== r.source && (!hover?.inside || this.now() - hover.at >= 800)) return false;
+    this.cancelReservation(r); return true;
+  }
   private sendSafely(caller: ReaderCallerContext, event: TransferEvent): void { try { this.windows.send(caller, event); } catch { /* Dead recipients cannot affect ownership. */ } }
   private cancelReservation(reservation: Reservation): void {
     if (reservation.cancelled || this.pending.get(reservation.token)?.phase === 'COMMITTED') return;
     reservation.cancelled = true; clearTimeout(reservation.timer);
+    this.clearDragHover(reservation);
     const op = this.pending.get(reservation.token);
     op?.reject?.();
     this.sendSafely(reservation.source, { kind: 'cancelled', token: reservation.token, tabId: reservation.start.tabId });
@@ -154,6 +258,7 @@ export class TabTransferCoordinator {
     if (!exactTransferKeys(submission, ['token', 'request']) || !isViewIdentity(submission.token) || !isTransferRequest(submission.request)) return { ok: false, error: { code: 'INVALID_REQUEST' } };
     const request = submission.request, reservation = this.reservations.get(submission.token);
     if (!reservation || reservation.source !== source || reservation.cancelled || reservation.executing || !source.isCurrent()
+      || reservation.gesture && (!reservation.gesture.bound || !reservation.gesture.ended || !reservation.gesture.notified)
       || reservation.epoch !== this.repository.profileEpoch || this.now() >= reservation.expires) return { ok: false, error: { code: 'FORBIDDEN' } };
     if (!this.allowed()) return { ok: false, error: { code: 'DATA_BUSY' } };
     const expected = reservation.start, actualDestination = request.destination, expectedDestination = expected.destination;
@@ -181,7 +286,7 @@ export class TabTransferCoordinator {
       // the operation and cannot re-enter a consumed transaction.
       timer = setInterval(() => { if (!this.current(op)) fail(); }, Math.min(100, this.deadlineMs));
       let targetId: string;
-      if (request.destination === 'new') { op.provisional = this.windows.create(); targetId = op.provisional.windowId; }
+      if (request.destination === 'new') { op.provisional = this.windows.create(reservation.position); targetId = op.provisional.windowId; }
       else targetId = request.destination.windowId;
       if (targetId === source.windowId || [...this.pending.values()].some(other => other !== op && (other.source.windowId === targetId || other.target?.windowId === targetId))) throw new StateConflictError('Destination reserved');
       const waitTarget = async (): Promise<ReaderCallerContext> => {

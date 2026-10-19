@@ -308,6 +308,7 @@ if (process.versions.electron) {
     } else if (phase === 'restart') {
       await wait(() => created.length === 4, 'restored four readers'); for (const w of created) await ready(w);
       assert.deepEqual(capture(), JSON.parse(fs.readFileSync(path.join(root, 'expected.json'))));
+      await wait(() => windows().every(w => w.isVisible()), 'restored native show batch');
       assert.equal(windows().every(w => w.isVisible()), true);
       // A real crash after committed transfer retains target DB ownership.
       created[1].webContents.forcefullyCrashRenderer(); await pause(200);

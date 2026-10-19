@@ -1,5 +1,14 @@
 # Multi-window readiness audit
 
+**M8 update, 2026-10-19:** [ADR 0034](decisions/0034-native-html-tab-dragging.md)
+replaces pointer capture with HTML DnD, adds source-only main reservations and exact
+recipient offers, and reuses M7 checkpoints/atomic ownership. A replaceable guarded
+outside detector accepts the documented Escape-outside ambiguity; it never chooses
+a covered peer by geometry. Schema stays **14**. Current evidence and limits are
+in [TESTING](TESTING.md); [physical manual matrix](M8_MANUAL_VERIFICATION.md) is pending.
+Original audit and M0/M0.5 findings below are historical, not rewritten as native passes.
+M9 scale/release hardening remains outside this increment.
+
 **M7 implementation, 2026-10-19:**
 [ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) implements atomic
 explicit cross-window moves, frozen runtime handoff, owner-generation/ABA fencing,

@@ -1,5 +1,14 @@
 # Multiple equal windows: proposed architecture
 
+**M8 implementation, 2026-10-19:** [ADR 0034](decisions/0034-native-html-tab-dragging.md)
+implements native HTML reorder/recipient-drop attachment over M7's one ownership
+transaction and a source-only gesture reservation/one-use offer. Outside dragend
+uses the accepted isolated heuristic; unobserved Escape outside may detach.
+Schema remains **14**. [TESTING](TESTING.md) separates synthetic production-entry
+results from unperformed native-loop/physical [verification](M8_MANUAL_VERIFICATION.md).
+Earlier proposal/research sections retain their historical context and are superseded
+by the accepted owner policy and implemented ADRs. M9 remains future work.
+
 **M7 implementation, 2026-10-19:**
 [ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) implements explicit
 Move to Window/New Window, token-bound source/target preflight, exact live frozen
@@ -712,7 +721,7 @@ next; no milestone is permission to execute an installer or valuable profile.
 | M5 independent duplicate views, implemented (ADR 0031) | App mapping/useDiscussionViews; session queues; panel/description/comment ID namespaces; Library Open/Duplicate commands | Schema 13, atomic semantic clone, scoped hydration before mount, independent same-item sessions and shared mutation fanout. Deterministic/React and actual Electron restart/backup evidence is recorded in TESTING.md. |
 | M6 equal windows + geometry restoration, feature / L | WindowCoordinator + screen adapter; window menu/new command; scoped bootstrap/window tab commands, per-window singletons | Persist restore set/normal bounds/last active with validated absent-geometry fallback. U geometry/close policy; DB topology constraints; E 3 equal windows/last close/quit/restart; N mixed monitors and unplug. Exit: no special primary, reachable restored windows and one service. |
 | M7 explicit transfer/merge protocol, feature / L | TabTransferCoordinator/repository transaction/handoff; keyboard Move to window/new; source/target renderer generation fences | Placement/lease revisions from M4; tokens/transient frozen state not durable. U/DB/C atomic move/merge/rollback/late save; E close/crash both sides with live selection/query/scroll. Exit: exactly one durable owner at every crash point, correct special merge, no normal merge. |
-| M8 drag adapter, feature / XL | useTabStrip/WorkspaceTabs and chosen M0 main/native adapter; accessible announcements/focus; packaging only if native adapter required | No further content schema. E/N genuine detach desktop/attach/reorder/cancel mixed DPI/occlusion; all M7 protocol tests retained. Exit: all drag requirements actually met, not substituted by explicit menu commands. |
+| M8 drag adapter, implemented (ADR 0034), physical verification pending | Native HTML useTabStrip/WorkspaceTabs; source-only M7 ticket and exact recipient offer; isolated guarded outside detector; localized feedback | Schema 14 unchanged. Deterministic and category A production-entry coverage; accepted Escape-outside ambiguity. Actual native/physical matrix remains pending in M8_MANUAL_VERIFICATION.md. Existing M7 safety tests retained. |
 | M9 scale and release verification, hardening / M–L | Window-aware smoke utilities, profile/perf harness, selective scoped loading if measurements justify, docs/screenshots | No speculative DB redesign. Full suite/typecheck/lint, E 2–4 windows at 10k/50k with backup/refresh/Undo/crash/restart; packaged ZIP runtime smoke if artifacts change. Exit: recorded practical budgets/limits and regression evidence. No Setup execution or public-release claim. |
 
 M0 can reveal a platform dependency early. M1→M2→M3 protect safety before visible

@@ -1,5 +1,18 @@
 # Architecture
 
+## Native HTML gestures (M8)
+
+[ADR 0034](decisions/0034-native-html-tab-dragging.md) layers a lightweight source-only
+reservation and one-use recipient offer over M7. Pointer-down prepares an opaque
+MIME token; synchronous dragstart writes it; only actual recipient drop can bind
+an existing native. Source dragend precedes M7 freeze/checkpoint/readiness/COMMIT.
+Local reorder retains its CAS command and session. App-wide bounded sequenced hover
+and main cursor/native evidence feed an isolated VS Code-inspired outside heuristic.
+Unobserved Escape outside may detach by accepted policy; coordinates never select
+a peer. M6 clamps the new reader in DIP; M3 cancels tokens before drains. Schema 14
+and all ownership/save-lane/ABA/handoff guarantees remain. Physical native input
+is pending; [manual matrix](M8_MANUAL_VERIFICATION.md), [evidence](TESTING.md).
+
 ## Atomic cross-window transfer (M7)
 
 [ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) adds a main-owned

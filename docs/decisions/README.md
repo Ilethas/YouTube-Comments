@@ -1,5 +1,11 @@
 # Decisions and open questions
 
+[ADR 0034: Native HTML tab gestures](0034-native-html-tab-dragging.md) implements
+M8 over M7 with schema **14**, source-only tokens, exact recipient offers, local
+CAS reorder and an isolated VS Code-inspired outside heuristic. Escape outside may
+detach by accepted policy. Synthetic evidence and pending physical verification
+are explicitly distinguished; M9 remains future work.
+
 [ADR 0033: Atomic cross-window tab transfer](0033-atomic-cross-window-tab-transfer.md)
 implements M7 on schema **14**, unchanged: explicit keyboard/menu moves, main-issued
 one-use reservations, final source saves, frozen runtime handoff, generation/ABA

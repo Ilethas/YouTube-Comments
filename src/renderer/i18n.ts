@@ -4,6 +4,9 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  tabDragStarted: 'Dragging tab. Drop in a tab strip to move it, or outside to open a window.',
+  tabDragInsert: 'Drop to insert the tab at this position.', tabDragCancelled: 'Tab drag cancelled. The source was preserved.',
+  tabDragFinished: 'Tab drag finished.',
   moveToWindow: 'Move to Window…', moveToNewWindow: 'Move to New Window', moveWindowLabel: 'Window {number}',
   noMoveWindows: 'No other window is available.', moveFailed: 'The tab could not be moved. Its source is preserved. Try again from the tab menu.',
   movingTab: 'Moving tab…', tabMoved: 'Tab moved to the destination window.', tabReceived: 'Moved tab activated in this window.',
@@ -176,6 +179,9 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  tabDragStarted: 'Przeciąganie karty. Upuść na pasku kart, aby ją przenieść, lub poza oknem, aby otworzyć nowe okno.',
+  tabDragInsert: 'Upuść, aby wstawić kartę w tym miejscu.', tabDragCancelled: 'Anulowano przeciąganie karty. Zachowano kartę źródłową.',
+  tabDragFinished: 'Zakończono przeciąganie karty.',
   moveToWindow: 'Przenieś do okna…', moveToNewWindow: 'Przenieś do nowego okna', moveWindowLabel: 'Okno {number}',
   noMoveWindows: 'Brak innych dostępnych okien.', moveFailed: 'Nie udało się przenieść karty. Karta źródłowa została zachowana. Spróbuj ponownie z menu karty.',
   movingTab: 'Przenoszenie karty…', tabMoved: 'Karta przeniesiona do okna docelowego.', tabReceived: 'Przeniesiona karta jest aktywna w tym oknie.',

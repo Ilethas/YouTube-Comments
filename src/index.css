@@ -308,3 +308,7 @@ button > .action-icon { margin-right: 4px; }
   background: Canvas;
   color: CanvasText;
 }
+.tabs[data-insert-end=true]::after { content: ''; flex: 0 0 3px; background: var(--accent); align-self: stretch; }
+.tab { position: relative; }
+.tab[data-insert-before=true]::before { content: ''; position: absolute; inset: 0 auto 0 -2px; width: 3px; background: var(--accent); pointer-events: none; z-index: 2; }
+.tab[data-dragging=true] { opacity: .65; }

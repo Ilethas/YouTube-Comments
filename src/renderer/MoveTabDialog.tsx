@@ -5,9 +5,10 @@ import type { Locale } from './i18n';
 
 /** Explicit keyboard-accessible destination selection; displayed IDs carry no
  * authority. Main rechecks the chosen lease and topology before committing. */
-export function MoveTabDialog({ api, locale, dirty, newWindow, cancel, move }: {
+export function MoveTabDialog({ api, locale, dirty, newWindow, cancel, move, fixedDestination }: {
   api: TabTransferApi; locale: Locale; dirty: boolean; newWindow: boolean;
   cancel: () => void; move: (destination: TransferRequest['destination']) => void;
+  fixedDestination?: TransferRequest['destination'];
 }) {
   const ref = useRef<HTMLDialogElement>(null), title = useId(), t = translator(locale);
   const [destinations, setDestinations] = useState<readonly TransferDestination[]>(), [failed, setFailed] = useState(false), [discard, setDiscard] = useState(false);
@@ -27,11 +28,11 @@ export function MoveTabDialog({ api, locale, dirty, newWindow, cancel, move }: {
     <button autoFocus onClick={cancel}>{t(blocked ? 'keepEditing' : 'cancel')}</button>
     {blocked ? <><p>{t('moveDirtySettings')}</p><button onClick={() => setDiscard(true)}>{t('discardDraft')}</button></> : <>
       {failed && <p role="alert">{t('moveFailed')}</p>}
-      {!newWindow && !destinations && !failed && <p role="status">{t('loading')}</p>}
-      {!newWindow && destinations?.map(destination => <button key={destination.windowId} onClick={() => move({ windowId: destination.windowId, expectedRevision: destination.revision, beforeTabId: null })}>
+      {!fixedDestination && !newWindow && !destinations && !failed && <p role="status">{t('loading')}</p>}
+      {!fixedDestination && !newWindow && destinations?.map(destination => <button key={destination.windowId} onClick={() => move({ windowId: destination.windowId, expectedRevision: destination.revision, beforeTabId: null })}>
         {t('moveWindowLabel', { number: destination.number })}</button>)}
-      {!newWindow && destinations?.length === 0 && <p>{t('noMoveWindows')}</p>}
-      <button onClick={() => move('new')}>{t('moveToNewWindow')}</button>
+      {!fixedDestination && !newWindow && destinations?.length === 0 && <p>{t('noMoveWindows')}</p>}
+      <button onClick={() => move(fixedDestination ?? 'new')}>{t(fixedDestination && fixedDestination !== 'new' ? 'moveToWindow' : 'moveToNewWindow')}</button>
     </>}
   </dialog>;
 }

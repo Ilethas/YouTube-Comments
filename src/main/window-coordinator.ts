@@ -36,6 +36,8 @@ interface NativeWindowHooks {
  * issues a new lease. Removing a window never shuts down the shared service. */
 export class WindowCoordinator {
   private readonly records = new Map<WebContents, WindowRecord>();
+  private cancelDrag?: (caller: ReaderCallerContext) => boolean;
+  setDragCancellation(cancel: (caller: ReaderCallerContext) => boolean): void { this.cancelDrag = cancel; }
   private lifecycle?: { close: (caller: ReaderCallerContext) => void; reload: (caller: ReaderCallerContext) => void; lost: (caller: ReaderCallerContext) => void;
     restored: (caller: ReaderCallerContext) => void; canRecover: () => boolean; closeUnavailable?: (window: BrowserWindow) => void };
   setLifecycle(value: NonNullable<WindowCoordinator['lifecycle']>): void { this.lifecycle = value; }
@@ -48,11 +50,11 @@ export class WindowCoordinator {
   private readonly loading = new Set<Promise<void>>();
   setNativeHooks(hooks: NativeWindowHooks): void { this.native = hooks; }
 
-  createReaderWindow(existingId?: string, provisional = false): BrowserWindow {
+  createReaderWindow(existingId?: string, provisional = false, geometry?: Parameters<typeof createApplicationWindow>[1]): BrowserWindow {
     const windowId = existingId ?? this.identityProvider();
     let window: BrowserWindow | undefined;
     try {
-      window = createApplicationWindow(this.preloadPath, this.native?.geometry(windowId));
+      window = createApplicationWindow(this.preloadPath, geometry ?? this.native?.geometry(windowId));
       this.register(window, windowId);
       const record = this.records.get(window.webContents); if (record) record.provisional = provisional;
       this.native?.created(window, windowId, provisional);
@@ -135,6 +137,7 @@ export class WindowCoordinator {
       record.closing = true; revoke();
     };
     const keyboard = (event: Electron.Event, input: Electron.Input) => {
+      if (input.type === 'keyDown' && input.key === 'Escape' && record.caller && this.live(record, record.caller) && this.cancelDrag?.(record.caller)) event.preventDefault();
       if (input.type === 'keyDown' && (input.key === 'F5' || (input.control || input.meta) && input.key.toLowerCase() === 'r') && record.caller && this.lifecycle) {
         event.preventDefault(); this.lifecycle.reload(record.caller);
       }
@@ -228,9 +231,10 @@ export class WindowCoordinator {
   promoteTransfer(caller: ReaderCallerContext): void {
     const window = this.originWindow(caller), record = window && this.records.get(window.webContents);
     if (!window || !record) return;
+    const wasProvisional = record.provisional;
     record.provisional = false; this.native?.ready(window, caller.windowId);
     if (window.isMinimized()) window.restore();
-    window.focus();
+    if (!wasProvisional || !this.native) window.focus();
   }
   isTransferProvisional(id: string): boolean { return [...this.records.values()].some(r => r.windowId === id && r.provisional); }
   nativeWindows(): readonly { window: BrowserWindow; windowId: string }[] { return [...this.records.values()].map(r => ({ window: r.window, windowId: r.windowId })); }

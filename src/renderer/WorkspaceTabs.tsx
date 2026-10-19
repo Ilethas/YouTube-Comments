@@ -7,6 +7,7 @@ import { translator, Locale } from './i18n';
 import { TabIcon } from './TabIcon';
 import { ActionIcon } from './ActionIcon';
 import { reorderHelp, shortcutHint } from './shortcuts';
+import type { TabTransferApi } from '../shared/tab-transfer';
 
 interface Props {
   workspace: WorkspaceState;
@@ -17,13 +18,13 @@ interface Props {
   activate: (id: string, focus?: boolean) => void;
   close: (id: string) => void;
   transfer?: (id: string, newWindow: boolean) => void;
+  dragApi?: TabTransferApi;
   duplicate?: (sourceViewId: string) => void;
   move: (id: string, toIndex: number) => void;
 }
 
-/** Pointer capture keeps internal dragging separate from external drop data.
- * Preview is local; only pointer-up commits one final index. Alt+arrows reorder. */
-export function WorkspaceTabs({ workspace, locale, disabled, label, icon, activate, close, move, duplicate, transfer }: Props) {
+/** Native HTML adapter shares M7 authority; keyboard alternatives stay available. */
+export function WorkspaceTabs({ workspace, locale, disabled, label, icon, activate, close, move, duplicate, transfer, dragApi }: Props) {
   const t = translator(locale);
   const [menu, setMenu] = useState<CommentMenuTarget>();
   useEffect(() => { setMenu(undefined); }, [workspace.revision, disabled]);
@@ -31,13 +32,14 @@ export function WorkspaceTabs({ workspace, locale, disabled, label, icon, activa
     if (disabled || !duplicate && !transfer) return;
     setMenu({ id, origin, x, y, selectionText: '' });
   }
-  const { strip, dragging, shown, suppressClick, begin, newPress, pointerMove, pointerUp, pointerCancel, lostCapture } = useTabStrip(workspace, disabled, move, activate);
+  const { strip, dragging, shown, suppressClick, begin, newPress, pointerUp, pointerCancel, dragStart, dragOver, dragLeave, drop, dragEnd, insertion, status } = useTabStrip(workspace, disabled, move, dragApi);
   return <><div ref={strip} className="tabs" role="tablist" aria-label={t('discussions')} aria-describedby="tab-reorder-help"
-    onPointerDownCapture={newPress} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerCancel} onLostPointerCapture={lostCapture}
+    data-insert-end={insertion === null} onPointerDownCapture={newPress} onPointerUp={pointerUp} onPointerCancel={pointerCancel}
+    onDragOver={dragOver} onDragLeave={dragLeave} onDrop={drop} onDragEnd={dragEnd}
     onClickCapture={event => { if (suppressClick.current && event.detail > 0) { event.preventDefault(); event.stopPropagation(); } }}>
     <span id="tab-reorder-help" className="visually-hidden">{reorderHelp(locale)}</span>
     {shown.tabs.map((tab, index) => <div key={tab.id} className="tab" role="presentation" data-tab-id={tab.id} data-tab-item-id={tab.kind === 'discussion' ? tab.itemId : undefined}
-      data-active={workspace.activeTabId === tab.id} data-dragging={dragging === tab.id}>
+      data-active={workspace.activeTabId === tab.id} data-dragging={dragging === tab.id} data-insert-before={insertion === tab.id}>
       <button role="tab" id={`tab-${tab.id}`} aria-controls={`panel-${tab.kind === 'discussion' ? tab.id : tab.kind}`}
         aria-haspopup={transfer || tab.kind === 'discussion' && duplicate ? 'menu' : undefined}
         onContextMenu={event => {
@@ -48,6 +50,7 @@ export function WorkspaceTabs({ workspace, locale, disabled, label, icon, activa
         aria-label={`${t(icon(tab))}: ${label(tab)}`} title={`${t(icon(tab))}: ${label(tab)} · ${reorderHelp(locale)}${tab.kind === 'discussion' && duplicate ? ` \u00b7 ${t('tabActionsHint')}` : ''}`}
         onClick={event => { if (!suppressClick.current || event.detail === 0) activate(tab.id); }}
         onPointerDown={event => begin(tab.id, index, event)}
+        draggable={!disabled && !!dragApi} onDragStart={event => dragStart(tab.id, event)}
         onKeyDown={event => {
           if ((transfer || tab.kind === 'discussion' && duplicate) && (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey)) {
             event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect();
@@ -70,7 +73,7 @@ export function WorkspaceTabs({ workspace, locale, disabled, label, icon, activa
         title={workspace.activeTabId === tab.id ? shortcutHint(locale, 'close-tab', t('closeTab', { title: label(tab) })) : t('closeTab', { title: label(tab) })}
         onClick={() => close(tab.id)}><ActionIcon name="cancel" /></button>
     </div>)}
-  </div>{menu && (duplicate || transfer) && !disabled && <CommentContextMenu target={menu} locale={locale} label={t('tabActions')} dismiss={() => setMenu(undefined)}
+  </div>{status && <span className="visually-hidden" role="status" aria-live="polite">{t(status)}</span>}{menu && (duplicate || transfer) && !disabled && <CommentContextMenu target={menu} locale={locale} label={t('tabActions')} dismiss={() => setMenu(undefined)}
     items={[
       ...(duplicate && workspace.tabs.find(tab => tab.id === menu.id)?.kind === 'discussion' ? [{ label: t('duplicateTab'), icon: 'copy' as const, run: () => duplicate(menu.id) }] : []),
       ...(transfer ? [{ label: t('moveToWindow'), icon: 'chevronRight' as const, run: () => transfer(menu.id, false) },

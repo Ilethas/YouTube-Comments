@@ -1,5 +1,12 @@
 # Documentation map
 
+[ADR 0034](decisions/0034-native-html-tab-dragging.md) implements **M8**: native HTML
+tab reorder/attachment, source-only reservation/one-use offer, and accepted guarded
+outside detachment over M7. Schema stays **14**. Outside Escape can detach; actual
+native/physical drag verification remains pending. See [testing](TESTING.md) and
+[manual verification](M8_MANUAL_VERIFICATION.md). M9 remains future work. Earlier
+milestone sections below retain their historical scope.
+
 [ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) implements **M7**:
 explicit keyboard/menu movement between equal reader windows, live frozen-view
 handoff, atomic ownership and singleton merge, generation/ABA fencing and safe
