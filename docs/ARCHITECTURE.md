@@ -1,5 +1,28 @@
 # Architecture
 
+## Measured multi-window payload hardening (M9.1)
+
+[M9.1](M9_1_PERFORMANCE.md) measures actual production-entry readers at 10k/50k
+across 2/4 natives. Reader snapshots omit the duplicate full comment `remote`
+tree; projected author/avatar, source/placement/direct-parent, publication
+labels/precision, discovery, flags, text, seen and actions remain unchanged.
+Main still reads complete normalized SQLite evidence for relationship projection
+and later merge; backups retain its exact bytes. Item evidence used by headers
+and thumbnails stays available. No schema or IPC authority is added.
+
+[ADR 0036](decisions/0036-measured-reader-snapshot-hardening.md) reuses only shared
+bootstrap items/comments/Undo within one repository commit revision. All commits,
+including failures, clear reuse; transaction reads bypass it. Caller-specific
+workspace/view/intent/collapse/preferences are always read afresh. Repository
+replacement supplies the epoch boundary. This avoids repeated main materialization
+blocking early windows' cold worker loads; the one-second query deadline remains.
+
+This targeted payload reduction leaves full-profile bootstrap/recovery, complete
+mutation result arrays and synchronous main SQLite/merge work in place. Memory,
+clone and main-stall concerns remain measured Q-21 work; the report separates
+observations and approximations from correctness guarantees. No database worker,
+paging, new indexing semantics or broad transport redesign is selected.
+
 ## Reader polish over the existing lifecycle (M8.2)
 
 [ADR 0035](decisions/0035-reader-menu-selection-and-lifecycle-presentation.md)

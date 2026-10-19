@@ -110,6 +110,8 @@ export class ReaderRepository {
     if (this.ownerGenerations.get(viewId) !== (generation ?? undefined)) throw new ViewOwnershipError('Revoked view generation');
   }
   private commitRevision = 0;
+  private bootstrapShared?: { readonly revision: number; readonly value: Pick<ReaderState, 'items' | 'comments' | 'seenUndo'> };
+  private committing = false;
   private readonly observers = new Set<(commit: SharedCommit) => void>();
   private lastCommit?: SharedCommit;
   latestCommit(): SharedCommit | undefined { return this.lastCommit; }
@@ -124,10 +126,15 @@ export class ReaderRepository {
    * Exhaustion fails before writes; observer failure can never change SQL success. */
   private commit<T>(change: SharedChange | ((value: T) => SharedChange), action: () => T): T {
     if (this.commitRevision >= Number.MAX_SAFE_INTEGER) throw new Error('Revision exhausted');
+    // Never reuse pre-write rows inside a transaction, including its return DTO.
+    // A failed transaction may discard the cache, but cannot publish stale rows.
+    this.bootstrapShared = undefined;
+    this.committing = true;
     this.pendingSeen = undefined;
     let value: T;
     try { value = transaction(this.db, action); }
     catch (error) { this.pendingSeen = undefined; throw error; }
+    finally { this.committing = false; this.bootstrapShared = undefined; }
     this.commitRevision++;
     let detail: SharedChange = { kind: 'watermark' };
     try { detail = this.pendingSeen ?? (typeof change === 'function' ? change(value) : change); } catch { /* Recovery watermark. */ }
@@ -150,7 +157,7 @@ export class ReaderRepository {
     return new ReaderRepository(openReaderDatabase(databasePath), ingestion);
   }
 
-  close(): void { this.db.close(); }
+  close(): void { this.bootstrapShared = undefined; this.db.close(); }
 
   /** All authoritative tables share this connection and SQLite's online snapshot.
    * The service holds a mutation barrier until verification/publication completes. */
@@ -268,7 +275,10 @@ export class ReaderRepository {
       if (!relationship) throw new Error('Missing relationship projection');
       const comment: Comment = {
         id: String(row.id), itemId: item.id, parentId: relationship.parentId,
-        directParentId: relationship.directParentId, remote: evidence[index].remote,
+        // Reader consumers use the projections below. Sending the complete
+        // normalized evidence again multiplies contextBridge clone/freeze work
+        // across every native window (M9.1). Merge/backup retain remote_json.
+        directParentId: relationship.directParentId,
         relationshipStatus: relationship.status,
         relationship: evidence[index].remote.relationship, publication: evidence[index].remote.publication,
         source: { kind: item.kind, itemId: item.sourceId, commentId: String(row.source_comment_id) },
@@ -370,9 +380,17 @@ export class ReaderRepository {
   }
 
   bootstrap(languages: readonly string[], windowId = this.initialWindowId()): ReaderState {
-    const items = this.readItems();
-    return { items, comments: Object.fromEntries(items.map(item => [item.id, this.readComments(item)])),
-      seenUndo: Object.fromEntries(items.map(item => [item.id, this.seenUndo(item.id)])),
+    // Equal windows at the same commit share immutable main-side materialization,
+    // not renderer objects or authority. Repeating synchronous 60k reads can
+    // otherwise starve the first windows' cold worker-file loads (M9.1).
+    let shared = this.bootstrapShared?.revision === this.commitRevision ? this.bootstrapShared.value : undefined;
+    if (!shared || this.committing) {
+      const items = this.readItems();
+      shared = { items, comments: Object.fromEntries(items.map(item => [item.id, this.readComments(item)])),
+        seenUndo: Object.fromEntries(items.map(item => [item.id, this.seenUndo(item.id)])) };
+      if (!this.committing) this.bootstrapShared = { revision: this.commitRevision, value: shared };
+    }
+    return { ...shared,
       preferences: this.preferences(languages), workspace: this.workspace(windowId), viewInstances: this.viewInstances(windowId), discussionViews: this.discussionViews(windowId), discussionCollapse: this.discussionCollapse(windowId) };
   }
 

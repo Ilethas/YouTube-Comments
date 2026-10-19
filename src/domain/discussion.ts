@@ -53,6 +53,9 @@ export interface Comment {
   readonly relationshipStatus?: 'top-level' | 'resolved' | 'unresolved' | 'cyclic';
   readonly directParentId?: string | null;
   readonly publication?: StoredPublication;
+  /** Optional domain evidence; main's reader snapshots omit this redundant tree.
+   * Durable merge evidence remains in SQLite; reader fields above retain its
+   * relationship, publication precision/labels and usable author projections. */
   readonly remote?: StoredCommentObservation;
   readonly author?: Author;
   readonly text: string;

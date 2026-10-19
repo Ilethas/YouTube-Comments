@@ -43,6 +43,9 @@ it.each(['Europe/Warsaw', 'Asia/Kolkata'])('bulk date/time preview and transacti
     const update = db.prepare('UPDATE comments SET published_at=? WHERE id=?');
     rows().slice(0, instants.length).forEach((comment, index) => update.run(instants[index], comment.id));
   });
+  // Fixture writes bypass the sole repository commit authority. Reopen after
+  // seeding so the preview starts from this complete fixture incarnation.
+  reopen();
   const evaluation = () => ({ now: 0, timeZone }), clock = timeZone === 'Europe/Warsaw' ? '14:30' : '18:00';
   const target = { kind: 'publication' as const, from: '2026-10-09', fromTime: clock, to: '2026-10-09', toTime: clock };
   const resolved = resolveBulkPublication(target, evaluation()); if (!resolved.ok) throw new Error('resolution failed');
@@ -129,6 +132,7 @@ it.each(['after', 'before', 'between'] as const)('publication %s reuses whole lo
     const update = db.prepare('UPDATE comments SET published_at=? WHERE id=?');
     rows().slice(0, instants.length).forEach((comment, index) => update.run(instants[index], comment.id));
   });
+  reopen();
   const target = { kind: 'publication' as const, ...(scope !== 'before' ? { from: '2026-03-29' } : {}), ...(scope !== 'after' ? { to: '2026-03-29' } : {}) };
   const before = rows(), resolved = resolvePublication({ kind: 'custom', from: target.from, to: target.to }, { now: Date.now(), timeZone: 'Europe/Warsaw' });
   if (!resolved.ok) throw new Error('resolution failed');

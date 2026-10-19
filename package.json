@@ -30,7 +30,9 @@
     "test:m6": "node scripts/smoke-native-windows.cjs",
     "test:m7": "node scripts/smoke-tab-transfer.cjs",
     "test:m8": "node scripts/smoke-tab-drag.cjs",
-    "test:m82": "node scripts/smoke-reader-polish.cjs"
+    "test:m82": "node scripts/smoke-reader-polish.cjs",
+    "test:m91": "node scripts/profile-multi-window.cjs --label=verification --samples=1 --stress",
+    "profile:m91": "node scripts/profile-multi-window.cjs --label=current --samples=3 --stress"
   },
   "overrides": {
     "extract-zip": {

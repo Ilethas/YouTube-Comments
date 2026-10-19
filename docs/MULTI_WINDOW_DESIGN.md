@@ -1,5 +1,13 @@
 # Multiple equal windows: proposed architecture
 
+**M9.1, 2026-10-19:** [performance/verification report](M9_1_PERFORMANCE.md)
+records the first aggregate 2/4-window 10k/50k baseline and targeted removal of
+unused duplicate comment evidence from reader snapshots. Schema **14**, M2–M8
+contracts and historical ledgers remain unchanged. Q-21 still includes full-profile
+cloning/memory and main stalls; measured samples are not universal hardware budgets.
+M9.2 release/presentation work remains reserved for owner review. Earlier milestone
+notes below retain their historical scope.
+
 **M8 implementation, 2026-10-19:** [ADR 0034](decisions/0034-native-html-tab-dragging.md)
 implements native HTML reorder/recipient-drop attachment over M7's one ownership
 transaction and a source-only gesture reservation/one-use offer. Outside dragend

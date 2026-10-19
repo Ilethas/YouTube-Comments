@@ -1,5 +1,63 @@
 # Testing strategy
 
+## Aggregate multi-window scale hardening (M9.1, 2026-10-19)
+
+[ADR 0036](decisions/0036-measured-reader-snapshot-hardening.md) and the focused
+[performance report](M9_1_PERFORMANCE.md) record the controlled 60k-profile baseline,
+intermediate failures, final measurements and remaining Q-21 costs. Schema **14**
+and migrations 1–14 are unchanged. Reader snapshots omit redundant full comment
+evidence; same-revision shared bootstrap reuse avoids repeated main materialization.
+Caller-private state stays fresh; every transaction clears reuse, including failure,
+before observers. The 1000 ms query deadline and M2–M8 safety contracts remain.
+
+`profile:m91` runs three serial startup samples for each of two/four native windows
+and the large-data stress/restart phases. `test:m91` uses one startup sample per
+count with the same correctness workflow. Both require a Forge build, use owned
+OS-temp profiles and deterministic 10k/50k discussions, and add no application test
+capability. They cover 24/48 generated placements, 4/8 visited independent large
+views, depth-60 replies, shared seen/bulk/Undo, frozen live transfer, SQL rollback,
+concurrent source changes, fixture Refresh, failed/successful barriers, exact backup
+and restored table equality, crash/reload, pending Close and pending Quit saves,
+abrupt main exit and real subsequent processes. This is not physical drag evidence.
+
+Median slowest-window usable startup was **21.84 → 2.78 seconds** at two windows
+and **26.07 → 3.84 seconds** at four; snapshot JSON bytes **116.4 → 62.3 MB**.
+Those are warmed-filesystem local samples, not hardware budgets. First SQL reads,
+large replies and seconds-long main stalls remain. The report includes slower
+samples and post-work memory regressions, their GC diagnostic and automation-copy
+limitations; it does not generalize startup memory gains to every lifecycle phase.
+
+Final full Vitest: **1,208 tests / 96 files PASS**, 126.08 s. Typecheck and ESLint
+pass. The first full run found five publication fixtures writing through a second
+SQLite connection after warming a snapshot; setup now reopens after those external
+fixture writes. All date/DST/target/Undo/evidence assertions remain. Focused tests
+also verify cache invalidation/rollback/private scoping and complete durable
+comment evidence through lossy refresh. No production external-writer protocol
+was added.
+
+| Final check | Result |
+| --- | --- |
+| Full aggregate Electron | **All 19 harnesses PASS**, including M5–M8.2 and large backup/forced recovery |
+| Final `test:m91` | **PASS**, two/four natives, 10 process launches, direct destination frozen-count/stale/no-reevaluation assertions |
+| Windows x64 application / ZIP | **PASS**, 73 runtime files / 386,076,172 bytes; ZIP 158,365,811 bytes |
+| Unmodified extracted EXE | **PASS**, native backup/restore, same-ID transfer, independent safety, exact tables, real new-PID relaunch and three restored windows |
+| Existing presentation / whitespace | **PASS**, 11 README links, four PNGs, seven ICO frames; `git diff --check` |
+
+Detailed methods, before/after tables, regressions and raw artifact names are in
+the report. Logs are `.m91-vitest-final.log`, `.m91-typecheck-final.log`,
+`.m91-lint-final.log`, `.m91-electron-final.log`, `.m91-verification-final.log`,
+`.m91-build-final.log`, `.m91-gc-audit.log` and `.m91-packaged-final.log`.
+Prior M8.2/packaged records were archived under the ignored M9.1 diagnostics
+directory before final runners refreshed them. No source-runtime changes were
+needed after the measured hardening; the five publication failures were corrected
+in fixture setup. All changes remain uncommitted for owner review.
+
+The selection Electron runner now uses the shared full-format clipboard snapshot
+helper instead of restoring text alone. If any format cannot be preserved, it
+skips Copy/Ctrl+C/link-copy writes and reports them **UNVERIFIED**; text selection,
+menus and all remaining assertions still run. M9.2 README/release/screenshot work,
+Setup execution, installation and public release are outside this pass.
+
 ## Reader UI and multi-window lifecycle polish (M8.2, 2026-10-19)
 
 [ADR 0035](decisions/0035-reader-menu-selection-and-lifecycle-presentation.md)

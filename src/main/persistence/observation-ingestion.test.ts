@@ -48,6 +48,29 @@ function state() { return repository.bootstrap(['en']); }
 function comments() { return Object.values(state().comments)[0]; }
 function later() { at = '2026-10-02T09:00:00.000Z'; }
 
+it('keeps full comment evidence durable while reader snapshots carry only the consumed projections', () => {
+  const input = fixture();
+  const attempt = repository.ingest(input, undefined, true);
+  const db = raw(), stored = db.prepare('SELECT id,remote_json FROM comments ORDER BY position').all();
+  const before = state(), rows = before.comments[required(attempt.itemId)];
+  expect(rows).toHaveLength(input.collection.comments.length);
+  for (const row of rows) {
+    const evidence = JSON.parse(String(required(stored.find(value => value.id === row.id)).remote_json));
+    expect(row).not.toHaveProperty('remote');
+    expect(row.text).toBe(evidence.text.value);
+    expect(row.relationship).toEqual(evidence.relationship);
+    expect(row.publication).toEqual(evidence.publication);
+    if (evidence.author.avatarUrl.status === 'observed') expect(row.author?.avatarUrl).toBe(evidence.author.avatarUrl.value);
+  }
+  expect(repository.itemSnapshot(required(attempt.itemId)).comments).toEqual(rows);
+  // Re-reading must not rewrite evidence, and a later lossy observation must
+  // still merge against the complete durable tree rather than the smaller DTO.
+  expect(db.prepare('SELECT id,remote_json FROM comments ORDER BY position').all()).toEqual(stored);
+  later(); repository.ingest(batch(input, input.collection.comments.map(row => ({ ...row, text: unknown('unavailable'), author: { ...row.author, avatarUrl: unknown('unavailable') } }))));
+  expect(comments().map(row => ({ text: row.text, author: row.author, relationship: row.relationship, publication: row.publication })))
+    .toEqual(rows.map(row => ({ text: row.text, author: row.author, relationship: row.relationship, publication: row.publication })));
+});
+
 it('lossy Community backend zero likes remain unknown through projection, disabling Most liked', () => {
   repository.ingest(fixture('community-lossy'));
   const stored = comments(), result = unrestrictedView(queryComments(stored));
@@ -193,8 +216,9 @@ it('persists avatar evidence: lossy refresh preserves known URL, newer observed 
   }
   repository.ingest(batch(input, [{ ...first, author: { ...first.author, avatarUrl: observed('https://example.invalid/new.png') } }]));
   handles.splice(handles.indexOf(repository), 1); repository.close(); repository = open();
-  expect(comments()[0]).toMatchObject({ id, seen: true, author: { avatarUrl: 'https://example.invalid/new.png' },
-    remote: { author: { avatarUrl: { status: 'observed', value: 'https://example.invalid/new.png' } } } });
+  expect(comments()[0]).toMatchObject({ id, seen: true, author: { avatarUrl: 'https://example.invalid/new.png' } });
+  const persisted = raw().prepare('SELECT remote_json FROM comments WHERE id=?').get(id);
+  expect(JSON.parse(String(persisted?.remote_json)).author.avatarUrl).toEqual({ status: 'observed', value: 'https://example.invalid/new.png' });
 });
 
 it('establishes an accepted unknown baseline with opaque injected IDs, unseen comments and honest publication evidence', () => {

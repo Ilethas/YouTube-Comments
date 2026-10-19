@@ -15,16 +15,17 @@ if (process.versions.electron) {
   const root = process.env.YOUTUBE_COMMENTS_DEMO_ROOT, phase = process.env.SELECTION_SMOKE_PHASE;
   const fixture = JSON.parse(fs.readFileSync(path.join(root, 'fixture.json'), 'utf8'));
   const opened = []; shell.openExternal = async url => { opened.push(new URL(url).hostname); };
-  let oldClipboard = '';
-  const watchdog = setTimeout(() => app.exit(1), 180000);
+  let restoreClipboard;
+  const watchdog = setTimeout(async () => { await restoreClipboard?.(); app.exit(1); }, 180000);
   app.on('browser-window-created', (_event, window) => {
     window.hide(); window.webContents.setBackgroundThrottling(false);
     window.webContents.once('did-finish-load', () => verify(window).then(async () => {
-      await clipboard.writeText(oldClipboard); clearTimeout(watchdog); app.quit();
-    }).catch(async error => { console.error(error); await clipboard.writeText(oldClipboard); clearTimeout(watchdog); app.exit(1); }));
+      await restoreClipboard?.(); clearTimeout(watchdog); app.quit();
+    }).catch(async error => { console.error(error); await restoreClipboard?.(); clearTimeout(watchdog); app.exit(1); }));
   });
   async function verify(window) {
-    oldClipboard = await clipboard.readText();
+    restoreClipboard = await require('./snapshot-clipboard.cjs')();
+    if (!restoreClipboard) console.log('Selection Copy UNVERIFIED: clipboard formats cannot be safely snapshotted; clipboard preserved.');
     window.show(); window.focus(); window.webContents.focus();
     const contents = window.webContents, js = code => contents.executeJavaScript(code);
     const panel = "document.querySelector('[role=tabpanel]:not([hidden])')";
@@ -118,10 +119,13 @@ if (process.versions.electron) {
     const copied = await js(`(()=>{const t=${article(0)}.querySelector('.comment-text').firstChild,r=document.createRange();r.setStart(t,0);r.setEnd(t,7);const s=getSelection();s.removeAllRanges();s.addRange(r);return s.toString();})()`);
     await mouse(`${article(0)}.querySelector('.comment-text')`, 'right'); await wait("!!document.querySelector('[role=menu]')");
     assert.equal(await js('getSelection().toString()'), copied);
-    await button('Copy selection', "document.querySelector('[role=menu]')"); await pause(100); assert.equal(await clipboard.readText(), copied);
+    if (restoreClipboard) {
+      await button('Copy selection', "document.querySelector('[role=menu]')"); await pause(100); assert.equal(await clipboard.readText(), copied);
+      // Native clipboard shortcut retains the same original text.
+      await key('C', ['control']); assert.equal(await clipboard.readText(), copied);
+      await restoreClipboard();
+    } else await key('Escape');
     assert.equal(seenCount(), 0);
-    // Native clipboard shortcut retains the same original text.
-    await key('C', ['control']); assert.equal(await clipboard.readText(), copied);
     await js('getSelection().removeAllRanges()');
     await js(`${article(0)}.querySelector('.reply-toggle').click()`); await pause(200);
     await wait(`!!${article(20)}`);
@@ -164,9 +168,13 @@ if (process.versions.electron) {
     // Safe external capabilities are intercepted, never launch a real browser.
     await menu(20); await button('Translate in browser', "document.querySelector('[role=menu]')"); await pause(100);
     await menu(20); await button('Open original comment in browser', "document.querySelector('[role=menu]')"); await pause(100);
-    await menu(20); await button('Copy comment link', "document.querySelector('[role=menu]')"); await pause(100);
+    await menu(20);
+    if (restoreClipboard) {
+      await button('Copy comment link', "document.querySelector('[role=menu]')"); await pause(100);
+      assert.ok((await clipboard.readText()).startsWith('https://www.youtube.com/watch?v='));
+      await restoreClipboard();
+    } else await key('Escape');
     assert.deepEqual(opened, ['translate.google.com', 'www.youtube.com']);
-    assert.ok((await clipboard.readText()).startsWith('https://www.youtube.com/watch?v='));
     // Restrictive complete trees include context; newest moves the second tree first.
     await js(`(()=>{const e=${panel}.querySelector('.query-search input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'SELECTION_NEEDLE');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await js(`${panel}.querySelector('.query-controls').requestSubmit()`);
@@ -200,7 +208,7 @@ if (process.versions.electron) {
     await wait(`${panel}.scrollTop===0`);
     await js(`${panel}.querySelector('.selection-toolbar button:last-child').click()`);
     assert.equal(await js(`${panel}.querySelector('.floating-selection-toolbar')===null`), true);
-    console.log(`Selection Electron PASS ${fixture.count}: floating confirmed assignment/Undo/group collapse/Clear, native Back to Top/reduced motion, Space/Shift range, text/Copy/Ctrl+C, exact prefixes 21/2, restrictive newest context, stationary-pointer menu highlight, Polish/dark/720px/125% zoom, safe actions, bounded DOM/ruler; workflow ${Date.now() - start}ms`);
+    console.log(`Selection Electron PASS ${fixture.count}: floating confirmed assignment/Undo/group collapse/Clear, native Back to Top/reduced motion, Space/Shift range, text selection, Copy ${restoreClipboard ? 'PASS' : 'UNVERIFIED (clipboard preserved)'}, exact prefixes 21/2, restrictive newest context, stationary-pointer menu highlight, Polish/dark/720px/125% zoom, safe actions, bounded DOM/ruler; workflow ${Date.now() - start}ms`);
   }
   require(path.resolve(__dirname, '../.vite/build/main.js'));
 } else {

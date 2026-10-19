@@ -121,7 +121,8 @@ it('schema 2 migration opens stored items and preserves every existing row inclu
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   } finally { db.close(); repository = ReaderRepository.open(file); }
   expect(state().workspace).toEqual({ tabs: ['video-demo', 'post-demo'].map(discussionTab), activeTabId: discussionTab('video-demo').id, revision: 0 });
-  expect(state().comments['video-demo'][0].remote?.author.avatarUrl).toEqual({ status: 'unknown', reason: 'unavailable' });
+  expect(state().comments['video-demo'][0].author?.avatarUrl).toBeUndefined();
+  expect(state().items[0].remote?.author.avatarUrl).toEqual({ status: 'unknown', reason: 'unavailable' });
   expect(state().preferences.locale).toBe('pl');
 });
 

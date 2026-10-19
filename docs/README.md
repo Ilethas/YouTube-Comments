@@ -1,5 +1,10 @@
 # Documentation map
 
+**M9.1 scale verification:** see the focused [performance report](M9_1_PERFORMANCE.md)
+for serial 2/4-window 10k/50k observations, payload hardening, lifecycle stress and
+remaining Q-21 limits. Schema stays **14**; M9.2 presentation/release work remains
+reserved for owner review. Historical milestone notes below retain their scopes.
+
 [ADR 0034](decisions/0034-native-html-tab-dragging.md) implements **M8**: native HTML
 tab reorder/attachment, source-only reservation/one-use offer, and accepted guarded
 outside detachment over M7. Schema stays **14**. Outside Escape can detach; actual

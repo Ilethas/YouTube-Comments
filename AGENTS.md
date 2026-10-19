@@ -1,5 +1,31 @@
 # Project guidance
 
+## M9.1 scale boundary
+
+[M9.1 report](docs/M9_1_PERFORMANCE.md) records disposable production-entry
+2/4-window 10k/50k measurements, independent same-item views, large transfers,
+shared operations, failure injection and lifecycle/restart/restore equality.
+`npm.cmd run profile:m91` records repeated observations; `test:m91` is the shorter
+correctness/stress run after a Forge build. Run benchmarks serially, separate from
+other tests. JSON payload sizes/RAF/heap snapshots are approximations, not timing
+budgets or physical-input certification. Full-profile hydration and synchronous
+main work remain Q-21 concerns.
+
+Reader comment snapshots omit the redundant optional `remote` evidence tree;
+all consumed author/relationship/publication/state projections remain. Complete
+SQLite evidence, schema **14** and migrations 1–14 remain unchanged. Do not
+reintroduce that tree into bootstrap, item snapshots or mutation results without
+measuring aggregate bridge/memory cost. Preserve M2 ordering, M3 barriers and
+M4–M8 ownership/live-result safety. No worker/paging/index/persistence redesign
+is selected. M9.2 README/release/screenshot work is reserved for owner review.
+
+[ADR 0036](docs/decisions/0036-measured-reader-snapshot-hardening.md) reuses only
+shared bootstrap data at one repository commit revision. Every transaction clears
+it before execution and on exit (including failure); reads inside transactions
+bypass it. Keep all caller-private seeds fresh and never derive authority from
+cached data. Preserve the existing 1000 ms query deadline; main snapshot stalls
+can delay early windows' cold worker loading.
+
 ## M8 current boundary
 
 [ADR 0034](docs/decisions/0034-native-html-tab-dragging.md) implements HTML DnD over
@@ -240,6 +266,11 @@ ADR 0024 adds selection, menus and explicit selected/prefix scopes.
 - Keep AI summarization, sentiment, automatic translation, posting/replying, likes/subscriptions, account integration, and other unrelated features outside the current scope.
 
 ## Useful commands at this milestone
+
+After a Forge build, `npm.cmd run test:m91` verifies 2/4 production windows and
+large-data failure/lifecycle/restart/restore behavior in OS-temp profiles.
+`npm.cmd run profile:m91` adds three serial startup samples per window count;
+`node scripts/summarize-m91.cjs baseline-control current` compares local reports.
 
 After a Forge build, `npm.cmd run test:m8` runs the OS-temp production-entry
 synthetic drag/restart/restore harness, included in `test:electron`. It does not
