@@ -93,7 +93,21 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const markSettingsDirty = useCallback((value: boolean) => { settingsDirty.current = value; }, []);
 
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
-  const [workspaceFocus, setWorkspaceFocus] = useState<{ tabId: string | null; revision: number }>();
+  const [workspaceFocus, setWorkspaceFocus] = useState<{ tabId: string | null; revision: number; focusSequence?: number }>();
+  const focusSequence = useRef(0);
+  useLayoutEffect(() => {
+    const changed = () => { focusSequence.current++; };
+    // Disabling a button blurs it to body without a new focusin. Any later
+    // focus or pointer intent (or leaving the native window) revokes restoration.
+    document.addEventListener('focusin', changed, true);
+    document.addEventListener('pointerdown', changed, true);
+    window.addEventListener('blur', changed);
+    return () => {
+      document.removeEventListener('focusin', changed, true);
+      document.removeEventListener('pointerdown', changed, true);
+      window.removeEventListener('blur', changed);
+    };
+  }, []);
   const workspaceBusy = useRef(false);
   const [showAcquisition, setShowAcquisition] = useState(false);
   const [focusUrl, setFocusUrl] = useState(false);
@@ -142,7 +156,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   useLayoutEffect(() => { if (shell.current) shell.current.inert = profileBusy || cloning || !!movingId; }, [profileBusy, cloning, movingId]);
   useLayoutEffect(() => {
     if (!workspaceFocus) return;
-    if (profileBusy || movingId || workspace.revision > workspaceFocus.revision) { setWorkspaceFocus(undefined); return; }
+    if (profileBusy || movingId || workspace.revision > workspaceFocus.revision
+      || workspaceFocus.focusSequence !== undefined && workspaceFocus.focusSequence !== focusSequence.current) { setWorkspaceFocus(undefined); return; }
     if (workspaceSaving || cloning || workspace.revision < workspaceFocus.revision) return;
     // A frame can precede React's topology/unfreeze commit. Focus only the
     // acknowledged tab after this render has enabled it and cleared inert.
@@ -256,22 +271,40 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   }
   async function workspaceAction(action: () => Promise<Result<WorkspaceState>>, focusId?: string) {
     if (workspaceBusy.current) return;
+    const focused = document.activeElement?.closest<HTMLElement>('.tabs [role="tab"]');
+    const restore = focused ? { tabId: focused.id.slice('tab-'.length), focusSequence: focusSequence.current } : undefined;
+    let revision = workspace.revision;
     const leaving = workspace.tabs.find(tab => tab.id === activeId);
     if (leaving?.kind === 'discussion') void views.flush(leaving.id);
     workspaceBusy.current = true; setWorkspaceSaving(true); setSaveError(false);
     try {
       const result = await action();
       if (result.ok) {
+        revision = result.value.revision;
         otherSaveFailed.current = false;
         acceptWorkspace(result.value);
         if (focusId === '@shortcuts' && result.value.tabs.some(tab => tab.id === result.value.activeTabId && tab.kind === 'settings')) setHelpRequest({ revision: result.value.revision });
         else if (focusId) setWorkspaceFocus({ tabId: focusId === '@active' ? result.value.activeTabId : focusId, revision: result.value.revision });
       } else { setSaveError(true); otherSaveFailed.current = true; }
     } catch { setSaveError(true); otherSaveFailed.current = true; }
-    finally { workspaceBusy.current = false; setWorkspaceSaving(false); }
+    finally {
+      if (!focusId && restore) setWorkspaceFocus({ ...restore, revision });
+      workspaceBusy.current = false; setWorkspaceSaving(false);
+    }
   }
   function activate(tabId: string, focus = false) {
+    if (workspaceBusy.current) return;
+    if (tabId === activeId) {
+      if (focus) document.getElementById(`tab-${tabId}`)?.focus();
+      return;
+    }
     void workspaceAction(() => api.activateTab({ tabId, expectedRevision: workspace.revision }), focus ? tabId : undefined);
+  }
+  function moveTab(tabId: string, toIndex: number) {
+    if (workspaceBusy.current || dataBusy.current || moving.current || provisional.current || cloning
+      || removing || bulkModalOpen || moveDialog || toIndex < 0 || toIndex >= workspace.tabs.length
+      || workspace.tabs.findIndex(tab => tab.id === tabId) === toIndex) return;
+    void workspaceAction(() => api.moveTab({ tabId, toIndex, expectedRevision: workspace.revision }));
   }
   async function duplicate(sourceViewId: string) {
     if (workspaceBusy.current || dataBusy.current) return;
@@ -595,7 +628,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   }, [workspace, activeId, helpRequest, removing]);
   useEffect(() => {
     function keyboard(event: KeyboardEvent) {
-      if (dataBusy.current || moving.current || provisional.current) return;
+      if (dataBusy.current || moving.current || provisional.current || cloning) return;
       const tab = workspace.tabs.find(tab => tab.id === activeId);
       const command = readerShortcut(event, { activeKind: tab?.kind, modalOpen: !!removing || bulkModalOpen || !!moveDialog, workspaceBusy: workspaceBusy.current, undoAvailable: tab?.kind === 'discussion' && !!seenUndo[tab.itemId] });
       if (!command) return;
@@ -604,9 +637,13 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
         const next = workspace.tabs[(index + (command === 'next-tab' ? 1 : -1) + workspace.tabs.length) % workspace.tabs.length];
         if (!next) return;
         activate(next.id, true);
+      } else if (command === 'move-active-tab-left' || command === 'move-active-tab-right') {
+        if (!tab) return;
+        const index = workspace.tabs.findIndex(value => value.id === activeId);
+        moveTab(tab.id, index + (command === 'move-active-tab-left' ? -1 : 1));
       } else if (command === 'close-tab') {
         if (!tab) return;
-        close(tab.id);
+        if (!workspaceBusy.current) close(tab.id);
       } else if (command === 'focus-search') {
         const panel = document.getElementById(tab?.kind === 'discussion' ? `panel-${tab.id}` : 'panel-library');
         const input = panel?.querySelector<HTMLInputElement>('input[type=search]');
@@ -661,7 +698,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       transfer={api.transfers ? (id, newWindow) => { setMoveDialog({ id, newWindow }); } : undefined}
       label={tabLabel} icon={tabIcon}
       activate={activate} close={close} duplicate={id => { void duplicate(id); }}
-      move={(tabId, toIndex) => { void workspaceAction(() => api.moveTab({ tabId, toIndex, expectedRevision: workspace.revision })); }} />
+      move={moveTab} />
     {saveError && <div className="save-error" role="alert">{t('saveError')}</div>}
     {!workspace.tabs.length && <main className="empty-workspace"><h1>{t('emptyWorkspace')}</h1><p>{t(items.length ? 'reopenHelp' : 'empty')}</p>
       <button onClick={() => { void workspaceAction(() => api.openLibrary({ expectedRevision: workspace.revision })); }}>{t('openStored')}</button></main>}

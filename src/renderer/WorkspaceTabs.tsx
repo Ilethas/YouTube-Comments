@@ -6,7 +6,7 @@ import { useTabStrip } from './use-tab-strip';
 import { translator, Locale } from './i18n';
 import { TabIcon } from './TabIcon';
 import { ActionIcon } from './ActionIcon';
-import { reorderHelp, shortcutHint } from './shortcuts';
+import { matchesShortcut, reorderHelp, shortcutHint } from './shortcuts';
 import type { TabTransferApi } from '../shared/tab-transfer';
 
 interface Props {
@@ -54,16 +54,18 @@ export function WorkspaceTabs({ workspace, locale, disabled, label, icon, activa
         onPointerDown={event => begin(tab.id, index, event)}
         draggable={!disabled && !!dragApi} onDragStart={event => dragStart(tab.id, event)}
         onKeyDown={event => {
+          if (disabled || event.defaultPrevented || event.nativeEvent.isComposing || menu) return;
           if ((transfer || tab.kind === 'discussion' && duplicate) && (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey)) {
             event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect();
             openMenu(tab.id, event.currentTarget, rect.left, rect.bottom); return;
           }
-          if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+          if (matchesShortcut(event, 'move-tab-left') || matchesShortcut(event, 'move-tab-right')) {
             event.preventDefault();
             const next = index + (event.key === 'ArrowLeft' ? -1 : 1);
-            if (next >= 0 && next < shown.tabs.length) move(tab.id, next);
+            if (!event.repeat && next >= 0 && next < shown.tabs.length) move(tab.id, next);
             return;
           }
+          if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
           const next = event.key === 'Home' ? 0 : event.key === 'End' ? shown.tabs.length - 1
             : event.key === 'ArrowRight' ? (index + 1) % shown.tabs.length
               : event.key === 'ArrowLeft' ? (index + shown.tabs.length - 1) % shown.tabs.length : undefined;

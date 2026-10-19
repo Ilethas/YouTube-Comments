@@ -249,7 +249,9 @@ async function verifyWindow(window, nativeTheme) {
     key('W', ['control']); await active('library'); // closing Settings chooses right
     key('F1'); await waitFor("document.activeElement.id === 'keyboard-shortcuts' && !document.querySelector('.tabs button:disabled')", 'F1 reopens singleton');
     const rows = await js("Array.from(document.querySelectorAll('#panel-settings tr[data-shortcut-id]'),row=>({id:row.dataset.shortcutId,keys:row.querySelector('td').textContent}))");
-    assert.equal(rows.length, 27); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
+    assert.equal(rows.length, 29); assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
+    assert.equal(rows.find(row => row.id === 'move-active-tab-left').keys, 'Ctrl+Shift+PageUp');
+    assert.equal(rows.find(row => row.id === 'move-active-tab-right').keys, 'Ctrl+Shift+PageDown');
     assert.equal(rows.find(row => row.id === 'new-window').keys, 'Ctrl+N');
     assert.equal(rows.find(row => row.id === 'close-window').keys, 'Ctrl+Shift+W');
     assert.equal(rows.find(row => row.id === 'quit-application').keys, 'Ctrl+Shift+Q');

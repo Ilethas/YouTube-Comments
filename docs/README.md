@@ -1,5 +1,9 @@
 # Documentation map
 
+**Post-M9.2 tab keyboard fix:** [cause and verification](POST_M9_2_TAB_KEYBOARD.md)
+records the native click/disabled-focus reproduction and global active-tab
+Ctrl+Shift+PageUp/PageDown shortcuts. Changes remain uncommitted for owner review.
+
 **M9.2 final review:** [verification and release assessment](M9_2_VERIFICATION.md)
 records the final regression/ZIP/extracted-EXE checks and six refreshed real-app
 screenshots. Status: owner review required, with physical M8/Close-flicker checks

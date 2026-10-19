@@ -2,7 +2,7 @@ import { translator } from './i18n';
 import type { Locale, TranslationKey } from './i18n';
 import { windowShortcutLabel } from '../shared/window-actions';
 
-type ShortcutKey = 'Ctrl' | 'Shift' | 'Alt' | 'Tab' | 'N' | 'Q' | 'W' | 'F' | 'L' | 'Z' | 'Enter' | 'F1' | 'F3' | 'F10' | 'ContextMenu' | 'Left' | 'Right' | 'Home' | 'End' | 'Click' | 'Escape' | 'Space';
+type ShortcutKey = 'Ctrl' | 'Shift' | 'Alt' | 'Tab' | 'N' | 'Q' | 'W' | 'F' | 'L' | 'Z' | 'Enter' | 'F1' | 'F3' | 'F10' | 'ContextMenu' | 'Left' | 'Right' | 'PageUp' | 'PageDown' | 'Home' | 'End' | 'Click' | 'Escape' | 'Space';
 interface ShortcutDefinition {
   readonly id: string;
   readonly keys: readonly ShortcutKey[];
@@ -18,6 +18,8 @@ export const shortcuts = [
   { id: 'quit-application', keys: ['Ctrl', 'Shift', 'Q'], description: 'quitApplication', group: 'shortcutWorkspace', scope: 'shortcutNativeWindow' },
   { id: 'next-tab', keys: ['Ctrl', 'Tab'], description: 'shortcutNextTab', group: 'shortcutWorkspace' },
   { id: 'previous-tab', keys: ['Ctrl', 'Shift', 'Tab'], description: 'shortcutPreviousTab', group: 'shortcutWorkspace' },
+  { id: 'move-active-tab-left', keys: ['Ctrl', 'Shift', 'PageUp'], description: 'shortcutMoveActiveLeft', group: 'shortcutWorkspace' },
+  { id: 'move-active-tab-right', keys: ['Ctrl', 'Shift', 'PageDown'], description: 'shortcutMoveActiveRight', group: 'shortcutWorkspace' },
   { id: 'close-tab', keys: ['Ctrl', 'W'], description: 'shortcutCloseTab', group: 'shortcutWorkspace' },
   { id: 'open-url', keys: ['Ctrl', 'L'], description: 'acquire', group: 'shortcutWorkspace' },
   { id: 'move-tab-left', keys: ['Alt', 'Left'], description: 'shortcutMoveLeft', group: 'shortcutWorkspace', scope: 'shortcutFocusedTab' },
@@ -50,7 +52,7 @@ export function shortcut(id: ShortcutId): ShortcutDefinition {
 }
 
 const windowsNames: Readonly<Record<ShortcutKey, string>> = {
-  N: 'N', Q: 'Q',
+  N: 'N', Q: 'Q', PageUp: 'PageUp', PageDown: 'PageDown',
   Space: 'Space', Ctrl: 'Ctrl', Shift: 'Shift', Alt: 'Alt', Tab: 'Tab', W: 'W', F: 'F', L: 'L', Z: 'Z', Enter: 'Enter',
   F1: 'F1', F3: 'F3', F10: 'F10', ContextMenu: 'Context Menu', Left: 'Left', Right: 'Right', Home: 'Home', End: 'End', Click: 'Click', Escape: 'Escape',
 };

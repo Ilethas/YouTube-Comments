@@ -1,5 +1,19 @@
 # Testing strategy
 
+## Post-M9.2 tab keyboard fix (2026-10-19)
+
+See [cause and verification](POST_M9_2_TAB_KEYBOARD.md). After a Forge build,
+`npm.cmd run test:tab-keyboard` runs the production entry with disposable OS-temp
+data and native Chromium mouse/key delivery. It is included in `test:electron`.
+The baseline reproduction held activation through disabled-control paint: focus
+became body and Alt+Arrow reached body without reordering. Explicit tab focus
+restored native Alt delivery. Fixed runs cover clicked inactive/active tabs,
+successive Alt reorders, Page shortcuts from the reader/editable controls, CAS,
+boundary no-ops, pending bursts/Ctrl+W, later focus handoff, menus and navigation.
+Vitest covers composition, repeats, disabled/inert states, dialog barriers and
+EN/PL Settings help. These are automated inputs, not owner physical-keyboard
+verification. Historical milestone counts below describe their original runs.
+
 ## Final documentation and release review (M9.2, 2026-10-19)
 
 The [M9.2 verification report](M9_2_VERIFICATION.md) records the final workflow,

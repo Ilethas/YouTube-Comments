@@ -41,6 +41,7 @@ it('M3 freezes the reader immediately, delays only presentation, and restores fo
     expect(document.querySelector<HTMLElement>('.app-shell')?.inert).toBe(true);
     expect(document.querySelector('.profile-operation-overlay')).toBeNull();
     fireEvent.keyDown(document.body, { key: 'w', ctrlKey: true }); expect(api.closeTab).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.body, { key: 'PageDown', ctrlKey: true, shiftKey: true }); expect(api.moveTab).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(179)); expect(document.querySelector('.profile-operation-overlay')).toBeNull();
     act(() => vi.advanceTimersByTime(1)); expect(document.querySelector('.profile-operation-overlay')).toBeTruthy();
     await act(async () => receive({ ...event, phase: 'RELEASED' }));
@@ -740,6 +741,85 @@ const press = (key: string, modifiers: KeyboardEventInit = {}, target: Element |
 };
 const activeTab = () => screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')?.id;
 async function workspaceReady() { await waitFor(() => expect(screen.getByRole('button', { name: 'Library' }).hasAttribute('disabled')).toBe(false)); }
+it('clicks an inactive tab, restores disabled focus after acknowledgment and supports successive focused Alt reorders', async () => {
+  await showReader();
+  const tab = screen.getByRole('tab', { name: /Post:/ });
+  const activate = api.activateTab;
+  let finish!: (result: Awaited<ReturnType<typeof activate>>) => void;
+  vi.mocked(api.activateTab).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await userEvent.click(tab);
+  expect(tab.hasAttribute('disabled')).toBe(true);
+  // jsdom does not implement Chromium's disabled-button blur at paint time.
+  tab.blur(); expect(document.activeElement).toBe(document.body);
+  await act(async () => finish(await activate({ tabId: 'test-view-post-demo', expectedRevision: 0 })));
+  await workspaceReady(); expect(document.activeElement).toBe(tab);
+  await userEvent.keyboard('{Alt>}{ArrowLeft}{/Alt}'); await workspaceReady();
+  expect(api.moveTab).toHaveBeenLastCalledWith({ tabId: 'test-view-post-demo', toIndex: 0, expectedRevision: 1 });
+  expect(document.activeElement).toBe(tab);
+  await userEvent.keyboard('{Alt>}{ArrowRight}{/Alt}'); await workspaceReady();
+  expect(api.moveTab).toHaveBeenLastCalledWith({ tabId: 'test-view-post-demo', toIndex: 1, expectedRevision: 2 });
+  expect(document.activeElement).toBe(tab);
+});
+it('clicking the active tab keeps focus without a redundant activation or temporary disabling', async () => {
+  await showReader(); const tab = screen.getByRole('tab', { name: /Video:/ });
+  await userEvent.click(tab);
+  expect(api.activateTab).not.toHaveBeenCalled(); expect(tab.hasAttribute('disabled')).toBe(false);
+  expect(document.activeElement).toBe(tab);
+  await userEvent.keyboard('{Alt>}{ArrowRight}{/Alt}'); await workspaceReady();
+  expect(api.moveTab).toHaveBeenCalledExactlyOnceWith({ tabId: 'test-view-video-demo', toIndex: 1, expectedRevision: 0 });
+});
+it.each(['focus', 'pointer', 'window-blur'] as const)('pending tab restoration yields to later %s intent, even if focus returns to body', async intent => {
+  await showReader(); const tab = screen.getByRole('tab', { name: /Post:/ });
+  const activate = api.activateTab;
+  let finish!: (result: Awaited<ReturnType<typeof activate>>) => void;
+  vi.mocked(api.activateTab).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await userEvent.click(tab); tab.blur();
+  const other = screen.getByRole('button', { name: 'Add / Open' });
+  if (intent === 'focus') { other.focus(); other.blur(); }
+  else if (intent === 'pointer') fireEvent.pointerDown(other);
+  else fireEvent.blur(window);
+  await act(async () => finish(await activate({ tabId: 'test-view-post-demo', expectedRevision: 0 })));
+  await workspaceReady(); expect(document.activeElement).toBe(document.body);
+});
+it('a failed activation restores temporarily disabled tab focus without changing active identity', async () => {
+  await showReader(); const tab = screen.getByRole('tab', { name: /Post:/ });
+  let finish!: (result: Awaited<ReturnType<ReaderApi['activateTab']>>) => void;
+  vi.mocked(api.activateTab).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await userEvent.click(tab); tab.blur();
+  await act(async () => finish({ ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }));
+  await workspaceReady(); expect(document.activeElement).toBe(tab); expect(activeTab()).toBe('tab-test-view-video-demo');
+});
+it('global Page reorders use the active identity and acknowledged CAS, retain reader state/focus and never wrap', async () => {
+  await showReader(); const panel = screen.getByRole('tabpanel'); panel.focus(); panel.scrollTop = 123;
+  const search = currentView().getByLabelText<HTMLInputElement>('Search this discussion');
+  fireEvent.change(search, { target: { value: 'desk' } });
+  expect(press('PageUp', { ctrlKey: true, shiftKey: true }, panel).defaultPrevented).toBe(true);
+  expect(api.moveTab).not.toHaveBeenCalled();
+  press('PageDown', { ctrlKey: true, shiftKey: true }, panel); await workspaceReady();
+  expect(api.moveTab).toHaveBeenCalledExactlyOnceWith({ tabId: 'test-view-video-demo', toIndex: 1, expectedRevision: 0 });
+  expect(activeTab()).toBe('tab-test-view-video-demo'); expect(screen.getByRole('tabpanel')).toBe(panel);
+  expect(document.activeElement).toBe(panel); expect(panel.scrollTop).toBe(123); expect(search.value).toBe('desk');
+  press('PageDown', { ctrlKey: true, shiftKey: true }, panel); expect(api.moveTab).toHaveBeenCalledTimes(1);
+  search.focus(); press('PageUp', { ctrlKey: true, shiftKey: true }, search); await workspaceReady();
+  expect(api.moveTab).toHaveBeenLastCalledWith({ tabId: 'test-view-video-demo', toIndex: 0, expectedRevision: 1 });
+  expect(document.activeElement).toBe(search); expect(search.value).toBe('desk');
+  expect(api.activateTab).not.toHaveBeenCalled(); expect(api.toggleSeen).not.toHaveBeenCalled();
+});
+it('global reorder suppresses rapid duplicates, repeat and other workspace commands while pending', async () => {
+  await showReader(); const panel = screen.getByRole('tabpanel'); panel.focus();
+  const move = api.moveTab;
+  let finish!: (result: Awaited<ReturnType<typeof move>>) => void;
+  vi.mocked(api.moveTab).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  press('PageDown', { ctrlKey: true, shiftKey: true, repeat: true }, panel); expect(api.moveTab).not.toHaveBeenCalled();
+  press('PageDown', { ctrlKey: true, shiftKey: true }, panel);
+  for (let i = 0; i < 5; i++) press('PageDown', { ctrlKey: true, shiftKey: true }, panel);
+  press('Tab', { ctrlKey: true }, panel);
+  expect(press('w', { ctrlKey: true }, panel).defaultPrevented).toBe(true);
+  expect(api.moveTab).toHaveBeenCalledTimes(1); expect(api.activateTab).not.toHaveBeenCalled(); expect(api.closeTab).not.toHaveBeenCalled();
+  await act(async () => finish(await move({ tabId: 'test-view-video-demo', toIndex: 1, expectedRevision: 0 })));
+  await workspaceReady(); press('PageUp', { ctrlKey: true, shiftKey: true }, panel); await workspaceReady();
+  expect(api.moveTab).toHaveBeenLastCalledWith({ tabId: 'test-view-video-demo', toIndex: 0, expectedRevision: 1 });
+});
 it('cycles forward and backward with wrap across discussions, Library and Settings even from editable controls', async () => {
   state = { ...state, workspace: { ...state.workspace, tabs: [...state.workspace.tabs, { id: 'library', kind: 'library' }, { id: 'settings', kind: 'settings' }] } };
   await showReader();
@@ -864,7 +944,7 @@ it('removal confirmation and pending removal suspend shortcuts without losing di
   const dialog = screen.getByRole('dialog');
   const checkBlocked = () => {
     const focused = document.activeElement;
-    for (const [key, modifiers] of [['Tab', { ctrlKey: true }], ['Tab', { ctrlKey: true, shiftKey: true }], ['w', { ctrlKey: true }], ['f', { ctrlKey: true }], ['l', { ctrlKey: true }], ['F1', {}], ['F3', {}], ['Enter', { ctrlKey: true }]] as const) {
+    for (const [key, modifiers] of [['PageUp', { ctrlKey: true, shiftKey: true }], ['PageDown', { ctrlKey: true, shiftKey: true }], ['Tab', { ctrlKey: true }], ['Tab', { ctrlKey: true, shiftKey: true }], ['w', { ctrlKey: true }], ['f', { ctrlKey: true }], ['l', { ctrlKey: true }], ['F1', {}], ['F3', {}], ['Enter', { ctrlKey: true }]] as const) {
       expect(press(key, modifiers, dialog).defaultPrevented).toBe(false);
     }
     expect(document.activeElement).toBe(focused);

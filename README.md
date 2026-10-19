@@ -160,6 +160,7 @@ Closing a tab or window does not remove its discussions from Library.
 | Ctrl+Shift+Q | Quit Application, preserving all open windows |
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
 | Alt+Left / Alt+Right | Reorder the focused tab |
+| Ctrl+Shift+PageUp / Ctrl+Shift+PageDown | Move the active tab left / right without wrapping; works from the reader |
 | Ctrl+F / Ctrl+Enter | Focus search / apply the draft |
 | F3 / Shift+F3 | Next / previous applied match |
 | Ctrl+Z | Undo the discussion's last recoverable bulk seen change |

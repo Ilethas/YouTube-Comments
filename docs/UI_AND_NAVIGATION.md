@@ -416,6 +416,7 @@ Background close controls omit Ctrl+W because that command closes the active tab
 | Ctrl+Enter | Apply active discussion draft, including from its query controls. |
 | F3 / Shift+F3 | Next/previous applied match, including from query controls; never save seen state. |
 | Alt+Left / Alt+Right | Reorder only the focused workspace tab. |
+| Ctrl+Shift+PageUp / Ctrl+Shift+PageDown | Move the active tab one position left/right from anywhere in the reader, including editable controls. No wrap at either end. |
 | Left / Right / Home / End | Existing activation/focus navigation on workspace tabs. |
 | Ctrl+Z | Undo latest recoverable multi-comment seen change in the active discussion, outside editable controls and confirmation dialogs; unavailable recovery leaves the key unconsumed. |
 | Ctrl+Click | Seen checkbox applies its resulting state to the comment and all descendants. |
@@ -426,7 +427,7 @@ One Reader document routing boundary handles workspace/focus/help and discussion
 commands. Focused-tab keys, native form submission and contextual cancellation
 stay with their existing owners. Exact modifiers, composition and already-handled
 events are respected. Inputs, textareas, selects and contenteditable keep ordinary
-typing/navigation. Explicit exceptions are workspace cycling/close, search focus,
+typing/navigation. Explicit exceptions are workspace cycling/close, active-tab reordering, search focus,
 URL focus and F1; discussion Apply/match keys also work in query controls but do
 not interrupt unrelated editable controls such as the URL form.
 
@@ -436,6 +437,21 @@ Escape still follows its existing safe cancellation rule. Pending workspace writ
 do not launch another workspace command. Defaults are prevented only after a
 contextual command is accepted; missing focus targets and inapplicable commands
 remain unconsumed. No global Alt+arrow reorder is introduced.
+
+Active-tab reordering uses the same acknowledged workspace revision/CAS lane as
+focused Alt+arrows and drag reordering. It retains active identity and the live
+discussion/view state. Repeated keydown events and pending workspace writes do
+not enqueue moves; either boundary is a no-op. Dialogs, menus, composition,
+profile barriers, duplication and transfers suspend it. While a workspace write
+is pending, Ctrl+W is consumed without closing a tab so Chromium cannot turn it
+into native window Close.
+
+A click on the active tab keeps focus and skips redundant activation. Activation
+of an inactive tab, or a reorder initiated from a focused tab, restores its focus
+after acknowledgement has rendered enabled controls. Later focus/pointer intent
+or leaving the native window cancels that implicit restoration, even if focus
+subsequently returns to body. Failed writes also restore usable tab focus when
+that intent is still current. See [post-M9.2 verification](POST_M9_2_TAB_KEYBOARD.md).
 
 Source Refresh remains button-only: no Ctrl+R/F5 source-refresh binding. Reopen
 (Ctrl+Shift+T), numbered tabs (Ctrl+1..9), global comment search and unseen

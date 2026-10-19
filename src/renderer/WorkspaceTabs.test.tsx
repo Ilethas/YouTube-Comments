@@ -55,6 +55,15 @@ it('localized icon labels and separate close controls coexist with keyboard reor
   fireEvent.click(screen.getByRole('button', { name: 'Close tab: library' })); expect(close).toHaveBeenCalledWith('library');
   expect(screen.getByRole('tab', { name: 'Video: a' }).querySelector('svg[aria-hidden=true]')).toBeTruthy();
 });
+it('focused reordering respects exact modifiers, composition, repeat, boundaries and disabled buttons', () => {
+  show(); const tab = required(document.getElementById('tab-test-view-a'));
+  for (const init of [{ ctrlKey: true }, { shiftKey: true }, { metaKey: true }, { isComposing: true }, { repeat: true }]) fireEvent.keyDown(tab, { key: 'ArrowRight', altKey: true, ...init });
+  fireEvent.keyDown(tab, { key: 'ArrowLeft', altKey: true });
+  expect(move).not.toHaveBeenCalled(); expect(activate).not.toHaveBeenCalled();
+  cleanup(); render(<WorkspaceTabs workspace={workspace} locale="en" disabled label={() => 'title'} icon={() => 'video'} move={move} activate={activate} close={close} />);
+  fireEvent.keyDown(required(document.getElementById('tab-test-view-a')), { key: 'ArrowRight', altKey: true });
+  expect(move).not.toHaveBeenCalled();
+});
 function wheelStrip(scrollWidth = 1000, clientWidth = 400, scrollLeft = 100) {
   show(); const strip = screen.getByRole('tablist');
   Object.defineProperties(strip, { scrollWidth: { configurable: true, value: scrollWidth }, clientWidth: { configurable: true, value: clientWidth } });
