@@ -1,5 +1,55 @@
 # Testing strategy
 
+## Final documentation and release review (M9.2, 2026-10-19)
+
+The [M9.2 verification report](M9_2_VERIFICATION.md) records the final workflow,
+distribution and presentation audit. Schema **14**, migrations 1–14, M2/M3
+barriers, M4–M8 ownership and the measured M9.1 snapshot/cache changes remain.
+The README keeps its personal-project voice; the walkthrough and user guidance
+now explain independent duplicates, native windows, Move/drag alternatives,
+application menus and Close Window versus coordinated Quit restoration.
+
+The first aggregate reproduced the existing M5 **focus new tab** failure. A frame
+could run before React published the acknowledged topology and enabled/cleared
+inert on its controls. A deterministic test fails on the original code by delivering
+frames at the next microtask and modelling native inert/disabled focus rejection.
+Workspace focus now waits for the actual enabled DOM commit at the acknowledged
+revision; superseding topology/profile/transfer work cancels it. The 99-test
+App/duplicate/transfer check passes, and the full aggregate passes from its first
+harness. No focus assertion, checkpoint, freeze or persistence guarantee was weakened.
+
+| Final check | Result |
+| --- | --- |
+| Full Vitest | **1,209 tests / 96 files PASS**, 130.45 s |
+| Typecheck / ESLint | **PASS**, no lint warnings |
+| Aggregate Electron | **All 19 harnesses PASS**, M5–M8.2 included |
+| M9.1 scale correctness | **PASS**, two/four windows, 10 real process launches; separate M9.2 label preserves original reports |
+| Unmodified extracted EXE | **PASS**, native backup/restore and independent safety, same-ID transfer, real new-PID relaunch with three windows, second-copy profile persistence |
+| Fresh Windows x64 ZIP | **PASS**, 73 runtime files / 386,076,406 bytes; ZIP 158,366,182 bytes |
+| Squirrel structural inspection | **PASS**, Setup/NuGet/RELEASES and runtime equality; zero installer executions |
+| Presentation | Six visually reviewed genuine Electron PNGs, 17 README links/anchors, 477 links across 11 guidance documents, seven ICO frames **PASS** |
+
+`node scripts/capture-readme.cjs` now uses current per-view tab identities and
+isolates Chromium paths as well as SQLite. It captures EN/light, EN/dark and
+PL/dark using fictional data and offline avatars. The two-window PNG explicitly
+pairs two actual native content captures without invented OS chrome or any desktop
+imagery. `capture.json` records dimensions, timestamp and main/renderer hashes.
+All six images total about 612 KiB. See the report's screenshot inventory; the
+2026-10-16 section below retains its original four-image evidence.
+
+An old retained Squirrel NuGet initially failed comparison against the fresh ZIP.
+Both makers were rebuilt together and final combined byte checks pass; Setup was
+never run. EXE and Setup are unsigned. The distribution audit also found MIT
+metadata without a repository project LICENSE or standalone ASAR notices. Resolve
+project licensing and bundled dependency attribution before a public artifact.
+
+Physical drag/ghost/cursor/mixed-DPI and Close-flicker recording remain pending in
+[P01–P25](M8_MANUAL_VERIFICATION.md). Native clipboard writes were **UNVERIFIED**
+where all formats could not be preserved; affected writes were skipped. No new
+live-helper pass, installed-program certification, version bump, public release,
+owner-profile modification, commit or push. Final status requires owner review.
+Historical results below retain their original milestone scope.
+
 ## Aggregate multi-window scale hardening (M9.1, 2026-10-19)
 
 [ADR 0036](decisions/0036-measured-reader-snapshot-hardening.md) and the focused

@@ -1,9 +1,18 @@
 # Documentation map
 
+**M9.2 final review:** [verification and release assessment](M9_2_VERIFICATION.md)
+records the final regression/ZIP/extracted-EXE checks and six refreshed real-app
+screenshots. Status: owner review required, with physical M8/Close-flicker checks
+and distribution license/notice review outstanding. ZIP remains recommended;
+genuine installed Squirrel behavior is unverified. Nothing is published.
+The [README](../README.md) and [owner walkthrough](HOW_IT_WORKS.md) explain the
+finished multi-window reader; the [UI guide](UI_AND_NAVIGATION.md) includes M8.2's
+application menu and distinct Close Tab / Close Window / Quit shortcuts.
+
 **M9.1 scale verification:** see the focused [performance report](M9_1_PERFORMANCE.md)
 for serial 2/4-window 10k/50k observations, payload hardening, lifecycle stress and
-remaining Q-21 limits. Schema stays **14**; M9.2 presentation/release work remains
-reserved for owner review. Historical milestone notes below retain their scopes.
+remaining Q-21 limits. Schema stays **14**. Historical milestone notes below retain
+their original scopes; later milestones supersede their future-work statements.
 
 [ADR 0034](decisions/0034-native-html-tab-dragging.md) implements **M8**: native HTML
 tab reorder/attachment, source-only reservation/one-use offer, and accepted guarded

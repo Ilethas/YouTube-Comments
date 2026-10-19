@@ -5,6 +5,9 @@ artifacts under [ADR 0020](decisions/0020-windows-packaged-application-and-zip-d
 [ADR 0021](decisions/0021-windows-squirrel-installer-and-application-identity.md) adds
 real Squirrel artifacts and stable identity. This is an unsigned development preview;
 genuine installation behavior remains **UNVERIFIED** and acquisition needs helpers.
+The [M9.2 review](M9_2_VERIFICATION.md) records the current ZIP/extracted-EXE audit,
+manual release gates and outstanding project-license/dependency-notice review.
+Version `1.0.0` is not a stable-release declaration; no hosted download is implied.
 
 ## Build and verify
 
@@ -178,10 +181,15 @@ isolated profile environment on the same account, not a new OS account or VM. Ne
 simply omit the demo override in an ordinary smoke launch against the owner's account.
 The harness retains disposable data/reports for diagnosis and prints its root.
 
-The smoke covers schema 8, transactions, Undo/NEW/history, worker, bounded virtual
-rendering/navigation, view reconstruction, native backup/restore and actual relaunch.
-It compares every authoritative table and the independent safety snapshot. ADR 0019
-is unchanged: relaunch must use the extracted EXE; recovery cannot require source paths.
+The current smoke covers schema **14**, transactions, Undo/NEW/history, worker,
+bounded virtual rendering/navigation, independent view reconstruction, three native
+windows, application-menu New/Close and same-ID Move Tab out/back with stale-owner
+rejection. Native backup/restore compares every authoritative table and the
+independent safety snapshot, then verifies three intended readers after actual
+new-PID relaunch. A second application-folder copy uses the same isolated profile.
+ADR 0019 is unchanged: relaunch must use the extracted EXE; recovery cannot require
+source paths. Production-entry M8.2 separately verifies coordinated Quit with
+pending drafts and exact subsequent restoration; peer Close and Quit are distinct.
 
 ## Assets and security
 
@@ -239,3 +247,11 @@ schema upgrades. Uninstall retention policy is settled; actual behavior is unver
 Retention management, future format portability/export, portable data, other platforms
 and public publishing remain separate. Unsigned Setup/EXE may trigger SmartScreen;
 do not bypass protection. Setup existing is not public release readiness.
+
+The current runtime preserves Electron and Chromium notices, but that does not
+establish complete application/dependency attribution. The M9.2 audit found no
+repository project `LICENSE` and no standalone notice files inside ASAR, despite
+`package.json` declaring MIT. Resolve project licensing and bundled dependency
+notices before publishing a ZIP; this review does not select a license or certify
+legal compliance. Installer verification remains separate from that distribution
+review and from the pending physical Windows input checks.

@@ -11,8 +11,15 @@ const output = path.join(project, 'docs/screenshots');
 
 if (process.versions.electron) {
   const { app, session, nativeImage } = require('electron');
-  const fixture = JSON.parse(fs.readFileSync(path.join(process.env.YOUTUBE_COMMENTS_DEMO_ROOT, 'capture.json')));
-  const watchdog = setTimeout(() => app.exit(1), 60000);
+  const root = process.env.YOUTUBE_COMMENTS_DEMO_ROOT;
+  assert.equal(path.dirname(root), os.tmpdir());
+  assert.ok(path.basename(root).startsWith('reader-readme-'));
+  const fixture = JSON.parse(fs.readFileSync(path.join(root, 'capture.json')));
+  for (const name of ['appData', 'userData', 'sessionData', 'logs', 'crashDumps']) {
+    const dir = path.join(root, name); fs.mkdirSync(dir, { recursive: true }); app.setPath(name, dir);
+  }
+  const watchdog = setTimeout(() => app.exit(1), 120000);
+  const windows = [], captures = [];
   // These fixture URLs are evidence for invented demo avatars. Serve original
   // geometric portraits offline; cancel every other HTTPS request.
   app.on('ready', () => {
@@ -33,8 +40,9 @@ if (process.versions.electron) {
     });
   });
   app.on('browser-window-created', (_event, window) => {
+    windows.push(window);
     window.setContentSize(1360, 960); window.webContents.setBackgroundThrottling(false);
-    window.webContents.once('did-finish-load', () => capture(window).then(() => {
+    if (windows.length === 1) window.webContents.once('did-finish-load', () => capture(window).then(() => {
       clearTimeout(watchdog); app.quit();
     }).catch(error => { console.error(error); clearTimeout(watchdog); app.exit(1); }));
   });
@@ -48,22 +56,41 @@ if (process.versions.electron) {
       for (let i = 0; i < 400; i++) { if (await js(code)) return; await pause(40); }
       throw new Error(`Capture timed out: ${code}`);
     }
-    const click = label => js(`Array.from(${panel}.querySelectorAll('button')).find(b=>b.textContent.trim()===${JSON.stringify(label)}).click()`);
     async function control(selector, value) {
       await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(e instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event(e instanceof HTMLSelectElement?'change':'input',{bubbles:true}));})()`);
       await pause(100);
     }
-    async function save(name, height) {
+    async function save(name, height, { dialog = false } = {}) {
       window.setContentSize(1360, height);
-      await js('document.activeElement?.blur()');
+      if (!dialog) await js('document.activeElement?.blur()');
       contents.sendInputEvent({ type: 'mouseMove', x: 1355, y: 955 });
       await pause(350);
       await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
-      assert.equal(await js("!!document.querySelector('dialog[open], .query-error')"), false);
+      assert.equal(await js("!!document.querySelector('.query-error')"), false);
+      assert.equal(await js("!!document.querySelector('dialog[open]')"), dialog);
       const image = await contents.capturePage(); assert.equal(image.isEmpty(), false);
       assert.deepEqual(image.getSize(), { width: 1360, height });
       const file = path.join(output, name); fs.writeFileSync(file, image.toPNG());
+      captures.push({ file: name, width: 1360, height });
       console.log(`Captured ${name}: ${fs.statSync(file).size} bytes`);
+    }
+    const bootstrap = async w => {
+      const result = await w.webContents.executeJavaScript('window.reader.bootstrap()');
+      assert.equal(result.ok, true); return result.value;
+    };
+    async function invoke(w, method, payload) {
+      if (['openStoredItem', 'activateTab', 'openLibrary'].includes(method)) payload = { ...payload, expectedRevision: (await bootstrap(w)).workspace.revision };
+      const result = await w.webContents.executeJavaScript(`window.reader.${method}(${payload === undefined ? '' : JSON.stringify(payload)})`);
+      assert.equal(result.ok, true, method + ': ' + JSON.stringify(result)); return result.value;
+    }
+    async function activate() {
+      await js(`document.querySelector(${JSON.stringify(`[data-tab-item-id="${fixture.itemId}"] [role=tab]`)}).click()`);
+      await wait(`!!document.querySelector(${JSON.stringify(`[data-tab-item-id="${fixture.itemId}"] [aria-selected=true]`)}) && !!${panel}?.querySelector('.virtual-reader') && !document.querySelector('.app-shell').inert`);
+    }
+    async function tabAction(label) {
+      await js(`(()=>{const t=document.querySelector('[role=tab][aria-selected=true]');t.focus();t.dispatchEvent(new KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true,cancelable:true}));})()`);
+      await wait('!!document.querySelector("[role=menu]")');
+      await js(`Array.from(document.querySelectorAll('[role=menuitem]')).find(b=>b.querySelector('span')?.textContent===${JSON.stringify(label)}).click()`);
     }
     await wait(`!!${panel}?.querySelector('.virtual-reader')`);
     await wait(`Array.from(${panel}.querySelectorAll('.avatar img')).filter(e=>e.complete&&e.naturalWidth>0).length>=5`);
@@ -75,7 +102,7 @@ if (process.versions.electron) {
     await wait("!!document.querySelector('#panel-settings:not([hidden])')");
     // Selects are nested in labels: use their parent block's stable order.
     await js("(()=>{const e=document.querySelectorAll('.preferences select')[1];e.value='dark';e.dispatchEvent(new Event('change',{bubbles:true}));})()");
-    await js(`document.getElementById(${JSON.stringify('tab-discussion:' + fixture.itemId)}).click()`);
+    await activate();
     await wait(`!!${panel}?.querySelector('.virtual-reader')`);
     await control('[role=tabpanel]:not([hidden]) .query-search input', 'audio');
     await control('[role=tabpanel]:not([hidden]) select[name=seen]', 'unseen');
@@ -91,9 +118,9 @@ if (process.versions.electron) {
     await js("document.getElementById('settings-toggle').click()");
     await wait("!!document.querySelector('#panel-settings:not([hidden])')");
     await js("(()=>{const e=document.querySelectorAll('.preferences select')[1];e.value='light';e.dispatchEvent(new Event('change',{bubbles:true}));})()");
-    await js(`document.getElementById(${JSON.stringify('tab-discussion:' + fixture.itemId)}).click()`);
+    await activate();
     await wait(`!!${panel}?.querySelector('.virtual-reader')`);
-    await click('Select comments');
+    // Circles are always visible in this fictional profile; selection is temporary.
     await js(`${panel}.querySelector('.reply-toggle').click()`);
     await pause(250);
     await js(`Array.from(${panel}.querySelectorAll('.selection-circle')).slice(0,3).forEach(e=>e.click())`);
@@ -103,11 +130,62 @@ if (process.versions.electron) {
     await js("document.getElementById('library-toggle').click()");
     await wait("!!document.querySelector('#panel-library:not([hidden])')");
     await save('library-light.png', 680);
+
+    await activate();
+    await tabAction('Duplicate Tab');
+    await wait(`document.querySelectorAll(${JSON.stringify(`[data-tab-item-id="${fixture.itemId}"]`)}).length===2`);
+    await control('[role=tabpanel]:not([hidden]) .query-search input', 'audio');
+    await js(`${panel}.querySelector('.query-controls').requestSubmit()`);
+    await wait(`!!${panel}.querySelector('.applied-counts') && !${panel}.querySelector('.query-status').textContent.includes('Evaluating')`);
+    await invoke(window, 'newWindow');
+    for (let i = 0; windows.length < 2 && i < 400; i++) await pause(40);
+    assert.equal(windows.length, 2);
+    const peer = windows[1];
+    for (let i = 0; i < 400; i++) {
+      if (await peer.webContents.executeJavaScript('!!document.querySelector(".app-shell")').catch(() => false)) break;
+      await pause(40);
+    }
+    await invoke(peer, 'openStoredItem', { itemId: fixture.otherItemId });
+    await invoke(peer, 'openLibrary');
+    for (let i = 0; i < 400; i++) {
+      if (await peer.webContents.executeJavaScript('!!document.querySelector("#panel-library:not([hidden])")')) break;
+      await pause(40);
+    }
+    assert.equal(await peer.webContents.executeJavaScript('!!document.querySelector("#panel-library:not([hidden])")'), true);
+    // These are two real native readers, captured separately by Electron and
+    // paired without rescaling or invented window chrome. No desktop is captured.
+    const width = 920, height = 1000, gap = 8, pairedWidth = width * 2 + gap;
+    const pixels = Buffer.alloc(pairedWidth * height * 4, 255);
+    for (const [index, w] of [window, peer].entries()) {
+      w.setContentSize(width, height); await pause(350);
+      await w.webContents.executeJavaScript('document.querySelector(".reader-panel:not([hidden])")?.scrollTo(0,0);document.activeElement?.blur();new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+      const image = await w.webContents.capturePage(); assert.deepEqual(image.getSize(), { width, height });
+      const bytes = image.toBitmap();
+      for (let row = 0; row < height; row++) bytes.copy(pixels, (row * pairedWidth + index * (width + gap)) * 4, row * width * 4, (row + 1) * width * 4);
+    }
+    const paired = nativeImage.createFromBitmap(pixels, { width: pairedWidth, height });
+    fs.writeFileSync(path.join(output, 'multi-window-light.png'), paired.toPNG());
+    captures.push({ file: 'multi-window-light.png', width: pairedWidth, height, pairedNativeCaptures: true });
+
+    await invoke(window, 'updatePreferences', { locale: 'pl' });
+    await invoke(window, 'updatePreferences', { appearance: 'dark' });
+    window.setContentSize(1360, 880);
+    await wait("document.documentElement.lang==='pl' && document.documentElement.dataset.appearance==='dark'");
+    await js('document.querySelector(".reader-panel:not([hidden])").scrollTop=0');
+    await tabAction('Przenieś do okna…');
+    await wait('document.querySelectorAll(".move-tab-window-list input").length===1');
+    await save('move-tab-pl-dark.png', 880, { dialog: true });
+    await js('document.querySelector("dialog[open]").dispatchEvent(new Event("cancel",{cancelable:true}))');
     fs.writeFileSync(path.join(output, 'capture.json'), JSON.stringify({
       source: 'Actual Electron window loading the Forge-built main/preload/renderer',
+      capturedAt: new Date().toISOString(),
       electron: process.versions.electron, viewportWidth: 1360,
+      builtMainSha256: require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(project, '.vite/build/main.js'))).digest('hex'),
+      rendererAssetsSha256: Object.fromEntries(fs.readdirSync(path.join(project, '.vite/renderer/main_window/assets')).map(name => [name,
+        require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(project, '.vite/renderer/main_window/assets', name))).digest('hex')])),
       data: 'Invented demo discussions in an owned disposable SQLite profile; offline geometric avatars',
-      files: ['reader-light.png', 'search-dark.png', 'collapse-selection-light.png', 'library-light.png'],
+      multiWindow: 'Paired unscaled compositor captures of two separate native readers; no OS chrome or desktop imagery. Not physical drag evidence.',
+      files: captures,
     }, null, 2) + '\n');
   }
   require(path.join(project, '.vite/build/main.js'));
@@ -161,12 +239,15 @@ if (process.versions.electron) {
         repo.ingest(normalizeYtDlp(JSON.stringify({ ...raw, comments }), template.context));
         for (const row of repo.bootstrap(['en']).comments[itemId].filter((_, i) => [0, 1, 4, 5, 6, 12].includes(i)))
           repo.toggleSeen({ itemId, commentId: row.id, subtree: false, seen: !row.seen });
+        let otherItemId;
         for (const [id, title, count] of [['ReadmeDemo2', 'Building a bookshelf — demo discussion', 12], ['ReadmeDemo3', 'A walk through the old town — demo discussion', 8], ['ReadmeDemo4', 'Recording room sound — demo discussion', 16]]) {
-          repo.ingest(normalizeYtDlp(JSON.stringify({ ...raw, id, title, comments: comments.slice(0, count) }), template.context));
+          const result = repo.ingest(normalizeYtDlp(JSON.stringify({ ...raw, id, title, comments: comments.slice(0, count) }), template.context));
+          otherItemId ??= result.itemId;
         }
         repo.changeWorkspace('openLibrary'); repo.changeWorkspace('openSettings'); repo.changeWorkspace('openStoredItem', itemId);
         repo.updatePreferences({ locale: 'en' }, ['en']); repo.updatePreferences({ appearance: 'light' }, ['en']);
-        fs.writeFileSync(path.join(root, 'capture.json'), JSON.stringify({ itemId }));
+        repo.updatePreferences({ selectionControls: 'always' }, ['en']);
+        fs.writeFileSync(path.join(root, 'capture.json'), JSON.stringify({ itemId, otherItemId }));
       } finally { repo.close(); }
       fs.mkdirSync(output, { recursive: true });
       // No helper status/path is captured; explicit empty overrides prevent probes
@@ -175,6 +256,10 @@ if (process.versions.electron) {
       delete env.ELECTRON_RUN_AS_NODE;
       const child = spawn(require('electron'), [__filename], { env, stdio: 'inherit', windowsHide: true });
       await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error(`Screenshot Electron exited ${code}`))); });
-    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+    } finally {
+      assert.equal(path.dirname(path.resolve(root)), path.resolve(os.tmpdir()));
+      assert.ok(path.basename(root).startsWith('reader-readme-'));
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   })().catch(error => { console.error(error); process.exitCode = 1; });
 }

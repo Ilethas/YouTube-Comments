@@ -50,6 +50,28 @@ beforeEach(async () => {
   render(<App api={api} />); await screen.findByRole('tabpanel');
 });
 afterEach(async () => { cleanup(); await new Promise(resolve => setTimeout(resolve, 0)); await service.shutdown(); vi.restoreAllMocks(); rmSync(root, { recursive: true, force: true }); });
+it('focuses the committed duplicate after React enables the tab, even when a frame beats the render', async () => {
+  // Model native inert/disabled focus rejection, which jsdom does not implement.
+  const originalFocus = HTMLElement.prototype.focus;
+  const calls: { id: string; blocked: boolean }[] = [];
+  vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function(this: HTMLElement, options?: FocusOptions) {
+    const blocked = !!this.closest<HTMLElement>('.app-shell')?.inert || this.matches(':disabled');
+    calls.push({ id: this.id, blocked });
+    if (!blocked) originalFocus.call(this, options);
+  });
+  // A frame is not a React commit barrier. Deliver it at the first microtask,
+  // before the pending batched topology/enabled-state render, without sleeps.
+  let frame = 0;
+  const cancelled = new Set<number>();
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+    const id = ++frame; queueMicrotask(() => { if (!cancelled.has(id)) callback(performance.now()); }); return id;
+  });
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(id => { cancelled.add(id); });
+  const clone = await duplicate(sourceId(), true);
+  await waitFor(() => expect(document.activeElement?.id).toBe('tab-' + clone));
+  expect(calls.filter(call => call.id === 'tab-' + clone)).toEqual([{ id: 'tab-' + clone, blocked: false }]);
+  expect(document.querySelector<HTMLElement>('.app-shell')?.inert).toBe(false);
+});
 it('flushes current debounced draft/collapse, hydrates a fresh worker before rendering, and namespaces all DOM/ARIA targets', async () => {
   const source = sourceId();
   fireEvent.change(field(), { target: { value: 'current draft' } });

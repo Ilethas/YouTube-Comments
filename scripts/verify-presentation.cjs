@@ -51,12 +51,21 @@ function png(bytes, width, height) {
   for (let row = 0; row < height; row++) assert.ok(decoded[row * (width * channels + 1)] <= 4);
   assert.ok(new Set(decoded).size > 16, 'Image has no useful pixel variation');
 }
-const screenshots = { 'reader-light.png': 1000, 'search-dark.png': 880,
-  'collapse-selection-light.png': 920, 'library-light.png': 680 };
-for (const [name, height] of Object.entries(screenshots)) {
+const screenshots = { 'reader-light.png': [1360, 1000], 'search-dark.png': [1360, 880],
+  'collapse-selection-light.png': [1360, 920], 'library-light.png': [1360, 680],
+  'multi-window-light.png': [1848, 1000], 'move-tab-pl-dark.png': [1360, 880] };
+const capture = JSON.parse(read('docs/screenshots/capture.json'));
+assert.deepEqual(capture.files.map(entry => entry.file).sort(), Object.keys(screenshots).sort());
+assert.match(capture.builtMainSha256, /^[a-f0-9]{64}$/);
+assert.ok(Object.keys(capture.rendererAssetsSha256).some(name => /^index-.*\.js$/.test(name)));
+for (const hash of Object.values(capture.rendererAssetsSha256)) assert.match(hash, /^[a-f0-9]{64}$/);
+assert.match(capture.multiWindow, /Not physical drag evidence/);
+for (const [name, [width, height]] of Object.entries(screenshots)) {
   const bytes = fs.readFileSync(path.join(root, 'docs/screenshots', name));
   assert.ok(bytes.length > 10000 && bytes.length < 1000000, 'Unexpected screenshot size');
-  png(bytes, 1360, height);
+  png(bytes, width, height);
+  const entry = capture.files.find(file => file.file === name);
+  assert.deepEqual([entry.width, entry.height], [width, height]);
 }
 const ico = fs.readFileSync(path.join(root, 'assets/application.ico'));
 assert.equal(ico.readUInt16LE(0), 0); assert.equal(ico.readUInt16LE(2), 1);
@@ -69,4 +78,4 @@ sizes.forEach((size, index) => {
   assert.equal(offset, end); png(ico.subarray(offset, offset + length), size, size); end += length;
 });
 assert.equal(end, ico.length);
-console.log(`PASS: ${links} local README links/anchors, 4 decoded screenshots, 7 CRC-checked 32-bit ICO frames`);
+console.log(`PASS: ${links} local README links/anchors, ${Object.keys(screenshots).length} decoded screenshots with provenance, 7 CRC-checked 32-bit ICO frames`);

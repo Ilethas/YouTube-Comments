@@ -1,5 +1,9 @@
 # UI and navigation
 
+The [M9.2 verification review](M9_2_VERIFICATION.md) records the final Windows
+workflow checks and refreshed real-app screenshots. Physical native dragging and
+the desktop Close-flicker check remain [pending](M8_MANUAL_VERIFICATION.md).
+
 ## Application menu and window commands (M8.2)
 
 The menu button beside Discussion reader / Czytnik dyskusji opens a compact menu:
@@ -106,6 +110,10 @@ briefly drains every reader under M3; failed saves leave the reader usable for r
 See [ADR 0032](decisions/0032-equal-native-windows-and-session-restoration.md) and [native evidence](TESTING.md).
 
 ## Duplicate discussion tabs (M5)
+
+Duplicate Tab focuses the acknowledged new tab after its topology and enabled
+controls have rendered. M9.2 corrects an intermittent focus race found by the
+aggregate harness; moving focus never shortens checkpointing or the input freeze.
 
 Right-click a discussion tab, or focus it and use Shift+F10 / the context-menu key,
 then choose **Duplicate Tab** (Polish: **Duplikuj kartę**). The new independent
@@ -755,7 +763,8 @@ retain their separate anonymous remote-image/fallback policy.
 
 ## M2 shared replicas
 
-Production still has one reader; authorized test renderers share ordered committed
+This section records the historical M2 boundary; M6 above extends it to equal
+production native windows and M7/M8 add transfers. Authorized renderers share ordered committed
 content/preferences/workspace/seen/Undo. ReaderReplica merges notifications and
 command stamps through one bounded reconciliation path, with authoritative gap
 recovery. Peer seen changes preserve frozen applied IDs/order and local reading
@@ -765,4 +774,5 @@ before refreshed worker results. Local Refresh retains Updating view until worke
 settlement. Removal disposes sessions and rejects historical replies/snapshots.
 Mounted custom translation inputs follow shared code when untouched and retain an
 edited local draft until Save. See ADR 0028; M3 global lifecycle barriers and all
-public additional-window/duplicate-view UI remain outside this milestone.
+public additional-window/duplicate-view UI were outside M2, and are now implemented
+by M5–M8 above.

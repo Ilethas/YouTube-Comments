@@ -182,11 +182,13 @@ issue patterns without content/IDs. Optional `scripts/diagnose-community-shapes.
 takes a direct helper executable and public post URL, prints type/grammar counts
 only and removes its temporary archive. See [Testing](TESTING.md) for live outcomes.
 
-Windows is the initial development and packaging target. During development, a resolver may locate helpers through `PATH`. The design must also permit app-local or bundled helpers later and leave room for future Linux/macOS support without requiring those platforms initially. Keep helper resolution separate from backend invocation and normalization so packaging can change without rewriting domain logic.
+Windows is the initial development and packaging target. The resolver can locate direct executables through `PATH`; Settings can select them explicitly. Keep helper resolution separate from invocation and normalization. Helpers and Python remain separately user-installed by owner decision; bundling and automatic helper updates are not planned work.
 
-ADR 0005 established tested command/output contracts and ordered absolute PATH lookup. [ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) supersedes its exact-version gate while retaining rejection of Windows batch wrappers, bounded no-shell execution and stable failures with no extra application retries. Windows distribution artifacts/architectures, runtime dependencies, future bundled precedence and update ownership remain unresolved. Future Linux/macOS artifacts need their own decisions if those platforms are added. A helper found on `PATH` is not proof that it is a supported or compatible version. Product-facing diagnostics distinguish an unavailable/invalid executable, an untested version warning, and actual extraction failure without requiring renderer access to process execution.
+ADR 0005 established tested command/output contracts and ordered absolute PATH lookup. [ADR 0015](decisions/0015-safe-usability-intents-and-helper-confidence.md) supersedes its exact-version gate while retaining rejection of Windows batch wrappers, bounded no-shell execution and stable failures with no extra application retries. Windows x64 ZIP packaging and its runtime are documented in [Packaging](PACKAGING.md). Future Linux/macOS artifacts need their own decisions if those platforms are added. A helper found on `PATH` is not proof that it is a supported or compatible version. Product-facing diagnostics distinguish an unavailable/invalid executable, an untested version warning, and actual extraction failure without requiring renderer access to process execution.
 
-Bundling requires checking the actual redistribution licenses and obligations for selected artifacts and their dependencies. This document does not assume that the application's own license settles helper redistribution. Distribution, signing, integrity, and update choices belong in [Packaging](PACKAGING.md) and, when decided, small [ADRs](decisions/README.md).
+The application's license does not settle external helpers' redistribution terms.
+No helper redistribution is included. Signing, integrity and application release
+choices belong in [Packaging](PACKAGING.md).
 
 ## Verification and open decisions
 

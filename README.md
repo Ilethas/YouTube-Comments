@@ -7,7 +7,7 @@ where you can search them, mark what you have read, and come back later.
 This is a personal project. Other people are welcome to use it, but development
 and maintenance happen as time allows.
 
-![The reader showing nested comments, creator replies, and manual read indicators](docs/screenshots/reader-light.png)
+![Light reader with nested comments, creator replies, round selection controls, square seen checkboxes, and overview ruler](docs/screenshots/reader-light.png)
 
 The screenshots use invented discussions and people in the actual Electron app.
 
@@ -22,10 +22,14 @@ The screenshots use invented discussions and people in the actual Electron app.
 - Shows NEW for comments first discovered in the latest accepted Refresh after the
   initial download. This is separate from publication date and seen status.
 - Restores tabs, searches, filters, sort, collapsed replies, and reading position.
+- Duplicates discussion tabs with independent searches and reading positions,
+  while sharing the stored comments and seen state.
 - Opens independent reader windows through **File > New Window / Ctrl+N**. Quit
   restores all open windows; closing one among several excludes it next launch.
 - Moves tabs through **Move to Window… / Move to New Window** in the tab menu
   (Shift+F10). Discussion matches, selection and reading position move with the tab.
+- Reorders tabs by dragging, drags them between windows, and detaches them into
+  new windows when dropped outside. Physical Windows drag checks are still pending.
 - Offers comment selection, right-click actions, bulk marking, and Undo for bulk changes.
 - Opens author channels and original video comments in your browser. Google Translate
   also opens there, sending comment text only when you explicitly choose Translate.
@@ -39,9 +43,10 @@ folder, then run `youtube-comments.exe`. Keep the adjacent files and folders;
 they include the Electron runtime. You do not need Node.js or npm to run it.
 You do need the external tools below to acquire or refresh discussions.
 
-Check the [GitHub Releases](https://github.com/Ilethas/YouTube-Comments/releases)
-page for downloadable Windows builds. You can also build the application yourself;
-the generated ZIP is located at:
+This repository is awaiting owner review for an initial public ZIP release;
+these instructions do not imply a published download. You can build the
+application yourself using [Packaging](docs/PACKAGING.md#build-and-verify).
+The generated ZIP is located at:
 
 ```text
 out/make/zip/win32/x64/youtube-comments-win32-x64-1.0.0.zip
@@ -52,6 +57,9 @@ installation, update, and uninstall behavior has not been tested in an isolated
 Windows installation. Use the ZIP for now. The binaries are unsigned, so Windows
 may show a SmartScreen warning. `1.0.0` is inherited build metadata, not a published
 stable release.
+
+The extracted app has been checked on Windows 11 x64. Other Windows versions
+have not been verified here.
 
 ## External tools
 
@@ -119,6 +127,44 @@ There is no automatic synchronization with YouTube. Search and bulk commands wor
 within the active discussion. Library filtering searches discussion metadata.
 See [reading and navigation](docs/UI_AND_NAVIGATION.md) for shortcuts and details.
 
+Square checkboxes save seen/unseen state. Round circles select comments temporarily
+for an explicit bulk action; selecting, scrolling, or following a match does not
+mark anything seen. Ctrl+click a checkbox to apply its resulting state to that
+comment and its replies. Search results stay in place after marking until Apply
+or a successful Refresh updates the view.
+
+### Tabs and windows
+
+Right-click a discussion tab and choose **Duplicate Tab** to read another part of
+the same discussion independently. Each copy remembers its own search, filters,
+sort, collapsed replies, and position. Refresh and seen changes are shared.
+Opening an already open discussion from Library activates a copy in that window.
+
+Use the menu button beside **Discussion reader**, or the native **File** menu,
+to open a **New Window**. Drag tabs along the strip to reorder them, onto another
+window's tab strip to attach, or outside to detach. For a keyboard alternative,
+focus a tab and press **Shift+F10**: **Move to Window…** lets you select a destination
+and confirm with Move; **Move to New Window** creates one for that tab. Moving the
+last tab leaves its source window open and empty.
+
+**Close Window** removes just that window from the next session when others remain.
+Closing the last window keeps it for next launch. **Quit Application** saves the
+complete set of currently open windows, so use Quit when you want them all back.
+Closing a tab or window does not remove its discussions from Library.
+
+| Windows shortcut | Action |
+| --- | --- |
+| Ctrl+W | Close tab |
+| Ctrl+N | New Window |
+| Ctrl+Shift+W | Close Window |
+| Ctrl+Shift+Q | Quit Application, preserving all open windows |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
+| Alt+Left / Alt+Right | Reorder the focused tab |
+| Ctrl+F / Ctrl+Enter | Focus search / apply the draft |
+| F3 / Shift+F3 | Next / previous applied match |
+| Ctrl+Z | Undo the discussion's last recoverable bulk seen change |
+| F1 | Settings shortcut reference |
+
 ## More screenshots
 
 An applied search with an unread filter, keeping replies in context:
@@ -130,7 +176,16 @@ A collapsed thread and comments selected for a bulk action:
 ![Light reader with a collapsed reply branch and three selected comments](docs/screenshots/collapse-selection-light.png)
 
 The [Library view](docs/screenshots/library-light.png) lists saved discussions and
-their local counts. Capture details are in [Testing](docs/TESTING.md#readme-screenshots-and-application-icon-2026-10-16).
+their local counts.
+
+Two separate native readers, with independent tabs (their real content captures
+are placed side by side; this is not evidence of physical dragging):
+
+![Two light reader windows: a filtered duplicate discussion on the left and the shared Library with separate tabs on the right](docs/screenshots/multi-window-light.png)
+
+The [Move Tab dialog in Polish and dark mode](docs/screenshots/move-tab-pl-dark.png)
+shows the destination choices. [Capture details](docs/M9_2_VERIFICATION.md#screenshots)
+describe the fictional data and verification.
 
 ## Your data
 
@@ -140,6 +195,8 @@ replacing the app folder on the same Windows account still uses that profile.
 
 Use Settings to create a SQLite backup before moving or replacing data. Restore
 replaces the full local profile database, with a confirmation and a safety backup.
+It includes saved windows, tabs, and reading state. Temporary bulk selection is
+not restored after restarting. Recovery files are retained beside the database.
 Do not copy the live database while the app is open. See
 [backup and restore](docs/DATABASE.md) for recovery details.
 
@@ -151,6 +208,16 @@ and changes to YouTube can stop extraction from working. Community replies may
 have thread information without a precise direct parent, and Community comment
 permalinks are unavailable. The app reads local copies; it does not post replies,
 change likes, or manage a YouTube account.
+
+Native dragging still needs [physical Windows verification](docs/M8_MANUAL_VERIFICATION.md).
+Escape delivered inside the app cancels a drag, but Escape outside can create a
+detached window. Releases over other apps or the taskbar can do the same.
+
+Large libraries can still pause the app: Refresh, bulk changes, and some database
+operations can take seconds. The [scale measurements](docs/M9_1_PERFORMANCE.md)
+come from a high-memory workstation and do not establish a supported maximum or
+verify low-memory hardware. See the [release review](docs/M9_2_VERIFICATION.md)
+for completed checks and remaining manual work.
 
 ## Development
 

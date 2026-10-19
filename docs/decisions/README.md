@@ -1,11 +1,16 @@
 # Decisions and open questions
 
+The [M9.2 final review](../M9_2_VERIFICATION.md) records documentation, screenshots,
+regression/distribution evidence and outstanding owner/manual release gates.
+It selects no new architecture, schema or performance policy. Historical milestone
+entries below retain their original scopes and future-work statements.
+
 [ADR 0036: Measured reader snapshot hardening](0036-measured-reader-snapshot-hardening.md)
 records M9.1's redundant comment-evidence pruning and same-revision shared bootstrap
 reuse, with fresh per-caller private state and conservative transaction invalidation.
 Schema **14**, query deadlines and M2–M8 safety remain unchanged. The
 [performance report](../M9_1_PERFORMANCE.md) records aggregate evidence and remaining
-Q-21 limits. M9.2 remains reserved for owner review.
+Q-21 limits. M9.2 results are linked above for owner review.
 
 [ADR 0035: Reader UI and lifecycle presentation](0035-reader-menu-selection-and-lifecycle-presentation.md)
 implements M8.2: per-comment selection circles, a native-command application menu
@@ -121,7 +126,7 @@ The bounded keyboard discoverability milestone adds a renderer metadata registry
 English/Polish Settings reference and shared tooltip formatting. Q-11 gains
 Windows Ctrl+Tab/Ctrl+Shift+Tab, Ctrl+W, contextual Ctrl+F, Ctrl+L and acknowledged
 F1 Settings help targeting, with editable-control and destructive-modal ownership.
-See [the implemented keyboard policy](../UI_AND_NAVIGATION.md#keyboard-shortcuts-and-discoverability).
+See [the implemented keyboard policy](../UI_AND_NAVIGATION.md#shortcuts-and-gestures-discoverability).
 This reuses existing workspace/query actions and requires no new ADR, schema or
 IPC. Future platform mapping, richer navigation and configurable shortcuts are
 not decided by this increment.

@@ -93,6 +93,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const markSettingsDirty = useCallback((value: boolean) => { settingsDirty.current = value; }, []);
 
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
+  const [workspaceFocus, setWorkspaceFocus] = useState<{ tabId: string | null; revision: number }>();
   const workspaceBusy = useRef(false);
   const [showAcquisition, setShowAcquisition] = useState(false);
   const [focusUrl, setFocusUrl] = useState(false);
@@ -139,6 +140,16 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const [releaseFailed, setReleaseFailed] = useState(false);
   const otherSaveFailed = useRef(false);
   useLayoutEffect(() => { if (shell.current) shell.current.inert = profileBusy || cloning || !!movingId; }, [profileBusy, cloning, movingId]);
+  useLayoutEffect(() => {
+    if (!workspaceFocus) return;
+    if (profileBusy || movingId || workspace.revision > workspaceFocus.revision) { setWorkspaceFocus(undefined); return; }
+    if (workspaceSaving || cloning || workspace.revision < workspaceFocus.revision) return;
+    // A frame can precede React's topology/unfreeze commit. Focus only the
+    // acknowledged tab after this render has enabled it and cleared inert.
+    const target = workspaceFocus.tabId ? document.getElementById(`tab-${workspaceFocus.tabId}`) : document.getElementById('library-toggle');
+    if (target && !target.matches(':disabled') && !shell.current?.inert) target.focus();
+    setWorkspaceFocus(undefined);
+  }, [workspace, workspaceFocus, workspaceSaving, cloning, profileBusy, movingId]);
   const showProfileProgress = useProfileProgress(profileBusy, profileIdentity, releaseFailed);
   useLayoutEffect(() => {
     if (showProfileProgress) (releaseFailed ? profileOverlay.current?.querySelector<HTMLButtonElement>('[data-profile-retry]') : profileOverlay.current)?.focus({ preventScroll: true });
@@ -254,9 +265,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
         otherSaveFailed.current = false;
         acceptWorkspace(result.value);
         if (focusId === '@shortcuts' && result.value.tabs.some(tab => tab.id === result.value.activeTabId && tab.kind === 'settings')) setHelpRequest({ revision: result.value.revision });
-        else if (focusId) requestAnimationFrame(() => {
-          (focusId === '@active' ? document.querySelector<HTMLElement>('[role=tab][aria-selected=true]') ?? document.getElementById('library-toggle') : document.getElementById(`tab-${focusId}`))?.focus();
-        });
+        else if (focusId) setWorkspaceFocus({ tabId: focusId === '@active' ? result.value.activeTabId : focusId, revision: result.value.revision });
       } else { setSaveError(true); otherSaveFailed.current = true; }
     } catch { setSaveError(true); otherSaveFailed.current = true; }
     finally { workspaceBusy.current = false; setWorkspaceSaving(false); }

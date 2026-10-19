@@ -1,5 +1,18 @@
 # Project guidance
 
+## M9.2 review boundary
+
+[M9.2 verification](docs/M9_2_VERIFICATION.md) records final regression/distribution
+checks, refreshed fictional-data Electron screenshots and remaining owner gates.
+Use `node scripts/capture-readme.cjs` after a Forge build and
+`node scripts/verify-presentation.cjs` for the six current PNGs/links/icon frames.
+The paired-window image combines two actual native content captures; it does not
+certify physical dragging. P01–P25 in the M8 manual matrix remain pending, including
+physical Close-flicker confirmation. ZIP remains recommended; installed Squirrel
+behavior is unverified. Project license/third-party notice review is outstanding.
+No release/version/identity/schema change, Setup execution or public publication
+is authorized by this evidence. Stop for owner review; leave changes uncommitted.
+
 ## M9.1 scale boundary
 
 [M9.1 report](docs/M9_1_PERFORMANCE.md) records disposable production-entry
@@ -17,7 +30,7 @@ SQLite evidence, schema **14** and migrations 1–14 remain unchanged. Do not
 reintroduce that tree into bootstrap, item snapshots or mutation results without
 measuring aggregate bridge/memory cost. Preserve M2 ordering, M3 barriers and
 M4–M8 ownership/live-result safety. No worker/paging/index/persistence redesign
-is selected. M9.2 README/release/screenshot work is reserved for owner review.
+is selected. M9.2 README/release/screenshot results are linked above for owner review.
 
 [ADR 0036](docs/decisions/0036-measured-reader-snapshot-hardening.md) reuses only
 shared bootstrap data at one repository commit revision. Every transaction clears

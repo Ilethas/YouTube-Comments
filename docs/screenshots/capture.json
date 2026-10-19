@@ -1,12 +1,47 @@
 {
   "source": "Actual Electron window loading the Forge-built main/preload/renderer",
+  "capturedAt": "2026-10-19T20:10:29.423Z",
   "electron": "44.4.5",
   "viewportWidth": 1360,
+  "builtMainSha256": "44320bded7440781e63e3b1e9e763a4a3f7932a94e193c093e8b1f4b54067e2f",
   "data": "Invented demo discussions in an owned disposable SQLite profile; offline geometric avatars",
+  "multiWindow": "Paired unscaled compositor captures of two separate native readers; no OS chrome or desktop imagery. Not physical drag evidence.",
   "files": [
-    "reader-light.png",
-    "search-dark.png",
-    "collapse-selection-light.png",
-    "library-light.png"
-  ]
+    {
+      "file": "reader-light.png",
+      "width": 1360,
+      "height": 1000
+    },
+    {
+      "file": "search-dark.png",
+      "width": 1360,
+      "height": 880
+    },
+    {
+      "file": "collapse-selection-light.png",
+      "width": 1360,
+      "height": 920
+    },
+    {
+      "file": "library-light.png",
+      "width": 1360,
+      "height": 680
+    },
+    {
+      "file": "multi-window-light.png",
+      "width": 1848,
+      "height": 1000,
+      "pairedNativeCaptures": true
+    },
+    {
+      "file": "move-tab-pl-dark.png",
+      "width": 1360,
+      "height": 880
+    }
+  ],
+  "rendererAssetsSha256": {
+    "discussion-query.worker-DJ9IMWpC.js": "706fce715a73863a51a7f8400a5c2a5baf10f359c48ca4119bf1a3ce6461709f",
+    "index-DaBZUYnD.css": "f188b105b364ecfedda89f0b90b731297aeb2eb40a3a163b532f920db6ef08f5",
+    "index-lhvB-HdI.js": "4cdb91efb3d18b2d1ec3396e0f4544828bab754e2a91cac111f877192aca56ad"
+  }
 }

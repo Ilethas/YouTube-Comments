@@ -3,6 +3,8 @@
 Status on 2026-10-19: **NOT PERFORMED**. Automated M8 DragEvents are category A.
 This checklist establishes separate category B (authentic OS drag loop) and category
 C (physically performed mouse/keyboard) evidence. Never infer B/C from A results.
+M9.2 retains this status: real-app README screenshots, injected native key events,
+cursor samples and Electron compositor captures do not complete this matrix.
 
 ## Disposable launch
 
@@ -62,6 +64,8 @@ not native passes. Repeat directions A -> B, B -> A and C -> B where appropriate
 | P21 | Source and target at different app zoom levels | Recipient-local insertion remains exact; source hotspot is approximate and correctly converted from source zoom to DIP. |
 | P22 | File > Quit after moves/detach, resume same temp root, backup, mutate topology, restore and relaunch | Exact final committed windows/IDs/order/active state/private semantics survive. Transient selection/results reconstruct normally after process restart. |
 | P23 | Home/End/Arrow, Alt+Arrow, Shift+F10, Duplicate and both explicit Move commands; type in Library/search/Settings between drags | Keyboard alternatives remain usable. No tab gesture steals editing focus during ordinary typing; no focus ends on hidden old panels. English/Polish announcements convey start/drop/cancel/moved. |
+| P24 | After transfers, Close one window with peers remaining (menu and Ctrl+Shift+W); Quit with Ctrl+Shift+Q, then resume the same temporary root. Repeat with last-window Close. | Ctrl+W closes only a tab. The deliberately closed peer is absent after restart; Quit preserves every window still open with exact tab order/active view. Last Close retains its one window. Repeat after backup/mutation/restore. |
+| P25 | With a populated surviving reader visible, physically Close a peer repeatedly using its X, menu and Ctrl+Shift+W; record the desktop at the display's normal frame rate in light/dark and EN/PL. | No former black/full-screen Close overlay flicker or survivor reload. Keep before/during/after frames, runtime, display scale and refresh rate. A long drain may legitimately show themed progress; a failure must retain the window and usable error/Retry. Automated M8.2 compositor equality is separate evidence. |
 
 ## Observation ledger (copy a row per actual trial)
 
@@ -77,9 +81,17 @@ checks; the M8.1 Electron regressions do not establish a native OS drag-loop pas
 
 | Date/runtime/OS | Category B/C | ID/repetition and physical ground truth | Source/target + display/work area/scale/zoom | Ledger timestamp range | Actual result and failure details |
 | --- | --- | --- | --- | --- | --- |
-| Not performed | Not performed | P01-P23 pending | Inventory below only | None | No physical pass claimed |
+| Not performed | Not performed | P01-P25 pending | Inventory below only | None | No physical pass claimed |
 
-Automated inventory during this task: work areas (0,0) 1920x1032 at 100%;
+For the owner review, begin with P02/P04/P08/P09–P14 (authentic drag outcomes),
+P18/P19 (available mixed DPI), and P24/P25 (session policy and former flicker).
+Use the remaining rows for the full acceptance pass. Record failed and ambiguous
+trials as well as successful ones. P10's unobserved Escape-outside detachment
+remains accepted policy; this checklist does not change it into a cancellation
+guarantee. Record the tested artifact/source revision and exact launch command in
+the ledger. Leave unavailable monitor configurations pending.
+
+Original M8 automated inventory: work areas (0,0) 1920x1032 at 100%;
 (1920,0) 1920x1032 at 100%; (3840,0) 1280x672 at 150%. This establishes
 availability only. 125%, 200%, negative/above-primary layouts, unplug/reconnect,
 physical ghost/cursor and mouse-loop behavior have not been exercised.
