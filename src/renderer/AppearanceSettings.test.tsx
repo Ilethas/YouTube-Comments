@@ -60,7 +60,10 @@ it('exports offline starters through a narrow intent without changing preference
 });
 it('clears optional surfaces on theme switches and preserves the original Dark mix', () => {
   applyAppearance({ appearance: 'charcoal' }, false);
-  expect(document.documentElement.style.getPropertyValue('--unseen-background')).toBe('#293b50');
+  expect(document.documentElement.style.getPropertyValue('--unseen-background')).toBe('#353331');
+  for (const token of ['accent', 'accent-soft', 'unseen', 'focus'] as const) {
+    expect(document.documentElement.style.getPropertyValue('--' + token)).toBe(builtinThemes.charcoal.tokens[token]);
+  }
   applyAppearance({ appearance: 'light' }, false);
   expect(document.documentElement.style.getPropertyValue('--unseen-background')).toBe('#d6e5fb');
   for (const appearance of ['dark', 'system'] as const) {

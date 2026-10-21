@@ -3,8 +3,9 @@
 Settings supports System, Light, Dark, **Charcoal**, and imported custom themes.
 Changes are shared across native windows and persist across restarts. System still
 follows the operating system using the original Light/Dark palettes. Charcoal uses
-neutral `#151515`, `#1c1c1c`, `#262626` surfaces and `#393939` borders, with blue
-focus/selection and differentiated unseen, NEW, creator and error states.
+neutral `#151515`, `#1c1c1c`, `#262626` surfaces and `#393939` borders, with warm
+`#c9b99a` accents, `#e0cba5` focus/selection and differentiated unseen, NEW, creator
+and error states.
 
 ## Edit and import a theme
 
@@ -56,13 +57,13 @@ The UTF-8 JSON format is exactly:
     "muted": "#b0b0b0",
     "border": "#393939",
     "creator": "#d4b0f0",
-    "accent": "#9dc7ff",
-    "accent-soft": "#303030",
-    "unseen": "#9dc7ff",
-    "unseen-surface": "#293b50",
+    "accent": "#c9b99a",
+    "accent-soft": "#302d28",
+    "unseen": "#c9b99a",
+    "unseen-surface": "#353331",
     "new-text": "#ffdc88",
     "new-surface": "#4e4021",
-    "focus": "#9dc7ff",
+    "focus": "#e0cba5",
     "danger": "#ffadb5",
     "danger-soft": "#44282b"
   }
@@ -78,7 +79,7 @@ background rule. No migration or theme-format version change is required. Older
 application builds that predate this extension reject files containing the new
 token; remove it for those builds.
 
-Light now uses `#d6e5fb` and Charcoal `#293b50` unread surfaces. These opaque fills
+Light uses `#d6e5fb` and Charcoal `#353331` unread surfaces. These opaque fills
 keep their color over wallpaper, without tinting ordinary Charcoal surfaces.
 Original Dark retains all original tokens and its exact translucent row rule.
 System resolves these same Light/Dark rules live. Built-in Light/Charcoal normal,
@@ -87,6 +88,13 @@ retains at least 3:1. Row-fill contrast itself is a regression/design threshold,
 not a claim that background tint alone meets a WCAG state-indicator requirement:
 the explicit unseen badge and checkbox remain. Personal wallpaper at low surface
 opacity can still reduce seen-row text readability; prefer the defaults or 100%.
+
+Charcoal's unread-row ratios are 10.08:1 normal text, 5.80:1 muted text, 6.75:1
+creator text, 6.52:1 action text and 7.94:1 focus. Its unread badge uses `#c9b99a`
+on `#302d28` (7.11:1). Tests retain the 4.5:1 text and 3:1 focus floors and also
+check ordinary surfaces and semantic badges. Warm Graphite is a separate starter;
+its blue accents remain unchanged. Exports and newly created Charcoal examples use
+the bundled palette; existing editable copies and examples are never overwritten.
 
 `colorScheme` is `light` or `dark` and
 also controls native form elements. Every color is exactly `#RRGGBB`, with either

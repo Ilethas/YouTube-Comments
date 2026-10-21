@@ -87,8 +87,10 @@ export function AppearanceSettings({ preferences, locale, disabled, api, save, i
       {(['light', 'dark', 'charcoal'] as const).map(value => <option key={value} value={value}>{t(value)}</option>)}
       <option value="warm-graphite">Warm Graphite</option>
     </select></label>
-    <button type="button" disabled={!api.exportTheme} onClick={() => { void exportFile(); }}>{t('exportTheme')}</button>
-    <button type="button" disabled={dirty || !api.saveThemeCopy} onClick={() => { void manageFiles('copy'); }}>{t('saveThemeCopy')}</button>
+    <div className="appearance-actions">
+      <button type="button" disabled={!api.exportTheme} onClick={() => { void exportFile(); }}>{t('exportTheme')}</button>
+      <button type="button" disabled={dirty || !api.saveThemeCopy} onClick={() => { void manageFiles('copy'); }}>{t('saveThemeCopy')}</button>
+    </div>
     <p>{t('themeExportHelp')}</p>
     <h2>{t('readerWallpaper')}</h2>
     <div className="appearance-actions"><button type="button" disabled={dirty || !api.importWallpaper} onClick={() => { void importFile('wallpaper'); }}>{t('chooseWallpaper')}</button>

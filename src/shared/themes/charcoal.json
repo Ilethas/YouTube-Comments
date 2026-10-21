@@ -11,13 +11,13 @@
     "muted": "#b0b0b0",
     "border": "#393939",
     "creator": "#d4b0f0",
-    "accent": "#9dc7ff",
-    "accent-soft": "#303030",
-    "unseen": "#9dc7ff",
-    "unseen-surface": "#293b50",
+    "accent": "#c9b99a",
+    "accent-soft": "#302d28",
+    "unseen": "#c9b99a",
+    "unseen-surface": "#353331",
     "new-text": "#ffdc88",
     "new-surface": "#4e4021",
-    "focus": "#9dc7ff",
+    "focus": "#e0cba5",
     "danger": "#ffadb5",
     "danger-soft": "#44282b"
   }

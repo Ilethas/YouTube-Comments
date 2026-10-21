@@ -5,6 +5,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
+const palettes = Object.fromEntries(['light', 'dark', 'charcoal'].map(name => [name, require('../src/shared/themes/' + name + '.json')]));
+const cssRgb = hex => 'rgb(' + [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16)).join(', ') + ')';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const panel = "document.querySelector('.reader-panel:not([hidden])')";
 if (process.versions.electron) {
@@ -75,6 +77,11 @@ if (process.versions.electron) {
       await invoke(w, 'updatePreferences', { appearance: mode });
       const resolved = mode === 'system' ? dark ? 'dark' : 'light' : mode;
       await wait(() => js(w, `document.documentElement.dataset.appearance===${JSON.stringify(mode)} && getComputedStyle(document.documentElement).colorScheme===${JSON.stringify(dark ? 'dark' : 'light')}`), 'matrix palette');
+      const tokens = palettes[resolved].tokens;
+      for (const [token, color] of Object.entries(tokens)) {
+        const property = token === 'unseen-surface' ? 'unseen-background' : token;
+        assert.equal(await js(w, `getComputedStyle(document.documentElement).getPropertyValue('--${property}').trim()`), color, `${resolved} ${token}`);
+      }
       for (const scroll of [0, 45000, 1e9]) {
         await js(w, `${panel}.scrollTop=${scroll};void 0`); await pause(100);
         await geometry(w);
@@ -92,8 +99,10 @@ if (process.versions.electron) {
         assert.ok(evidence.unseen.length && evidence.seen.length, 'mixed seen/unseen virtual rows');
         assert.ok(evidence.seen.every(c => c === 'rgba(0, 0, 0, 0)'), 'seen remains transparent');
         assert.ok(evidence.nested > 0, 'nested virtual rows remain mounted');
-        const expected = resolved === 'light' ? 'rgb(214, 229, 251)' : resolved === 'charcoal' ? 'rgb(41, 59, 80)' : evidence.legacy;
+        const expected = tokens['unseen-surface'] ? cssRgb(tokens['unseen-surface']) : evidence.legacy;
         assert.ok(evidence.unseen.every(c => c === expected), JSON.stringify({mode,wallpaper,evidence}));
+        assert.ok(evidence.text.every(c => c === cssRgb(tokens.text)), `${resolved} opaque unread text`);
+        assert.equal(evidence.badge, cssRgb(tokens['accent-soft']), `${resolved} unread badge surface`);
         if (scroll === 45000) await capture(w, `${mode}${mode==='system'?dark?'-dark':'-light':''}-${wallpaper?'wallpaper':'plain'}`);
       }
       // Real query roles, NEW and selection keep their separate semantic styles.
@@ -109,12 +118,16 @@ if (process.versions.electron) {
       const styles = await js(w, `(()=>{
         const p=${panel},c=getComputedStyle(p.querySelector('.comment[data-selected=true]'));
         const checkbox=p.querySelector('.comment[data-selected=true] .seen-control input');checkbox.focus();
-        return {selection:c.outlineWidth,focus:getComputedStyle(checkbox.closest('.seen-control')).outlineWidth,
+        return {selection:c.outlineWidth,selectionColor:c.outlineColor,focus:getComputedStyle(checkbox.closest('.seen-control')).outlineWidth,
+          focusColor:getComputedStyle(checkbox.closest('.seen-control')).outlineColor,accent:getComputedStyle(checkbox).accentColor,
           match:getComputedStyle(p.querySelector('.match-badge')).borderTopStyle,
+          matchColor:getComputedStyle(p.querySelector('.match-badge')).color,unseenColor:getComputedStyle(p.querySelector('.unseen-badge')).color,
           context:getComputedStyle(p.querySelector('.context-badge')).backgroundColor,
           new:getComputedStyle(p.querySelector('.new-badge')).backgroundColor};
       })()`);
       assert.equal(styles.selection,'2px');assert.equal(styles.focus,'2px');assert.equal(styles.match,'solid');assert.equal(styles.context,'rgba(0, 0, 0, 0)');
+      assert.equal(styles.selectionColor,cssRgb(tokens.focus));assert.equal(styles.focusColor,cssRgb(tokens.focus));
+      assert.equal(styles.accent,cssRgb(tokens.accent));assert.equal(styles.matchColor,cssRgb(tokens.accent));assert.equal(styles.unseenColor,cssRgb(tokens.unseen));
       assert.equal(styles.new,resolved==='light'?'rgb(255, 240, 189)':'rgb(78, 64, 33)');
       await capture(w, `${resolved}-${wallpaper?'wallpaper':'plain'}-badges`);
       await search('');
@@ -158,6 +171,7 @@ if (process.versions.electron) {
         const exported = JSON.parse(fs.readFileSync(exportTarget, 'utf8'));
         const template = JSON.parse(fs.readFileSync(path.resolve(__dirname, source==='warm-graphite'?'../docs/examples/warm-graphite.json':'../src/shared/themes/'+source+'.json'), 'utf8'));
         assert.deepEqual(exported, template);
+        assert.deepEqual(JSON.parse(fs.readFileSync(path.join(themesFolder, 'examples', source + '.json'), 'utf8')), template);
         selected = exportTarget; await invoke(a, 'importTheme');
         assert.deepEqual((await boot(a)).preferences.readerAppearance.themes.at(-1).definition, template);
         exportTarget = path.join(root, 'current.json'); await invoke(a, 'exportTheme', {source:'current'});

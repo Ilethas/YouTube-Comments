@@ -30,6 +30,19 @@ it.each(['light', 'charcoal'] as const)('gives %s unread rows a stronger indepen
   expect(contrast(rgb(t.focus), unread)).toBeGreaterThanOrEqual(3);
 });
 
+it.each(['light', 'charcoal'] as const)('keeps %s text, badges and focus readable on their semantic surfaces', name => {
+  const t = builtinThemes[name].tokens;
+  for (const surface of ['background', 'surface', 'surface-raised', 'accent-soft'] as const) {
+    for (const token of ['text', 'muted', 'creator', 'accent'] as const) {
+      expect(contrast(rgb(t[token]), rgb(t[surface])), `${name} ${token} on ${surface}`).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(contrast(rgb(t.focus), rgb(t[surface])), `${name} focus on ${surface}`).toBeGreaterThanOrEqual(3);
+  }
+  for (const [text, surface] of [['unseen', 'accent-soft'], ['new-text', 'new-surface'], ['danger', 'danger-soft']] as const) {
+    expect(contrast(rgb(t[text]), rgb(t[surface])), `${name} ${text} on ${surface}`).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
 it('keeps both original palettes exact and adds neutral Charcoal surfaces', () => {
   expect(builtinThemes.light.tokens).toEqual({ background: '#f2f4f6', surface: '#ffffff', 'surface-raised': '#f7f9fb', text: '#202b37', muted: '#596778', border: '#d7dfe7', creator: '#6f4093', accent: '#235ba8', 'accent-soft': '#eaf2fd', unseen: '#235ba8', 'unseen-surface': '#d6e5fb', 'new-text': '#715000', 'new-surface': '#fff0bd', focus: '#005fcc', danger: '#a12935', 'danger-soft': '#fcebed' });
   expect(builtinThemes.dark.tokens).toEqual({ background: '#151b23', surface: '#1d2530', 'surface-raised': '#242e3b', text: '#e5eaf0', muted: '#abb8c8', border: '#3a4859', creator: '#d4b0f0', accent: '#9dc7ff', 'accent-soft': '#223956', unseen: '#9dc7ff', 'new-text': '#ffdc88', 'new-surface': '#4e4021', focus: '#9dc7ff', danger: '#ffadb5', 'danger-soft': '#48232b' });

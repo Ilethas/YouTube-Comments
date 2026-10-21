@@ -1,5 +1,29 @@
 # Testing strategy
 
+## Owner-edited Charcoal palette (2026-10-21)
+
+The edited `src/shared/themes/charcoal.json` remains authoritative. Renderer/native
+expectations and the documented JSON now follow its warm accents and unread fill.
+Original Light/Dark, Warm Graphite and the version-1 custom-theme format remain
+unchanged. Existing 4.5:1 text and 3:1 focus checks pass without lowered thresholds;
+additional checks cover ordinary surfaces, unread/NEW/error badges, rendered
+accent/focus colors and exact newly created starter files.
+
+- Focused appearance/theme/preload suites: **61/61 tests passed across 8 files**.
+- Full Vitest run: **1,296 passed / 1 failed, 1,297 total across 105 files**.
+  The unrelated tab-transfer coordinator commit/readiness test failed at line 69;
+  its unchanged file subsequently passed an isolated rerun (**42/42**). The
+  aggregate run therefore remains a recorded intermittent failure.
+- Typecheck, ESLint and verified Windows x64 Forge package passed.
+- `test:appearance` passed its plain/wallpaper matrices, exact starter exports,
+  fresh examples, shared windows, restart/restore and missing-asset checks.
+  Charcoal native captures with and without wallpaper were visually inspected.
+- `node scripts/smoke-electron.cjs` and `node scripts/smoke-scroll-layout.cjs`
+  passed, including tab paint/hover/focus and reader geometry. The former's exact
+  bridge-key expectation now includes the three existing theme-file methods.
+
+Changes remain uncommitted. Existing physical-input and release gates remain pending.
+
 ## File-based theme management (2026-10-21)
 
 [ADR 0040](decisions/0040-profile-theme-files.md) keeps schema 16 and adds

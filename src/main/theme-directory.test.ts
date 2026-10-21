@@ -6,7 +6,7 @@ import { ThemeDirectory } from './theme-directory';
 import { ReaderRepository } from './persistence/reader-repository';
 import { ReaderService } from './reader-service';
 import { AppearanceAssets } from './appearance-assets';
-import { builtinThemes, parseTheme } from '../shared/appearance';
+import { builtinThemes, parseTheme, themeTemplates } from '../shared/appearance';
 import type { ThemeDefinition } from '../shared/appearance';
 import type { ReaderCallerContext } from './caller-context';
 
@@ -39,6 +39,9 @@ it('materializes SQLite IDs and definitions once and supplies four examples with
   refresh(); expect(repo.preferences(['en'])).toEqual(before);
   expect(parseTheme(readFileSync(file(`${id}.json`), 'utf8'))).toEqual(builtinThemes.dark);
   expect(readdirSync(file('examples'))).toEqual(['charcoal.json', 'dark.json', 'light.json', 'warm-graphite.json']);
+  for (const [name, template] of Object.entries(themeTemplates)) {
+    expect(parseTheme(readFileSync(file(`examples/${name}.json`), 'utf8'))).toEqual(template);
+  }
   writeFileSync(file('examples/light.json'), 'user-edited'); put(`${id}.json`, definition('Changed'));
   refresh(); expect(readFileSync(file('examples/light.json'), 'utf8')).toBe('user-edited');
   expect(repo.readerAppearance().themes).toEqual([{ id, definition: definition('Changed') }]);
