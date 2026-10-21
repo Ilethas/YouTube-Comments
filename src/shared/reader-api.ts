@@ -3,7 +3,7 @@ import type { ReaderAppearanceChange } from './appearance';
 import type { SharedStamp, SharedCommit, SharedSnapshot, SharedItemSnapshot, SharedMetadata, SharedViewSnapshot } from './reader-sync';
 import type { AcquisitionNotification, AcquisitionProgress, AcquisitionTimings } from './acquisition';
 import type { Comment, ContentItem } from '../domain/discussion';
-import { normalizeTranslationCode, translationTargets } from './preferences';
+import { normalizeTranslationCode, translationTargets, notificationDurations } from './preferences';
 import type { Appearance, Locale, Preferences, TranslationTarget, SelectionControls } from './preferences';
 import { isRevision } from '../domain/discussion-view';
 import type { WorkspaceState } from '../domain/workspace';
@@ -40,6 +40,7 @@ export interface ToggleSeenRequest {
   readonly seen: boolean;
 }
 export type PreferenceChange = { readonly locale: Locale } | { readonly appearance: Appearance } | { readonly translationTarget: TranslationTarget; readonly customTranslationTarget?: string }
+  | { readonly notificationDismissal: Preferences['notificationDismissal'] } | { readonly notificationDurationSeconds: Preferences['notificationDurationSeconds'] }
   | { readonly readerAppearance: ReaderAppearanceChange } | { readonly removeWallpaper: { readonly expectedRevision: number } } | { readonly deleteTheme: { readonly id: string; readonly expectedRevision: number } }
   | { readonly selectionControls: SelectionControls } | { readonly includeCollapsedInPrefix: boolean };
 /** Identity only; main reads content and preferences and reconstructs destinations. */
@@ -176,7 +177,9 @@ export function isToggleSeenRequest(value: unknown): value is ToggleSeenRequest 
     && identifier(value.itemId) && identifier(value.commentId) && typeof value.subtree === 'boolean' && typeof value.seen === 'boolean';
 }
 export function isPreferenceChange(value: unknown): value is PreferenceChange {
-  return (exactKeys(value, ['readerAppearance']) && isReaderAppearanceChange(value.readerAppearance))
+  return (exactKeys(value, ['notificationDismissal']) && ['automatic', 'manual'].includes(value.notificationDismissal as string))
+    || (exactKeys(value, ['notificationDurationSeconds']) && notificationDurations.includes(value.notificationDurationSeconds as Preferences['notificationDurationSeconds']))
+    || (exactKeys(value, ['readerAppearance']) && isReaderAppearanceChange(value.readerAppearance))
     || (exactKeys(value, ['removeWallpaper']) && exactKeys(value.removeWallpaper, ['expectedRevision']) && isRevision(value.removeWallpaper.expectedRevision))
     || (exactKeys(value, ['deleteTheme']) && exactKeys(value.deleteTheme, ['id', 'expectedRevision']) && themeId(value.deleteTheme.id) && isRevision(value.deleteTheme.expectedRevision))
     || (exactKeys(value, ['locale']) && (value.locale === 'en' || value.locale === 'pl'))

@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { InvalidDiscussionViewError, ReaderRepository } from './reader-repository';
-import { migrations, migrateDatabase } from './migrations';
+import { migrations, migrateDatabase, schemaVersion } from './migrations';
 import { prepareRestore, protectBeforeMigration, recoveryDirectory } from './profile-restore';
 import { validateBackup } from './backup-validation';
 import { required } from '../../renderer/testing/required';
@@ -92,7 +92,7 @@ it('schema 9 migrates additively with pre-migration safety; staged old backup mi
   expect(validateBackup(path.join(recoveryDirectory(file), snapshots[0]))).toBe(9);
   expect(readFileSync(file)).toEqual(bytes);
   const staged = await prepareRestore(path.join(recoveryDirectory(file), snapshots[0]), file);
-  expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(15);
+  expect(validateBackup(path.join(staged, 'candidate.sqlite'))).toBe(schemaVersion);
   expect(readFileSync(file)).toEqual(bytes);
   repo = ReaderRepository.open(file);
   expect(legacyComparableState(repo.bootstrap(['en']))).toEqual(legacyComparableState(before)); expect(repo.history()).toEqual(history);

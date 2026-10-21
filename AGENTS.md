@@ -1,5 +1,18 @@
 # Project guidance
 
+## Notification dismissal current boundary
+
+[ADR 0039](docs/decisions/0039-configurable-notification-dismissal.md) adds localized
+Automatic/Manual dismissal and checked duration preferences on schema **16**.
+Migrations 1–15 remain exact. Preserve acknowledged main-owned preference saves,
+M2 synchronization and M3 fencing. Tab-transfer notifications use one bounded
+session-only slot, identity-guarded timers, independent hover/focus pauses and a
+stable polite live region with a separate close button. Pending/error feedback
+never times out. The fixed sibling overlay never resizes the reader or grows the
+document. `test:notifications` runs disposable real Electron windows and actual
+timeouts. Other contextual errors/progress/warnings retain their semantics.
+Leave work uncommitted; existing owner manual/release gates remain pending.
+
 ## Appearance customization current boundary
 
 [ADR 0037](docs/decisions/0037-validated-themes-and-reader-wallpaper.md) adds

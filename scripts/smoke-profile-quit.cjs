@@ -72,7 +72,7 @@ if (process.versions.electron) {
       await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error('M3 Quit exited '+code))); });
       const { DatabaseSync } = require('node:sqlite'), db = new DatabaseSync(path.join(root, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 15);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16);
         const rows = db.prepare('SELECT draft_query_json FROM discussion_view_intent WHERE item_id=?').all('video-demo');
         assert.deepEqual(rows.map(row=>JSON.parse(row.draft_query_json).text).sort(), ['quit-pending','quit-source-pending']);
         assert.equal(db.prepare("SELECT seen FROM comment_state WHERE comment_id='v3'").get().seen,0);

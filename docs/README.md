@@ -1,5 +1,11 @@
 # Documentation map
 
+**Notification dismissal (schema 16):** Settings offers Automatic/Manual mode,
+five durations, accessible close and hover/focus pause for tab-transfer feedback.
+See [ADR 0039](decisions/0039-configurable-notification-dismissal.md),
+[UI behavior](UI_AND_NAVIGATION.md#notifications) and [database](DATABASE.md#notification-preferences-schema-16).
+Historical migrations 1–15 remain exact.
+
 **Appearance customization (schema 15):** [Charcoal, JSON themes and wallpaper](APPEARANCE.md)
 documents safe import, profile storage, backup limits and owner verification.
 [ADR 0037](decisions/0037-validated-themes-and-reader-wallpaper.md) records the design.

@@ -1,5 +1,10 @@
 # Decisions and open questions
 
+[ADR 0039: Configurable notification dismissal](0039-configurable-notification-dismissal.md)
+adds acknowledged shared notification preferences on schema 16 and a bounded,
+accessible session-only overlay for tab-transfer feedback. Historical migrations
+1–15 remain exact.
+
 [ADR 0038: Unread surfaces and theme export](0038-unread-surfaces-and-theme-export.md)
 adds backward-compatible optional unread fills and authenticated native JSON export
 with four offline starters. Schema 15, original Dark and migrations remain unchanged.

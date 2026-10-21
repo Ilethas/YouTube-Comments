@@ -1,5 +1,39 @@
 # Testing strategy
 
+## Configurable notification dismissal (2026-10-21)
+
+[ADR 0039](decisions/0039-configurable-notification-dismissal.md) adds schema 16
+and session-only tab-transfer notifications. Migrations 1–15 remain exact.
+
+- Final full Vitest run: **1,281/1,281 tests passed across 104 files**. Older
+  fixture assertions now expect schema 16 and the two additional preference
+  columns; historical schema/data preservation assertions remain in place.
+- Typecheck and ESLint pass without warnings. `npm.cmd run package` produced a
+  verified Forge application folder; no Setup execution or publication occurred.
+- `npm.cmd run test:notifications` passes in disposable production-entry Electron
+  windows. It includes real transfers and rollback injection, all five real timeout
+  durations, pending close followed by settlement, persistent failure and Manual
+  feedback, native hover and keyboard activation, independent focus pausing,
+  localized control/live-region semantics, mounted peer Settings synchronization,
+  persisted preferences and reload without notification history.
+- All **22 serial Electron harnesses passed** through `test:electron`, including
+  appearance, backup/restore/restart, shared synchronization, lifecycle barriers,
+  duplicates, equal native windows, explicit transfers, synthetic native-window
+  drag events and the extended notification/scroll regression. Chromium's actual
+  accessibility tree exposes the polite atomic status and named close button.
+- The same harness checks a 3,003-comment virtual reader, source/destination
+  anchors, tab changes, three native window sizes, reader bottom/native wheel,
+  ruler and Back-to-Top. Document scroll height equals viewport height without
+  overflow masking; showing/dismissing notifications preserves reader height.
+  Native failure feedback was visually inspected.
+
+Use `npm.cmd run test:scroll-layout` for the shorter geometry regression and
+`npm.cmd run test:notifications` for extended notification checks; `test:electron`
+includes the extended variant. Actual spoken screen-reader output and physical
+OS dragging remain owner manual gates; existing clipboard and release gates are
+unchanged. Geometry and accessibility evidence are written under the ignored
+`.packaging-diagnostics/scroll-layout/` directory.
+
 ## Unread contrast and offline theme export (2026-10-21)
 
 [ADR 0038](decisions/0038-unread-surfaces-and-theme-export.md) and

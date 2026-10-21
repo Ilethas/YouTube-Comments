@@ -1,3 +1,4 @@
+import { schemaVersion } from './migrations';
 import { afterEach, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { ReaderRepository } from './reader-repository';
@@ -41,7 +42,7 @@ it('atomically transfers the SAME view with exact private rows, order/active/rev
   expect(moved.instance).toMatchObject({ intentRevision: before.instance.intentRevision + 1, collapseRevision: before.instance.collapseRevision + 1 });
   expect(moved.instance.ownerGeneration).toBeTypeOf('string'); expect(repo.viewInstances(b)[existing ?? '']).toBeDefined();
   expect(repo.bootstrap(['en'], a).comments).toEqual(shared); expect(commits).toHaveLength(1);
-  const backup = path.join(f.root, 'snapshot.sqlite'); await repo.createBackup(backup); expect(validateBackup(backup)).toBe(15);
+  const backup = path.join(f.root, 'snapshot.sqlite'); await repo.createBackup(backup); expect(validateBackup(backup)).toBe(schemaVersion);
 }, 60000); // Filesystem contention is independent of the protocol's bounded deadline.
 it.each(['source', 'target', 'neighbor', 'guard'])('rejects %s conflicts without any partial ownership or notification', conflict => {
   const { repo, a, b, request, tab } = fixture(), command = request(), source = repo.workspace(a), target = repo.workspace(b);
@@ -86,7 +87,7 @@ it.each(['owner', 'lanes', 'source-placement', 'target-placement', 'commit'])('f
   vi.spyOn(db, 'exec').mockImplementation(sql => { if (stage === 'commit' && sql === 'COMMIT') throw Error('injected'); return exec(sql); });
   expect(() => repo.transferTab(a, b, request(), () => undefined)).toThrow('injected');
   expect(repo.bootstrap(['en'], a)).toEqual(before); expect(repo.workspace(b).tabs).toHaveLength(0); expect(observer).not.toHaveBeenCalled();
-  expect(repo.ownerAuthority(tab.id)).toEqual({}); expect(validateBackup(file)).toBe(15);
+  expect(repo.ownerAuthority(tab.id)).toEqual({}); expect(validateBackup(file)).toBe(schemaVersion);
 });
 it('crash/reopen before and after COMMIT keeps the sole durable owner; source can remain empty and dormant pointers survive', () => {
   const { repo, file, a, b, tab, request } = fixture();
@@ -97,5 +98,5 @@ it('crash/reopen before and after COMMIT keeps the sole durable owner; source ca
   repo.close(); repos.splice(repos.indexOf(repo), 1);
   const reopened = ReaderRepository.open(file); repos.push(reopened);
   expect(reopened.ownedView(b, tab.id)).toBe(tab.itemId); expect(() => reopened.ownedView(a, tab.id)).toThrow();
-  expect(validateBackup(file)).toBe(15);
+  expect(validateBackup(file)).toBe(schemaVersion);
 });

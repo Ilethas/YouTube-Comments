@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync , readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ReaderRepository, StateConflictError, ViewOwnershipError } from './reader-repository';
-import { migrateDatabase, migrations } from './migrations';
+import { migrateDatabase, migrations, schemaVersion } from './migrations';
 import { downgradeWindowFixture } from './testing/schema-12';
 import { viewVersion, viewIdentity } from '../testing/view-identity';
 import { defaultQuery } from '../../domain/discussion-query';
@@ -18,6 +18,8 @@ const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) { if (path.dirname(root) !== os.tmpdir() || !path.basename(root).startsWith('reader-m4-')) throw new Error('Unsafe cleanup'); rmSync(root, { recursive: true, force: true }); } });
 const sharedTables = ['content_items', 'comments', 'comment_state', 'seen_operations', 'seen_operation_entries', 'extraction_attempts', 'preferences', 'helper_settings'];
 const rows = (db: DatabaseSync, table: string) => db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all();
+const upgradedRows = (table: string, before: ReturnType<typeof rows>) => table === 'preferences'
+  ? before.map(row => ({ ...row, notification_dismissal: 'automatic', notification_duration_seconds: 5 })) : before;
 function fixture(empty = false) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'reader-m4-')); roots.push(root);
   const file = path.join(root, 'reader.sqlite');
@@ -56,8 +58,8 @@ it.each([false, true])('losslessly maps every durable field and dormant instance
   const f = fixture(empty), db = new DatabaseSync(f.file); db.exec('PRAGMA foreign_keys=ON');
   try {
     migrateDatabase(db);
-    expect(validateBackup(f.file)).toBe(15);
-    for (const table of sharedTables) expect(rows(db, table), table).toEqual(f.before[table]);
+    expect(validateBackup(f.file)).toBe(schemaVersion);
+    for (const table of sharedTables) expect(rows(db, table), table).toEqual(upgradedRows(table, f.before[table]));
     const window = rows(db, 'app_windows')[0], instances = rows(db, 'tab_instances');
     expect(rows(db, 'app_windows')).toHaveLength(1);
     expect(window.topology_revision).toBe(f.before.workspace[0].revision);
@@ -175,8 +177,8 @@ it('verified v12 startup safety and staged restore preserve the selected source 
   expect(validateBackup(safety)).toBe(12); expect(readFileSync(f.file)).toEqual(bytes);
   const safetyBytes = readFileSync(safety);
   const staged = await prepareRestore(safety, f.file);
-  expect(validateBackup(path.join(staged,'candidate.sqlite'))).toBe(15);
+  expect(validateBackup(path.join(staged,'candidate.sqlite'))).toBe(schemaVersion);
   expect(readFileSync(safety)).toEqual(safetyBytes); expect(readFileSync(f.file)).toEqual(bytes);
   const db = new DatabaseSync(path.join(staged,'candidate.sqlite'));
-  try { for (const table of sharedTables) expect(rows(db,table)).toEqual(f.before[table]); } finally { db.close(); }
+  try { for (const table of sharedTables) expect(rows(db,table)).toEqual(upgradedRows(table, f.before[table])); } finally { db.close(); }
 }, 60000);

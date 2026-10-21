@@ -43,7 +43,7 @@ if (process.versions.electron) {
     DatabaseSync.prototype.close = function () { repositoryClosed = true; return close.call(this); };
     app.on('will-quit', () => {
       assert.equal(verified, true); assert.equal(repositoryClosed, true, 'normal quit awaited repository shutdown');
-      console.log('M1 built-entry PASS: exactly one normal reader, reload/persistence, popup/navigation denial, last-window shutdown; schema 15, isolated demo root.');
+      console.log('M1 built-entry PASS: exactly one normal reader, reload/persistence, popup/navigation denial, last-window shutdown; schema 16, isolated demo root.');
     });
     app.on('browser-window-created', (_event, window) => {
       assert.equal(++count, 1, 'production startup creates one reader only');
@@ -148,7 +148,7 @@ if (process.versions.electron) {
       }
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(root, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
-      try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 15); assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok'); }
+      try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16); assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok'); }
       finally { db.close(); }
     } finally {
       assert.ok(path.dirname(root) === os.tmpdir() && path.basename(root).startsWith('reader-m1-'));

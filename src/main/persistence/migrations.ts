@@ -244,7 +244,13 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
     SELECT id,locale,appearance,translation_target,selection_controls,include_collapsed_in_prefix FROM preferences;
   DROP TABLE preferences;
   ALTER TABLE preferences_next RENAME TO preferences;
-`) }, { version: 13, apply: migrateWindowViews }, { version: 14, apply: migrateWindowSession }, { version: 15, apply: migrateAppearance }];
+`) }, { version: 13, apply: migrateWindowViews }, { version: 14, apply: migrateWindowSession }, { version: 15, apply: migrateAppearance },
+{ version: 16, apply: db => db.exec(`
+  ALTER TABLE preferences ADD COLUMN notification_dismissal TEXT NOT NULL DEFAULT 'automatic'
+    CHECK(notification_dismissal IN ('automatic','manual'));
+  ALTER TABLE preferences ADD COLUMN notification_duration_seconds INTEGER NOT NULL DEFAULT 5
+    CHECK(notification_duration_seconds IN (3,5,10,15,30));
+`) }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 
 /** Short synchronous main-owned transaction; any failure rolls back all writes. */

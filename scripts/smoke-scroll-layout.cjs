@@ -27,7 +27,8 @@ if (process.versions.electron) {
   const ids = JSON.parse(fs.readFileSync(path.join(root, 'ids.json')));
   const fail = error => { console.error(error); app.exit(1); };
   process.on('uncaughtException', fail); process.on('unhandledRejection', fail);
-  const watchdog = setTimeout(() => fail(Error('scroll layout watchdog')), 120000);
+  const notificationVerification = process.env.NOTIFICATION_VERIFICATION === '1';
+  const watchdog = setTimeout(() => fail(Error('scroll layout watchdog')), notificationVerification ? 240000 : 120000);
   let verified = false, holdReady = false, releaseReady, held = false, failOwner = false, submittedAnchor;
   const prepare = DatabaseSync.prototype.prepare;
   DatabaseSync.prototype.prepare = function(sql) {
@@ -185,6 +186,83 @@ if (process.versions.electron) {
       assert.deepEqual((await boot(a)).comments[ids.item].map(c => c.seen), ids.seen, 'scrolling/transfers never mark seen');
       console.log('Scroll layout PASS: pending/success/rollback/retry, 3k virtual rows, anchor, tab switches, bottom, resize, native wheel, ruler and floating control.');
     }
+    if (notificationVerification) {
+      const notice = "document.querySelector('.move-feedback')";
+      const close = "document.querySelector('.notification-close')";
+      const empty = w => wait(() => js(w, `${notice}.textContent===''`), 'dismissed notification');
+      const visible = (w, text) => js(w, `${notice}.textContent===${JSON.stringify(text)}`);
+      async function settings(w) {
+        await js(w, "document.getElementById('settings-toggle').click();void 0");
+        await wait(() => js(w, "!!document.querySelector('.reader-panel:not([hidden]) .notification-settings')"), 'notification settings');
+      }
+      async function preference(w, label, value) {
+        await js(w, `(()=>{const s=Array.from(document.querySelectorAll('.notification-settings label')).find(e=>e.textContent.startsWith(${JSON.stringify(label)})).querySelector('select');const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;setter.call(s,${JSON.stringify(String(value))});s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+        await wait(() => js(w, "!document.querySelector('.notification-settings select').disabled"), 'acknowledged notification preference');
+      }
+      const settingsValues = w => js(w, "Array.from(document.querySelectorAll('.notification-settings select')).map(e=>e.value)");
+      await settings(a); await settings(b);
+      assert.deepEqual(await settingsValues(a), ['manual']);
+      await preference(b, 'Dismissal mode', 'automatic');
+      await wait(async () => (await settingsValues(a))[0] === 'automatic', 'mode sync to peer Settings');
+      for (const seconds of [3,5,10,15,30]) {
+        await preference(b, 'Dismiss after', seconds);
+        await wait(async () => (await settingsValues(a))[1] === String(seconds), 'duration sync to peer Settings');
+        assert.equal((await boot(a)).preferences.notificationDurationSeconds, seconds);
+      }
+      await preference(b, 'Dismiss after', 3); await activate(a, ids.view);
+      holdReady = true; await move(a, ids.view, 2); await wait(() => held, 'held pending notification');
+      await pause(3300); assert.equal(await visible(a, messages.pending), true, 'pending does not time out');
+      assert.equal(await js(a, `${close}.closest('[role=dialog]')!==null && !${close}.closest('[inert]')`), true);
+      // A native click reaches the pending close button above the blocking surface.
+      const hit = await js(a, `(()=>{const r=${close}.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`);
+      a.webContents.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,...hit}); a.webContents.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,...hit});
+      await empty(a); assert.equal(await js(a, "document.querySelector('.app-shell').inert"), true, 'dismissal does not cancel the operation');
+      releaseReady(); await ready(a); await status(a, messages.sent); await status(b, messages.received);
+      await geometry(b, 'notification overlay before dismiss', messages.received);
+      // Hover and keyboard focus overlap: neither may release the other's pause.
+      b.focus(); b.webContents.focus();
+      const hover = await js(b, `(()=>{const r=document.querySelector('.notification-overlay').getBoundingClientRect();return {x:Math.round(r.x+8),y:Math.round(r.y+8)}})()`);
+      b.webContents.sendInputEvent({type:'mouseMove',...hover}); await pause(3300); assert.equal(await visible(b, messages.received), true);
+      await js(b, `${close}.focus();void 0`); b.webContents.sendInputEvent({type:'mouseMove',x:10,y:180});
+      await pause(3300); assert.equal(await visible(b, messages.received), true, 'focus keeps notification visible after pointer leaves');
+      const region = await js(b, `(()=>{const r=${notice},c=${close};return {role:r.getAttribute('role'),live:r.getAttribute('aria-live'),atomic:r.getAttribute('aria-atomic'),label:c.getAttribute('aria-label'),separate:!r.contains(c),focused:document.activeElement===c}})()`);
+      assert.deepEqual(region, {role:'status',live:'polite',atomic:'true',label:'Dismiss notification',separate:true,focused:true});
+      b.webContents.debugger.attach('1.3');
+      try {
+        const { nodes } = await b.webContents.debugger.sendCommand('Accessibility.getFullAXTree');
+        const live = nodes.find(node => !node.ignored && node.role?.value === 'status' && node.properties?.some(property => property.name === 'live' && property.value.value === 'polite'));
+        assert.ok(live, 'Chromium exposes the polite status region');
+        assert.ok(live.properties.some(property => property.name === 'atomic' && property.value.value === true));
+        assert.ok(nodes.some(node => !node.ignored && node.role?.value === 'button' && node.name?.value === 'Dismiss notification'), 'Chromium exposes the named close button');
+        fs.writeFileSync(path.join(artifacts, 'notification-accessibility.json'), JSON.stringify(nodes.filter(node => node.nodeId === live.nodeId || node.name?.value === 'Dismiss notification'), null, 2));
+      } finally { b.webContents.debugger.detach(); }
+      b.webContents.sendInputEvent({type:'keyDown',keyCode:'Enter'}); b.webContents.sendInputEvent({type:'char',keyCode:'\r'}); b.webContents.sendInputEvent({type:'keyUp',keyCode:'Enter'}); await empty(b);
+      assert.equal(await js(b, "document.activeElement===document.body"), true, 'close does not move focus to a reader control');
+      await geometry(b, 'notification manually dismissed');
+      // Real native transfers with each actual timeout. Reader height stays fixed.
+      let source=b, target=a, targetNumber=1;
+      for (const seconds of [3,5,10,15,30]) {
+        await invoke(source, 'updatePreferences', {notificationDurationSeconds:seconds});
+        await move(source, ids.view, targetNumber); await ready(source); await status(source, messages.sent); await status(target, messages.received);
+        const before = await geometry(target, 'automatic '+seconds, messages.received);
+        await pause(seconds*1000+150); await empty(source); await empty(target);
+        const after = await geometry(target, 'expired '+seconds);
+        assert.equal(after.panelHeight, before.panelHeight, 'overlay never resizes reading viewport');
+        [source,target]=[target,source]; targetNumber=targetNumber===1?2:1;
+      }
+      await invoke(source, 'updatePreferences', {notificationDurationSeconds:3});
+      failOwner=true; await move(source, ids.view, targetNumber); await ready(source); await status(source,messages.failed);
+      await pause(3300); assert.equal(await visible(source,messages.failed),true,'failure never times out');
+      await js(source, `${close}.click();void 0`); await empty(source);
+      await invoke(source, 'updatePreferences', {notificationDismissal:'manual'});
+      await move(source,ids.view,targetNumber); await ready(source); await status(source,messages.sent); await status(target,messages.received);
+      await pause(3300); assert.equal(await visible(target,messages.received),true,'manual success stays visible');
+      await js(target, `${close}.click();void 0`); await empty(target);
+      target.webContents.reload(); await wait(() => js(target,"!!document.querySelector('.app-shell')"),'reload'); await ready(target);
+      assert.equal((await boot(target)).preferences.notificationDismissal,'manual'); assert.equal((await boot(target)).preferences.notificationDurationSeconds,3); await empty(target);
+      await settings(target); assert.deepEqual(await settingsValues(target),['manual']);
+      console.log('Notifications PASS: native transfers, pending close/settlement, persistent failure/manual mode, every real timeout, hover/focus, keyboard/live-region semantics, peer Settings synchronization, reload and fixed viewport.');
+    }
     const report = path.join(artifacts, baseline ? 'baseline.json' : 'fixed.json');
     fs.writeFileSync(report, JSON.stringify(samples, null, 2)); console.log('Scroll geometry:', report);
     verified = true; app.quit();
@@ -205,10 +283,12 @@ if (process.versions.electron) {
         fixture.raw.comments.push(...Array.from({ length: 3000 }, (_, i) => ({ id: 'scroll-row-' + i, parent: i % 10 ? 'scroll-row-' + (i - i % 10) : 'root', text: `Scroll regression row ${i}\n${'Variable height fictional discussion. '.repeat(1 + i % 7)}`, timestamp: 1790856000 + i })));
         const item = repo.ingest(normalizeYtDlp(JSON.stringify(fixture.raw), fixture.context), undefined, true).itemId;
         repo.updatePreferences({ locale: 'en' }, ['en']); const state = repo.bootstrap(['en']);
+        assert.equal(state.preferences.notificationDismissal, 'automatic'); assert.equal(state.preferences.notificationDurationSeconds, 5);
+        repo.updatePreferences({ notificationDismissal: 'manual' }, ['en']);
         const view = state.workspace.tabs.find(t => t.itemId === item).id;
         fs.writeFileSync(path.join(root, 'ids.json'), JSON.stringify({ item, view, seen: state.comments[item].map(c => c.seen) }));
       } finally { repo.close(); }
-      const env = { ...process.env, YOUTUBE_COMMENTS_DEMO_ROOT: root, SCROLL_LAYOUT_BASELINE: process.argv.includes('--baseline') ? '1' : '0' }; delete env.ELECTRON_RUN_AS_NODE;
+      const env = { ...process.env, YOUTUBE_COMMENTS_DEMO_ROOT: root, NOTIFICATION_VERIFICATION: process.argv.includes('--notifications') ? '1' : '0', SCROLL_LAYOUT_BASELINE: process.argv.includes('--baseline') ? '1' : '0' }; delete env.ELECTRON_RUN_AS_NODE;
       const child = spawn(require('electron'), [__filename], { env, stdio: 'inherit', windowsHide: true });
       const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); }); assert.equal(code, 0);
     } finally {

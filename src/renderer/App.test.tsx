@@ -1,3 +1,4 @@
+import { defaultNotificationPreferences } from '../shared/preferences';
 const discussionTab = (itemId: string) => instanceTab(`test-view-${itemId}`, itemId);
 import type { SharedChange, SharedCommit } from '../shared/reader-sync';
 import { translator } from './i18n';
@@ -59,7 +60,7 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() { /* jsdom has no layout. */ } unobserve() { /* Test only. */ } disconnect() { /* Test only. */ } });
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: function(this: HTMLElement, options: ScrollToOptions) { this.scrollTop = options.top ?? 0; } });
   vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate: async (comments, query) => evaluateDiscussionQuery(comments, query), dispose: vi.fn() } as QueryExecutor as ReturnType<typeof createQueryExecutor>));
-  state = { viewInstances: {}, discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items, comments: initialComments, preferences: { locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' },
+  state = { viewInstances: {}, discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items, comments: initialComments, preferences: { ...defaultNotificationPreferences, locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' },
     workspace: { tabs: items.map(item => discussionTab(item.id)), activeTabId: discussionTab(items[0].id).id, revision: 0 } };
   const open: ReaderApi['openStoredItem'] = async ({ itemId }) => {
     state = { ...state, workspace: openWorkspaceTab(state.workspace, discussionTab(itemId)) };
@@ -123,6 +124,27 @@ beforeEach(() => {
   };
 });
 async function showReader() { render(<App api={api} />); await screen.findByRole('tabpanel'); }
+
+it.each(['en', 'pl'] as const)('acknowledges %s notification settings and retains them on remount', async locale => {
+  state = { ...state, preferences: { ...state.preferences, locale } };
+  const t = translator(locale);
+  await showReader(); fireEvent.click(required(document.getElementById('settings-toggle')));
+  const mode = await screen.findByRole('combobox', { name: t('notificationDismissal') });
+  const duration = () => screen.getByRole('combobox', { name: t('notificationDuration') }) as HTMLSelectElement;
+  expect((mode as HTMLSelectElement).value).toBe('automatic'); expect(duration().value).toBe('5');
+  expect([...duration().options].map(option => option.value)).toEqual(['3', '5', '10', '15', '30']);
+  for (const seconds of [3, 5, 10, 15, 30]) {
+    fireEvent.change(duration(), { target: { value: String(seconds) } });
+    await waitFor(() => expect(state.preferences.notificationDurationSeconds).toBe(seconds));
+    expect(api.updatePreferences).toHaveBeenLastCalledWith({ notificationDurationSeconds: seconds });
+  }
+  fireEvent.change(mode, { target: { value: 'manual' } });
+  await waitFor(() => expect(state.preferences.notificationDismissal).toBe('manual'));
+  expect(screen.queryByRole('combobox', { name: t('notificationDuration') })).toBeNull();
+  cleanup(); await showReader(); expect((screen.getByRole('combobox', { name: t('notificationDismissal') }) as HTMLSelectElement).value).toBe('manual');
+  fireEvent.change(screen.getByRole('combobox', { name: t('notificationDismissal') }), { target: { value: 'automatic' } });
+  await waitFor(() => expect(duration().value).toBe('30'));
+});
 
 it.each(['en', 'pl'] as const)('keeps one mounted %s live region outside the inert shell through pending, failed, sent and received moves', async locale => {
   state = { ...state, preferences: { ...state.preferences, locale }, workspace: openWorkspaceTab(state.workspace, { id: 'library', kind: 'library' }) };
@@ -450,7 +472,7 @@ function acquired(): AcquisitionResult {
   const item = { ...items[0], id: 'acquired-video', isDemo: false, removable: true, sourceId: 'abcdefghijk', title: 'Acquired video' };
   const comment = { ...initialComments['video-demo'][0], id: 'acquired-comment', itemId: item.id, parentId: null, seen: false, text: 'Acquired comment' };
   return { operationId: 'fixture-operation', timings: { targetMs: 0, helperMs: 0, preparationMs: 0, fetchMs: 0, processingMs: 0, savingMs: 0, bootstrapMs: 0, totalMs: 0 },
-    state: { viewInstances: {}, discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' },
+    state: { viewInstances: {}, discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { ...defaultNotificationPreferences, locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' },
     workspace: { tabs: [...items, item].map(item => discussionTab(item.id)), activeTabId: discussionTab(item.id).id, revision: 1 } },
     summary: { itemId: item.id, coverage: 'unknown', inserted: 1, updated: 0, warnings: 0 } };
 }
@@ -1340,7 +1362,7 @@ it('bulk no-op/error retains prior acknowledged checkboxes and durable Undo', as
 });
 
 it.each(['en', 'pl'] as const)('global progress remains visible through tab switches; cancellation is neutral in %s', async locale => {
-  state = { ...acquired().state, preferences: { locale, appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' } };
+  state = { ...acquired().state, preferences: { ...defaultNotificationPreferences, locale, appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' } };
   let listener!: (value: AcquisitionNotification) => void;
   let finish!: (value: Result<AcquisitionResult>) => void;
   api.onAcquisitionProgress = callback => { listener = callback; return () => undefined; };

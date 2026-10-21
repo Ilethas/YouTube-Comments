@@ -15,6 +15,8 @@ import type { AcquisitionProgress } from '../shared/acquisition';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AcquisitionResult, ErrorCode, ReaderApi, ReaderState, Result } from '../shared/reader-api';
 import { TranslationSettings } from './TranslationSettings';
+import { Notification, useNotification } from './Notification';
+import { notificationDurations } from '../shared/preferences';
 import type { TranslationTarget, Appearance, SelectionControls } from '../shared/preferences';
 import { countLabel, initialLocale, Locale, translator } from './i18n';
 import { WorkspaceTabs } from './WorkspaceTabs';
@@ -95,7 +97,9 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const cancelledMove = useRef(false);
   const movingToken = useRef<string>();
   const moveAbort = useRef<AbortController>();
-  const [moveFeedback, setMoveFeedback] = useState<'movingTab' | 'tabMoved' | 'tabReceived' | 'moveFailed'>();
+  const [notificationDismissal, setNotificationDismissal] = useState(initialState.preferences.notificationDismissal);
+  const [notificationDurationSeconds, setNotificationDurationSeconds] = useState(initialState.preferences.notificationDurationSeconds);
+  const { notification, show: showNotification, settle: settleNotification, dismiss: dismissNotification } = useNotification<'movingTab' | 'tabMoved' | 'tabReceived' | 'moveFailed'>();
   const [transferFocus, setTransferFocus] = useState<string>();
   const provisional = useRef<{ token: string; session?: DiscussionViewSession }>();
   const settingsDirty = useRef(false);
@@ -225,6 +229,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       setReaderAppearance(next.preferences.readerAppearance ?? defaultReaderAppearance);
       setTranslationTarget(next.preferences.translationTarget); setCustomTranslationTarget(next.preferences.customTranslationTarget);
       setSelectionControls(next.preferences.selectionControls); setIncludeCollapsedInPrefix(next.preferences.includeCollapsedInPrefix);
+      setNotificationDismissal(next.preferences.notificationDismissal); setNotificationDurationSeconds(next.preferences.notificationDurationSeconds);
     };
     const unsubscribe = replica.subscribe(apply);
     apply(replica.current);
@@ -341,7 +346,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       if (reserved) void transferApi?.cancel({ token: reserved.token }); return;
     }
     const tab = workspace.tabs.find(tab => tab.id === tabId); if (!tab) return;
-    moving.current = tabId; cancelledMove.current = false; setMovingId(tabId); setMoveDialog(undefined); setMoveFeedback('movingTab');
+    moving.current = tabId; cancelledMove.current = false; setMovingId(tabId); setMoveDialog(undefined);
+    const notificationId = showNotification('movingTab', 'pending');
     if (shell.current) shell.current.inert = true;
     document.getSelection()?.removeAllRanges(); setRemoving(undefined);
     const controller = new AbortController(); moveAbort.current = controller;
@@ -385,8 +391,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       const result = await api.transfers.move(submission);
       committed = result.ok;
       if (result.sync) await replica?.reconcile(result.sync);
-      setMoveFeedback(result.ok ? 'tabMoved' : 'moveFailed');
-    } catch { setMoveFeedback(committed ? 'tabMoved' : 'moveFailed'); }
+      settleNotification(notificationId, result.ok ? 'tabMoved' : 'moveFailed', result.ok ? 'success' : 'error');
+    } catch { settleNotification(notificationId, committed ? 'tabMoved' : 'moveFailed', committed ? 'success' : 'error'); }
     finally {
       clearTimeout(timer); controller.abort();
       if (movingToken.current) void api.transfers.cancel({ token: movingToken.current });
@@ -437,11 +443,11 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
         })();
       } else if (provisional.current?.token === event.token) {
         provisional.current.session?.dispose(); provisional.current = undefined;
-        if (event.kind === 'committed') { setTransferFocus(event.tabId); setMoveFeedback('tabReceived'); }
+        if (event.kind === 'committed') { setTransferFocus(event.tabId); showNotification('tabReceived', 'success'); }
       }
     });
     return () => { unsubscribe(); provisional.current?.session?.dispose(); provisional.current = undefined; moveAbort.current?.abort(); };
-  }, [api, replica]);
+  }, [api, replica, showNotification]);
   useLayoutEffect(() => {
     if (!transferFocus || !workspace.tabs.some(t => t.id === transferFocus)) return;
     document.getElementById(`tab-${transferFocus}`)?.focus(); setTransferFocus(undefined);
@@ -782,6 +788,18 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
           const next = event.target.checked;
           void save(() => api.updatePreferences({ includeCollapsedInPrefix: next }), value => { if (!replica) setIncludeCollapsedInPrefix(value.includeCollapsedInPrefix); }, undefined, { kind: 'updatePreferences', request: { includeCollapsedInPrefix: next } });
         }} />{t('includeCollapsedInPrefix')}</label>
+        <section className="notification-settings" aria-labelledby="notification-settings-title">
+          <h2 id="notification-settings-title">{t('notifications')}</h2>
+          <label>{t('notificationDismissal')}<select value={notificationDismissal} disabled={saving} onChange={event => {
+            const next = event.target.value as typeof notificationDismissal;
+            void save(() => api.updatePreferences({ notificationDismissal: next }), value => { if (!replica) setNotificationDismissal(value.notificationDismissal); }, undefined, { kind: 'updatePreferences', request: { notificationDismissal: next } });
+          }}><option value="automatic">{t('notificationAutomatic')}</option><option value="manual">{t('notificationManual')}</option></select></label>
+          {notificationDismissal === 'automatic' && <label>{t('notificationDuration')}<select value={notificationDurationSeconds} disabled={saving} onChange={event => {
+            const next = Number(event.target.value) as typeof notificationDurationSeconds;
+            void save(() => api.updatePreferences({ notificationDurationSeconds: next }), value => { if (!replica) setNotificationDurationSeconds(value.notificationDurationSeconds); }, undefined, { kind: 'updatePreferences', request: { notificationDurationSeconds: next } });
+          }}>{notificationDurations.map(seconds => <option key={seconds} value={seconds}>{seconds} {t('notificationSeconds')}</option>)}</select></label>}
+          <p className="reader-help">{t('notificationHelp')}</p>
+        </section>
       </div>
         <p className="reader-help">{t('translationPrivacy')}</p>
         <ExternalTools api={api} locale={locale} active={activeTab?.kind === 'settings'} />
@@ -809,10 +827,15 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
         coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onAction={openCommentAction} onToggle={toggleComment}
         undo={seenUndo[item.id]} feedback={seenFeedback[item.id]} onBulk={bulkSeen} onUndo={undoSeen} onBulkModal={setBulkModalOpen} />}
     </main></ReaderBackdrop>)}
-  </div><p className="move-feedback" role="status" aria-live="polite" aria-atomic="true">{moveFeedback ? t(moveFeedback) : ''}</p>
-  {movingId && !profileBusy && <div className="profile-operation-overlay" role="dialog" aria-modal="true" aria-label={t('movingTab')}>
-    <p>{t('movingTab')}</p><button autoFocus onClick={() => { cancelledMove.current = true; moveAbort.current?.abort(); if (movingToken.current) void api.transfers?.cancel({ token: movingToken.current }); }}>{t('cancel')}</button>
+  </div><div className={movingId && !profileBusy ? 'transfer-feedback' : undefined}
+    role={movingId && !profileBusy ? 'dialog' : undefined} aria-modal={movingId && !profileBusy ? true : undefined}
+    aria-label={movingId && !profileBusy ? t('movingTab') : undefined}>
+  <Notification notification={notification} message={notification ? t(notification.message) : ''}
+    mode={notificationDismissal} seconds={notificationDurationSeconds} closeLabel={t('dismissNotification')} dismiss={dismissNotification} />
+  {movingId && !profileBusy && <div className="profile-operation-overlay">
+    <button autoFocus onClick={() => { cancelledMove.current = true; moveAbort.current?.abort(); if (movingToken.current) void api.transfers?.cancel({ token: movingToken.current }); }}>{t('cancel')}</button>
   </div>}
+  </div>
   {moveDialog && movingTab && api.transfers && !profileBusy && <MoveTabDialog key={moveDialog.id} api={api.transfers} locale={locale} newWindow={moveDialog.newWindow}
     tabTitle={tabLabel(movingTab)} tabKind={tabIcon(movingTab)}
     fixedDestination={moveDialog.reserved?.start.destination}

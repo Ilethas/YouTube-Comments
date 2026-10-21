@@ -4,7 +4,13 @@ export type Locale = 'en' | 'pl';
 export const translationTargets = ['app', 'en', 'pl', 'de', 'fr', 'es', 'it', 'pt', 'ja', 'ko', 'zh-CN', 'custom'] as const;
 export type TranslationTarget = typeof translationTargets[number];
 export type SelectionControls = 'on-demand' | 'always';
+export type NotificationDismissal = 'automatic' | 'manual';
+export const notificationDurations = [3, 5, 10, 15, 30] as const;
+export type NotificationDuration = typeof notificationDurations[number];
+export const defaultNotificationPreferences = { notificationDismissal: 'automatic', notificationDurationSeconds: 5 } as const;
 export interface Preferences {
+  readonly notificationDismissal: NotificationDismissal;
+  readonly notificationDurationSeconds: NotificationDuration;
   readonly readerAppearance?: import('./appearance').ReaderAppearance;
   readonly locale: Locale; readonly appearance: Appearance; readonly translationTarget: TranslationTarget;
   readonly selectionControls: SelectionControls;

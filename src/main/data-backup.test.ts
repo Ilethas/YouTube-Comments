@@ -1,3 +1,4 @@
+import { schemaVersion } from './persistence/migrations';
 import { required } from '../renderer/testing/required';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, readdirSync } from 'node:fs';
@@ -108,7 +109,7 @@ it('settles active acquisition and blocks stale IPC until restart, with a separa
   expect(service.dispatch('toggleSeen', [{ itemId: 'video-demo', commentId: 'v1', subtree: false, seen: false }])).toMatchObject({ error: { code: 'DATA_BUSY' } });
   await vi.waitFor(() => expect(restart).toHaveBeenCalledOnce());
   const directory = path.join(recoveryDirectory(file), readdirSync(recoveryDirectory(file))[0]);
-  expect(validateBackup(path.join(directory, 'safety.sqlite'))).toBe(15); expect(validateBackup(file)).toBe(15);
+  expect(validateBackup(path.join(directory, 'safety.sqlite'))).toBe(schemaVersion); expect(validateBackup(file)).toBe(schemaVersion);
 });
 it('settles an in-flight backup before shutdown closes the database', async () => {
   start(); let finish!: (file: string) => void;

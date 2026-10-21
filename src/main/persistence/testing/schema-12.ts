@@ -14,7 +14,7 @@ export function downgradeWindowFixture(db: DatabaseSync): void {
     if (db.prepare("SELECT 1 FROM sqlite_schema WHERE name='reader_appearance'").get()) {
       db.exec('CREATE TEMP TABLE fixture_appearance_preferences AS SELECT * FROM preferences; DROP TABLE preferences; DROP TABLE reader_appearance;');
       db.exec(sql('preferences'));
-      db.exec('INSERT INTO preferences SELECT * FROM fixture_appearance_preferences; DROP TABLE fixture_appearance_preferences;');
+      db.exec('INSERT INTO preferences (id,locale,appearance,translation_target,selection_controls,include_collapsed_in_prefix,custom_translation_target) SELECT id,locale,appearance,translation_target,selection_controls,include_collapsed_in_prefix,custom_translation_target FROM fixture_appearance_preferences; DROP TABLE fixture_appearance_preferences;');
     }
     for (const name of ['workspace_tabs', 'workspace', 'discussion_view_state', 'discussion_collapse', 'comment_collapse_overrides']) db.exec(sql(name));
     db.exec(`INSERT INTO workspace_tabs SELECT CASE t.kind WHEN 'discussion' THEN 'discussion:'||t.item_id ELSE t.kind END,t.kind,t.item_id,p.position

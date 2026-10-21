@@ -8,7 +8,7 @@ import { normalizeYtDlp } from './extractors/yt-dlp';
 import { normalizeCommunityArchive } from './extractors/community';
 import { authorUrl, commentPermalink, translationUrl, translationUrlLimit, translationTextLimit } from './comment-actions';
 import { isPreferenceChange } from '../shared/reader-api';
-import { translationTargets } from '../shared/preferences';
+import { defaultNotificationPreferences, translationTargets } from '../shared/preferences';
 import type { Preferences } from '../shared/preferences';
 
 let root: string, repository: ReaderRepository;
@@ -94,7 +94,7 @@ it('rejects missing/mismatched identities, synthetic sources and extra renderer 
   expect(open).not.toHaveBeenCalled();
 });
 it.each(translationTargets)('translation target %s encodes full Unicode/newline text with auto detection', translationTarget => {
-  const preferences: Preferences = { locale: 'pl', appearance: 'dark', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget, customTranslationTarget: 'uk' };
+  const preferences: Preferences = { ...defaultNotificationPreferences, locale: 'pl', appearance: 'dark', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget, customTranslationTarget: 'uk' };
   const url = new URL(translationUrl(text, preferences) ?? '');
   expect(url.origin + url.pathname).toBe('https://translate.google.com/');
   expect(Object.fromEntries(url.searchParams)).toEqual({ sl: 'auto', tl: translationTarget === 'app' ? 'pl' : translationTarget === 'custom' ? 'uk' : translationTarget, text, op: 'translate' });
@@ -123,8 +123,8 @@ it('bounds the entire encoded URL without truncation, and suppresses browser err
   const { item, comment } = stored(false, '中'.repeat(2000)), { reader, open, diagnose } = service();
   expect(await reader.dispatch('openCommentAction', [{ itemId: item.id, commentId: comment.id, action: 'translate' }])).toMatchObject({ error: { code: 'TRANSLATION_TOO_LONG' } });
   expect(open).not.toHaveBeenCalled();
-  expect(translationUrl('x'.repeat(translationUrlLimit), { locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' })).toBeUndefined();
-  const preferences: Preferences = { locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' };
+  expect(translationUrl('x'.repeat(translationUrlLimit), { ...defaultNotificationPreferences, locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' })).toBeUndefined();
+  const preferences: Preferences = { ...defaultNotificationPreferences, locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' };
   expect(translationUrl('x'.repeat(translationTextLimit), preferences)).toBeTruthy();
   expect(translationUrl('x'.repeat(translationTextLimit + 1), preferences)).toBeUndefined();
   open.mockRejectedValueOnce(new Error('https://translate.google.com/?text=private-comment'));

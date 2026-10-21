@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ReaderRepository, InvalidDiscussionViewError } from './reader-repository';
-import { migrateDatabase, migrations } from './migrations';
+import { migrateDatabase, migrations, schemaVersion } from './migrations';
 import { defaultQuery } from '../../domain/discussion-query';
 import { discussionSorts } from '../../domain/discussion-view';
 import type { SaveDiscussionViewRequest } from '../../domain/discussion-view';
@@ -52,7 +52,7 @@ it('schema 7 → 8 preserves populated content, seen revisions, history, workspa
     expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(7);
     expect(db.prepare("SELECT name FROM sqlite_master WHERE name='discussion_view_state'").get()).toBeUndefined();
     migrateDatabase(db); migrateDatabase(db);
-    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(15);
+    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(schemaVersion);
     expect(db.prepare('SELECT * FROM discussion_view_intent').all()).toEqual([]);
     expect(db.prepare('SELECT * FROM comment_state').all()).toEqual(revisions);
   } finally { db.close(); repo = ReaderRepository.open(file); }

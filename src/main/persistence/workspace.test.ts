@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ReaderRepository } from './reader-repository';
-import { migrateDatabase, migrations } from './migrations';
+import { migrateDatabase, migrations, schemaVersion } from './migrations';
 import { storedTab, viewIdentity } from '../testing/view-identity';
 const discussionTab = (itemId: string) => storedTab(repository, itemId);
 import { ReaderService } from '../reader-service';
@@ -117,7 +117,7 @@ it('schema 2 migration opens stored items and preserves every existing row inclu
     const before = tables.map(table => db.prepare(`SELECT * FROM ${table}`).all());
     migrateDatabase(db);
     expect(tables.map(table => db.prepare(`SELECT * FROM ${table}`).all())).toMatchObject(before);
-    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(15);
+    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(schemaVersion);
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   } finally { db.close(); repository = ReaderRepository.open(file); }
   expect(state().workspace).toEqual({ tabs: ['video-demo', 'post-demo'].map(discussionTab), activeTabId: discussionTab('video-demo').id, revision: 0 });

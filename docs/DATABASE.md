@@ -1,5 +1,16 @@
 # Database and durable data
 
+## Notification preferences (schema 16)
+
+Migration 16 adds checked `notification_dismissal` (`automatic`/`manual`, default
+`automatic`) and `notification_duration_seconds` (3/5/10/15/30, default 5) columns.
+Every existing preference, content record, view and topology row is retained.
+Migrations 1–15 remain exact; exact backup validation, verified pre-migration safety
+and staged restore upgrades include schema 16. Preference commits use the existing
+acknowledged main-owned queue and shared-window reconciliation. Notification
+messages/timers are renderer session state and never enter SQLite or backups.
+See [ADR 0039](decisions/0039-configurable-notification-dismissal.md).
+
 ## Appearance configuration (schema 15)
 
 Migration 15 copies every preference field verbatim into the expanded appearance

@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ReaderRepository, StateConflictError } from './reader-repository';
-import { migrations, migrateDatabase } from './migrations';
+import { migrations, migrateDatabase, schemaVersion } from './migrations';
 import { validateBackup } from './backup-validation';
 import { prepareRestore, protectBeforeMigration, recoveryDirectory } from './profile-restore';
 import { builtinThemes, defaultReaderAppearance } from '../../shared/appearance';
@@ -20,8 +20,8 @@ it('preserves v14 preferences, topology and data with verified pre-migration saf
   const safety = readdirSync(recoveryDirectory(file)).find(name => name.startsWith('pre-migration-'));
   expect(safety).toBeTruthy(); expect(validateBackup(path.join(recoveryDirectory(file), String(safety)))).toBe(14); expect(readFileSync(file)).toEqual(bytes);
   repo = ReaderRepository.open(file); expect(repo.readerAppearance()).toEqual(defaultReaderAppearance); repo.close(); repo = undefined;
-  const migrated = new DatabaseSync(file); expect(migrated.prepare('SELECT * FROM preferences').get()).toEqual(preferences); expect(migrated.prepare('SELECT * FROM app_windows').all()).toEqual(windows); migrated.close();
-  expect(validateBackup(file)).toBe(15);
+  const migrated = new DatabaseSync(file); expect(migrated.prepare('SELECT * FROM preferences').get()).toEqual({ ...preferences, notification_dismissal: 'automatic', notification_duration_seconds: 5 }); expect(migrated.prepare('SELECT * FROM app_windows').all()).toEqual(windows); migrated.close();
+  expect(validateBackup(file)).toBe(schemaVersion);
 });
 it('persists themes and wallpaper intent, publishes preferences, fences stale peers and deletes safely', async () => {
   repo = ReaderRepository.open(file); const commits: string[] = []; repo.onCommit(commit => commits.push(commit.change.kind));
@@ -34,7 +34,7 @@ it('persists themes and wallpaper intent, publishes preferences, fences stale pe
   expect(repo.preferences(['en']).appearance).toBe('charcoal');
   expect(() => repo?.updatePreferences({ readerAppearance: request }, ['en'])).toThrow(StateConflictError);
   const backup = path.join(root, 'backup.sqlite'); await repo.createBackup(backup); const before = repo.preferences(['en']);
-  const staging = await prepareRestore(backup, file); expect(validateBackup(path.join(staging, 'candidate.sqlite'))).toBe(15);
+  const staging = await prepareRestore(backup, file); expect(validateBackup(path.join(staging, 'candidate.sqlite'))).toBe(schemaVersion);
   repo.close(); repo = ReaderRepository.open(file); expect(repo.preferences(['en'])).toEqual(before);
   repo.updatePreferences({ appearance: 'custom' }, ['en']); repo.updatePreferences({ deleteTheme: { id: String(current.customThemeId), expectedRevision: repo.readerAppearance().revision } }, ['en']);
   expect(repo.preferences(['en']).appearance).toBe('system'); expect(repo.readerAppearance().themes).toEqual([]);

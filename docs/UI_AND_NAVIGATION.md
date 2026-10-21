@@ -1,5 +1,23 @@
 # UI and navigation
 
+## Notifications
+
+Settings > Notifications / Powiadomienia offers Automatic / Automatyczny and
+Manual / Ręczny dismissal. Automatic defaults to 5 seconds; choices are 3, 5, 10,
+15 and 30 seconds. Hovering or focusing the notification pauses its remaining
+time. Errors stay visible until dismissed; pending tab moves remain until settled
+or explicitly dismissed. Closing pending feedback does not cancel its operation.
+Manual feedback lasts for the current window session until dismissed or replaced.
+
+Tab-transfer feedback uses one compact top-center overlay with an always-visible,
+keyboard-accessible localized close button. It leaves reader height, overview
+ruler and bottom floating controls unchanged. The stable polite live region
+announces only message text, and closing feedback does not move keyboard focus.
+Notification preferences persist and synchronize between windows; notification
+messages have no restart history. Contextual form errors, acquisition progress
+and persistent warnings keep their existing behavior. See
+[ADR 0039](decisions/0039-configurable-notification-dismissal.md).
+
 The [M9.2 verification review](M9_2_VERIFICATION.md) records the final Windows
 workflow checks and refreshed real-app screenshots. Physical native dragging and
 the desktop Close-flicker check remain [pending](M8_MANUAL_VERIFICATION.md).

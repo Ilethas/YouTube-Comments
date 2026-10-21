@@ -35,6 +35,9 @@ const en = {
   moveToWindow: 'Move to Window…', moveToNewWindow: 'Move to New Window', moveWindowLabel: 'Window {number}',
   noMoveWindows: 'No other window is available.', moveFailed: 'The tab could not be moved. Its source is preserved. Try again from the tab menu.',
   movingTab: 'Moving tab…', tabMoved: 'Tab moved to the destination window.', tabReceived: 'Moved tab activated in this window.',
+  notifications: 'Notifications', notificationDismissal: 'Dismissal mode', notificationAutomatic: 'Automatic', notificationManual: 'Manual',
+  notificationDuration: 'Dismiss after', notificationSeconds: 'seconds', dismissNotification: 'Dismiss notification',
+  notificationHelp: 'Automatic dismissal pauses while hovered or focused. Errors stay until dismissed; pending operations stay until they settle. Manual notifications stay for this session until dismissed or replaced.',
   moveDirtySettings: 'This Settings tab has unsaved changes. Keep editing to preserve them, or explicitly discard the draft before moving.',
   keepEditing: 'Keep editing', discardDraft: 'Discard draft and continue',
 
@@ -235,6 +238,9 @@ const pl: Record<Key, string> & Record<string, string> = {
   moveToWindow: 'Przenieś do okna…', moveToNewWindow: 'Przenieś do nowego okna', moveWindowLabel: 'Okno {number}',
   noMoveWindows: 'Brak innych dostępnych okien.', moveFailed: 'Nie udało się przenieść karty. Karta źródłowa została zachowana. Spróbuj ponownie z menu karty.',
   movingTab: 'Przenoszenie karty…', tabMoved: 'Karta przeniesiona do okna docelowego.', tabReceived: 'Przeniesiona karta jest aktywna w tym oknie.',
+  notifications: 'Powiadomienia', notificationDismissal: 'Tryb zamykania', notificationAutomatic: 'Automatyczny', notificationManual: 'Ręczny',
+  notificationDuration: 'Zamknij po', notificationSeconds: 'sekund', dismissNotification: 'Zamknij powiadomienie',
+  notificationHelp: 'Automatyczne zamykanie jest wstrzymane po najechaniu kursorem lub ustawieniu fokusu. Błędy pozostają do zamknięcia, a operacje w toku — do zakończenia. W trybie ręcznym powiadomienia pozostają w tej sesji do zamknięcia lub zastąpienia.',
   moveDirtySettings: 'Ta karta Ustawień zawiera niezapisane zmiany. Kontynuuj edycję, aby je zachować, lub jawnie odrzuć szkic przed przeniesieniem.',
   keepEditing: 'Kontynuuj edycję', discardDraft: 'Odrzuć szkic i kontynuuj',
 

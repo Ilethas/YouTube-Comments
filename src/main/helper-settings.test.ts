@@ -156,7 +156,7 @@ it('schema-6 migration preserves all content, state, history, workspace and dura
     expect(() => migrateDatabase(db, [...migrations.slice(0, 6), { version: 7, apply: database => { migrations[6].apply(database); throw new Error('injected failure'); } }])).toThrow('injected failure');
     expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(6); expect(rows()).toEqual(original);
     migrateDatabase(db);
-    expect(rows()).toEqual(original.map((table, index) => tables[index] === 'preferences' ? table.map(row => ({ ...row, translation_target: 'app', custom_translation_target: null, selection_controls: 'on-demand', include_collapsed_in_prefix: 1 })) : table));
+    expect(rows()).toEqual(original.map((table, index) => tables[index] === 'preferences' ? table.map(row => ({ ...row, translation_target: 'app', custom_translation_target: null, selection_controls: 'on-demand', include_collapsed_in_prefix: 1, notification_dismissal: 'automatic', notification_duration_seconds: 5 })) : table));
     expect(db.prepare('SELECT * FROM helper_settings').all()).toEqual([]);
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   } finally { db.close(); }
