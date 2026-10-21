@@ -352,6 +352,17 @@ async function run() {
     await target.wait('document.getElementById(' + JSON.stringify('tab-' + id) + ')?.getAttribute("aria-selected")==="true"');
     await source.wait('!document.getElementById(' + JSON.stringify('tab-' + id) + ') && !document.querySelector(".app-shell").inert');
     await target.wait('!!document.getElementById(' + JSON.stringify('panel-' + id) + ')?.querySelector("form")');
+    for (const [reader, message] of [[source, 'Tab moved to the destination window.'], [target, 'Moved tab activated in this window.']]) {
+      await reader.wait('document.querySelector(".move-feedback")?.textContent===' + JSON.stringify(message));
+      // A transferred native may be occluded: read synchronous layout instead
+      // of waiting on animation frames that Chromium can suspend in that window.
+      const geometry = await reader.js(`(()=>{window.scrollTo(0,100000);const d=document.scrollingElement,s=document.querySelector('.move-feedback');return {document:d.scrollHeight,viewport:innerHeight,scroll:scrollY,toolbar:document.querySelector('.app-toolbar').getBoundingClientRect().top,statusTop:s.getBoundingClientRect().top,statusBottom:s.getBoundingClientRect().bottom,role:s.getAttribute('role'),live:s.getAttribute('aria-live')};})()`);
+      assert.equal(geometry.document, geometry.viewport, 'packaged transfer feedback cannot grow the document');
+      assert.equal(geometry.scroll, 0); assert.equal(geometry.toolbar, 0);
+      assert.ok(geometry.statusTop >= 0 && geometry.statusBottom <= geometry.viewport);
+      assert.equal(geometry.role, 'status'); assert.equal(geometry.live, 'polite');
+      (report.transferScrollGeometry ??= []).push(geometry);
+    }
   }
   await packagedMove(session, destination, movingView);
   const firstOwner = (await destination.invoke('bootstrap')).viewInstances[movingView];
@@ -364,6 +375,7 @@ async function run() {
   await session.js("document.getElementById('settings-toggle').click()");
   await session.wait("document.querySelectorAll('.helper-tool[aria-busy=false]').length===2");
   report.checks.push('Unmodified extracted EXE M7 menu/chooser transfers the same view out/back, retains independent same-item destination tabs and rejects stale owner authority before native backup/relaunch');
+  report.checks.push('Unmodified extracted EXE transfer feedback stays visible inside the viewport; source/target document cannot scroll and toolbar stays at zero');
   const snapshot=path.join(root,'complete-backup.sqlite');
   await session.js("document.querySelector('.data-backups button').click()"); await native(session,'file',snapshot);
   await session.wait("document.querySelector('.data-backups > [role=status]')?.textContent.includes('complete-backup.sqlite')");

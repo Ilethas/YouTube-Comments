@@ -667,7 +667,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     return () => document.removeEventListener('keydown', keyboard);
   });
 
-  return <><div className="app-shell" ref={shell}>
+  return <div className="app-layout"><div className="app-shell" ref={shell}>
     {profileFailed && <p role="alert">{t('profileDrainFailed')}</p>}
     <header className="app-toolbar">
       <div className="brand"><ApplicationMenu api={api} locale={locale} disabled={profileBusy || cloning || !!movingId} /><strong>{t('appName')}</strong></div>
@@ -778,7 +778,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
         coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onAction={openCommentAction} onToggle={toggleComment}
         undo={seenUndo[item.id]} feedback={seenFeedback[item.id]} onBulk={bulkSeen} onUndo={undoSeen} onBulkModal={setBulkModalOpen} />}
     </main>)}
-  </div>{moveFeedback && <p role="status" aria-live="polite">{t(moveFeedback)}</p>}
+  </div><p className="move-feedback" role="status" aria-live="polite" aria-atomic="true">{moveFeedback ? t(moveFeedback) : ''}</p>
   {movingId && !profileBusy && <div className="profile-operation-overlay" role="dialog" aria-modal="true" aria-label={t('movingTab')}>
     <p>{t('movingTab')}</p><button autoFocus onClick={() => { cancelledMove.current = true; moveAbort.current?.abort(); if (movingToken.current) void api.transfers?.cancel({ token: movingToken.current }); }}>{t('cancel')}</button>
   </div>}
@@ -791,5 +791,5 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   {showProfileProgress && <div className="profile-operation-overlay" role="dialog" aria-modal="true" tabIndex={-1} ref={profileOverlay} aria-label={t('profileQuiescing')}>
     <p role="status"><span className="acquisition-spinner" aria-hidden="true" /> {t('profileQuiescing')}</p>
     {releaseFailed && <div role="alert"><p>{t('profileReconcileFailed')}</p><button autoFocus data-profile-retry onClick={() => profileController.current?.retryRelease()}>{t('retry')}</button></div>}
-  </div>}</>;
+  </div>}</div>;
 }

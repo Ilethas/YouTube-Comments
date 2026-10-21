@@ -75,6 +75,13 @@ still rejects closed or changed destinations rather than silently retargeting.
 A successful move activates/focuses the destination tab and announces it;
 a failed move keeps the source usable with feedback and retry through the same menu.
 
+Pending, successful, received and failed moves use a visible status strip at the
+bottom of the viewport. Its permanently mounted polite, atomic live region stays
+outside the shell's inert boundary. The strip and shell share the viewport height;
+the active reader panel uses the remaining height and owns discussion scrolling.
+Feedback does not add document height, move the application toolbar, or cover the
+ruler/floating controls. An empty live region reserves no space.
+
 Discussion moves preserve the same view identity, draft/applied filters, frozen
 matches/order/stale state, sort/collapse, logical anchor/offset, navigation selection
 and temporary bulk IDs/range anchor. They do not rerun a query merely because the

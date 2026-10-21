@@ -123,6 +123,35 @@ beforeEach(() => {
 });
 async function showReader() { render(<App api={api} />); await screen.findByRole('tabpanel'); }
 
+it.each(['en', 'pl'] as const)('keeps one mounted %s live region outside the inert shell through pending, failed, sent and received moves', async locale => {
+  state = { ...state, preferences: { ...state.preferences, locale }, workspace: openWorkspaceTab(state.workspace, { id: 'library', kind: 'library' }) };
+  let receive!: (event: import('../shared/tab-transfer').TransferEvent) => void;
+  let finish!: (result: Awaited<ReturnType<import('../shared/tab-transfer').TabTransferApi['move']>>) => void;
+  api = { ...api, transfers: {
+    onEvent: (listener: typeof receive) => { receive = listener; return () => undefined; },
+    move: vi.fn(() => new Promise(resolve => { finish = resolve; })),
+    cancel: vi.fn(async () => ({ ok: true, value: null })),
+    ready: vi.fn(async () => ({ ok: true, value: null })),
+  } as unknown as import('../shared/tab-transfer').TabTransferApi };
+  await showReader();
+  const feedback = required(document.querySelector<HTMLElement>('.move-feedback')), t = translator(locale);
+  expect(feedback.textContent).toBe(''); expect(feedback.getAttribute('role')).toBe('status');
+  expect(feedback.getAttribute('aria-live')).toBe('polite'); expect(feedback.getAttribute('aria-atomic')).toBe('true');
+  for (const ok of [false, true]) {
+    act(() => receive({ kind: 'offered', token: 'move-token', start: { tabId: 'library', expectedRevision: state.workspace.revision, destination: 'new' } }));
+    await waitFor(() => expect(api.transfers?.move).toHaveBeenCalledTimes(ok ? 2 : 1));
+    expect(feedback.textContent).toBe(t('movingTab'));
+    const shell = required(document.querySelector<HTMLElement>('.app-shell'));
+    expect(shell.inert).toBe(true); expect(shell.contains(feedback)).toBe(false);
+    await act(async () => finish(ok ? { ok: true, value: { tabId: 'library', mergedIntoTabId: null } } : { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }));
+    await waitFor(() => expect(feedback.textContent).toBe(t(ok ? 'tabMoved' : 'moveFailed')));
+    expect(shell.inert).toBe(false); expect(document.querySelector('.move-feedback')).toBe(feedback);
+  }
+  await act(async () => receive({ kind: 'prepare', token: 'received-token', tabKind: 'library', handoff: null }));
+  act(() => receive({ kind: 'committed', token: 'received-token', tabId: 'library' }));
+  expect(feedback.textContent).toBe(t('tabReceived')); expect(document.querySelector('.move-feedback')).toBe(feedback);
+});
+
 it('Settings persists a bounded translation override independently from language and restores it on remount', async () => {
   await showReader(); fireEvent.click(required(document.getElementById('settings-toggle')));
   const target = await screen.findByRole('combobox', { name: 'Translation target language' });
@@ -438,7 +467,7 @@ it('URL Enter submission adds and activates acknowledged discussion, then Refres
   expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-acquired-video');
   expect(screen.queryByText(/Synthetic discussions/)).toBeNull();
   expect(within(screen.getByRole('tabpanel')).queryByText(/Demo reference time/)).toBeNull();
-  expect(screen.getByRole('status').title).toContain('Discussion saved');
+  expect(within(screen.getByRole('tabpanel')).getByRole('status').title).toContain('Discussion saved');
   expect(screen.queryByLabelText('YouTube URL')).toBeNull();
   await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   expect(api.refresh).toHaveBeenCalledWith({ itemId: 'acquired-video' });
@@ -477,7 +506,7 @@ it('acquisition shows busy but checkboxes remain usable; failure retains visible
   await userEvent.click(screen.getByRole('button', { name: 'Add / Open' }));
   await userEvent.type(screen.getByLabelText('YouTube URL'), 'https://youtu.be/abcdefghijk');
   await userEvent.click(screen.getByRole('button', { name: 'Open URL' }));
-  expect(screen.getByRole('status').textContent).toContain('Acquiring');
+  expect(within(required(document.querySelector<HTMLElement>('.app-shell'))).getByRole('status').textContent).toContain('Acquiring');
   expect((screen.getByRole('button', { name: 'Open URL' }) as HTMLButtonElement).disabled).toBe(true);
   expect(checkboxes().every(input => !input.disabled)).toBe(true);
   await userEvent.click(checkboxes()[0]);
@@ -489,7 +518,7 @@ it('acquisition shows busy but checkboxes remain usable; failure retains visible
   expect((await screen.findByRole('alert')).textContent).toContain('niedostępny');
   expect(screen.getByRole('tabpanel').id).toBe('panel-test-view-video-demo');
   expect(checked()[0]).toBe(!original[0]);
-  expect(screen.queryByRole('status')).toBeNull();
+  expect(within(required(document.querySelector<HTMLElement>('.app-shell'))).queryByRole('status')).toBeNull();
 });
 it('refresh failure preserves acquired comments and reports invalid helper', async () => {
   api.bootstrap = vi.fn<ReaderApi['bootstrap']>(async () => ({ ok: true as const, value: acquired().state }));

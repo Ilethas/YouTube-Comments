@@ -1,5 +1,49 @@
 # Testing strategy
 
+## Post-M9.2 transfer feedback scrollbar fix (2026-10-21)
+
+Native Electron with the production entry and an offline 3,003-comment discussion
+confirmed the reported cause. Before feedback, document/viewport heights were
+861/861 CSS pixels. The normal-flow paragraph after the 100vh shell made them
+908/861 during a pending move and in both successful endpoints. Scrolling the
+document moved the toolbar above zero. Removing only the feedback paragraph from
+layout returned the document to 861 pixels. This baseline used the original Forge
+bundles with `node scripts/smoke-scroll-layout.cjs --baseline`.
+
+The shell and visible status strip now share one viewport-height flex container.
+The permanently mounted polite/atomic live region remains outside the inert shell;
+empty feedback has no footprint. No html/body overflow mask, schema, transfer,
+virtualization or scroll-anchor protocol change was made.
+
+After a Forge build, `npm.cmd run test:scroll-layout` runs the regression; it is
+also included in `test:electron`. It holds real recipient readiness to observe
+pending feedback, transfers through the actual chooser/IPC/SQLite, injects an
+ownership transaction failure, and retries. Assertions cover source/target
+document height equal to viewport height, failed document scroll attempts,
+toolbar top zero, visible live feedback, native wheel scrolling within the reader,
+bounded virtual rows, final frozen handoff anchor/offset, cached tab restoration,
+Community/Settings switching, bottom reachability and three native window sizes
+(720x520, 1280x900, 900x650). Ruler containment, floating Back to Top and unchanged
+seen state are checked. JSON geometry and two reviewed native captures are written
+under `.packaging-diagnostics/scroll-layout/`. The packaged-EXE harness also asserts
+visible feedback and document/toolbar geometry at both ends of out/back transfers.
+
+Focused Vitest: **190 tests / six files PASS**, including EN/PL announcement
+transitions and 10k/50k virtual anchor/navigation/ruler coverage. Typecheck and
+ESLint **PASS**. Native M7 transfer/restart/restore and M8 synthetic-drag suites
+**PASS**. Native long-discussion scroll-layout, 10k/50k selection/floating controls,
+collapse/ruler and tab-keyboard checks **PASS**. Fresh verified Windows x64 package
+and ZIP **PASS**. `test:packaged` **PASS** on the unmodified extracted EXE, including
+four source/target transfer samples with document/viewport 861/861, document scroll
+zero and toolbar top zero, plus native backup/restore and real relaunch. Its geometry
+assertions use synchronous layout reads because Chromium may suspend animation
+frames in occluded native windows; the initial frame-wait harness stall was corrected.
+See `.packaging-diagnostics/packaged-smoke.json` for the final packaged report.
+All data is disposable OS-temp test data. No installer was executed.
+This is automated Electron input/geometry evidence;
+physical OS dragging and assistive-technology listening are not certified.
+Changes remain uncommitted for owner review.
+
 ## Post-M9.2 tab keyboard fix (2026-10-19)
 
 See [cause and verification](POST_M9_2_TAB_KEYBOARD.md). After a Forge build,
