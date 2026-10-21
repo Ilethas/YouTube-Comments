@@ -1,5 +1,9 @@
 # Decisions and open questions
 
+[ADR 0038: Unread surfaces and theme export](0038-unread-surfaces-and-theme-export.md)
+adds backward-compatible optional unread fills and authenticated native JSON export
+with four offline starters. Schema 15, original Dark and migrations remain unchanged.
+
 [ADR 0037: Validated themes and reader wallpaper](0037-validated-themes-and-reader-wallpaper.md)
 adds Charcoal, versioned JSON palettes and profile-owned bounded raster wallpaper on
 schema **15**, using existing preferences synchronization and lifecycle barriers.

@@ -2,6 +2,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { assetId, parseTheme, themeByteLimit } from '../shared/appearance';
+import type { ThemeDefinition } from '../shared/appearance';
 import { thumbnailImage } from './thumbnail-image';
 import type { ReaderCallerContext } from './caller-context';
 import type { Locale } from '../shared/preferences';
@@ -29,6 +30,8 @@ export async function readImport(file: string, limit: number): Promise<Buffer> {
   } finally { await handle.close(); }
 }
 export interface AppearanceAssetsOptions {
+  readonly saveTheme?: (locale: Locale, caller: ReaderCallerContext) => Promise<string | undefined>;
+  readonly systemDark?: () => boolean;
   readonly choose: (kind: 'theme' | 'wallpaper', locale: Locale, caller: ReaderCallerContext) => Promise<string | undefined>;
   /** Electron's actual decoder + resize/re-encode, supplied only by main. */
   readonly encode: (bytes: Buffer, width: number, height: number) => Buffer | undefined | Promise<Buffer | undefined>;
@@ -42,6 +45,18 @@ export class AppearanceAssets {
     if (!path.isAbsolute(directory)) throw new Error('Absolute appearance directory required');
   }
   async theme(file: string) { return parseTheme(new TextDecoder('utf-8', { fatal: true }).decode(await readImport(file, themeByteLimit))); }
+  /** Native-dialog destination only; a sibling temporary prevents partial files.
+   * Replacing a symlink replaces the link rather than writing to its target. */
+  async exportTheme(file: string, theme: ThemeDefinition, allowed: () => boolean): Promise<void> {
+    if (!path.isAbsolute(file)) throw new Error('Invalid export');
+    const json = `${JSON.stringify(theme, null, 2)}\n`;
+    parseTheme(json);
+    const temporary = path.join(path.dirname(file), `.theme-${randomUUID()}.tmp`);
+    try {
+      await fs.writeFile(temporary, json, { flag: 'wx', encoding: 'utf8' });
+      if (allowed()) await fs.rename(temporary, file);
+    } finally { await fs.rm(temporary, { force: true }); }
+  }
   async wallpaper(file: string): Promise<string> {
     const bytes = await readImport(file, wallpaperByteLimit);
     const header = ['image/png', 'image/jpeg', 'image/webp'].map(mime => thumbnailImage(bytes, mime, wallpaperLimits)).find(Boolean);

@@ -8,8 +8,18 @@ focus/selection and differentiated unseen, NEW, creator and error states.
 
 ## Edit and import a theme
 
-Copy [Warm Graphite](examples/warm-graphite.json), edit it in a text editor, and
-choose **Settings → Import JSON theme**. Import selects the new theme. The Custom
+In Settings, choose **Theme to export**, then **Export theme as JSON…**.
+The native Save dialog starts in Documents; save to your own writable folder.
+Current theme exports the active imported/built-in palette; System exports the
+currently resolved OS Light or Dark palette. The selector also offers exact
+**Light, Dark, Charcoal and Warm Graphite** starters, all bundled offline in the
+application/ZIP. You can obtain each without activating it or writing into the
+installed application directory. [Warm Graphite](examples/warm-graphite.json) is
+also available here.
+
+Edit the saved JSON in an external text editor, then choose
+**Settings → Import JSON theme**. Export never changes active appearance or saved
+preferences, and files are not watched for edits. Import selects the new theme. The Custom
 theme selector retains up to 16 palettes; Delete selected theme removes one. If
 the active custom theme is deleted, appearance falls back to System. Selecting a
 built-in retains the imported palettes for later use. Names are plain display text.
@@ -34,6 +44,7 @@ The UTF-8 JSON format is exactly:
     "accent": "#9dc7ff",
     "accent-soft": "#303030",
     "unseen": "#9dc7ff",
+    "unseen-surface": "#293b50",
     "new-text": "#ffdc88",
     "new-surface": "#4e4021",
     "focus": "#9dc7ff",
@@ -43,7 +54,26 @@ The UTF-8 JSON format is exactly:
 }
 ```
 
-All fields and all 15 tokens are required. `colorScheme` is `light` or `dark` and
+All top-level fields and the original 15 tokens are required. The only optional
+token is `unseen-surface`, an opaque unread-row fill independent of button/badge
+`accent-soft`. It uses the same strict `#RRGGBB` validation. Previously imported
+version-1 themes with exactly 15 tokens remain valid, including SQLite backups:
+omitting `unseen-surface` retains the original 65% `accent-soft` / transparent
+background rule. No migration or theme-format version change is required. Older
+application builds that predate this extension reject files containing the new
+token; remove it for those builds.
+
+Light now uses `#d6e5fb` and Charcoal `#293b50` unread surfaces. These opaque fills
+keep their color over wallpaper, without tinting ordinary Charcoal surfaces.
+Original Dark retains all original tokens and its exact translucent row rule.
+System resolves these same Light/Dark rules live. Built-in Light/Charcoal normal,
+muted, creator and action text retain at least 4.5:1 contrast on unread rows; focus
+retains at least 3:1. Row-fill contrast itself is a regression/design threshold,
+not a claim that background tint alone meets a WCAG state-indicator requirement:
+the explicit unseen badge and checkbox remain. Personal wallpaper at low surface
+opacity can still reduce seen-row text readability; prefer the defaults or 100%.
+
+`colorScheme` is `light` or `dark` and
 also controls native form elements. Every color is exactly `#RRGGBB`, with either
 letter case accepted. Names contain 1–80 characters; control/bidirectional-control
 characters and angle brackets are rejected. Files are limited to 16 KiB. Unknown
@@ -53,7 +83,7 @@ have poor contrast: check normal/muted text, focus, disabled controls and every
 badge before using it. The app makes no automatic contrast guarantee for arbitrary
 owner-authored palettes.
 
-Built-ins use this same validated JSON structure under `src/shared/themes/`.
+Built-ins and bundled starters use this same validated JSON structure under `src/shared/themes/`.
 Semantic CSS rules remain in `src/index.css`; colors are installed through a fixed
 allowlist of CSS custom properties. A new semantic token requires updating the
 shared contract and explicitly deciding format compatibility, rather than silently
@@ -134,6 +164,13 @@ unsaved wallpaper drafts use the established preserve/discard Settings transfer
 gate. Failed imports may leave an unreferenced immutable asset, never a partially
 selected wallpaper or modified theme.
 
+Theme export accepts only an allowlisted template choice/current-theme intent.
+Main captures that palette before opening the exact caller's native Save dialog.
+Document loss, profile barriers and cancellation prevent later writes. A sibling
+temporary file and atomic replacement avoid partial JSON. Profile-directory
+destinations are rejected. Export shares the single appearance dialog slot, but
+does not mutate preferences/revisions and never exposes destination paths.
+
 ## Verification and owner review
 
 Implementation review map:
@@ -145,7 +182,7 @@ Implementation review map:
 | Persistence/lifecycle | `src/main/persistence/appearance-migration.ts`, `migrations.ts`, `reader-repository.ts`, `backup-validation.ts`, `src/main/reader-service.ts`: schema 15, CAS, post-COMMIT notifications and barriers |
 | Delivery | `src/main.ts`, `src/preload/reader-bridge.ts`, `index.html`: authenticated bridge, opaque protocol and CSP |
 | Presentation | `src/renderer/AppearanceSettings.tsx`, `ReaderBackdrop.tsx`, `appearance.ts`, `App.tsx`, `VirtualCommentList.tsx`, `i18n.ts`, `src/index.css`: settings drafts, live palettes, bounded layers and hidden-offset guard |
-| Verification | Five appearance test files, `scripts/smoke-appearance.cjs`, extended packaged/scroll-layout harnesses and current-schema regression fixtures |
+| Verification | Six appearance test files, `scripts/smoke-appearance.cjs`, extended packaged/scroll-layout harnesses and current-schema regression fixtures |
 
 Run after a Forge build:
 
@@ -161,7 +198,16 @@ npm.cmd run test:packaged
 ```
 
 The appearance harness uses production main/preload/renderer, two actual native
-windows and a fictional 3,000-comment discussion in an OS-temp profile. It covers
+windows and a fictional 3,000-comment discussion with alternating seen/unseen rows
+in an OS-temp profile. Light, Dark, Charcoal and System (both OS modes) run at
+start/middle/end virtual positions with and without patterned wallpaper. Every
+mounted unread row must use its expected independent fill (or the exact original
+Dark mix), while seen rows stay transparent. Actual applied queries verify
+MATCH/CONTEXT/NEW, nested rows, selection and checkbox focus. All four offline
+starter exports are imported again; active/custom/System exports preserve the
+captured palette without preference writes. Native Save replies are controlled
+only in the test process; the separate unmodified ZIP EXE harness uses actual
+Windows dialogs for each starter. It also covers
 PNG/JPEG/WebP decoding and resizing, real protocol/CSP image rendering, deleted
 originals, invalid theme isolation, synchronized themes/wallpaper, OS light/dark
 emulation, native keyboard slider input with no intermediate writes, forced colors,

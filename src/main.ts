@@ -1,8 +1,8 @@
 import { encodeWallpaper } from './main/wallpaper-decoder';
 import { AppearanceAssets } from './main/appearance-assets';
-import { createAppearancePicker } from './main/appearance-picker';
+import { createAppearancePicker, createThemeSavePicker } from './main/appearance-picker';
 import { isAcquisitionNotification } from './shared/acquisition';
-import { app, shell, dialog, clipboard, protocol, nativeImage, Menu, BrowserWindow } from 'electron';
+import { app, shell, dialog, clipboard, protocol, nativeImage, nativeTheme, Menu, BrowserWindow } from 'electron';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -80,6 +80,8 @@ function startReader() {
       } }), openPath: file => shell.openPath(file),
     }, new AppearanceAssets(path.join(path.dirname(databasePath), 'appearance', 'wallpapers'), {
       choose: createAppearancePicker(caller => windows.originWindow(caller)),
+      saveTheme: createThemeSavePicker(caller => windows.originWindow(caller)),
+      systemDark: () => nativeTheme.shouldUseDarkColors,
       encode: encodeWallpaper,
       validate: (bytes, width, height) => {
         const image = nativeImage.createFromBuffer(bytes);

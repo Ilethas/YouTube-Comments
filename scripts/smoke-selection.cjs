@@ -146,7 +146,7 @@ if (process.versions.electron) {
     await js(`${article(0)}.querySelector('.reply-toggle').click()`); await pause(100);
     await js("document.getElementById('settings-toggle').click()");
     await wait("!!document.querySelector('#panel-settings:not([hidden])')");
-    await js("(()=>{const e=document.querySelectorAll('.preferences select')[3];e.value='always';e.dispatchEvent(new Event('change',{bubbles:true}));})()"); await pause(100);
+    await js("(()=>{const e=document.querySelectorAll('.preferences > label select')[1];e.value='always';e.dispatchEvent(new Event('change',{bubbles:true}));})()"); await pause(100);
     await js("document.querySelector('.preferences > label > input[type=checkbox]').click()"); await pause(100);
     await js(`${tabElement(fixture.itemId)}.click()`); await wait(`!!${article(20)}`);
     await menu(20); await button('Mark everything up to here as read', "document.querySelector('[role=menu]')");

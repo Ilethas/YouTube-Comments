@@ -1,5 +1,49 @@
 # Testing strategy
 
+## Unread contrast and offline theme export (2026-10-21)
+
+[ADR 0038](decisions/0038-unread-surfaces-and-theme-export.md) and
+[Appearance](APPEARANCE.md) document the optional version-1 unread token,
+unchanged original Dark rendering and secure native JSON export. Schema remains
+15; identity, version, migrations and public release remain unchanged.
+
+- Full Vitest run: **1,262 passed / 2 failed, 1,264 total**. Both failing files
+  subsequently passed isolated reruns (**136/136**): the EN transfer-live-region
+  test used its listener before subscription, and one historical schema-4 restore
+  fixture hit the existing same-file guard. These were intermittent in this run;
+  no transfer or persistence implementation was changed to make them pass.
+  All new appearance tests passed. Focused coverage includes legacy 15-token
+  themes, strict optional-color validation, text/focus contrast, four starter
+  round-trips, custom/System export, captured palettes during peer edits, no
+  preference/commit writes, cancellation, transport/write failure, origin loss,
+  profile barriers and temporary-file cleanup.
+- Typecheck and ESLint passed without warnings.
+- Expanded native appearance harness passed with 3,000 mixed seen/unseen rows,
+  five resolved theme/OS combinations, start/middle/end virtual positions and
+  both plain and patterned wallpaper. Exact computed Dark-row parity, nested
+  fills, actual applied MATCH/CONTEXT/NEW badges, selection, checkbox focus,
+  forced colors, shared windows, restart/backup/restore and profile-destination
+  export rejection passed. Diagnostic native captures were visually inspected
+  for Light, Charcoal, original Dark and wallpaper/badge cases.
+- All **22 serial Electron harnesses passed across the completed runs**.
+  The first aggregate attempts exposed an outdated explicit bridge-key list and
+  positional Settings selectors shifted by the new export selector. The harness
+  expectations now include the narrow export intent and target the intended
+  translation/selection controls. The suite resumed from reader-actions after
+  those harness fixes, with a fresh patterned-wallpaper appearance run. Lifecycle,
+  shared sync, migration, duplicates/native windows, transfer/drag, 10k/50k
+  selection and final native-wheel/scroll-layout checks passed.
+- Verified Windows x64 ZIP build and `verify:artifacts` passed. The unmodified
+  extracted EXE exported all four exact offline templates through real Windows
+  Save dialogs without changing preferences. Its normal backup, confirmed
+  restore, relaunch, three-window and same-view transfer checks also passed.
+  Setup was not executed; nothing was published.
+
+Owner visual preference with personal wallpaper/low opacity, physical scrolling,
+high-DPI/multiple-monitor use and prior physical/release gates remain pending.
+Clipboard-format preservation caused the selection harness to skip native Copy
+where the clipboard could not safely be snapshotted; it was left untouched.
+
 ## Charcoal, custom JSON themes and reader wallpaper (2026-10-21)
 
 [ADR 0037](decisions/0037-validated-themes-and-reader-wallpaper.md) and the

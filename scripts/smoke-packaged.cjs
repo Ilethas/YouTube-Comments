@@ -234,6 +234,16 @@ async function run() {
     await session.wait(`document.documentElement.dataset.appearance===${JSON.stringify(appearance)}`);
   }
   // New appearance features through the unmodified fused EXE and real native pickers.
+  for (const source of ['light','dark','charcoal','warm-graphite']) {
+    const before=(await session.invoke('bootstrap')).preferences;
+    const destination=path.join(root,'starter-'+source+'.json');
+    const exporting=session.invoke('exportTheme',{source});exporting.catch(()=>undefined);
+    await native(session,'file',destination);await exporting;
+    const template=JSON.parse(fs.readFileSync(path.resolve(__dirname,source==='warm-graphite'?'../docs/examples/warm-graphite.json':'../src/shared/themes/'+source+'.json'),'utf8'));
+    assert.deepEqual(JSON.parse(fs.readFileSync(destination,'utf8')),template);
+    assert.deepEqual((await session.invoke('bootstrap')).preferences,before);
+  }
+  report.checks.push('All four offline starter templates exported through real native Save dialogs in the unmodified ZIP EXE; active preferences unchanged');
   const themeFile=path.join(root,'theme.json'); fs.copyFileSync(path.resolve(__dirname,'../docs/examples/warm-graphite.json'),themeFile);
   const themeImport=session.invoke('importTheme'); themeImport.catch(()=>undefined); await native(session,'file',themeFile); await themeImport;
   assert.equal((await session.invoke('bootstrap')).preferences.appearance,'custom');

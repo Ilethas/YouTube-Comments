@@ -1,7 +1,21 @@
-import { dialog } from 'electron';
+import { app, dialog } from 'electron';
+import path from 'node:path';
 import type { BrowserWindow } from 'electron';
 import type { ReaderCallerContext } from './caller-context';
 import type { AppearanceAssetsOptions } from './appearance-assets';
+
+export function createThemeSavePicker(window: (caller: ReaderCallerContext) => BrowserWindow | undefined): NonNullable<AppearanceAssetsOptions['saveTheme']> {
+  return async (locale, caller) => {
+    const parent = window(caller);
+    if (!parent || !caller.isCurrent()) return;
+    const result = await dialog.showSaveDialog(parent, {
+      title: locale === 'pl' ? 'Eksportuj motyw jako JSON' : 'Export theme as JSON',
+      defaultPath: path.join(app.getPath('documents'), 'youtube-comments-theme.json'),
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    }).catch(error => { if (!caller.isCurrent() || window(caller) !== parent) return { canceled: true, filePath: undefined }; throw error; });
+    return caller.isCurrent() && window(caller) === parent && !result.canceled ? result.filePath : undefined;
+  };
+}
 
 /** Captured authenticated parent; a lost document never reparents the picker. */
 export function createAppearancePicker(window: (caller: ReaderCallerContext) => BrowserWindow | undefined): AppearanceAssetsOptions['choose'] {

@@ -7,6 +7,12 @@ wallpaper settings but exclude wallpaper image bytes; missing files fall back
 safely. See [Appearance](APPEARANCE.md). This increment changes no application
 identity/version/fuses and authorizes no Setup execution or public publication.
 
+Settings → Theme to export → Export theme as JSON… provides Light, Dark, Charcoal
+and Warm Graphite templates offline in the packaged ZIP, plus the active custom
+palette or resolved System palette. Save editable copies to a writable user folder
+(Documents is suggested), edit externally, then import through Settings. No edits
+to installed resources or directory watcher are required.
+
 Windows x64 application folders and no-install ZIPs are supported development-preview
 artifacts under [ADR 0020](decisions/0020-windows-packaged-application-and-zip-distribution.md).
 [ADR 0021](decisions/0021-windows-squirrel-installer-and-application-identity.md) adds

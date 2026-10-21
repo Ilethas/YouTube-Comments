@@ -62,6 +62,7 @@ export function createReaderBridge(rawInvoke: (channel: string, ...args: unknown
     duplicateTab: request => invoke(readerChannels.duplicateTab, request) as ReturnType<ReaderApi['duplicateTab']>,
     getSharedMetadata: () => invoke(readerChannels.getSharedMetadata) as ReturnType<ReaderApi['getSharedMetadata']>,
     importTheme: () => invoke(readerChannels.importTheme) as Promise<import('../shared/reader-api').Result<import('../shared/preferences').Preferences | null>>,
+    exportTheme: request => invoke(readerChannels.exportTheme, request) as Promise<import('../shared/reader-api').Result<null>>,
     importWallpaper: () => invoke(readerChannels.importWallpaper) as Promise<import('../shared/reader-api').Result<import('../shared/preferences').Preferences | null>>,
     getWallpaper: () => invoke(readerChannels.getWallpaper) as Promise<import('../shared/reader-api').Result<string | null>>,
     getThumbnail: request => invoke(readerChannels.getThumbnail, request) as ReturnType<ReaderApi['getThumbnail']>,

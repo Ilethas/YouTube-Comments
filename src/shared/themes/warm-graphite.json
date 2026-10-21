@@ -1,0 +1,23 @@
+{
+  "schema": "youtube-comments-theme",
+  "version": 1,
+  "name": "Warm Graphite",
+  "colorScheme": "dark",
+  "tokens": {
+    "background": "#181716",
+    "surface": "#22201e",
+    "surface-raised": "#2b2926",
+    "text": "#e6e6e6",
+    "muted": "#b0b0b0",
+    "border": "#45413b",
+    "creator": "#d4b0f0",
+    "accent": "#9dc7ff",
+    "accent-soft": "#303030",
+    "unseen": "#9dc7ff",
+    "new-text": "#ffdc88",
+    "new-surface": "#4e4021",
+    "focus": "#9dc7ff",
+    "danger": "#ffadb5",
+    "danger-soft": "#44282b"
+  }
+}

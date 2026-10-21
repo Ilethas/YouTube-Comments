@@ -85,6 +85,7 @@ export interface ReaderApi {
   duplicateTab(request: DuplicateTabRequest): Promise<Result<DuplicateTabResult>>;
   getSharedMetadata(): Promise<Result<SharedMetadata>>;
   importTheme?(): Promise<Result<Preferences | null>>;
+  exportTheme?(request: { readonly source: import('./appearance').ThemeExportSource }): Promise<Result<null>>;
   importWallpaper?(): Promise<Result<Preferences | null>>;
   getWallpaper?(): Promise<Result<string | null>>;
   getThumbnail(request: RefreshRequest): Promise<Result<string | null>>;
@@ -119,7 +120,7 @@ export interface ReaderApi {
 }
 
 export const readerChannels = {
-  importTheme: 'reader:import-theme', importWallpaper: 'reader:import-wallpaper', getWallpaper: 'reader:get-wallpaper',
+  exportTheme: 'reader:export-theme', importTheme: 'reader:import-theme', importWallpaper: 'reader:import-wallpaper', getWallpaper: 'reader:get-wallpaper',
   getDiscussionView: 'reader:discussion-view', duplicateTab: 'reader:duplicate-tab',
   getSharedSnapshot: 'reader:shared-snapshot', getSharedMetadata: 'reader:shared-metadata',
   getThumbnail: 'reader:get-thumbnail', checkThumbnail: 'reader:check-thumbnail', openThumbnail: 'reader:open-thumbnail',

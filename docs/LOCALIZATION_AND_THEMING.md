@@ -1,5 +1,15 @@
 # Localization and theming
 
+## Unread surfaces and offline export (ADR 0038)
+
+Light/Charcoal now have independent opaque unread-row fills; ordinary Charcoal
+surfaces and original Dark remain unchanged. System follows the same live OS
+Light/Dark resolver. Version-1 themes may supply the strict optional
+`unseen-surface` hex token; old 15-token imports retain their original rule.
+EN/PL Settings offers native JSON export of the current theme and all four bundled
+offline starters, with external-edit/explicit-import guidance and localized errors.
+See [Appearance](APPEARANCE.md) for format compatibility and contrast evidence.
+
 ## Charcoal, custom palettes and reader wallpaper (ADR 0037)
 
 Settings adds neutral Charcoal without changing the original System/Light/Dark

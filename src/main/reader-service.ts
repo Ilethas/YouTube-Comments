@@ -1,4 +1,6 @@
 import type { AppearanceAssets } from './appearance-assets';
+import { isThemeExportRequest, resolveTheme, themeTemplates } from '../shared/appearance';
+import type { ThemeExportSource } from '../shared/appearance';
 import type { TabTransferCoordinator } from './tab-transfer-coordinator';
 import type { SharedCommit, SharedSnapshot, SharedItemSnapshot, SharedMetadata, SharedViewSnapshot } from '../shared/reader-sync';
 import type { ReaderCallerContext } from './caller-context';
@@ -23,6 +25,7 @@ import type { HelperSettingsOptions } from './helper-settings';
 import { sourceUrl } from './source-url';
 import { authorUrl, commentPermalink, commentActionAvailability, translationUrl } from './comment-actions';
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
 import type { DataBackupResult } from '../shared/data-backup';
 import type { DataBackupDialogs } from './data-backup-dialogs';
 import { BackupValidationError } from './persistence/backup-validation';
@@ -149,6 +152,7 @@ export class ReaderService {
   dispatch(operation: 'toggleSeen' | 'bulkSeen', args: readonly unknown[], caller?: ReaderCallerContext): Result<SeenMutationResult>;
   dispatch(operation: 'undoSeen', args: readonly unknown[], caller?: ReaderCallerContext): Result<SeenUndoResult>;
   dispatch(operation: 'importTheme' | 'importWallpaper', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<Preferences | null>>;
+  dispatch(operation: 'exportTheme', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<null>>;
   dispatch(operation: 'getWallpaper', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<string | null>>;
   dispatch(operation: 'updatePreferences', args: readonly unknown[], caller?: ReaderCallerContext): Result<Preferences>;
   dispatch(operation: 'openStoredItem' | 'activateTab' | 'closeTab' | 'openLibrary' | 'openSettings' | 'moveTab', args: readonly unknown[], caller?: ReaderCallerContext): Result<WorkspaceState>;
@@ -187,6 +191,14 @@ export class ReaderService {
     }
     const read = ['getAcquisitionProgress', 'getSharedSnapshot', 'getSharedMetadata', 'getDiscussionView', 'getWallpaper', 'bootstrap'].includes(operation);
     if (this.stopping || this.restartPending || !read && !checkpoint && (this.lifecycle ? this.lifecycle.blocks(caller) : this.dataPending)) return { ok: false, error: { code: 'DATA_BUSY' } };
+    if (operation === 'exportTheme') {
+      if (args.length !== 1 || !isThemeExportRequest(args[0])) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+      if (!caller || !caller.isCurrent()) return { ok: false, error: { code: 'FORBIDDEN' } };
+      if (this.appearancePending) return { ok: false, error: { code: 'DATA_BUSY' } };
+      const task = this.exportTheme(args[0].source, caller).finally(() => { this.appearancePending = undefined; });
+      this.appearancePending = task;
+      return task;
+    }
     if (operation === 'importTheme' || operation === 'importWallpaper') {
       if (args.length) return { ok: false, error: { code: 'INVALID_REQUEST' } };
       if (!caller || !caller.isCurrent()) return { ok: false, error: { code: 'FORBIDDEN' } };
@@ -290,6 +302,29 @@ export class ReaderService {
     } catch (error) {
       if (!(error instanceof UndoConflictError)) this.diagnose(error);
       return { ok: false, error: { code: error instanceof StateConflictError ? 'STATE_CONFLICT' : error instanceof ViewOwnershipError ? 'FORBIDDEN' : error instanceof UndoConflictError ? 'UNDO_CONFLICT' : error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError || error instanceof InvalidSeenTargetError || error instanceof InvalidDiscussionViewError || error instanceof InvalidPreferenceError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
+    }
+  }
+  private async exportTheme(source: ThemeExportSource, caller: ReaderCallerContext): Promise<Result<null>> {
+    const repository = this.repository, assets = this.appearanceAssets;
+    if (!repository || !assets?.options.saveTheme) return { ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } };
+    const allowed = () => caller.isCurrent() && this.repository === repository && this.nativeWritesAllowed() && !this.lifecycle?.blocks(caller);
+    try {
+      const preferences = repository.preferences(this.languages);
+      const theme = source === 'current' ? resolveTheme(preferences, assets.options.systemDark?.() ?? false) : themeTemplates[source];
+      const file = await assets.options.saveTheme(preferences.locale, caller);
+      if (!file || !allowed()) return { ok: true, value: null };
+      // Never replace profile-owned state, even if a user types its path in Save.
+      if (!path.isAbsolute(file)) throw Error('Invalid export destination');
+      if (this.dataOptions) {
+        const [profile, directory] = await Promise.all([fs.realpath(path.dirname(this.dataOptions.databasePath)), fs.realpath(path.dirname(file))]);
+        const relative = path.relative(profile, directory);
+        if (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`)) throw Error('Profile destination');
+      }
+      if (!allowed()) return { ok: true, value: null };
+      await assets.exportTheme(file, theme, allowed);
+      return { ok: true, value: null };
+    } catch {
+      return allowed() ? { ok: false, error: { code: 'DATA_WRITE_FAILED' } } : { ok: true, value: null };
     }
   }
   private async importAppearance(operation: 'importTheme' | 'importWallpaper', caller: ReaderCallerContext): Promise<Result<Preferences | null>> {

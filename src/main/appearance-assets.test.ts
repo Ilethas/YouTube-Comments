@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { mkdtempSync, writeFileSync, rmSync, unlinkSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, unlinkSync, readFileSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { AppearanceAssets, readImport, wallpaperByteLimit } from './appearance-assets';
@@ -13,6 +13,12 @@ afterEach(() => { if (path.dirname(root) !== os.tmpdir() || !path.basename(root)
 // by smoke-appearance.cjs against nativeImage and the packaged production entry.
 const jpeg = () => Buffer.from([255,216,255,192,0,17,8,0,32,0,32,3,1,17,0,2,17,0,3,17,0,255,217]);
 function assets(encode = vi.fn(() => jpeg())) { return new AppearanceAssets(path.join(root, 'profile', 'appearance'), { choose: async () => undefined, encode }); }
+it('preserves an existing export on cancellation before replacement and cleans temporary files', async () => {
+  const file = path.join(root, 'theme.json'); writeFileSync(file, 'original');
+  await assets().exportTheme(file, builtinThemes.light, () => false);
+  expect(readFileSync(file, 'utf8')).toBe('original');
+  expect(readdirSync(root)).toEqual(['theme.json']);
+});
 it('imports a theme from a bounded file without retaining its original path', async () => {
   const file = path.join(root, 'theme.json'); writeFileSync(file, JSON.stringify(builtinThemes.charcoal));
   expect(await assets().theme(file)).toEqual(builtinThemes.charcoal);

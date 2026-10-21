@@ -9,20 +9,27 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const panel = "document.querySelector('.reader-panel:not([hidden])')";
 if (process.versions.electron) {
   require('./thumbnail-fixture-network.cjs').installThumbnailNetwork();
-  const { app, dialog, nativeImage } = require('electron');
+  const { app, dialog, nativeImage, nativeTheme } = require('electron');
   const root = process.env.YOUTUBE_COMMENTS_DEMO_ROOT, phase = process.env.APPEARANCE_PHASE;
   assert.ok(path.dirname(root) === os.tmpdir() && path.basename(root).startsWith('reader-appearance-electron-'));
   for (const name of ['appData', 'userData', 'sessionData', 'logs', 'crashDumps']) {
     const folder = path.join(root, name); fs.mkdirSync(folder, { recursive: true }); app.setPath(name, folder);
   }
   const ids = JSON.parse(fs.readFileSync(path.join(root, 'ids.json'))), windows = [];
-  let selected, expectedParent, finished = false, backupTarget = path.join(root, 'snapshot.sqlite');
+  let selected, expectedParent, finished = false, exportTarget, backupTarget = path.join(root, 'snapshot.sqlite');
   dialog.showOpenDialog = async (parent, options) => {
     assert.equal(parent, expectedParent);
     assert.deepEqual(options.properties, ['openFile']);
     return { canceled: !selected, filePaths: selected ? [selected] : [] };
   };
-  dialog.showSaveDialog = async parent => { assert.equal(parent, expectedParent); return { canceled: false, filePath: backupTarget }; };
+  dialog.showSaveDialog = async (parent, options) => {
+    assert.equal(parent, expectedParent);
+    if (options.filters?.[0]?.extensions?.[0] === 'json') {
+      assert.equal(path.dirname(options.defaultPath), app.getPath('documents'));
+      return { canceled: !exportTarget, filePath: exportTarget };
+    }
+    return { canceled: false, filePath: backupTarget };
+  };
   dialog.showMessageBox = async (_parent, options) => ({ response: options.buttons?.length === 2 ? 1 : 0 });
   dialog.showErrorBox = (_title, message) => { throw Error(message); };
   app.relaunch = () => { fs.writeFileSync(path.join(root, 'relaunch'), 'requested'); };
@@ -59,12 +66,66 @@ if (process.versions.electron) {
     if (g.b) { assert.ok(Math.abs(g.b.left - g.c.left) < 1 && Math.abs(g.b.width - g.c.width) < 1); assert.ok(g.b.height <= g.p.height + 1); assert.equal(g.image.height, g.p.height); }
     return g;
   }
+  async function contrastMatrix(w, wallpaper) {
+    for (const [mode, dark] of [['light', false], ['dark', true], ['charcoal', true], ['system', false], ['system', true]]) {
+      await w.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: dark ? 'dark' : 'light' }] });
+      await invoke(w, 'updatePreferences', { appearance: mode });
+      const resolved = mode === 'system' ? dark ? 'dark' : 'light' : mode;
+      await wait(() => js(w, `document.documentElement.dataset.appearance===${JSON.stringify(mode)} && getComputedStyle(document.documentElement).colorScheme===${JSON.stringify(dark ? 'dark' : 'light')}`), 'matrix palette');
+      for (const scroll of [0, 45000, 1e9]) {
+        await js(w, `${panel}.scrollTop=${scroll};void 0`); await pause(100);
+        await geometry(w);
+        const evidence = await js(w, `(()=>{
+          const p=${panel}, rows=[...p.querySelectorAll('article.comment')];
+          const unseen=rows.filter(r=>r.classList.contains('is-unseen'));
+          const seen=rows.filter(r=>r.classList.contains('is-seen'));
+          const old=document.createElement('div');old.style.background='color-mix(in srgb, var(--accent-soft) 65%, transparent)';p.append(old);
+          const legacy=getComputedStyle(old).backgroundColor;old.remove();
+          return {unseen:unseen.map(r=>getComputedStyle(r).backgroundColor),seen:seen.map(r=>getComputedStyle(r).backgroundColor),legacy,
+            text:unseen.map(r=>getComputedStyle(r.querySelector('.comment-text')).color),
+            nested:p.querySelectorAll('.virtual-comment[data-depth]').length,
+            badge:unseen[0]?.querySelector('.unseen-badge') && getComputedStyle(unseen[0].querySelector('.unseen-badge')).backgroundColor};
+        })()`);
+        assert.ok(evidence.unseen.length && evidence.seen.length, 'mixed seen/unseen virtual rows');
+        assert.ok(evidence.seen.every(c => c === 'rgba(0, 0, 0, 0)'), 'seen remains transparent');
+        assert.ok(evidence.nested > 0, 'nested virtual rows remain mounted');
+        const expected = resolved === 'light' ? 'rgb(214, 229, 251)' : resolved === 'charcoal' ? 'rgb(41, 59, 80)' : evidence.legacy;
+        assert.ok(evidence.unseen.every(c => c === expected), JSON.stringify({mode,wallpaper,evidence}));
+        if (scroll === 45000) await capture(w, `${mode}${mode==='system'?dark?'-dark':'-light':''}-${wallpaper?'wallpaper':'plain'}`);
+      }
+      // Real query roles, NEW and selection keep their separate semantic styles.
+      async function search(text) {
+        await js(w, `(()=>{const e=${panel}.querySelector('input[type=search]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(text)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+        await frames(w);
+        await js(w, `${panel}.querySelector('form.query-controls').requestSubmit();void 0`);
+      }
+      await search('Fictional comment 2999.');
+      await wait(() => js(w, `!!${panel}.querySelector('.match-badge') && !!${panel}.querySelector('.context-badge') && !!${panel}.querySelector('.new-badge')`), 'MATCH/CONTEXT/NEW');
+      await js(w, `${panel}.querySelectorAll('.query-navigation button')[1].click();void 0`);
+      await wait(() => js(w, `!!${panel}.querySelector('.comment[data-selected=true]')`), 'selection');
+      const styles = await js(w, `(()=>{
+        const p=${panel},c=getComputedStyle(p.querySelector('.comment[data-selected=true]'));
+        const checkbox=p.querySelector('.comment[data-selected=true] .seen-control input');checkbox.focus();
+        return {selection:c.outlineWidth,focus:getComputedStyle(checkbox.closest('.seen-control')).outlineWidth,
+          match:getComputedStyle(p.querySelector('.match-badge')).borderTopStyle,
+          context:getComputedStyle(p.querySelector('.context-badge')).backgroundColor,
+          new:getComputedStyle(p.querySelector('.new-badge')).backgroundColor};
+      })()`);
+      assert.equal(styles.selection,'2px');assert.equal(styles.focus,'2px');assert.equal(styles.match,'solid');assert.equal(styles.context,'rgba(0, 0, 0, 0)');
+      assert.equal(styles.new,resolved==='light'?'rgb(255, 240, 189)':'rgb(78, 64, 33)');
+      await capture(w, `${resolved}-${wallpaper?'wallpaper':'plain'}-badges`);
+      await search('');
+      await wait(() => js(w, `Number(${panel}.querySelector('.virtual-reader')?.dataset.rowCount)===3000`), 'clear applied query');
+    }
+    console.log('Appearance contrast matrix PASS wallpaper=' + wallpaper);
+  }
   app.whenReady().then(async () => {
     await wait(() => windows.length > 0, 'first window'); const a = windows[0]; expectedParent = a; await ready(a);
     if (phase === 'first') {
       await invoke(a, 'newWindow'); await wait(() => windows.length === 2, 'second native'); const b = windows[1]; await ready(b); await open(a); await open(b);
       const before = await boot(a); assert.equal(before.comments[ids.item].length, 3000);
       a.webContents.debugger.attach('1.3');
+      await contrastMatrix(a, false);
       for (const dark of [true, false]) {
         await invoke(a, 'updatePreferences', { appearance: 'system' });
         await a.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: dark ? 'dark' : 'light' }] });
@@ -73,6 +134,39 @@ if (process.versions.electron) {
       await invoke(a, 'updatePreferences', { appearance: 'charcoal' });
       await wait(async () => await bg(a) === 'rgb(21, 21, 21)' && await bg(b) === 'rgb(21, 21, 21)', 'shared charcoal');
       assert.equal(await js(a, 'getComputedStyle(document.documentElement).colorScheme'), 'dark');
+      // Offline starter export, real native Save API and importer round-trips.
+      await settings(a);
+      exportTarget = path.join(root, 'youtube-comments-development', 'reader.sqlite');
+      const profileBefore = (await boot(a)).preferences;
+      assert.equal((await js(a, "window.reader.exportTheme({source:'light'})")).error.code,'DATA_WRITE_FAILED');
+      assert.deepEqual((await boot(a)).preferences,profileBefore,'export cannot replace profile state');
+      for (const source of ['light', 'dark', 'charcoal', 'warm-graphite']) {
+        const preferences = (await boot(a)).preferences;
+        exportTarget = path.join(root, source + '.json');
+        await js(a, `(()=>{const e=[...document.querySelectorAll('.appearance-settings select')].find(e=>[...e.options].some(o=>o.value==='warm-graphite'));const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;setter.call(e,${JSON.stringify(source)});e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+        await js(a, "[...document.querySelectorAll('.appearance-settings button')].find(e=>e.textContent==='Export theme as JSON…').click();void 0");
+        await wait(() => fs.existsSync(exportTarget), 'export file');
+        await wait(() => js(a, "!document.querySelector('.appearance-settings').disabled"), 'export settled');
+        assert.deepEqual((await boot(a)).preferences, preferences, 'export never changes theme or revision');
+        const exported = JSON.parse(fs.readFileSync(exportTarget, 'utf8'));
+        const template = JSON.parse(fs.readFileSync(path.resolve(__dirname, source==='warm-graphite'?'../docs/examples/warm-graphite.json':'../src/shared/themes/'+source+'.json'), 'utf8'));
+        assert.deepEqual(exported, template);
+        selected = exportTarget; await invoke(a, 'importTheme');
+        assert.deepEqual((await boot(a)).preferences.readerAppearance.themes.at(-1).definition, template);
+        exportTarget = path.join(root, 'current.json'); await invoke(a, 'exportTheme', {source:'current'});
+        assert.deepEqual(JSON.parse(fs.readFileSync(exportTarget,'utf8')),template);
+      }
+      const unchanged = (await boot(a)).preferences;
+      exportTarget = undefined; await invoke(a, 'exportTheme', {source:'light'});
+      assert.deepEqual((await boot(a)).preferences,unchanged);
+      for (const dark of [true,false]) {
+        nativeTheme.themeSource = dark ? 'dark' : 'light';
+        await invoke(a,'updatePreferences',{appearance:'system'});
+        exportTarget=path.join(root,'system.json'); await invoke(a,'exportTheme',{source:'current'});
+        assert.equal(JSON.parse(fs.readFileSync(exportTarget,'utf8')).name,dark?'Dark':'Light');
+      }
+      nativeTheme.themeSource='system';
+      await open(a);
       selected = path.join(root, 'theme.json'); await invoke(a, 'importTheme');
       await wait(() => js(b, "document.documentElement.dataset.appearance==='custom'"), 'custom peer');
       const valid = (await boot(a)).preferences;
@@ -84,6 +178,10 @@ if (process.versions.electron) {
       assert.deepEqual((await boot(a)).preferences, valid);
       backupTarget=path.join(root,'after-invalid.sqlite'); await invoke(a,'createBackup'); await ready(a); await ready(b);
       backupTarget=path.join(root,'snapshot.sqlite'); await open(a);
+      // A nonuniform light/dark/color pattern exercises opacity and bounded blur,
+      // rather than proving wallpaper behavior only against a flat image.
+      const patterned = await js(a, "(()=>{const c=document.createElement('canvas');c.width=3200;c.height=1800;const x=c.getContext('2d');const g=x.createLinearGradient(0,0,3200,1800);g.addColorStop(0,'#f7e5a9');g.addColorStop(.5,'#145778');g.addColorStop(1,'#090d1a');x.fillStyle=g;x.fillRect(0,0,3200,1800);for(let i=0;i<12;i++){x.fillStyle=i%2?'#f7f0db':'#243649';x.fillRect(i*300,300+i%3*280,180,500);}return c.toDataURL('image/png').split(',')[1]})()");
+      fs.writeFileSync(path.join(root,'image.png'),Buffer.from(patterned,'base64'));
       selected = path.join(root, 'image.png'); await invoke(a, 'importWallpaper');
       // Real Chromium WebP encoding followed by the actual privileged native decode.
       const webp = await js(a, "(()=>{const c=document.createElement('canvas');c.width=640;c.height=360;const x=c.getContext('2d');x.fillStyle='#465d4b';x.fillRect(0,0,640,360);return c.toDataURL('image/webp').split(',')[1]})()");
@@ -93,6 +191,7 @@ if (process.versions.electron) {
       fs.unlinkSync(selected); fs.unlinkSync(path.join(root, 'image.png')); fs.unlinkSync(path.join(root, 'image.webp')); fs.unlinkSync(path.join(root, 'theme.json'));
       await wait(() => js(a, "!!document.querySelector('.reader-wallpaper')?.naturalWidth"), 'wallpaper decoded');
       await wait(() => js(b, "!!document.querySelector('.reader-wallpaper')?.naturalWidth"), 'peer wallpaper');
+      await contrastMatrix(a, true);
       const url = await invoke(a, 'getWallpaper'); assert.match(url, /^reader-wallpaper:\/\/asset\/[a-f0-9-]{36}$/);
       const original = (await boot(a)).preferences.readerAppearance;
       const change = { expectedRevision: original.revision, customThemeId: original.customThemeId, wallpaperEnabled: true, surfaceOpacity: 86, blur: 12 };
@@ -154,9 +253,14 @@ if (process.versions.electron) {
       require('esbuild').buildSync({ stdin: { contents: "export {ReaderRepository} from './src/main/persistence/reader-repository'; export {normalizeYtDlp} from './src/main/extractors/yt-dlp'; export {thumbnailPng} from './src/fixtures/thumbnail-image';", resolveDir: path.resolve(__dirname, '..'), loader: 'ts' }, bundle: true, platform:'node', format:'cjs', outfile:bundle });
       const { ReaderRepository, normalizeYtDlp, thumbnailPng } = require(bundle);
       const repo = ReaderRepository.open(path.join(root, 'youtube-comments-development', 'reader.sqlite'));
-      const observation = normalizeYtDlp(JSON.stringify({ id:'YE7VzlLtp-4', title:'Fictional wallpaper reading check', comments:Array.from({length:3000},(_,i)=>({id:`c${i}`,parent:i%7 ? `c${i-i%7}`:'root',text:`Fictional comment ${i}. ${'Variable height reading. '.repeat(1+i%5)}`})) }), { provenance: {backend:'yt-dlp',version:'2026.08.19',evidence:['Offline appearance fixture']} });
-      const item = repo.ingest(observation, undefined, true).itemId; repo.updatePreferences({locale:'en'},['en']); repo.close();
-      fs.writeFileSync(path.join(root,'ids.json'),JSON.stringify({item})); fs.writeFileSync(path.join(root,'image.png'),thumbnailPng(3200,1800));
+      try {
+        const observation = normalizeYtDlp(JSON.stringify({ id:'YE7VzlLtp-4', title:'Fictional wallpaper reading check', comments:Array.from({length:3000},(_,i)=>({id:`c${i}`,parent:i%7 ? `c${i-i%7}`:'root',text:`Fictional comment ${i}. ${'Variable height reading. '.repeat(1+i%5)}`})) }), { provenance: {backend:'yt-dlp',version:'2026.08.19',evidence:['Offline appearance fixture']} });
+        const item = repo.ingest({...observation,collection:{status:'present',comments:observation.collection.comments.slice(0,2999)}}, undefined, true).itemId;
+        repo.ingest(observation,undefined,true);
+        repo.bulkSeen({itemId:item,seen:true,target:{kind:'matching',ids:repo.bootstrap(['en']).comments[item].filter((_,i)=>i%2===0).map(c=>c.id)}});
+        repo.updatePreferences({locale:'en'},['en']);
+        fs.writeFileSync(path.join(root,'ids.json'),JSON.stringify({item})); fs.writeFileSync(path.join(root,'image.png'),thumbnailPng(3200,1800));
+      } finally { repo.close(); }
       fs.copyFileSync(path.resolve(__dirname,'../docs/examples/warm-graphite.json'),path.join(root,'theme.json')); fs.writeFileSync(path.join(root,'invalid.json'),'{"css":"url(https://evil.test)"}');
       for (const phase of ['first','restart','restored','missing']) {
         if (phase === 'missing') {

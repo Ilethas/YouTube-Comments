@@ -4,6 +4,9 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  exportTheme: 'Export theme as JSON…', themeToExport: 'Theme to export', currentTheme: 'Current theme',
+  themeExportHelp: 'Save an editable copy in your own folder. Light, Dark, Charcoal and Warm Graphite templates are available offline. Edit the saved JSON in an external text editor, then import it here. Export keeps your active theme unchanged; files are not watched for changes.',
+  themeExportFailed: 'The theme could not be exported. Choose a writable folder outside the application profile and try again.',
   cancelAppearance: 'Cancel wallpaper changes',
   charcoal: 'Charcoal', customTheme: 'Custom theme', importTheme: 'Import JSON theme...', noCustomTheme: 'None', deleteTheme: 'Delete selected theme',
   readerWallpaper: 'Reader wallpaper', chooseWallpaper: 'Choose image...', removeWallpaper: 'Remove wallpaper', enableWallpaper: 'Enable wallpaper',
@@ -202,6 +205,9 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  exportTheme: 'Eksportuj motyw jako JSON…', themeToExport: 'Motyw do eksportu', currentTheme: 'Bieżący motyw',
+  themeExportHelp: 'Zapisz kopię do edycji we własnym folderze. Szablony Jasny, Ciemny, Grafitowy i Warm Graphite są dostępne offline. Edytuj zapisany JSON w zewnętrznym edytorze tekstu, a następnie zaimportuj go tutaj. Eksport nie zmienia aktywnego motywu; zmiany w plikach nie są śledzone.',
+  themeExportFailed: 'Nie udało się wyeksportować motywu. Wybierz folder z prawem zapisu poza profilem aplikacji i spróbuj ponownie.',
   cancelAppearance: 'Anuluj zmiany tapety',
   charcoal: 'Grafitowy', customTheme: 'Własny motyw', importTheme: 'Importuj motyw JSON…', noCustomTheme: 'Brak', deleteTheme: 'Usuń wybrany motyw',
   readerWallpaper: 'Tapeta czytnika', chooseWallpaper: 'Wybierz obraz…', removeWallpaper: 'Usuń tapetę', enableWallpaper: 'Włącz tapetę',

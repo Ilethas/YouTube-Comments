@@ -2,12 +2,13 @@ import { useEffect, useId, useState } from 'react';
 import type { Appearance, Locale, Preferences } from '../shared/preferences';
 import type { ErrorCode, PreferenceChange, ReaderApi, Result } from '../shared/reader-api';
 import { defaultReaderAppearance } from '../shared/appearance';
+import type { ThemeExportSource } from '../shared/appearance';
 import { translator } from './i18n';
 
 /** Sliders keep a local draft. Apply makes exactly one acknowledged CAS write;
  * peer changes never silently overwrite an edited draft or its base revision. */
 export function AppearanceSettings({ preferences, locale, disabled, api, save, imported, onDirty, missingWallpaper }: {
-  preferences: Pick<Preferences, 'appearance' | 'readerAppearance'>; locale: Locale; disabled: boolean; api: Pick<ReaderApi, 'importTheme' | 'importWallpaper'>;
+  preferences: Pick<Preferences, 'appearance' | 'readerAppearance'>; locale: Locale; disabled: boolean; api: Pick<ReaderApi, 'importTheme' | 'importWallpaper' | 'exportTheme'>;
   save: (change: PreferenceChange) => Promise<boolean>;
   imported: (action: () => Promise<Result<Preferences | null>>) => Promise<boolean>;
   onDirty: (dirty: boolean) => void; missingWallpaper: boolean;
@@ -15,9 +16,17 @@ export function AppearanceSettings({ preferences, locale, disabled, api, save, i
   const t = translator(locale), id = useId(), current = preferences.readerAppearance ?? defaultReaderAppearance;
   const [draft, setDraft] = useState(current), [dirty, setDirty] = useState(false), [pending, setPending] = useState(false);
   const [error, setError] = useState<ErrorCode>();
+  const [exportSource, setExportSource] = useState<ThemeExportSource>('current');
   useEffect(() => { if (!dirty) setDraft(current); }, [current, dirty]);
   useEffect(() => { onDirty(dirty); return () => onDirty(false); }, [dirty, onDirty]);
   const blocked = disabled || pending;
+  async function exportFile() {
+    if (!api.exportTheme) return;
+    setPending(true); setError(undefined);
+    try { const result = await api.exportTheme({ source: exportSource }); if (!result.ok) setError('DATA_WRITE_FAILED'); }
+    catch { setError('DATA_WRITE_FAILED'); }
+    finally { setPending(false); }
+  }
   async function importFile(kind: 'theme' | 'wallpaper') {
     const action = kind === 'theme' ? api.importTheme : api.importWallpaper;
     if (!action) return;
@@ -38,6 +47,13 @@ export function AppearanceSettings({ preferences, locale, disabled, api, save, i
       {current.customThemeId && <option value="custom">{t('customTheme')}</option>}
     </select></label>
     <div className="appearance-actions"><button type="button" disabled={dirty || !api.importTheme} onClick={() => { void importFile('theme'); }}>{t('importTheme')}</button></div>
+    <label>{t('themeToExport')}<select value={exportSource} onChange={event => setExportSource(event.target.value as ThemeExportSource)}>
+      <option value="current">{t('currentTheme')}</option>
+      {(['light', 'dark', 'charcoal'] as const).map(value => <option key={value} value={value}>{t(value)}</option>)}
+      <option value="warm-graphite">Warm Graphite</option>
+    </select></label>
+    <button type="button" disabled={!api.exportTheme} onClick={() => { void exportFile(); }}>{t('exportTheme')}</button>
+    <p>{t('themeExportHelp')}</p>
     {!!current.themes.length && <>
       <label>{t('customTheme')}<select disabled={dirty} value={current.customThemeId ?? ''} onChange={event => {
         void save({ readerAppearance: { expectedRevision: current.revision, customThemeId: event.target.value || null, wallpaperEnabled: current.wallpaperEnabled, surfaceOpacity: current.surfaceOpacity, blur: current.blur } });
@@ -60,6 +76,6 @@ export function AppearanceSettings({ preferences, locale, disabled, api, save, i
       <button type="button" disabled={!dirty} onClick={() => { setDraft(current); setDirty(false); setError(undefined); }}>{t('cancelAppearance')}</button>
       <button type="button" onClick={() => { setDraft({ ...current, wallpaperEnabled: false, surfaceOpacity: 92, blur: 8 }); setDirty(true); }}>{t('appearanceDefaults')}</button></div>
     <p>{t('appearanceBackupHelp')}</p>
-    {error && <p className="query-error" role="alert">{t(error === 'INVALID_THEME' ? 'invalidTheme' : error === 'INVALID_WALLPAPER' ? 'invalidWallpaper' : error === 'THEME_LIMIT' ? 'themeLimit' : error === 'STATE_CONFLICT' ? 'appearanceConflict' : 'appearanceImportFailed')}</p>}
+    {error && <p className="query-error" role="alert">{t(error === 'DATA_WRITE_FAILED' ? 'themeExportFailed' : error === 'INVALID_THEME' ? 'invalidTheme' : error === 'INVALID_WALLPAPER' ? 'invalidWallpaper' : error === 'THEME_LIMIT' ? 'themeLimit' : error === 'STATE_CONFLICT' ? 'appearanceConflict' : 'appearanceImportFailed')}</p>}
   </fieldset>;
 }

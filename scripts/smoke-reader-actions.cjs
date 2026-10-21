@@ -68,14 +68,15 @@ if (process.versions.electron) {
       assert.ok(mounted < 100, '50k discussion stays bounded');
       assert.equal(opened.length,0,'Nothing opens automatically');
       async function preference(index, value) {
+        const selector = index === 2 ? '.translation-settings select' : index === 1 ? '.appearance-settings > label select' : '.preferences > label select';
         step = `preference ${index} ${value}`;
         console.log('Checking '+step);
         await js('document.getElementById("settings-toggle").click()');
         await wait("document.getElementById('panel-settings')?.hidden===false && document.querySelectorAll('.preferences select')[0]?.disabled===false && !document.getElementById('settings-toggle').disabled", 'settings');
         step += ' change';
-        await js(`(()=>{const e=document.querySelectorAll('.preferences select')[${index}];e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+        await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
         await pause(50);
-        await wait(`document.querySelectorAll('.preferences select')[${index}]?.disabled===false && document.querySelectorAll('.preferences select')[${index}].value===${JSON.stringify(value)}`, 'saved preference');
+        await wait(`document.querySelector(${JSON.stringify(selector)})?.disabled===false && document.querySelector(${JSON.stringify(selector)}).value===${JSON.stringify(value)}`, 'saved preference');
         step += ' return';
         await js(`${tabElement(item.id)}.click()`);
         await wait(`document.querySelector(${JSON.stringify('[data-item-id="'+item.id+'"]')})?.hidden===false && ${article}!==null && !document.getElementById('settings-toggle').disabled`, 'discussion');
@@ -84,7 +85,7 @@ if (process.versions.electron) {
         assert.equal(before.value.preferences.translationTarget,'de'); assert.equal(before.value.preferences.locale,'pl');
         assert.equal(before.value.preferences.appearance,'dark');
         await js('document.getElementById("settings-toggle").click()');
-        await wait("document.querySelectorAll('.preferences select')[2]?.value==='de'", 'restored German preference');
+        await wait("document.querySelector('.translation-settings select')?.value==='de'", 'restored German preference');
         // Finish the Settings activation and its lazy helper probes before this clean-Quit assertion.
         // Accepted queued mutation drains are exercised separately by the M3 Quit harness.
         await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');

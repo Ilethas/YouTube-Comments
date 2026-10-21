@@ -1,14 +1,16 @@
 import light from './themes/light.json';
 import dark from './themes/dark.json';
 import charcoal from './themes/charcoal.json';
+import warmGraphite from './themes/warm-graphite.json';
+import type { Preferences } from './preferences';
 
-/** Version 1 accepts complete palettes only. Adding a token requires an explicit
- * format version decision; no imported property ever becomes arbitrary CSS. */
+/** Version 1 requires its original 15 tokens. unseen-surface is an optional
+ * extension; omitted values retain the original translucent accent-soft rule. */
 export const colorTokens = ['background', 'surface', 'surface-raised', 'text', 'muted', 'border', 'creator', 'accent', 'accent-soft', 'unseen', 'new-text', 'new-surface', 'focus', 'danger', 'danger-soft'] as const;
 export interface ThemeDefinition {
   readonly schema: 'youtube-comments-theme'; readonly version: 1;
   readonly name: string; readonly colorScheme: 'light' | 'dark';
-  readonly tokens: Readonly<Record<typeof colorTokens[number], string>>;
+  readonly tokens: Readonly<Record<typeof colorTokens[number], string> & { 'unseen-surface'?: string }>;
 }
 export const themeByteLimit = 16384;
 export function exactProperties(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
@@ -22,7 +24,7 @@ export function isThemeDefinition(value: unknown): value is ThemeDefinition {
     && [...value.name].every(character => { const code = character.charCodeAt(0); return code >= 32 && !(code >= 127 && code <= 159); })
     && !/[\u202a-\u202e\u2066-\u2069<>]/u.test(value.name)
     && (value.colorScheme === 'light' || value.colorScheme === 'dark')
-    && exactProperties(value.tokens, colorTokens)
+    && (exactProperties(value.tokens, colorTokens) || exactProperties(value.tokens, [...colorTokens, 'unseen-surface']))
     && Object.values(value.tokens).every(color => typeof color === 'string' && color.length === 7 && /^#[0-9a-fA-F]{6}$/u.test(color));
 }
 export function parseTheme(text: string): ThemeDefinition {
@@ -36,6 +38,22 @@ function builtin(value: unknown): ThemeDefinition {
   return value;
 }
 export const builtinThemes = { light: builtin(light), dark: builtin(dark), charcoal: builtin(charcoal) } as const;
+/** Bundled offline starters use exactly the same format as imported themes. */
+export const themeTemplates = { ...builtinThemes, 'warm-graphite': builtin(warmGraphite) } as const;
+export const themeExportSources = ['current', 'light', 'dark', 'charcoal', 'warm-graphite'] as const;
+export type ThemeExportSource = typeof themeExportSources[number];
+export function isThemeExportRequest(value: unknown): value is { source: ThemeExportSource } {
+  return exactProperties(value, ['source']) && themeExportSources.includes(value.source as ThemeExportSource);
+}
+/** Shared resolution keeps System and custom fallback identical during export
+ * and rendering. Export captures a copy without changing the active palette. */
+export function resolveTheme(preferences: Pick<Preferences, 'appearance' | 'readerAppearance'>, osDark: boolean): ThemeDefinition {
+  const settings = preferences.readerAppearance ?? defaultReaderAppearance;
+  const custom = settings.themes.find(theme => theme.id === settings.customThemeId)?.definition;
+  return preferences.appearance === 'custom' && isThemeDefinition(custom) ? custom
+    : preferences.appearance === 'charcoal' ? builtinThemes.charcoal
+      : preferences.appearance === 'dark' || preferences.appearance === 'system' && osDark ? builtinThemes.dark : builtinThemes.light;
+}
 export const assetId = (value: unknown): value is string => typeof value === 'string' && value.length === 64 && /^[a-f0-9]{64}$/u.test(value);
 export const themeId = (value: unknown): value is string => typeof value === 'string' && value.length === 36 && /^[a-f0-9-]{36}$/u.test(value);
 export interface ReaderAppearance {
