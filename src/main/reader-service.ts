@@ -1,6 +1,6 @@
 import type { AppearanceAssets } from './appearance-assets';
 import { isThemeExportRequest, resolveTheme, themeTemplates } from '../shared/appearance';
-import type { ThemeExportSource } from '../shared/appearance';
+import type { ThemeExportSource, ThemeRefreshResult } from '../shared/appearance';
 import type { TabTransferCoordinator } from './tab-transfer-coordinator';
 import type { SharedCommit, SharedSnapshot, SharedItemSnapshot, SharedMetadata, SharedViewSnapshot } from '../shared/reader-sync';
 import type { ReaderCallerContext } from './caller-context';
@@ -44,7 +44,7 @@ export interface DataBackupOptions {
   readonly restart: () => void;
   readonly checkpoint?: RestoreCheckpoint;
 }
-type ServiceValue = DuplicateTabResult | SharedViewSnapshot | SharedSnapshot | SharedItemSnapshot | SharedMetadata | ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | AcquisitionResult | HelperStatus | DataBackupResult | string | null;
+type ServiceValue = ThemeRefreshResult | DuplicateTabResult | SharedViewSnapshot | SharedSnapshot | SharedItemSnapshot | SharedMetadata | ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | AcquisitionResult | HelperStatus | DataBackupResult | string | null;
 
 /** Small use-case boundary: validate before touching persistence; failures carry
  * stable codes. Diagnostics are reported only on the privileged side. */
@@ -134,6 +134,12 @@ export class ReaderService {
       this.repository.onCommit(commit => {
         for (const listener of this.commitObservers) { try { listener(commit); } catch { /* Lost recipients do not affect commits. */ } }
       });
+      // File errors never make the database or reader unavailable. Refresh gives
+      // the caller a localized error; valid SQLite snapshots remain usable.
+      try {
+        const repository = this.repository, current = repository.readerAppearance();
+        this.appearanceAssets?.options.themes?.refresh(current.themes, themes => repository.replaceThemes(themes, this.languages, current.revision));
+      } catch { /* Fail closed to the last validated SQLite snapshot. */ }
       this.helpers = new HelperSettingsService(this.repository, this.helperOptions);
       this.acquisition = new AcquisitionService(this.repository, this.languages,
         this.extract ?? createLiveExtractor({ resolve: this.helpers.resolve, execute: this.helperOptions.execute }), this.notifyProgress);
@@ -152,6 +158,9 @@ export class ReaderService {
   dispatch(operation: 'toggleSeen' | 'bulkSeen', args: readonly unknown[], caller?: ReaderCallerContext): Result<SeenMutationResult>;
   dispatch(operation: 'undoSeen', args: readonly unknown[], caller?: ReaderCallerContext): Result<SeenUndoResult>;
   dispatch(operation: 'importTheme' | 'importWallpaper', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<Preferences | null>>;
+  dispatch(operation: 'refreshThemes', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<ThemeRefreshResult>>;
+  dispatch(operation: 'saveThemeCopy', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<Preferences | null>>;
+  dispatch(operation: 'openThemesFolder', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<null>>;
   dispatch(operation: 'exportTheme', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<null>>;
   dispatch(operation: 'getWallpaper', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<string | null>>;
   dispatch(operation: 'updatePreferences', args: readonly unknown[], caller?: ReaderCallerContext): Result<Preferences>;
@@ -172,7 +181,7 @@ export class ReaderService {
   dispatch(operation: 'openThumbnail', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<null>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[], caller?: ReaderCallerContext): Result<ServiceValue> | Promise<Result<ServiceValue>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[], caller?: ReaderCallerContext): Result<ServiceValue> | Promise<Result<ServiceValue>> {
-    const shared = ['importTheme', 'importWallpaper', 'duplicateTab', 'bootstrap', 'toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'removeLibraryItem',
+    const shared = ['refreshThemes', 'saveThemeCopy', 'importTheme', 'importWallpaper', 'duplicateTab', 'bootstrap', 'toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'removeLibraryItem',
       'openStoredItem', 'activateTab', 'closeTab', 'openLibrary', 'openSettings', 'moveTab', 'acquire', 'refresh',
       'chooseHelper', 'clearHelper', 'saveDiscussionView', 'setDiscussionCollapse'].includes(operation);
     const attach = (result: Result<ServiceValue>): Result<ServiceValue> => {
@@ -191,6 +200,12 @@ export class ReaderService {
     }
     const read = ['getAcquisitionProgress', 'getSharedSnapshot', 'getSharedMetadata', 'getDiscussionView', 'getWallpaper', 'bootstrap'].includes(operation);
     if (this.stopping || this.restartPending || !read && !checkpoint && (this.lifecycle ? this.lifecycle.blocks(caller) : this.dataPending)) return { ok: false, error: { code: 'DATA_BUSY' } };
+    if (operation === 'refreshThemes' || operation === 'openThemesFolder' || operation === 'saveThemeCopy') {
+      if (operation === 'saveThemeCopy' ? args.length !== 1 || !isThemeExportRequest(args[0]) : args.length !== 0) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+      if (!caller?.isCurrent()) return { ok: false, error: { code: 'FORBIDDEN' } };
+      if (this.appearancePending) return { ok: false, error: { code: 'DATA_BUSY' } };
+      return this.manageThemeFiles(operation, operation === 'saveThemeCopy' ? (args[0] as { source: ThemeExportSource }).source : 'current', caller);
+    }
     if (operation === 'exportTheme') {
       if (args.length !== 1 || !isThemeExportRequest(args[0])) return { ok: false, error: { code: 'INVALID_REQUEST' } };
       if (!caller || !caller.isCurrent()) return { ok: false, error: { code: 'FORBIDDEN' } };
@@ -304,6 +319,31 @@ export class ReaderService {
       return { ok: false, error: { code: error instanceof StateConflictError ? 'STATE_CONFLICT' : error instanceof ViewOwnershipError ? 'FORBIDDEN' : error instanceof UndoConflictError ? 'UNDO_CONFLICT' : error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError || error instanceof InvalidSeenTargetError || error instanceof InvalidDiscussionViewError || error instanceof InvalidPreferenceError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
     }
   }
+  private async manageThemeFiles(operation: 'refreshThemes' | 'openThemesFolder' | 'saveThemeCopy', source: ThemeExportSource, caller: ReaderCallerContext): Promise<Result<ThemeRefreshResult | Preferences | null>> {
+    const repository = this.repository, assets = this.appearanceAssets, directory = assets?.options.themes;
+    if (!repository || !directory) return { ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } };
+    if (!this.nativeWritesAllowed() || this.lifecycle?.blocks(caller)) return { ok: false, error: { code: 'DATA_BUSY' } };
+    try {
+      const current = repository.readerAppearance();
+      if (operation === 'openThemesFolder') {
+        directory.prepare(current.themes);
+        if (!caller.isCurrent() || !this.nativeWritesAllowed()) return { ok: false, error: { code: 'DATA_BUSY' } };
+        if (!assets?.options.openThemesFolder || await assets.options.openThemesFolder(directory.directory)) throw Error('Folder opening failed');
+        return { ok: true, value: null };
+      }
+      if (operation === 'refreshThemes') {
+        const result = directory.refresh(current.themes, themes => repository.replaceThemes(themes, this.languages, current.revision));
+        return { ok: true, value: { preferences: result.value, issues: result.issues } };
+      }
+      if (current.themes.length >= 16) return { ok: false, error: { code: 'THEME_LIMIT' } };
+      const preferences = repository.preferences(this.languages);
+      const definition = source === 'current' ? resolveTheme(preferences, assets?.options.systemDark?.() ?? false) : themeTemplates[source];
+      const value = directory.add(current.themes, definition, id => repository.replaceThemes([...current.themes, { id, definition }], this.languages, current.revision));
+      return { ok: true, value };
+    } catch {
+      return { ok: false, error: { code: 'APPEARANCE_IMPORT_FAILED' } };
+    }
+  }
   private async exportTheme(source: ThemeExportSource, caller: ReaderCallerContext): Promise<Result<null>> {
     const repository = this.repository, assets = this.appearanceAssets;
     if (!repository || !assets?.options.saveTheme) return { ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } };
@@ -341,7 +381,10 @@ export class ReaderService {
       const value = operation === 'importTheme' ? await assets.theme(file) : await assets.wallpaper(file);
       if (!allowed()) return { ok: true, value: null };
       committing = true;
-      const preferences = typeof value === 'string' ? repository.importWallpaper(value, this.languages, current.revision) : repository.importTheme(value, this.languages, current.revision);
+      if (repository.readerAppearance().revision !== current.revision) throw new StateConflictError();
+      const preferences = typeof value === 'string' ? repository.importWallpaper(value, this.languages, current.revision)
+        : assets.options.themes ? assets.options.themes.add(current.themes, value, id => repository.importTheme(value, this.languages, current.revision, id))
+          : repository.importTheme(value, this.languages, current.revision);
       return { ok: true, value: preferences };
     } catch (error) {
       if (!allowed()) return { ok: true, value: null };

@@ -42,6 +42,8 @@ export const builtinThemes = { light: builtin(light), dark: builtin(dark), charc
 export const themeTemplates = { ...builtinThemes, 'warm-graphite': builtin(warmGraphite) } as const;
 export const themeExportSources = ['current', 'light', 'dark', 'charcoal', 'warm-graphite'] as const;
 export type ThemeExportSource = typeof themeExportSources[number];
+export interface ThemeFileIssue { readonly file: string; readonly reason: 'invalid' | 'limit' }
+export interface ThemeRefreshResult { readonly preferences: Preferences; readonly issues: readonly ThemeFileIssue[] }
 export function isThemeExportRequest(value: unknown): value is { source: ThemeExportSource } {
   return exactProperties(value, ['source']) && themeExportSources.includes(value.source as ThemeExportSource);
 }

@@ -4,8 +4,10 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  openThemesFolder: 'Open themes folder', refreshThemes: 'Refresh themes', saveThemeCopy: 'Save editable copy in themes folder',
+  themesRefreshed: 'Themes refreshed. Rejected files keep their last valid palette when available.', rejectedThemes: 'Rejected theme files',
   exportTheme: 'Export theme as JSON…', themeToExport: 'Theme to export', currentTheme: 'Current theme',
-  themeExportHelp: 'Save an editable copy in your own folder. Light, Dark, Charcoal and Warm Graphite templates are available offline. Edit the saved JSON in an external text editor, then import it here. Export keeps your active theme unchanged; files are not watched for changes.',
+  themeExportHelp: 'Edit JSON in an external text editor, then use Refresh themes. Copy a starter from themes/examples into themes to customize it. Examples are never loaded automatically. Import copies a file here; saving an editable copy keeps the active theme unchanged. Files are not watched.',
   themeExportFailed: 'The theme could not be exported. Choose a writable folder outside the application profile and try again.',
   cancelAppearance: 'Cancel wallpaper changes',
   charcoal: 'Charcoal', customTheme: 'Custom theme', importTheme: 'Import JSON theme...', noCustomTheme: 'None', deleteTheme: 'Delete selected theme',
@@ -17,7 +19,7 @@ const en = {
   appearanceBackupHelp: 'Themes and settings are included in SQLite backups. Wallpaper images are separate profile assets and are not backed up. Keep your own copy.',
   invalidTheme: 'Invalid theme. Use a version-1 JSON palette with supported tokens and #RRGGBB colors (maximum 16 KiB).',
   invalidWallpaper: 'Invalid image. Choose a PNG, JPEG or static WebP up to 12 MiB, 8192 pixels per side and 16 million pixels in total.',
-  themeLimit: 'Up to 16 custom themes can be stored. Delete a theme before importing another.',
+  themeLimit: 'Up to 16 custom themes can be loaded. Remove a JSON file from the themes folder and refresh before adding another.',
   appearanceConflict: 'Appearance settings changed or could not be saved. Cancel this draft to load current values, then try again.',
   appearanceImportFailed: 'The appearance could not be imported or saved. Check file access and available disk space, then try again.',
 
@@ -208,8 +210,10 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  openThemesFolder: 'Otwórz folder motywów', refreshThemes: 'Odśwież motywy', saveThemeCopy: 'Zapisz edytowalną kopię w folderze motywów',
+  themesRefreshed: 'Motywy odświeżone. Odrzucone pliki zachowują ostatnią poprawną paletę, jeśli jest dostępna.', rejectedThemes: 'Odrzucone pliki motywów',
   exportTheme: 'Eksportuj motyw jako JSON…', themeToExport: 'Motyw do eksportu', currentTheme: 'Bieżący motyw',
-  themeExportHelp: 'Zapisz kopię do edycji we własnym folderze. Szablony Jasny, Ciemny, Grafitowy i Warm Graphite są dostępne offline. Edytuj zapisany JSON w zewnętrznym edytorze tekstu, a następnie zaimportuj go tutaj. Eksport nie zmienia aktywnego motywu; zmiany w plikach nie są śledzone.',
+  themeExportHelp: 'Edytuj JSON w zewnętrznym edytorze tekstu, a następnie odśwież motywy. Skopiuj przykład z themes/examples do themes. Przykłady nie są automatycznie wczytywane. Import kopiuje plik do folderu profilu; zapis kopii nie zmienia aktywnego motywu. Pliki nie są stale monitorowane.',
   themeExportFailed: 'Nie udało się wyeksportować motywu. Wybierz folder z prawem zapisu poza profilem aplikacji i spróbuj ponownie.',
   cancelAppearance: 'Anuluj zmiany tapety',
   charcoal: 'Grafitowy', customTheme: 'Własny motyw', importTheme: 'Importuj motyw JSON…', noCustomTheme: 'Brak', deleteTheme: 'Usuń wybrany motyw',
@@ -221,7 +225,7 @@ const pl: Record<Key, string> & Record<string, string> = {
   appearanceBackupHelp: 'Motywy i ustawienia są w kopiach SQLite. Obrazy tapet są osobnymi plikami profilu i nie są kopiowane. Zachowaj własną kopię.',
   invalidTheme: 'Nieprawidłowy motyw. Użyj palety JSON w wersji 1 z obsługiwanymi tokenami i kolorami #RRGGBB (maksymalnie 16 KiB).',
   invalidWallpaper: 'Nieprawidłowy obraz. Wybierz PNG, JPEG lub statyczny WebP do 12 MiB, 8192 pikseli na bok i 16 milionów pikseli łącznie.',
-  themeLimit: 'Można zapisać do 16 własnych motywów. Usuń motyw przed importem kolejnego.',
+  themeLimit: 'Można wczytać do 16 własnych motywów. Usuń plik JSON z folderu motywów i odśwież przed dodaniem kolejnego.',
   appearanceConflict: 'Ustawienia wyglądu zmieniły się lub zapis nie powiódł się. Anuluj szkic, aby wczytać aktualne wartości, i spróbuj ponownie.',
   appearanceImportFailed: 'Nie udało się zaimportować lub zapisać wyglądu. Sprawdź dostęp do pliku i wolne miejsce na dysku, a następnie spróbuj ponownie.',
   applicationMenu: 'Menu aplikacji', newWindow: 'Nowe okno', closeWindow: 'Zamknij okno', quitApplication: 'Zakończ aplikację',

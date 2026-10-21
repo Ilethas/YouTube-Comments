@@ -6,6 +6,7 @@ import type { ThemeDefinition } from '../shared/appearance';
 import { thumbnailImage } from './thumbnail-image';
 import type { ReaderCallerContext } from './caller-context';
 import type { Locale } from '../shared/preferences';
+import type { ThemeDirectory } from './theme-directory';
 
 export const wallpaperByteLimit = 12 * 1024 * 1024;
 export const wallpaperLimits = { minWidth: 1, minHeight: 1, pixels: 16000000 };
@@ -30,6 +31,8 @@ export async function readImport(file: string, limit: number): Promise<Buffer> {
   } finally { await handle.close(); }
 }
 export interface AppearanceAssetsOptions {
+  readonly themes?: ThemeDirectory;
+  readonly openThemesFolder?: (directory: string) => Promise<string>;
   readonly saveTheme?: (locale: Locale, caller: ReaderCallerContext) => Promise<string | undefined>;
   readonly systemDark?: () => boolean;
   readonly choose: (kind: 'theme' | 'wallpaper', locale: Locale, caller: ReaderCallerContext) => Promise<string | undefined>;

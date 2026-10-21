@@ -1,5 +1,19 @@
 # Project guidance
 
+## File-based theme management current boundary
+
+[ADR 0040](docs/decisions/0040-profile-theme-files.md) adds profile-owned editable
+`themes/` JSON, explicit Refresh and a unified named selector on schema **16**,
+unchanged. Keep the strict v1 format, 16-theme snapshot bound, original IDs,
+SQLite backup snapshots, file-authoritative reconciliation and crash journal.
+Never overwrite edited files from SQLite on startup/Refresh; recover unknown
+restored IDs exclusively with conflict suffixes. Invalid tracked files retain
+last-valid palettes; completed-scan deletions remove snapshots and active Custom
+falls back to System. Examples are exclusive, unscanned starters. Main owns
+bounded scans/files/native folder opening; preserve M2/M3 and wallpaper behavior.
+`test:appearance` uses disposable real Electron windows; shell folder opening is
+intercepted at the native adapter. Leave uncommitted for owner review.
+
 ## Notification dismissal current boundary
 
 [ADR 0039](docs/decisions/0039-configurable-notification-dismissal.md) adds localized

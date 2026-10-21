@@ -1,5 +1,9 @@
 # Decisions and open questions
 
+[ADR 0040: Profile theme files](0040-profile-theme-files.md) adds editable
+profile-local JSON, explicit Refresh, named selection, bounded main-owned scans
+and crash-safe associations while retaining schema 16 and SQLite backup snapshots.
+
 [ADR 0039: Configurable notification dismissal](0039-configurable-notification-dismissal.md)
 adds acknowledged shared notification preferences on schema 16 and a bounded,
 accessible session-only overlay for tab-transfer feedback. Historical migrations

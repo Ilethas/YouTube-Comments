@@ -9,7 +9,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const panel = "document.querySelector('.reader-panel:not([hidden])')";
 if (process.versions.electron) {
   require('./thumbnail-fixture-network.cjs').installThumbnailNetwork();
-  const { app, dialog, nativeImage, nativeTheme } = require('electron');
+  const { app, dialog, nativeImage, nativeTheme, shell } = require('electron');
   const root = process.env.YOUTUBE_COMMENTS_DEMO_ROOT, phase = process.env.APPEARANCE_PHASE;
   assert.ok(path.dirname(root) === os.tmpdir() && path.basename(root).startsWith('reader-appearance-electron-'));
   for (const name of ['appData', 'userData', 'sessionData', 'logs', 'crashDumps']) {
@@ -17,6 +17,9 @@ if (process.versions.electron) {
   }
   const ids = JSON.parse(fs.readFileSync(path.join(root, 'ids.json'))), windows = [];
   let selected, expectedParent, finished = false, exportTarget, backupTarget = path.join(root, 'snapshot.sqlite');
+  const themesFolder = path.join(root, 'youtube-comments-development', 'themes'), openedFolders = [];
+  // Exercise the production shell adapter without leaving Explorer windows open.
+  shell.openPath = async directory => { openedFolders.push(directory); return ''; };
   dialog.showOpenDialog = async (parent, options) => {
     assert.equal(parent, expectedParent);
     assert.deepEqual(options.properties, ['openFile']);
@@ -124,6 +127,10 @@ if (process.versions.electron) {
     if (phase === 'first') {
       await invoke(a, 'newWindow'); await wait(() => windows.length === 2, 'second native'); const b = windows[1]; await ready(b); await open(a); await open(b);
       const before = await boot(a); assert.equal(before.comments[ids.item].length, 3000);
+      const legacy = before.preferences.readerAppearance.themes[0];
+      assert.equal(legacy.id, ids.legacyTheme);
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(themesFolder, legacy.id + '.json'), 'utf8')), legacy.definition);
+      assert.equal(fs.readdirSync(path.join(themesFolder, 'examples')).length, 4);
       a.webContents.debugger.attach('1.3');
       await contrastMatrix(a, false);
       for (const dark of [true, false]) {
@@ -166,6 +173,38 @@ if (process.versions.electron) {
         assert.equal(JSON.parse(fs.readFileSync(exportTarget,'utf8')).name,dark?'Dark':'Light');
       }
       nativeTheme.themeSource='system';
+      // Real files + authenticated preload/IPC + two production renderers.
+      await invoke(a, 'openThemesFolder'); assert.deepEqual(openedFolders, [themesFolder]);
+      assert.equal((await js(a, 'window.reader.refreshThemes({path:"C:/private"})')).ok, true, 'payload-free bridge never forwards paths');
+      const copyBefore = (await boot(a)).preferences.appearance;
+      await invoke(a, 'saveThemeCopy', { source: 'charcoal' });
+      assert.equal((await boot(a)).preferences.appearance, copyBefore);
+      const editable = path.join(themesFolder, 'editable.json'), renamed = path.join(themesFolder, 'renamed.json');
+      fs.copyFileSync(path.join(themesFolder, 'examples', 'warm-graphite.json'), editable);
+      await invoke(a, 'refreshThemes');
+      let theme = (await boot(a)).preferences.readerAppearance.themes.at(-1);
+      await invoke(a, 'updatePreferences', { selectTheme: { id: theme.id, expectedRevision: (await boot(a)).preferences.readerAppearance.revision } });
+      await wait(() => js(b, "document.documentElement.dataset.appearance==='custom'"), 'file theme peer activation');
+      const changed = {...theme.definition, name: 'Edited native theme', tokens: {...theme.definition.tokens, background:'#232425'}};
+      fs.writeFileSync(editable, JSON.stringify(changed));
+      assert.equal((await boot(a)).preferences.readerAppearance.themes.at(-1).definition.name, theme.definition.name, 'explicit refresh only');
+      await invoke(b, 'refreshThemes');
+      await wait(async () => await bg(a) === 'rgb(35, 36, 37)' && await bg(b) === 'rgb(35, 36, 37)', 'edited active theme in both windows');
+      fs.renameSync(editable, renamed); await invoke(a, 'refreshThemes');
+      assert.equal((await boot(a)).preferences.readerAppearance.customThemeId, theme.id);
+      fs.writeFileSync(renamed, '{'); fs.writeFileSync(path.join(themesFolder, 'invalid-file.json'), '{}');
+      fs.copyFileSync(path.join(themesFolder, 'examples', 'light.json'), path.join(themesFolder, 'valid-addition.json'));
+      const refreshed = await invoke(a, 'refreshThemes'); assert.equal(refreshed.issues.length, 2);
+      assert.equal((await boot(a)).preferences.readerAppearance.themes.find(t => t.id === theme.id).definition.name, 'Edited native theme');
+      assert.equal(await bg(b), 'rgb(35, 36, 37)');
+      fs.writeFileSync(renamed, JSON.stringify(changed)); fs.copyFileSync(renamed, path.join(themesFolder, 'duplicate-name.json'));
+      await Promise.all([invoke(a, 'refreshThemes'), invoke(b, 'refreshThemes')]); await settings(a);
+      const labels = await js(a, "[...document.querySelector('.appearance-settings select').options].map(o=>o.textContent)");
+      assert.equal(labels.filter(label => label.startsWith('Edited native theme (')).length, 2);
+      fs.unlinkSync(renamed); fs.unlinkSync(path.join(themesFolder, 'invalid-file.json')); await invoke(a, 'refreshThemes');
+      assert.equal((await boot(a)).preferences.appearance, 'system');
+      fs.writeFileSync(path.join(themesFolder, 'examples', 'warm-graphite.json'), 'owner edit'); await invoke(a, 'refreshThemes');
+      assert.equal(fs.readFileSync(path.join(themesFolder, 'examples', 'warm-graphite.json'), 'utf8'), 'owner edit');
       await open(a);
       selected = path.join(root, 'theme.json'); await invoke(a, 'importTheme');
       await wait(() => js(b, "document.documentElement.dataset.appearance==='custom'"), 'custom peer');
@@ -259,11 +298,15 @@ if (process.versions.electron) {
         repo.ingest(observation,undefined,true);
         repo.bulkSeen({itemId:item,seen:true,target:{kind:'matching',ids:repo.bootstrap(['en']).comments[item].filter((_,i)=>i%2===0).map(c=>c.id)}});
         repo.updatePreferences({locale:'en'},['en']);
-        fs.writeFileSync(path.join(root,'ids.json'),JSON.stringify({item})); fs.writeFileSync(path.join(root,'image.png'),thumbnailPng(3200,1800));
+        repo.importTheme(JSON.parse(fs.readFileSync(path.resolve(__dirname, '../src/shared/themes/light.json'), 'utf8')), ['en'], 0);
+        fs.writeFileSync(path.join(root,'ids.json'),JSON.stringify({item, legacyTheme:repo.readerAppearance().customThemeId})); fs.writeFileSync(path.join(root,'image.png'),thumbnailPng(3200,1800));
       } finally { repo.close(); }
       fs.copyFileSync(path.resolve(__dirname,'../docs/examples/warm-graphite.json'),path.join(root,'theme.json')); fs.writeFileSync(path.join(root,'invalid.json'),'{"css":"url(https://evil.test)"}');
       for (const phase of ['first','restart','restored','missing']) {
         if (phase === 'missing') {
+          // Recreate a restored profile's theme files solely from its SQLite snapshot.
+          fs.renameSync(path.join(root,'youtube-comments-development','themes'), path.join(root,'held-themes'));
+          fs.renameSync(path.join(root,'youtube-comments-development','theme-files.json'), path.join(root,'held-theme-files.json'));
           const expected = JSON.parse(fs.readFileSync(path.join(root,'expected.json')));
           fs.unlinkSync(path.join(root,'youtube-comments-development','appearance','wallpapers',expected.readerAppearance.wallpaperId+'.jpg'));
         }

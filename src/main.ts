@@ -1,5 +1,6 @@
 import { encodeWallpaper } from './main/wallpaper-decoder';
 import { AppearanceAssets } from './main/appearance-assets';
+import { ThemeDirectory } from './main/theme-directory';
 import { createAppearancePicker, createThemeSavePicker } from './main/appearance-picker';
 import { isAcquisitionNotification } from './shared/acquisition';
 import { app, shell, dialog, clipboard, protocol, nativeImage, nativeTheme, Menu, BrowserWindow } from 'electron';
@@ -79,6 +80,8 @@ function startReader() {
         return image.isEmpty() ? undefined : image.getSize();
       } }), openPath: file => shell.openPath(file),
     }, new AppearanceAssets(path.join(path.dirname(databasePath), 'appearance', 'wallpapers'), {
+      themes: new ThemeDirectory(path.dirname(databasePath)),
+      openThemesFolder: directory => shell.openPath(directory),
       choose: createAppearancePicker(caller => windows.originWindow(caller)),
       saveTheme: createThemeSavePicker(caller => windows.originWindow(caller)),
       systemDark: () => nativeTheme.shouldUseDarkColors,

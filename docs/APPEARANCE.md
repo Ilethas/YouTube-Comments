@@ -17,13 +17,28 @@ application/ZIP. You can obtain each without activating it or writing into the
 installed application directory. [Warm Graphite](examples/warm-graphite.json) is
 also available here.
 
-Edit the saved JSON in an external text editor, then choose
-**Settings → Import JSON theme**. Export never changes active appearance or saved
-preferences, and files are not watched for edits. Import selects the new theme. The Custom
-theme selector retains up to 16 palettes; Delete selected theme removes one. If
-the active custom theme is deleted, appearance falls back to System. Selecting a
-built-in retains the imported palettes for later use. Names are plain display text.
-Invalid imports leave the active theme and saved settings unchanged.
+Choose **Open themes folder** to open the profile's writable `themes/` directory
+in Explorer (`%APPDATA%\youtube-comments-production\themes\` in production).
+**Save editable copy in themes folder** copies the selected export source there
+without changing the active appearance. Alternatively, copy one of the Light,
+Dark, Charcoal or Warm Graphite files from `themes/examples/` into `themes/`.
+Examples are never loaded automatically or overwritten when edited.
+
+Edit the JSON in an external text editor, then choose **Refresh themes**.
+Additions, edits, renames and deletions are reconciled together. Settings lists
+all custom names alongside System, Light, Dark and Charcoal in one Appearance
+selector. Duplicate names (including built-in names) get a short ID suffix.
+Import JSON theme still accepts a native-picked file from elsewhere, copies it
+into `themes/`, and selects it. The external original is no longer required.
+Export still saves through the native Save dialog outside the profile.
+
+Up to 16 custom palettes are loaded. Remove a JSON file and refresh to free a
+slot. Deleting the active file falls back to System. Invalid files are reported
+individually; a previously loaded file keeps its last valid palette, including
+when active. Other valid files still load. Selecting a built-in retains the custom
+palettes. There is no watcher; startup also scans once. See
+[the synchronization rules](decisions/0040-profile-theme-files.md) for recovery,
+restore conflicts and scan bounds.
 
 The UTF-8 JSON format is exactly:
 
@@ -119,9 +134,14 @@ Schema **15** adds validated appearance configuration and extends the appearance
 choice. Historical migrations 1–14 are unchanged. Startup still creates a verified
 pre-migration safety backup; older backups upgrade only on staging copies.
 
-Imported theme definitions live inside the profile's SQLite configuration, not
-beside the EXE, and **are included in SQLite backups**. Theme files can be moved or
-deleted after import. Wallpaper settings and the selected image digest are also
+Editable themes live in the profile's `themes/` directory, with their latest
+validated definitions and IDs retained in SQLite and **included in SQLite backups**.
+Refresh (or restart) before backing up external edits. Rejected edits retain the
+last valid definition in backups. On restore into another profile, backed-up
+definitions are materialized without replacing existing files. Within a profile,
+tracked files remain authoritative on the next scan: restoring SQLite does not
+rewind user-edited JSON. Copy a backed-up theme into a separate profile to recover
+its historical palette without changing current files. Wallpaper settings and the selected image digest are also
 in SQLite, but **wallpaper image bytes are excluded from SQLite backups**. Keep
 your original image separately. After a restore to another machine/profile, a
 missing or corrupt image causes an opaque reader fallback and a localized notice

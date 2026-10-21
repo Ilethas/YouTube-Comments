@@ -2,13 +2,13 @@ import { useEffect, useId, useState } from 'react';
 import type { Appearance, Locale, Preferences } from '../shared/preferences';
 import type { ErrorCode, PreferenceChange, ReaderApi, Result } from '../shared/reader-api';
 import { defaultReaderAppearance } from '../shared/appearance';
-import type { ThemeExportSource } from '../shared/appearance';
+import type { ThemeExportSource, ThemeFileIssue } from '../shared/appearance';
 import { translator } from './i18n';
 
 /** Sliders keep a local draft. Apply makes exactly one acknowledged CAS write;
  * peer changes never silently overwrite an edited draft or its base revision. */
 export function AppearanceSettings({ preferences, locale, disabled, api, save, imported, onDirty, missingWallpaper }: {
-  preferences: Pick<Preferences, 'appearance' | 'readerAppearance'>; locale: Locale; disabled: boolean; api: Pick<ReaderApi, 'importTheme' | 'importWallpaper' | 'exportTheme'>;
+  preferences: Pick<Preferences, 'appearance' | 'readerAppearance'>; locale: Locale; disabled: boolean; api: Pick<ReaderApi, 'importTheme' | 'importWallpaper' | 'exportTheme' | 'refreshThemes' | 'openThemesFolder' | 'saveThemeCopy'>;
   save: (change: PreferenceChange) => Promise<boolean>;
   imported: (action: () => Promise<Result<Preferences | null>>) => Promise<boolean>;
   onDirty: (dirty: boolean) => void; missingWallpaper: boolean;
@@ -16,10 +16,36 @@ export function AppearanceSettings({ preferences, locale, disabled, api, save, i
   const t = translator(locale), id = useId(), current = preferences.readerAppearance ?? defaultReaderAppearance;
   const [draft, setDraft] = useState(current), [dirty, setDirty] = useState(false), [pending, setPending] = useState(false);
   const [error, setError] = useState<ErrorCode>();
+  const [issues, setIssues] = useState<readonly ThemeFileIssue[]>([]);
+  const [refreshed, setRefreshed] = useState(false);
   const [exportSource, setExportSource] = useState<ThemeExportSource>('current');
   useEffect(() => { if (!dirty) setDraft(current); }, [current, dirty]);
   useEffect(() => { onDirty(dirty); return () => onDirty(false); }, [dirty, onDirty]);
   const blocked = disabled || pending;
+  async function manageFiles(kind: 'refresh' | 'folder' | 'copy') {
+    setPending(true); setError(undefined); setRefreshed(false);
+    try {
+      if (kind === 'folder') {
+        const result = await api.openThemesFolder?.(); if (result && !result.ok) setError(result.error.code);
+      } else if (kind === 'copy') {
+        const action = api.saveThemeCopy; if (!action) return;
+        await imported(async () => {
+          const result = await action({ source: exportSource });
+          if (!result.ok) setError(result.error.code);
+          return result;
+        });
+      } else {
+        const action = api.refreshThemes; if (!action) return;
+        await imported(async () => {
+          const result = await action();
+          if (!result.ok) { setError(result.error.code); return result; }
+          setIssues(result.value.issues); setRefreshed(true);
+          return { ...result, value: result.value.preferences };
+        });
+      }
+    } catch { setError('APPEARANCE_IMPORT_FAILED'); }
+    finally { setPending(false); }
+  }
   async function exportFile() {
     if (!api.exportTheme) return;
     setPending(true); setError(undefined);
@@ -42,24 +68,28 @@ export function AppearanceSettings({ preferences, locale, disabled, api, save, i
   }
   return <fieldset className="appearance-settings" disabled={blocked}>
     <legend>{t('appearance')}</legend>
-    <label>{t('appearance')}<select value={preferences.appearance} onChange={event => { void save({ appearance: event.target.value as Appearance }); }}>
+    <label>{t('appearance')}<select disabled={dirty} value={preferences.appearance === 'custom' ? current.customThemeId ?? 'system' : preferences.appearance} onChange={event => {
+      const value = event.target.value;
+      void save(current.themes.some(theme => theme.id === value) ? { selectTheme: { id: value, expectedRevision: current.revision } } : { appearance: value as Appearance });
+    }}>
       {(['system', 'light', 'dark', 'charcoal'] as const).map(value => <option key={value} value={value}>{t(value)}</option>)}
-      {current.customThemeId && <option value="custom">{t('customTheme')}</option>}
+      {current.themes.map(theme => <option key={theme.id} value={theme.id}>{theme.definition.name}{current.themes.filter(other => other.definition.name === theme.definition.name).length > 1 || Object.values({ system: t('system'), light: t('light'), dark: t('dark'), charcoal: t('charcoal') }).includes(theme.definition.name) ? ' (' + theme.id.slice(0, 8) + ')' : ''}</option>)}
     </select></label>
     <div className="appearance-actions"><button type="button" disabled={dirty || !api.importTheme} onClick={() => { void importFile('theme'); }}>{t('importTheme')}</button></div>
+    <div className="appearance-actions">
+      <button type="button" disabled={!api.openThemesFolder} onClick={() => { void manageFiles('folder'); }}>{t('openThemesFolder')}</button>
+      <button type="button" disabled={dirty || !api.refreshThemes} onClick={() => { void manageFiles('refresh'); }}>{t('refreshThemes')}</button>
+    </div>
+    {refreshed && <p role="status">{t('themesRefreshed')}</p>}
+    {!!issues.length && <ul aria-label={t('rejectedThemes')}>{issues.map(issue => <li key={issue.file}>{issue.file}: {t(issue.reason === 'limit' ? 'themeLimit' : 'invalidTheme')}</li>)}</ul>}
     <label>{t('themeToExport')}<select value={exportSource} onChange={event => setExportSource(event.target.value as ThemeExportSource)}>
       <option value="current">{t('currentTheme')}</option>
       {(['light', 'dark', 'charcoal'] as const).map(value => <option key={value} value={value}>{t(value)}</option>)}
       <option value="warm-graphite">Warm Graphite</option>
     </select></label>
     <button type="button" disabled={!api.exportTheme} onClick={() => { void exportFile(); }}>{t('exportTheme')}</button>
+    <button type="button" disabled={dirty || !api.saveThemeCopy} onClick={() => { void manageFiles('copy'); }}>{t('saveThemeCopy')}</button>
     <p>{t('themeExportHelp')}</p>
-    {!!current.themes.length && <>
-      <label>{t('customTheme')}<select disabled={dirty} value={current.customThemeId ?? ''} onChange={event => {
-        void save({ readerAppearance: { expectedRevision: current.revision, customThemeId: event.target.value || null, wallpaperEnabled: current.wallpaperEnabled, surfaceOpacity: current.surfaceOpacity, blur: current.blur } });
-      }}><option value="">{t('noCustomTheme')}</option>{current.themes.map(theme => <option key={theme.id} value={theme.id}>{theme.definition.name}</option>)}</select></label>
-      <button type="button" disabled={dirty || !current.customThemeId} onClick={() => { if (current.customThemeId) void save({ deleteTheme: { id: current.customThemeId, expectedRevision: current.revision } }); }}>{t('deleteTheme')}</button>
-    </>}
     <h2>{t('readerWallpaper')}</h2>
     <div className="appearance-actions"><button type="button" disabled={dirty || !api.importWallpaper} onClick={() => { void importFile('wallpaper'); }}>{t('chooseWallpaper')}</button>
       <button type="button" disabled={dirty || !current.wallpaperId} onClick={() => { void save({ removeWallpaper: { expectedRevision: current.revision } }); }}>{t('removeWallpaper')}</button></div>

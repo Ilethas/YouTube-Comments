@@ -1,5 +1,25 @@
 # Testing strategy
 
+## File-based theme management (2026-10-21)
+
+[ADR 0040](decisions/0040-profile-theme-files.md) keeps schema 16 and adds
+bounded profile-owned JSON management with SQLite backup snapshots.
+
+- Relevant theme, renderer, preload, IPC, synchronization and renderer lifecycle
+  suites: **89 tests passed across 11 files**. The 48-test backup/restore and
+  5-test SQLite profile-operation suites also passed during this increment.
+- Typecheck and ESLint pass without warnings. Forge package validation passes.
+- Extended `test:appearance` passes with disposable real Electron windows and
+  actual theme file migration, edits, additions, renames, deletion, invalid files,
+  duplicate names, concurrent refreshes, shared active palette changes, copies,
+  import/export, SQLite restore/restart and missing-directory recovery. Existing
+  wallpaper decoding, contrast, scrolling, virtualization and geometry checks pass.
+- Folder opening reaches the production native shell adapter with the fixed
+  temporary profile directory; `shell.openPath` is intercepted to avoid leaving
+  Explorer windows open. Physical Explorer interaction remains an owner check.
+  Existing physical/release/license gates remain pending. No version/schema bump,
+  Setup execution, commit, push or publication.
+
 ## Configurable notification dismissal (2026-10-21)
 
 [ADR 0039](decisions/0039-configurable-notification-dismissal.md) adds schema 16

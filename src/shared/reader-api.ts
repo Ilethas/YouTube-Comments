@@ -41,7 +41,7 @@ export interface ToggleSeenRequest {
 }
 export type PreferenceChange = { readonly locale: Locale } | { readonly appearance: Appearance } | { readonly translationTarget: TranslationTarget; readonly customTranslationTarget?: string }
   | { readonly notificationDismissal: Preferences['notificationDismissal'] } | { readonly notificationDurationSeconds: Preferences['notificationDurationSeconds'] }
-  | { readonly readerAppearance: ReaderAppearanceChange } | { readonly removeWallpaper: { readonly expectedRevision: number } } | { readonly deleteTheme: { readonly id: string; readonly expectedRevision: number } }
+  | { readonly readerAppearance: ReaderAppearanceChange } | { readonly removeWallpaper: { readonly expectedRevision: number } } | { readonly deleteTheme: { readonly id: string; readonly expectedRevision: number } } | { readonly selectTheme: { readonly id: string; readonly expectedRevision: number } }
   | { readonly selectionControls: SelectionControls } | { readonly includeCollapsedInPrefix: boolean };
 /** Identity only; main reads content and preferences and reconstructs destinations. */
 export interface CommentActionRequest { readonly itemId: string; readonly commentId: string; readonly action: 'author' | 'permalink' | 'translate' | 'copy-permalink' }
@@ -86,6 +86,9 @@ export interface ReaderApi {
   duplicateTab(request: DuplicateTabRequest): Promise<Result<DuplicateTabResult>>;
   getSharedMetadata(): Promise<Result<SharedMetadata>>;
   importTheme?(): Promise<Result<Preferences | null>>;
+  refreshThemes?(): Promise<Result<import('./appearance').ThemeRefreshResult>>;
+  openThemesFolder?(): Promise<Result<null>>;
+  saveThemeCopy?(request: { readonly source: import('./appearance').ThemeExportSource }): Promise<Result<Preferences | null>>;
   exportTheme?(request: { readonly source: import('./appearance').ThemeExportSource }): Promise<Result<null>>;
   importWallpaper?(): Promise<Result<Preferences | null>>;
   getWallpaper?(): Promise<Result<string | null>>;
@@ -121,6 +124,7 @@ export interface ReaderApi {
 }
 
 export const readerChannels = {
+  refreshThemes: 'reader:refresh-themes', openThemesFolder: 'reader:open-themes-folder', saveThemeCopy: 'reader:save-theme-copy',
   exportTheme: 'reader:export-theme', importTheme: 'reader:import-theme', importWallpaper: 'reader:import-wallpaper', getWallpaper: 'reader:get-wallpaper',
   getDiscussionView: 'reader:discussion-view', duplicateTab: 'reader:duplicate-tab',
   getSharedSnapshot: 'reader:shared-snapshot', getSharedMetadata: 'reader:shared-metadata',
@@ -181,6 +185,7 @@ export function isPreferenceChange(value: unknown): value is PreferenceChange {
     || (exactKeys(value, ['notificationDurationSeconds']) && notificationDurations.includes(value.notificationDurationSeconds as Preferences['notificationDurationSeconds']))
     || (exactKeys(value, ['readerAppearance']) && isReaderAppearanceChange(value.readerAppearance))
     || (exactKeys(value, ['removeWallpaper']) && exactKeys(value.removeWallpaper, ['expectedRevision']) && isRevision(value.removeWallpaper.expectedRevision))
+    || (exactKeys(value, ['selectTheme']) && exactKeys(value.selectTheme, ['id', 'expectedRevision']) && themeId(value.selectTheme.id) && isRevision(value.selectTheme.expectedRevision))
     || (exactKeys(value, ['deleteTheme']) && exactKeys(value.deleteTheme, ['id', 'expectedRevision']) && themeId(value.deleteTheme.id) && isRevision(value.deleteTheme.expectedRevision))
     || (exactKeys(value, ['locale']) && (value.locale === 'en' || value.locale === 'pl'))
     || (exactKeys(value, ['appearance']) && ['system', 'light', 'dark', 'charcoal', 'custom'].includes(value.appearance as string))

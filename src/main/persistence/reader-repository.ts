@@ -766,6 +766,13 @@ export class ReaderRepository {
         if (change.appearance === 'custom' && !this.readerAppearance().customThemeId) throw new InvalidPreferenceError();
         this.db.prepare('UPDATE preferences SET appearance = ? WHERE id = 1').run(change.appearance);
       }
+      else if ('selectTheme' in change) {
+        const current = this.readerAppearance();
+        if (change.selectTheme.expectedRevision !== current.revision) throw new StateConflictError();
+        if (!current.themes.some(theme => theme.id === change.selectTheme.id)) throw new InvalidPreferenceError();
+        this.writeReaderAppearance({ ...current, customThemeId: change.selectTheme.id });
+        this.db.prepare("UPDATE preferences SET appearance='custom' WHERE id=1").run();
+      }
       else if ('readerAppearance' in change) {
         const current = this.readerAppearance(), { expectedRevision, ...settings } = change.readerAppearance;
         if (expectedRevision !== current.revision) throw new StateConflictError();
@@ -811,15 +818,26 @@ export class ReaderRepository {
     this.db.prepare('UPDATE reader_appearance SET config_json=? WHERE id=1').run(JSON.stringify(next));
   }
   /** Main-only import commits use the same post-COMMIT preference stream. */
-  importTheme(definition: ThemeDefinition, languages: readonly string[], expectedRevision: number): Preferences {
+  importTheme(definition: ThemeDefinition, languages: readonly string[], expectedRevision: number, id: string = randomUUID()): Preferences {
     if (!isThemeDefinition(definition)) throw new InvalidPreferenceError();
     return this.commit({ kind: 'preferences' }, () => {
       const current = this.readerAppearance();
       if (current.revision !== expectedRevision) throw new StateConflictError();
       if (current.themes.length >= 16) throw new InvalidPreferenceError();
-      const id = randomUUID();
       this.writeReaderAppearance({ ...current, themes: [...current.themes, { id, definition }], customThemeId: id });
       this.db.prepare("UPDATE preferences SET appearance='custom' WHERE id=1").run();
+      return this.preferences(languages);
+    });
+  }
+  /** File refresh uses the ordinary shared preference commit and CAS lane. */
+  replaceThemes(themes: ReaderAppearance['themes'], languages: readonly string[], expectedRevision: number): Preferences {
+    const current = this.readerAppearance();
+    if (current.revision !== expectedRevision) throw new StateConflictError();
+    if (JSON.stringify(themes) === JSON.stringify(current.themes)) return this.preferences(languages);
+    return this.commit({ kind: 'preferences' }, () => {
+      const customThemeId = themes.some(theme => theme.id === current.customThemeId) ? current.customThemeId : null;
+      this.writeReaderAppearance({ ...current, themes, customThemeId });
+      if (!customThemeId) this.db.prepare("UPDATE preferences SET appearance=CASE WHEN appearance='custom' THEN 'system' ELSE appearance END WHERE id=1").run();
       return this.preferences(languages);
     });
   }
