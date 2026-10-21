@@ -136,6 +136,24 @@ transform or backdrop filter is applied to ancestors of virtual rows, fixed menu
 floating controls or the ruler. A single empty sibling surface bounds blur to the
 viewport. Hidden discussion tabs do not mount wallpaper images.
 
+## Wallpaper example
+
+The actual Electron reader below uses the current built-in warm **Charcoal**
+theme with **85% reading-surface opacity** and **8 px blur**. The discussion and
+people are fictional demo data captured in a disposable profile.
+
+![Demo discussion in the warm Charcoal theme over Carmine Rock wallpaper, with 85% reading-surface opacity and 8 px blur](screenshots/wallpaper-charcoal.png)
+
+Wallpaper: **[Carmine Rock — ReFiend](https://www.deviantart.com/refiend/art/Carmine-Rock-736895172)**.
+Redistribution permission has not been established; this credit is not a license
+to reuse the artwork. The artwork appears here in an application screenshot;
+the full-resolution wallpaper is not bundled with the application.
+
+These example settings are optional. The application defaults remain wallpaper
+disabled, 92% opacity and 8 px blur. To create a similar view with an image you
+have permission to use, choose **Charcoal** in Settings, then follow the
+[reader wallpaper setup](#reader-wallpaper) above.
+
 ## Storage, safety and backups
 
 Schema **15** adds validated appearance configuration and extends the appearance

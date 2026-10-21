@@ -1,0 +1,29 @@
+{
+  "source": "Actual Electron window loading the Forge-built main/preload/renderer; unmodified compositor capture",
+  "capturedAt": "2026-10-21T21:51:59.782Z",
+  "electron": "44.4.5",
+  "data": "Invented demo discussions and people in an owned disposable SQLite profile; offline geometric avatars",
+  "appearance": "Built-in Charcoal; every rendered palette token checked against src/shared/themes/charcoal.json",
+  "wallpaper": {
+    "title": "Carmine Rock",
+    "artist": "ReFiend",
+    "source": "https://www.deviantart.com/refiend/art/Carmine-Rock-736895172",
+    "permission": "Redistribution permission has not been established.",
+    "surfaceOpacity": 85,
+    "blur": 8
+  },
+  "builtMainSha256": "c201dcdbf706c84e10322941dae2839edc62278031e73ccf81821e341b5716dc",
+  "rendererAssetsSha256": {
+    "discussion-query.worker-DJ9IMWpC.js": "706fce715a73863a51a7f8400a5c2a5baf10f359c48ca4119bf1a3ce6461709f",
+    "index-BsqZeBol.js": "a030579061260519b2d9de3d01d87ac5f0786baa64792766c72e166b51a18ef7",
+    "index-ZK8KIbVT.css": "a5c8b3f4ce2e50e8aaca93bd1ee5d4470434bafe817e719228f94f59340a08c4"
+  },
+  "files": [
+    {
+      "file": "wallpaper-charcoal.png",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "ae5295d9ee5816b4f71b68320f4e37056c1ea530f8bee570e24ddb704eab6f8a"
+    }
+  ]
+}

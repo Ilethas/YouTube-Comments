@@ -7,6 +7,15 @@ where you can search them, mark what you have read, and come back later.
 This is a personal project. Other people are welcome to use it, but development
 and maintenance happen as time allows.
 
+![Demo reader in the warm Charcoal theme with Carmine Rock wallpaper, 85% reading-surface opacity and 8 px background blur](docs/screenshots/wallpaper-charcoal.png)
+
+**Charcoal theme · Carmine Rock wallpaper · 85% reading-surface opacity · 8 px background blur**
+
+Artwork: [Carmine Rock — ReFiend](https://www.deviantart.com/refiend/art/Carmine-Rock-736895172).
+See the [wallpaper example](docs/APPEARANCE.md#wallpaper-example) for setup details.
+
+**Default Light theme**
+
 ![Light reader with nested comments, creator replies, round selection controls, square seen checkboxes, and overview ruler](docs/screenshots/reader-light.png)
 
 The screenshots use invented discussions and people in the actual Electron app.
@@ -36,7 +45,8 @@ The screenshots use invented discussions and people in the actual Electron app.
 - Backs up and restores the local library through Settings. The interface supports
   English and Polish, with System, Light, Dark, neutral Charcoal and imported JSON
   themes. Optional local wallpaper sits behind the centered reader with adjustable
-  opacity and blur. See [appearance setup and example theme](docs/APPEARANCE.md).
+  opacity and blur. See [appearance setup and example theme](docs/APPEARANCE.md)
+  and the [wallpaper example](docs/APPEARANCE.md#wallpaper-example).
 
 ## Running on Windows
 
