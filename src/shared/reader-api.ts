@@ -1,3 +1,5 @@
+import { isReaderAppearanceChange, themeId } from './appearance';
+import type { ReaderAppearanceChange } from './appearance';
 import type { SharedStamp, SharedCommit, SharedSnapshot, SharedItemSnapshot, SharedMetadata, SharedViewSnapshot } from './reader-sync';
 import type { AcquisitionNotification, AcquisitionProgress, AcquisitionTimings } from './acquisition';
 import type { Comment, ContentItem } from '../domain/discussion';
@@ -11,7 +13,7 @@ import type { DiscussionViewIntent, SaveDiscussionViewRequest, ViewInstance } fr
 import type { DiscussionCollapse, SetDiscussionCollapseRequest } from '../domain/discussion-collapse';
 import type { DataBackupResult } from './data-backup';
 
-export type ErrorCode = 'INVALID_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA'
+export type ErrorCode = 'INVALID_THEME' | 'INVALID_WALLPAPER' | 'APPEARANCE_IMPORT_FAILED' | 'THEME_LIMIT' | 'INVALID_REQUEST' | 'FORBIDDEN' | 'NOT_FOUND' | 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA'
   | 'ACQUISITION_CANCELLED' | 'ACQUISITION_BUSY' | 'HELPER_UNAVAILABLE' | 'ACQUISITION_FAILED' | 'NOT_REFRESHABLE' | 'NOT_REMOVABLE' | 'SOURCE_OPEN_FAILED' | 'NOT_OPENABLE'
   | 'STATE_CONFLICT' | 'UNDO_CONFLICT' | 'TRANSLATION_TOO_LONG' | 'INVALID_BACKUP' | 'NEWER_BACKUP' | 'OLDER_BACKUP' | 'DATA_BUSY' | 'DATA_WRITE_FAILED' | 'RESTORE_FAILED' | 'RECOVERY_REQUIRED';
 /** Stable codes cross IPC; raw privileged diagnostics never reach the renderer. */
@@ -38,6 +40,7 @@ export interface ToggleSeenRequest {
   readonly seen: boolean;
 }
 export type PreferenceChange = { readonly locale: Locale } | { readonly appearance: Appearance } | { readonly translationTarget: TranslationTarget; readonly customTranslationTarget?: string }
+  | { readonly readerAppearance: ReaderAppearanceChange } | { readonly removeWallpaper: { readonly expectedRevision: number } } | { readonly deleteTheme: { readonly id: string; readonly expectedRevision: number } }
   | { readonly selectionControls: SelectionControls } | { readonly includeCollapsedInPrefix: boolean };
 /** Identity only; main reads content and preferences and reconstructs destinations. */
 export interface CommentActionRequest { readonly itemId: string; readonly commentId: string; readonly action: 'author' | 'permalink' | 'translate' | 'copy-permalink' }
@@ -81,6 +84,9 @@ export interface ReaderApi {
   getDiscussionView(request: { readonly viewId: string }): Promise<Result<SharedViewSnapshot>>;
   duplicateTab(request: DuplicateTabRequest): Promise<Result<DuplicateTabResult>>;
   getSharedMetadata(): Promise<Result<SharedMetadata>>;
+  importTheme?(): Promise<Result<Preferences | null>>;
+  importWallpaper?(): Promise<Result<Preferences | null>>;
+  getWallpaper?(): Promise<Result<string | null>>;
   getThumbnail(request: RefreshRequest): Promise<Result<string | null>>;
   checkThumbnail(request: RefreshRequest): Promise<Result<string | null>>;
   openThumbnail(request: RefreshRequest): Promise<Result<null>>;
@@ -113,6 +119,7 @@ export interface ReaderApi {
 }
 
 export const readerChannels = {
+  importTheme: 'reader:import-theme', importWallpaper: 'reader:import-wallpaper', getWallpaper: 'reader:get-wallpaper',
   getDiscussionView: 'reader:discussion-view', duplicateTab: 'reader:duplicate-tab',
   getSharedSnapshot: 'reader:shared-snapshot', getSharedMetadata: 'reader:shared-metadata',
   getThumbnail: 'reader:get-thumbnail', checkThumbnail: 'reader:check-thumbnail', openThumbnail: 'reader:open-thumbnail',
@@ -168,8 +175,11 @@ export function isToggleSeenRequest(value: unknown): value is ToggleSeenRequest 
     && identifier(value.itemId) && identifier(value.commentId) && typeof value.subtree === 'boolean' && typeof value.seen === 'boolean';
 }
 export function isPreferenceChange(value: unknown): value is PreferenceChange {
-  return (exactKeys(value, ['locale']) && (value.locale === 'en' || value.locale === 'pl'))
-    || (exactKeys(value, ['appearance']) && ['system', 'light', 'dark'].includes(value.appearance as string))
+  return (exactKeys(value, ['readerAppearance']) && isReaderAppearanceChange(value.readerAppearance))
+    || (exactKeys(value, ['removeWallpaper']) && exactKeys(value.removeWallpaper, ['expectedRevision']) && isRevision(value.removeWallpaper.expectedRevision))
+    || (exactKeys(value, ['deleteTheme']) && exactKeys(value.deleteTheme, ['id', 'expectedRevision']) && themeId(value.deleteTheme.id) && isRevision(value.deleteTheme.expectedRevision))
+    || (exactKeys(value, ['locale']) && (value.locale === 'en' || value.locale === 'pl'))
+    || (exactKeys(value, ['appearance']) && ['system', 'light', 'dark', 'charcoal', 'custom'].includes(value.appearance as string))
     || (exactKeys(value, ['translationTarget']) && translationTargets.includes(value.translationTarget as TranslationTarget))
     || (exactKeys(value, ['translationTarget', 'customTranslationTarget']) && value.translationTarget === 'custom'
       && normalizeTranslationCode(value.customTranslationTarget) !== undefined)

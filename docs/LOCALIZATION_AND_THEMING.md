@@ -1,5 +1,16 @@
 # Localization and theming
 
+## Charcoal, custom palettes and reader wallpaper (ADR 0037)
+
+Settings adds neutral Charcoal without changing the original System/Light/Dark
+palettes. All built-ins and imports use a shared version-1 JSON semantic token
+allowlist; OS System changes are observed live with matchMedia. Native form
+color-scheme follows the selected palette. EN/PL controls cover import/deletion,
+wallpaper enable/remove, opacity/blur numeric values, defaults and understandable
+errors. Slider drafts require acknowledged Apply and do not write per input event.
+Forced colors suppress decorative images/translucency. See [Appearance](APPEARANCE.md)
+for editing/importing the example, contrast responsibilities, limits and storage.
+
 ## Custom targets and activity (ADR 0026)
 
 Settings ends with Custom… / Własny…. Code input, Save/Zapisz, validation and help

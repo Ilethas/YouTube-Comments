@@ -14,7 +14,7 @@ export function createReaderBridge(rawInvoke: (channel: string, ...args: unknown
   profileSubscribe?: (listener: (value: unknown) => void) => () => void,
   transferSubscribe?: (listener: (value: unknown) => void) => () => void): ReaderApi {
   const pending = new Set<Promise<unknown>>();
-  const tracked = new Set<string>(['duplicateTab', 'toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'openStoredItem', 'activateTab', 'closeTab', 'openLibrary', 'openSettings', 'moveTab', 'removeLibraryItem', 'chooseHelper', 'clearHelper', 'getHelperStatus'].map(key => readerChannels[key as keyof typeof readerChannels]));
+  const tracked = new Set<string>(['importTheme', 'importWallpaper', 'duplicateTab', 'toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'openStoredItem', 'activateTab', 'closeTab', 'openLibrary', 'openSettings', 'moveTab', 'removeLibraryItem', 'chooseHelper', 'clearHelper', 'getHelperStatus'].map(key => readerChannels[key as keyof typeof readerChannels]));
   const invoke = (channel: string, ...args: unknown[]) => {
     const task = rawInvoke(channel, ...args);
     if (tracked.has(channel)) { pending.add(task); void task.then(() => pending.delete(task), () => pending.delete(task)); }
@@ -61,6 +61,9 @@ export function createReaderBridge(rawInvoke: (channel: string, ...args: unknown
     getDiscussionView: request => invoke(readerChannels.getDiscussionView, request) as ReturnType<ReaderApi['getDiscussionView']>,
     duplicateTab: request => invoke(readerChannels.duplicateTab, request) as ReturnType<ReaderApi['duplicateTab']>,
     getSharedMetadata: () => invoke(readerChannels.getSharedMetadata) as ReturnType<ReaderApi['getSharedMetadata']>,
+    importTheme: () => invoke(readerChannels.importTheme) as Promise<import('../shared/reader-api').Result<import('../shared/preferences').Preferences | null>>,
+    importWallpaper: () => invoke(readerChannels.importWallpaper) as Promise<import('../shared/reader-api').Result<import('../shared/preferences').Preferences | null>>,
+    getWallpaper: () => invoke(readerChannels.getWallpaper) as Promise<import('../shared/reader-api').Result<string | null>>,
     getThumbnail: request => invoke(readerChannels.getThumbnail, request) as ReturnType<ReaderApi['getThumbnail']>,
     checkThumbnail: request => invoke(readerChannels.checkThumbnail, request) as ReturnType<ReaderApi['checkThumbnail']>,
     openThumbnail: request => invoke(readerChannels.openThumbnail, request) as ReturnType<ReaderApi['openThumbnail']>,

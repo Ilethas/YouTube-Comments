@@ -4,6 +4,20 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  cancelAppearance: 'Cancel wallpaper changes',
+  charcoal: 'Charcoal', customTheme: 'Custom theme', importTheme: 'Import JSON theme...', noCustomTheme: 'None', deleteTheme: 'Delete selected theme',
+  readerWallpaper: 'Reader wallpaper', chooseWallpaper: 'Choose image...', removeWallpaper: 'Remove wallpaper', enableWallpaper: 'Enable wallpaper',
+  surfaceOpacity: 'Reading surface opacity', backgroundBlur: 'Background blur', applyAppearance: 'Apply wallpaper settings', appearanceDefaults: 'Restore wallpaper defaults',
+  wallpaperNone: 'No wallpaper selected.', wallpaperSelected: 'A profile-owned wallpaper is selected.',
+  wallpaperMissing: 'The wallpaper is missing or invalid. Choose the image again. The reader is using an opaque background.',
+  wallpaperApplyHelp: 'Adjustments take effect after Apply. Use 100% opacity and 0 px blur for maximum readability.',
+  appearanceBackupHelp: 'Themes and settings are included in SQLite backups. Wallpaper images are separate profile assets and are not backed up. Keep your own copy.',
+  invalidTheme: 'Invalid theme. Use a version-1 JSON palette with supported tokens and #RRGGBB colors (maximum 16 KiB).',
+  invalidWallpaper: 'Invalid image. Choose a PNG, JPEG or static WebP up to 12 MiB, 8192 pixels per side and 16 million pixels in total.',
+  themeLimit: 'Up to 16 custom themes can be stored. Delete a theme before importing another.',
+  appearanceConflict: 'Appearance settings changed or could not be saved. Cancel this draft to load current values, then try again.',
+  appearanceImportFailed: 'The appearance could not be imported or saved. Check file access and available disk space, then try again.',
+
   applicationMenu: 'Application menu', newWindow: 'New Window', closeWindow: 'Close Window', quitApplication: 'Quit Application',
   windowActionFailed: 'The window command could not be completed. Try again.', shortcutNativeWindow: 'Native application command',
   moveTabTitle: 'Move Tab', moveTabHelp: 'Choose a destination for this tab, then select Move.',
@@ -18,7 +32,7 @@ const en = {
   moveToWindow: 'Move to Window…', moveToNewWindow: 'Move to New Window', moveWindowLabel: 'Window {number}',
   noMoveWindows: 'No other window is available.', moveFailed: 'The tab could not be moved. Its source is preserved. Try again from the tab menu.',
   movingTab: 'Moving tab…', tabMoved: 'Tab moved to the destination window.', tabReceived: 'Moved tab activated in this window.',
-  moveDirtySettings: 'This Settings tab has an unsaved translation draft. Keep editing to preserve it, or explicitly discard the draft before moving.',
+  moveDirtySettings: 'This Settings tab has unsaved changes. Keep editing to preserve them, or explicitly discard the draft before moving.',
   keepEditing: 'Keep editing', discardDraft: 'Discard draft and continue',
 
   duplicateTab: 'Duplicate Tab', tabActions: 'Tab actions', tabActionsHint: 'Tab actions: right-click or Shift+F10',
@@ -188,6 +202,19 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  cancelAppearance: 'Anuluj zmiany tapety',
+  charcoal: 'Grafitowy', customTheme: 'Własny motyw', importTheme: 'Importuj motyw JSON…', noCustomTheme: 'Brak', deleteTheme: 'Usuń wybrany motyw',
+  readerWallpaper: 'Tapeta czytnika', chooseWallpaper: 'Wybierz obraz…', removeWallpaper: 'Usuń tapetę', enableWallpaper: 'Włącz tapetę',
+  surfaceOpacity: 'Krycie powierzchni czytnika', backgroundBlur: 'Rozmycie tła', applyAppearance: 'Zastosuj ustawienia tapety', appearanceDefaults: 'Przywróć domyślne ustawienia tapety',
+  wallpaperNone: 'Nie wybrano tapety.', wallpaperSelected: 'Wybrano tapetę zapisaną w profilu.',
+  wallpaperMissing: 'Brak tapety lub plik jest nieprawidłowy. Wybierz obraz ponownie. Czytnik używa nieprzezroczystego tła.',
+  wallpaperApplyHelp: 'Zmiany zaczną działać po zastosowaniu. Dla maksymalnej czytelności ustaw krycie 100% i rozmycie 0 px.',
+  appearanceBackupHelp: 'Motywy i ustawienia są w kopiach SQLite. Obrazy tapet są osobnymi plikami profilu i nie są kopiowane. Zachowaj własną kopię.',
+  invalidTheme: 'Nieprawidłowy motyw. Użyj palety JSON w wersji 1 z obsługiwanymi tokenami i kolorami #RRGGBB (maksymalnie 16 KiB).',
+  invalidWallpaper: 'Nieprawidłowy obraz. Wybierz PNG, JPEG lub statyczny WebP do 12 MiB, 8192 pikseli na bok i 16 milionów pikseli łącznie.',
+  themeLimit: 'Można zapisać do 16 własnych motywów. Usuń motyw przed importem kolejnego.',
+  appearanceConflict: 'Ustawienia wyglądu zmieniły się lub zapis nie powiódł się. Anuluj szkic, aby wczytać aktualne wartości, i spróbuj ponownie.',
+  appearanceImportFailed: 'Nie udało się zaimportować lub zapisać wyglądu. Sprawdź dostęp do pliku i wolne miejsce na dysku, a następnie spróbuj ponownie.',
   applicationMenu: 'Menu aplikacji', newWindow: 'Nowe okno', closeWindow: 'Zamknij okno', quitApplication: 'Zakończ aplikację',
   windowActionFailed: 'Nie udało się wykonać polecenia okna. Spróbuj ponownie.', shortcutNativeWindow: 'Natywne polecenie aplikacji',
   moveTabTitle: 'Przenieś kartę', moveTabHelp: 'Wybierz miejsce docelowe dla tej karty, a następnie przycisk Przenieś.',
@@ -202,7 +229,7 @@ const pl: Record<Key, string> & Record<string, string> = {
   moveToWindow: 'Przenieś do okna…', moveToNewWindow: 'Przenieś do nowego okna', moveWindowLabel: 'Okno {number}',
   noMoveWindows: 'Brak innych dostępnych okien.', moveFailed: 'Nie udało się przenieść karty. Karta źródłowa została zachowana. Spróbuj ponownie z menu karty.',
   movingTab: 'Przenoszenie karty…', tabMoved: 'Karta przeniesiona do okna docelowego.', tabReceived: 'Przeniesiona karta jest aktywna w tym oknie.',
-  moveDirtySettings: 'Ta karta Ustawień zawiera niezapisany szkic celu tłumaczenia. Kontynuuj edycję, aby go zachować, lub jawnie odrzuć szkic przed przeniesieniem.',
+  moveDirtySettings: 'Ta karta Ustawień zawiera niezapisane zmiany. Kontynuuj edycję, aby je zachować, lub jawnie odrzuć szkic przed przeniesieniem.',
   keepEditing: 'Kontynuuj edycję', discardDraft: 'Odrzuć szkic i kontynuuj',
 
   duplicateTab: 'Duplikuj kartę', tabActions: 'Działania karty', tabActionsHint: 'Działania karty: prawy przycisk lub Shift+F10',

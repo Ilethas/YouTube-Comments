@@ -1,3 +1,4 @@
+import type { AppearanceAssets } from './appearance-assets';
 import type { TabTransferCoordinator } from './tab-transfer-coordinator';
 import type { SharedCommit, SharedSnapshot, SharedItemSnapshot, SharedMetadata, SharedViewSnapshot } from '../shared/reader-sync';
 import type { ReaderCallerContext } from './caller-context';
@@ -106,6 +107,8 @@ export class ReaderService {
   private dataPending?: Promise<Result<DataBackupResult>>;
   private stopping = false;
   private restartPending = false;
+  private appearancePending?: Promise<Result<Preferences | null>>;
+  private wallpaperGrant?: { id: string; token: string };
   private thumbnailGrants = new Map<string, { itemId: string; value: CachedThumbnail }>();
   constructor(private readonly open: () => ReaderRepository, private readonly languages: readonly string[],
     private readonly diagnose: (error: unknown) => void = console.error,
@@ -115,7 +118,8 @@ export class ReaderService {
     private readonly notifyProgress: (value: AcquisitionNotification) => void = () => undefined,
     private readonly dataOptions?: DataBackupOptions,
     private readonly copyText?: (text: string) => void | Promise<void>,
-    private readonly thumbnails?: { cache: ThumbnailCache; openPath: (file: string) => Promise<string> }) {
+    private readonly thumbnails?: { cache: ThumbnailCache; openPath: (file: string) => Promise<string> },
+    private readonly appearanceAssets?: AppearanceAssets) {
     this.initializeStorage();
   }
 
@@ -144,6 +148,8 @@ export class ReaderService {
   dispatch(operation: 'bootstrap' | 'removeLibraryItem', args: readonly unknown[], caller?: ReaderCallerContext): Result<ReaderState>;
   dispatch(operation: 'toggleSeen' | 'bulkSeen', args: readonly unknown[], caller?: ReaderCallerContext): Result<SeenMutationResult>;
   dispatch(operation: 'undoSeen', args: readonly unknown[], caller?: ReaderCallerContext): Result<SeenUndoResult>;
+  dispatch(operation: 'importTheme' | 'importWallpaper', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<Preferences | null>>;
+  dispatch(operation: 'getWallpaper', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<string | null>>;
   dispatch(operation: 'updatePreferences', args: readonly unknown[], caller?: ReaderCallerContext): Result<Preferences>;
   dispatch(operation: 'openStoredItem' | 'activateTab' | 'closeTab' | 'openLibrary' | 'openSettings' | 'moveTab', args: readonly unknown[], caller?: ReaderCallerContext): Result<WorkspaceState>;
   dispatch(operation: 'acquire' | 'refresh', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<AcquisitionResult>>;
@@ -162,7 +168,7 @@ export class ReaderService {
   dispatch(operation: 'openThumbnail', args: readonly unknown[], caller?: ReaderCallerContext): Promise<Result<null>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[], caller?: ReaderCallerContext): Result<ServiceValue> | Promise<Result<ServiceValue>>;
   dispatch(operation: ReaderOperation, args: readonly unknown[], caller?: ReaderCallerContext): Result<ServiceValue> | Promise<Result<ServiceValue>> {
-    const shared = ['duplicateTab', 'bootstrap', 'toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'removeLibraryItem',
+    const shared = ['importTheme', 'importWallpaper', 'duplicateTab', 'bootstrap', 'toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'removeLibraryItem',
       'openStoredItem', 'activateTab', 'closeTab', 'openLibrary', 'openSettings', 'moveTab', 'acquire', 'refresh',
       'chooseHelper', 'clearHelper', 'saveDiscussionView', 'setDiscussionCollapse'].includes(operation);
     const attach = (result: Result<ServiceValue>): Result<ServiceValue> => {
@@ -179,8 +185,16 @@ export class ReaderService {
       this.dataPending = this.runDataOperation(operation, caller).finally(() => { this.dataPending = undefined; });
       return this.dataPending;
     }
-    const read = ['getAcquisitionProgress', 'getSharedSnapshot', 'getSharedMetadata', 'getDiscussionView', 'bootstrap'].includes(operation);
+    const read = ['getAcquisitionProgress', 'getSharedSnapshot', 'getSharedMetadata', 'getDiscussionView', 'getWallpaper', 'bootstrap'].includes(operation);
     if (this.stopping || this.restartPending || !read && !checkpoint && (this.lifecycle ? this.lifecycle.blocks(caller) : this.dataPending)) return { ok: false, error: { code: 'DATA_BUSY' } };
+    if (operation === 'importTheme' || operation === 'importWallpaper') {
+      if (args.length) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+      if (!caller || !caller.isCurrent()) return { ok: false, error: { code: 'FORBIDDEN' } };
+      if (this.appearancePending) return { ok: false, error: { code: 'DATA_BUSY' } };
+      this.appearancePending = this.importAppearance(operation, caller).finally(() => { this.appearancePending = undefined; });
+      return this.appearancePending;
+    }
+    if (operation === 'getWallpaper') return args.length ? { ok: false, error: { code: 'INVALID_REQUEST' } } : this.getWallpaper();
     if (operation === 'getAcquisitionProgress') return args.length === 0
       ? { ok: true, value: this.acquisition?.current() ?? null } : { ok: false, error: { code: 'INVALID_REQUEST' } };
     if (operation === 'cancelAcquisition') {
@@ -278,6 +292,52 @@ export class ReaderService {
       return { ok: false, error: { code: error instanceof StateConflictError ? 'STATE_CONFLICT' : error instanceof ViewOwnershipError ? 'FORBIDDEN' : error instanceof UndoConflictError ? 'UNDO_CONFLICT' : error instanceof MissingCommentError ? 'NOT_FOUND' : error instanceof NotRemovableError ? 'NOT_REMOVABLE' : error instanceof InvalidWorkspaceMoveError || error instanceof InvalidSeenTargetError || error instanceof InvalidDiscussionViewError || error instanceof InvalidPreferenceError ? 'INVALID_REQUEST' : 'STORAGE_UNAVAILABLE' } };
     }
   }
+  private async importAppearance(operation: 'importTheme' | 'importWallpaper', caller: ReaderCallerContext): Promise<Result<Preferences | null>> {
+    const repository = this.repository, assets = this.appearanceAssets;
+    if (!repository || !assets) return { ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } };
+    const allowed = () => caller.isCurrent() && this.repository === repository && this.nativeWritesAllowed() && !this.lifecycle?.blocks(caller);
+    const current = repository.readerAppearance();
+    if (operation === 'importTheme' && current.themes.length >= 16) return { ok: false, error: { code: 'THEME_LIMIT' } };
+    let selected = false, committing = false;
+    try {
+      const file = await assets.options.choose(operation === 'importTheme' ? 'theme' : 'wallpaper', repository.preferences(this.languages).locale, caller);
+      if (!allowed() || !file) return { ok: true, value: null };
+      selected = true;
+      const value = operation === 'importTheme' ? await assets.theme(file) : await assets.wallpaper(file);
+      if (!allowed()) return { ok: true, value: null };
+      committing = true;
+      const preferences = typeof value === 'string' ? repository.importWallpaper(value, this.languages, current.revision) : repository.importTheme(value, this.languages, current.revision);
+      return { ok: true, value: preferences };
+    } catch (error) {
+      if (!allowed()) return { ok: true, value: null };
+      if (error instanceof StateConflictError) return { ok: false, error: { code: 'STATE_CONFLICT' } };
+      if ((error as NodeJS.ErrnoException).code && ['EACCES', 'EPERM', 'ENOSPC', 'EROFS', 'EIO'].includes(String((error as NodeJS.ErrnoException).code))) return { ok: false, error: { code: 'APPEARANCE_IMPORT_FAILED' } };
+      return { ok: false, error: { code: committing ? 'APPEARANCE_IMPORT_FAILED' : selected ? operation === 'importTheme' ? 'INVALID_THEME' : 'INVALID_WALLPAPER' : 'APPEARANCE_IMPORT_FAILED' } };
+    }
+  }
+  private async getWallpaper(): Promise<Result<string | null>> {
+    if (!this.repository) return { ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } };
+    try {
+      const value = this.repository.readerAppearance();
+      if (!value.wallpaperEnabled || !value.wallpaperId || !this.appearanceAssets || !await this.appearanceAssets.read(value.wallpaperId)) return { ok: true, value: null };
+      if (this.stopping || this.restartPending || this.repository.readerAppearance().wallpaperId !== value.wallpaperId) return { ok: true, value: null };
+      if (this.wallpaperGrant?.id !== value.wallpaperId) this.wallpaperGrant = { id: value.wallpaperId, token: randomUUID() };
+      return { ok: true, value: `reader-wallpaper://asset/${this.wallpaperGrant.token}` };
+    } catch { return { ok: true, value: null }; }
+  }
+  /** Opaque profile-incarnation grant. Removed/disabled/restored assets cannot
+   * be read using a stale URL; no URL component is ever treated as a path. */
+  async wallpaperImage(url: string): Promise<Buffer | undefined> {
+    if (this.stopping || this.restartPending || !this.repository || !this.appearanceAssets) return;
+    const grant = this.wallpaperGrant;
+    if (!grant || url !== `reader-wallpaper://asset/${grant.token}`) return;
+    const current = this.repository.readerAppearance();
+    if (!current.wallpaperEnabled || current.wallpaperId !== grant.id) return;
+    const bytes = await this.appearanceAssets.read(grant.id);
+    if (this.stopping || this.restartPending || this.repository.readerAppearance().wallpaperId !== grant.id || !this.repository.readerAppearance().wallpaperEnabled) return;
+    return bytes;
+  }
+
   private async thumbnail(operation: 'getThumbnail' | 'checkThumbnail' | 'openThumbnail', args: readonly unknown[]): Promise<Result<string | null>> {
     if (args.length !== 1 || !isRefreshRequest(args[0])) return { ok: false, error: { code: 'INVALID_REQUEST' } };
     const itemId = args[0].itemId;

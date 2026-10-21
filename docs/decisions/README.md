@@ -1,5 +1,9 @@
 # Decisions and open questions
 
+[ADR 0037: Validated themes and reader wallpaper](0037-validated-themes-and-reader-wallpaper.md)
+adds Charcoal, versioned JSON palettes and profile-owned bounded raster wallpaper on
+schema **15**, using existing preferences synchronization and lifecycle barriers.
+
 The [M9.2 final review](../M9_2_VERIFICATION.md) records documentation, screenshots,
 regression/distribution evidence and outstanding owner/manual release gates.
 It selects no new architecture, schema or performance policy. Historical milestone

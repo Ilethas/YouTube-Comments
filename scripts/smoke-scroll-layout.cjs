@@ -116,6 +116,9 @@ if (process.versions.electron) {
     const point = await js(w, `(()=>{const r=${panel}.getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`);
     w.webContents.sendInputEvent({ type: 'mouseWheel', ...point, deltaY: upward ? 240 : -240, deltaX: 0 });
     await wait(() => js(w, `${panel}.scrollTop${upward ? '<' : '>'}${before}`), 'native reader wheel');
+    // Capture cached-tab anchors only after the native wheel's full scroll
+    // sequence, rather than racing the first frame of Chromium's scrolling.
+    await js(w, `new Promise(resolve=>{let previous=-1,stable=0,frames=0;const tick=()=>{const top=${panel}.scrollTop;stable=Math.abs(top-previous)<.1?stable+1:0;previous=top;if(stable>=4||++frames>=120)resolve();else requestAnimationFrame(tick)};requestAnimationFrame(tick)})`);
     await geometry(w, 'native wheel after transfer');
   }
   async function anchor(w) {
@@ -156,7 +159,10 @@ if (process.versions.electron) {
       await js(b, "document.getElementById('settings-toggle').click();void 0");
       await wait(() => js(b, "!!document.querySelector('.reader-panel:not([hidden]) .settings-view')"), 'Settings tab');
       await geometry(b, 'switch to Settings', messages.received);
-      await activate(b, ids.view); await wait(async () => (await anchor(b))?.id === savedAnchor.id, 'cached tab anchor restored'); const restored = await anchor(b);
+      await activate(b, ids.view);
+      try { await wait(async () => (await anchor(b))?.id === savedAnchor.id, 'cached tab anchor restored'); }
+      catch (error) { console.error('Cached anchor evidence', JSON.stringify({savedAnchor,actual:await anchor(b),state:(await boot(b)).discussionViews[ids.view],geometry:await geometry(b,'cached anchor failure'),rows:await js(b,`(()=>{const p=${panel},l=p.querySelector('.virtual-reader');return {panelTop:p.getBoundingClientRect().top,listTop:l.getBoundingClientRect().top,items:[...p.querySelectorAll('.virtual-comment')].map(e=>({index:e.dataset.index,top:e.getBoundingClientRect().top,bottom:e.getBoundingClientRect().bottom,transform:e.style.transform}))}})()`)})); throw error; }
+      const restored = await anchor(b);
       assert.equal(restored.id, savedAnchor.id); assert.ok(Math.abs(restored.offset - savedAnchor.offset) < 3);
       for (const size of [{width:720,height:520},{width:1280,height:900},{width:900,height:650}]) {
         b.setBounds(size); await frames(b); await scroll(b, true); await wheel(b, true);

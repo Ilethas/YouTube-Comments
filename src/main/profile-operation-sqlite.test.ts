@@ -110,6 +110,6 @@ it('confirmed restore replaces offline with all old commands fenced and a fresh 
   expect(await restore).toMatchObject({ value: { status: 'restarting' } });
   expect(s.lifecycle.phase).toBe('RESTARTING');
   expect(s.service.dispatch('saveDiscussionView', [{ itemId: 'video-demo' }], s.callers[0])).toMatchObject({ error: { code: 'DATA_BUSY' } });
-  expect(validateBackup(s.file)).toBe(14);
+  expect(validateBackup(s.file)).toBe(15);
   const reopened = ReaderRepository.open(s.file); try { expect(reopened.stamp().profileEpoch).not.toBe(oldEpoch); } finally { reopened.close(); }
 });

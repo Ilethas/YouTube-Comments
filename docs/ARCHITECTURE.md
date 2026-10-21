@@ -1,5 +1,18 @@
 # Architecture
 
+## Appearance configuration (schema 15)
+
+[ADR 0037](decisions/0037-validated-themes-and-reader-wallpaper.md) adds strict
+semantic JSON palettes, Charcoal and profile-owned wallpaper. Main owns bounded
+native imports, actual decoding/re-encoding and opaque local image capabilities.
+PNG/JPEG use nativeImage; WebP uses an ephemeral sandboxed WebContentsView with no
+native window, preload, network or reader authority, followed by main validation.
+Themes/settings use SQLite and the existing shared preference commit stream/CAS
+and lifecycle barriers; wallpaper bytes remain external assets. A stationary
+viewport sibling supplies blur/translucency without changing virtual row or fixed
+overlay ancestors. See [Appearance](APPEARANCE.md) for the format and backup limits.
+The historical milestone sections below retain their original schema boundaries.
+
 ## Measured multi-window payload hardening (M9.1)
 
 [M9.1](M9_1_PERFORMANCE.md) measures actual production-entry readers at 10k/50k

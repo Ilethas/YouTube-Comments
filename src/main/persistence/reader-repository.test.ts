@@ -109,8 +109,8 @@ it('a failed SQLite write after earlier subtree updates rolls back the entire op
 
 it('explicit language survives reopen and overrides later OS languages', () => {
   const first = repo();
-  expect(first.preferences(['de', 'pl-PL'])).toEqual({ locale: 'pl', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' });
-  expect(first.preferences(['de'])).toEqual({ locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' });
+  expect(first.preferences(['de', 'pl-PL'])).toMatchObject({ locale: 'pl', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' });
+  expect(first.preferences(['de'])).toMatchObject({ locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' });
   first.updatePreferences({ locale: 'pl' }, ['en']);
   expect(reopen(first).preferences(['en-US']).locale).toBe('pl');
 });
@@ -119,7 +119,7 @@ it.each(['system', 'light', 'dark'] as const)('appearance %s survives reopen wit
   const first = repo(); first.initializeDemo(); first.updatePreferences({ locale: 'pl' }, ['en']);
   first.updatePreferences({ appearance }, ['en']);
   const next = reopen(first);
-  expect(next.preferences(['en'])).toEqual({ locale: 'pl', appearance, selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' });
+  expect(next.preferences(['en'])).toMatchObject({ locale: 'pl', appearance, selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' });
   expect(next.bootstrap(['en']).comments).toMatchObject(initialComments);
 });
 

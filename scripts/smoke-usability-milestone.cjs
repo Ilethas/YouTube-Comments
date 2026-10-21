@@ -41,7 +41,7 @@ if (process.versions.electron) {
     async function apply() { await js(`${panel}.querySelector('.query-controls').requestSubmit()`); await pause(120); }
     await wait("!!document.querySelector('.app-shell')");
     const db = new DatabaseSync(database(root), { readOnly: true });
-    try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 14); assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []); } finally { db.close(); }
+    try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 15); assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []); } finally { db.close(); }
     const before = await boot();
     contents.debugger.attach('1.3');
     await contents.debugger.sendCommand('Emulation.setTimezoneOverride', { timezoneId: 'Europe/Warsaw' });

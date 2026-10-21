@@ -1,3 +1,6 @@
+import { encodeWallpaper } from './main/wallpaper-decoder';
+import { AppearanceAssets } from './main/appearance-assets';
+import { createAppearancePicker } from './main/appearance-picker';
 import { isAcquisitionNotification } from './shared/acquisition';
 import { app, shell, dialog, clipboard, protocol, nativeImage, Menu, BrowserWindow } from 'electron';
 import { existsSync } from 'node:fs';
@@ -25,7 +28,7 @@ import { fileMenu } from './main/application-menu';
 if (!started) startReader();
 
 function startReader() {
-  protocol.registerSchemesAsPrivileged([{ scheme: 'reader-thumbnail', privileges: { standard: true, secure: true, supportFetchAPI: false } }]);
+  protocol.registerSchemesAsPrivileged([{ scheme: 'reader-thumbnail', privileges: { standard: true, secure: true, supportFetchAPI: false } }, { scheme: 'reader-wallpaper', privileges: { standard: true, secure: true, supportFetchAPI: false } }]);
   if (process.platform === 'win32') app.setAppUserModelId(identity.appUserModelId);
 
   // A privileged, explicit demo root also permits testing the packaged artifact
@@ -75,6 +78,19 @@ function startReader() {
         const image = nativeImage.createFromBuffer(bytes);
         return image.isEmpty() ? undefined : image.getSize();
       } }), openPath: file => shell.openPath(file),
+    }, new AppearanceAssets(path.join(path.dirname(databasePath), 'appearance', 'wallpapers'), {
+      choose: createAppearancePicker(caller => windows.originWindow(caller)),
+      encode: encodeWallpaper,
+      validate: (bytes, width, height) => {
+        const image = nativeImage.createFromBuffer(bytes);
+        return !image.isEmpty() && image.getSize().width === width && image.getSize().height === height;
+      },
+    }));
+    protocol.handle('reader-wallpaper', async request => {
+      try {
+        const bytes = request.method === 'GET' ? await service.wallpaperImage(request.url) : undefined;
+        return bytes ? new Response(new Uint8Array(bytes), { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'" } }) : new Response(null, { status: 404 });
+      } catch { return new Response(null, { status: 404 }); }
     });
     protocol.handle('reader-thumbnail', async request => {
       try {

@@ -33,7 +33,8 @@ it('M3 freezes the reader immediately, delays only presentation, and restores fo
     onEvent: (listener: typeof receive) => { receive = listener; return () => undefined; }, current: async () => ({ ok: true, value: null }),
     resume: vi.fn(async () => ({ ok: true, value: null })), settleAccepted: async () => true,
   } as unknown as import('../shared/profile-operation').ProfileLifecycleApi };
-  await showReader(); const origin = screen.getAllByRole('tab')[0]; origin.focus();
+  await showReader(); await waitFor(() => expect(receive).toBeTypeOf('function'));
+  const origin = screen.getAllByRole('tab')[0]; origin.focus();
   const event: import('../shared/profile-operation').ProfileEvent = { operationId: 'operation-a', profileEpoch: 'epoch', stamp: { profileEpoch: 'epoch', commitRevision: 0 }, kind: 'close', phase: 'PREPARING', failed: false };
   vi.useFakeTimers();
   try {
@@ -116,7 +117,7 @@ beforeEach(() => {
       return { ok: true as const, value: mutation(comments) };
     }),
     updatePreferences: vi.fn<ReaderApi['updatePreferences']>(async change => {
-      state = { ...state, preferences: { ...state.preferences, ...change } };
+      state = { ...state, preferences: { ...state.preferences, ...('readerAppearance' in change || 'removeWallpaper' in change || 'deleteTheme' in change ? {} : change) } };
       return { ok: true as const, value: state.preferences };
     }),
   };
@@ -1458,7 +1459,7 @@ it('M2 local checkbox and preference controls use committed notifications while 
   api.openSettings = vi.fn(async () => { const result = await open({ expectedRevision: 0 }); publish({ kind: 'workspace' }); return result; });
   api.updatePreferences = vi.fn(async change => {
     const before = state.preferences;
-    state = { ...state, preferences: { ...state.preferences, ...change } };
+    state = { ...state, preferences: { ...state.preferences, ...('readerAppearance' in change || 'removeWallpaper' in change || 'deleteTheme' in change ? {} : change) } };
     publish({ kind: 'preferences' });
     return { ok: true as const, value: before };
   });

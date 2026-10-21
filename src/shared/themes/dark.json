@@ -1,0 +1,23 @@
+{
+  "schema": "youtube-comments-theme",
+  "version": 1,
+  "name": "Dark",
+  "colorScheme": "dark",
+  "tokens": {
+    "background": "#151b23",
+    "surface": "#1d2530",
+    "surface-raised": "#242e3b",
+    "text": "#e5eaf0",
+    "muted": "#abb8c8",
+    "border": "#3a4859",
+    "creator": "#d4b0f0",
+    "accent": "#9dc7ff",
+    "accent-soft": "#223956",
+    "unseen": "#9dc7ff",
+    "new-text": "#ffdc88",
+    "new-surface": "#4e4021",
+    "focus": "#9dc7ff",
+    "danger": "#ffadb5",
+    "danger-soft": "#48232b"
+  }
+}

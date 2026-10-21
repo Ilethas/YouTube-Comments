@@ -32,8 +32,9 @@ async function verifyTabHover(window) {
     await debuggerApi.sendCommand('Page.enable');
     const { root } = await debuggerApi.sendCommand('DOM.getDocument');
     const selectors = ['.tab[data-active=true] [role=tab]', '.tab[data-active=true] .tab-close'];
-    for (const theme of ['light', 'dark']) {
-      await js(`document.documentElement.dataset.appearance=${JSON.stringify(theme)}`);
+    for (const theme of ['light', 'dark', 'charcoal']) {
+      await js(`window.reader.updatePreferences({appearance:${JSON.stringify(theme)}})`);
+      await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
       const rect = await js(`(() => {const r=document.querySelector('.tab[data-active=true]').getBoundingClientRect();
         return {x:Math.round(r.left)+5,y:Math.round(r.top)+2,width:Math.floor(r.width)-10,height:1};})()`);
       const line = async () => {
@@ -62,7 +63,7 @@ async function verifyTabHover(window) {
       }
     }
   } finally {
-    await js("document.documentElement.dataset.appearance='system'");
+    await js("window.reader.updatePreferences({appearance:'system'})");
     debuggerApi.detach();
     contents.setBackgroundThrottling(backgroundThrottling);
     window.hide();
@@ -292,7 +293,7 @@ async function verifyWindow(window, nativeTheme) {
   await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .query-controls') !== null", 'bootstrap');
   await verifyHelperSettings();
   if (phase === 'environment') return;
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'closeWindow', 'createBackup', 'duplicateTab', 'getAcquisitionProgress', 'getDiscussionView', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'lifecycle', 'moveTab', 'newWindow', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'quitApplication', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'transfers', 'undoSeen', 'updatePreferences', 'windowReady']);
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'closeWindow', 'createBackup', 'duplicateTab', 'getAcquisitionProgress', 'getDiscussionView', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'getWallpaper', 'importTheme', 'importWallpaper', 'lifecycle', 'moveTab', 'newWindow', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThumbnail', 'quitApplication', 'refresh', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'setDiscussionCollapse', 'toggleSeen', 'transfers', 'undoSeen', 'updatePreferences', 'windowReady']);
   assert.equal(await js('Object.isFrozen(window.reader.transfers)'), true);
   assert.deepEqual(await js('Object.keys(window.reader.transfers).sort()'), ['adopted', 'begin', 'cancel', 'destinations', 'endDrag', 'hoverDrag', 'move', 'offerDrag', 'onEvent', 'prepareDrag', 'ready', 'startDrag']);
   assert.deepEqual(await js('Object.keys(window.reader.lifecycle).sort()'), ['ack', 'command', 'current', 'onEvent', 'plan', 'refuse', 'resume', 'settleAccepted', 'stage', 'submit']);
@@ -360,7 +361,7 @@ async function verifyWindow(window, nativeTheme) {
       await waitFor("document.querySelector('.acquisition-spinner') !== null", 'acquisition spinner');
       assert.equal(await js("getComputedStyle(document.querySelector('.acquisition-spinner')).animationName"), 'acquisition-spin');
       assert.equal(await js("!!document.querySelector('.acquisition-status [role=status]') && !document.querySelector('.acquisition-status progress')"),true);
-      assert.equal(await js("Array.from(document.querySelectorAll('input[type=checkbox]')).every(input => !input.disabled)"), true);
+      assert.equal(await js("Array.from(document.querySelectorAll('.reader-panel:not([hidden]) input[type=checkbox]')).every(input => !input.disabled)"), true);
       await waitFor("document.querySelector('#source-url') === null && !document.body.innerText.includes('Pobieranie…')", 'acquisition acknowledgment');
       await waitFor("document.querySelector('.acquisition-spinner') === null", 'activity removed after settlement');
       assert.equal(await js("document.querySelector('[role=alert]') === null"), true);
@@ -381,7 +382,7 @@ async function verifyWindow(window, nativeTheme) {
     assert.equal(await js("document.querySelectorAll('[role=tabpanel]:not([hidden]) .new-badge').length"), 0, 'Real baseline is never NEW');
     assert.equal(await js("document.querySelector('[role=tabpanel]:not([hidden]) .ruler-match').getAttribute('d')"), '', 'Unrestricted identity set has no match lane');
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input').click()");
-    await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input').checked && !document.querySelector('input[type=checkbox]:disabled')", 'acquired seen');
+    await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input').checked && !document.querySelector('.reader-panel:not([hidden]) input[type=checkbox]:disabled')", 'acquired seen');
     state = await snapshot();
     const seenId = state.comments[video.id].find(comment => comment.seen).id;
     async function draftQuery(text, seen = 'all', regex = false) {
@@ -495,7 +496,7 @@ async function verifyWindow(window, nativeTheme) {
     await waitFor(`document.activeElement.dataset.domainCommentId === ${JSON.stringify(discovered.id)}`, 'Ruler reveals NEW target');
     assert.deepEqual(await snapshot(), beforeRuler, 'Ruler navigation never saves seen');
     await js(`Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(discovered.id)}).querySelector('input').click()`);
-    await waitFor(`Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(discovered.id)}).querySelector('input').checked && !document.querySelector('input[type=checkbox]:disabled')`, 'NEW marked seen');
+    await waitFor(`Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(discovered.id)}).querySelector('input').checked && !document.querySelector('.reader-panel:not([hidden]) input[type=checkbox]:disabled')`, 'NEW marked seen');
     assert.equal(await js("document.querySelectorAll('[role=tabpanel]:not([hidden]) .new-badge').length"), 1, 'Seen NEW remains NEW');
     await applyQuery();
     assert.deepEqual(await visibleMatches(), ['comment-' + encodeURIComponent(discovered.id)], 'Seen NEW still matches discovery-only');
@@ -860,7 +861,7 @@ if (process.versions.electron && process.type === 'browser') {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 14);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 15);
         assert.equal(db.prepare('SELECT count(*) AS count FROM helper_settings').get().count,0);
         assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 7);
         assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 3);

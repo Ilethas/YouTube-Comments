@@ -103,7 +103,7 @@ it('v13 migration preserves every prior table, protects bytes and upgrades only 
   expect(validateBackup(target)).toBe(13); await protectBeforeMigration(target); expect(readFileSync(target)).toEqual(bytes);
   const other = path.join(path.dirname(target), 'other.sqlite'); ReaderRepository.open(other).close();
   const staging = await prepareRestore(target, other);
-  expect(validateBackup(path.join(staging, 'candidate.sqlite'))).toBe(14); expect(readFileSync(target)).toEqual(bytes);
+  expect(validateBackup(path.join(staging, 'candidate.sqlite'))).toBe(15); expect(readFileSync(target)).toEqual(bytes);
   const repo = ReaderRepository.open(target);
   try { expect(repo.nativeSession().read()).toMatchObject({ windowIds: [a], lastFocusedId: a }); expect(repo.nativeSession().geometry(a)).toEqual({ revision: 0, geometry: null }); }
   finally { repo.close(); }
@@ -137,5 +137,5 @@ it.each(['ddl', 'commit'])('migration 14 failure at %s preserves the exact v13 b
     expect(raw.prepare("SELECT name FROM sqlite_schema WHERE name LIKE 'window_session%'").all()).toEqual([]);
   } finally { vi.restoreAllMocks(); raw.close(); }
   expect(readFileSync(target)).toEqual(before); expect(validateBackup(target)).toBe(13);
-  ReaderRepository.open(target).close(); expect(validateBackup(target)).toBe(14);
+  ReaderRepository.open(target).close(); expect(validateBackup(target)).toBe(15);
 });

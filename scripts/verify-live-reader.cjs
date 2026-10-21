@@ -102,7 +102,7 @@ if (process.versions.electron && process.type === 'browser') {
           await waitFor("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) .avatar img')).some(img => img.complete && img.naturalWidth > 0)", 'real avatar load');
           const avatars = state.comments[videoId].filter(comment => comment.author?.avatarUrl).length;
           await js("document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input').click()");
-          await waitFor("!document.querySelector('input[type=checkbox]:disabled')", 'seen save');
+          await waitFor("!document.querySelector('.reader-panel:not([hidden]) input[type=checkbox]:disabled')", 'seen save');
           state = await snapshot();
           const seenId = state.comments[videoId].find(comment => comment.seen).id;
           const avatarBefore = state.comments[videoId].find(comment => comment.id === seenId).author?.avatarUrl;
@@ -142,7 +142,7 @@ if (process.versions.electron && process.type === 'browser') {
             assert.ok(state.comments[postId].length > 0);
             await waitFor("Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) .avatar img')).some(img => img.complete && img.naturalWidth > 0)", 'Community avatar load');
             await js("document.querySelector('[role=tabpanel]:not([hidden]) .seen-control input').click()");
-            await waitFor("!document.querySelector('input[type=checkbox]:disabled')", 'Community seen save');
+            await waitFor("!document.querySelector('.reader-panel:not([hidden]) input[type=checkbox]:disabled')", 'Community seen save');
             state = await snapshot();
             const postSeenId = state.comments[postId].find(comment => comment.seen).id;
             await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");

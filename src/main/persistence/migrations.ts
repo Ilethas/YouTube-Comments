@@ -1,3 +1,4 @@
+import { migrateAppearance } from './appearance-migration';
 import type { DatabaseSync } from 'node:sqlite';
 import { establishSyntheticHistory } from './synthetic-history';
 import { migrateWindowViews } from './window-view-migration';
@@ -243,7 +244,7 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
     SELECT id,locale,appearance,translation_target,selection_controls,include_collapsed_in_prefix FROM preferences;
   DROP TABLE preferences;
   ALTER TABLE preferences_next RENAME TO preferences;
-`) }, { version: 13, apply: migrateWindowViews }, { version: 14, apply: migrateWindowSession }];
+`) }, { version: 13, apply: migrateWindowViews }, { version: 14, apply: migrateWindowSession }, { version: 15, apply: migrateAppearance }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 
 /** Short synchronous main-owned transaction; any failure rolls back all writes. */

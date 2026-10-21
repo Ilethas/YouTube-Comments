@@ -1,10 +1,11 @@
 /** Durable user intent; System resolves through live CSS/OS appearance. */
-export type Appearance = 'system' | 'light' | 'dark';
+export type Appearance = 'system' | 'light' | 'dark' | 'charcoal' | 'custom';
 export type Locale = 'en' | 'pl';
 export const translationTargets = ['app', 'en', 'pl', 'de', 'fr', 'es', 'it', 'pt', 'ja', 'ko', 'zh-CN', 'custom'] as const;
 export type TranslationTarget = typeof translationTargets[number];
 export type SelectionControls = 'on-demand' | 'always';
 export interface Preferences {
+  readonly readerAppearance?: import('./appearance').ReaderAppearance;
   readonly locale: Locale; readonly appearance: Appearance; readonly translationTarget: TranslationTarget;
   readonly selectionControls: SelectionControls;
   readonly includeCollapsedInPrefix: boolean;

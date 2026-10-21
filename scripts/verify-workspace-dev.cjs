@@ -89,7 +89,7 @@ async function run() {
         const videoId = await acquire(process.env.YOUTUBE_COMMENTS_LIVE_VIDEO_URL || 'https://www.youtube.com/watch?v=IFPKfypw2CQ');
         let state = await snapshot(); assert.ok(state.comments[videoId].length);
         await click('[role=tabpanel]:not([hidden]) input[type=checkbox]');
-        await waitFor("!document.querySelector('input[type=checkbox]:disabled')", 'seen write');
+        await waitFor("!document.querySelector('.reader-panel:not([hidden]) input[type=checkbox]:disabled')", 'seen write');
         const seenId = (await snapshot()).comments[videoId].find(comment => comment.seen).id;
         await click('[role=tabpanel]:not([hidden]) .item-actions button');
         await waitFor("!document.querySelector('.acquisition-status')", 'live refresh', 2000);

@@ -8,6 +8,8 @@ import { buildCommentTree } from '../../domain/discussion';
 import type { Author, Comment, ContentItem } from '../../domain/discussion';
 import { initialComments, items } from '../../fixtures/discussions';
 import { initialLocale, normalizeTranslationCode } from '../../shared/preferences';
+import { isReaderAppearance, isThemeDefinition, assetId } from '../../shared/appearance';
+import type { ReaderAppearance, ThemeDefinition } from '../../shared/appearance';
 import type { Preferences } from '../../shared/preferences';
 import type { PreferenceChange, ReaderState, ToggleSeenRequest, DuplicateTabRequest, DuplicateTabResult } from '../../shared/reader-api';
 import { migrateDatabase, transaction } from './migrations';
@@ -373,7 +375,7 @@ export class ReaderRepository {
   preferences(languages: readonly string[]): Preferences {
     const row = this.db.prepare('SELECT * FROM preferences WHERE id = 1').get();
     if (!row) throw new Error('Missing preferences');
-    return { locale: row.locale === null ? initialLocale(languages) : row.locale as Preferences['locale'],
+    return { readerAppearance: this.readerAppearance(), locale: row.locale === null ? initialLocale(languages) : row.locale as Preferences['locale'],
       appearance: row.appearance as Preferences['appearance'], translationTarget: row.translation_target as Preferences['translationTarget'],
       ...(row.custom_translation_target === null ? {} : { customTranslationTarget: String(row.custom_translation_target) }),
       selectionControls: row.selection_controls as Preferences['selectionControls'], includeCollapsedInPrefix: row.include_collapsed_in_prefix === 1 };
@@ -758,7 +760,30 @@ export class ReaderRepository {
     if (!isPreferenceChange(change)) throw new InvalidPreferenceError();
     return this.commit({ kind: 'preferences' }, () => {
       if ('locale' in change) this.db.prepare('UPDATE preferences SET locale = ? WHERE id = 1').run(change.locale);
-      else if ('appearance' in change) this.db.prepare('UPDATE preferences SET appearance = ? WHERE id = 1').run(change.appearance);
+      else if ('appearance' in change) {
+        if (change.appearance === 'custom' && !this.readerAppearance().customThemeId) throw new InvalidPreferenceError();
+        this.db.prepare('UPDATE preferences SET appearance = ? WHERE id = 1').run(change.appearance);
+      }
+      else if ('readerAppearance' in change) {
+        const current = this.readerAppearance(), { expectedRevision, ...settings } = change.readerAppearance;
+        if (expectedRevision !== current.revision) throw new StateConflictError();
+        this.writeReaderAppearance({ ...current, ...settings });
+        if (settings.customThemeId && settings.customThemeId !== current.customThemeId) this.db.prepare("UPDATE preferences SET appearance='custom' WHERE id=1").run();
+        else if (!settings.customThemeId && this.preferences(languages).appearance === 'custom') this.db.prepare("UPDATE preferences SET appearance='system' WHERE id=1").run();
+      }
+      else if ('removeWallpaper' in change) {
+        const current = this.readerAppearance();
+        if (change.removeWallpaper.expectedRevision !== current.revision) throw new StateConflictError();
+        this.writeReaderAppearance({ ...current, wallpaperId: null, wallpaperEnabled: false });
+      }
+      else if ('deleteTheme' in change) {
+        const current = this.readerAppearance();
+        if (change.deleteTheme.expectedRevision !== current.revision) throw new StateConflictError();
+        if (!current.themes.some(theme => theme.id === change.deleteTheme.id)) throw new InvalidPreferenceError();
+        const selected = current.customThemeId === change.deleteTheme.id;
+        this.writeReaderAppearance({ ...current, themes: current.themes.filter(theme => theme.id !== change.deleteTheme.id), customThemeId: selected ? null : current.customThemeId });
+        if (selected) this.db.prepare("UPDATE preferences SET appearance=CASE WHEN appearance='custom' THEN 'system' ELSE appearance END WHERE id=1").run();
+      }
       else if ('translationTarget' in change) {
         const custom = normalizeTranslationCode(change.customTranslationTarget === undefined ? this.preferences(languages).customTranslationTarget : change.customTranslationTarget);
         if (change.translationTarget === 'custom' && !custom) throw new InvalidPreferenceError();
@@ -766,6 +791,40 @@ export class ReaderRepository {
       }
       else if ('selectionControls' in change) this.db.prepare('UPDATE preferences SET selection_controls = ? WHERE id = 1').run(change.selectionControls);
       else this.db.prepare('UPDATE preferences SET include_collapsed_in_prefix = ? WHERE id = 1').run(Number(change.includeCollapsedInPrefix));
+      return this.preferences(languages);
+    });
+  }
+
+  readerAppearance(): ReaderAppearance {
+    const row = this.db.prepare('SELECT config_json FROM reader_appearance WHERE id=1').get();
+    const value: unknown = JSON.parse(String(row?.config_json));
+    if (!isReaderAppearance(value)) throw new InvalidPreferenceError();
+    return value;
+  }
+  private writeReaderAppearance(value: ReaderAppearance): void {
+    const next = { ...value, revision: value.revision + 1 };
+    if (!isReaderAppearance(next)) throw new InvalidPreferenceError();
+    this.db.prepare('UPDATE reader_appearance SET config_json=? WHERE id=1').run(JSON.stringify(next));
+  }
+  /** Main-only import commits use the same post-COMMIT preference stream. */
+  importTheme(definition: ThemeDefinition, languages: readonly string[], expectedRevision: number): Preferences {
+    if (!isThemeDefinition(definition)) throw new InvalidPreferenceError();
+    return this.commit({ kind: 'preferences' }, () => {
+      const current = this.readerAppearance();
+      if (current.revision !== expectedRevision) throw new StateConflictError();
+      if (current.themes.length >= 16) throw new InvalidPreferenceError();
+      const id = randomUUID();
+      this.writeReaderAppearance({ ...current, themes: [...current.themes, { id, definition }], customThemeId: id });
+      this.db.prepare("UPDATE preferences SET appearance='custom' WHERE id=1").run();
+      return this.preferences(languages);
+    });
+  }
+  importWallpaper(id: string, languages: readonly string[], expectedRevision: number): Preferences {
+    if (!assetId(id)) throw new InvalidPreferenceError();
+    return this.commit({ kind: 'preferences' }, () => {
+      const current = this.readerAppearance();
+      if (current.revision !== expectedRevision) throw new StateConflictError();
+      this.writeReaderAppearance({ ...current, wallpaperId: id, wallpaperEnabled: true });
       return this.preferences(languages);
     });
   }

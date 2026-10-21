@@ -1,5 +1,12 @@
 # Windows application, ZIP and Squirrel installer
 
+Appearance customization uses schema 15 and profile-local SQLite theme definitions
+plus wallpaper files, never installed-directory configuration. Replacing an app
+folder/ZIP preserves imported appearance data. SQLite backups include themes and
+wallpaper settings but exclude wallpaper image bytes; missing files fall back
+safely. See [Appearance](APPEARANCE.md). This increment changes no application
+identity/version/fuses and authorizes no Setup execution or public publication.
+
 Windows x64 application folders and no-install ZIPs are supported development-preview
 artifacts under [ADR 0020](decisions/0020-windows-packaged-application-and-zip-distribution.md).
 [ADR 0021](decisions/0021-windows-squirrel-installer-and-application-identity.md) adds

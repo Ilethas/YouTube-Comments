@@ -3,7 +3,7 @@ import type { CommentMenuTarget } from './CommentContextMenu';
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
+import { defaultRangeExtractor, observeElementOffset, useVirtualizer } from '@tanstack/react-virtual';
 import type { Comment } from '../domain/discussion';
 import type { DiscussionViewResult } from '../domain/discussion-query';
 import { CommentArticle, commentTargetId } from './CommentTree';
@@ -96,8 +96,20 @@ export const VirtualCommentList = memo(function VirtualCommentList({ viewId, act
     if (focusedIndex !== undefined && !indexes.includes(focusedIndex)) indexes.push(focusedIndex);
     return indexes.sort((a, b) => a - b);
   }, [focusedIndex]);
+  const offsetObserver = useRef<(offset: number, scrolling: boolean) => void>();
   const virtualizer = useVirtualizer<HTMLElement, HTMLLIElement>({ count: rows.length, getScrollElement, getItemKey, estimateSize,
     overscan, scrollMargin: geometry.margin, rangeExtractor, initialRect: { width: 1000, height: 600 },
+    // Chromium can report zero while a cached flex viewport is display:none,
+    // even though its native scrollTop returns intact when shown. Keep the
+    // retained virtual offset just as we retain hidden measurements below.
+    observeElementOffset: (instance, callback) => {
+      offsetObserver.current = callback;
+      const stop = observeElementOffset(instance, (_offset, scrolling) => {
+        const panel = instance.scrollElement;
+        if (panel && !panel.hidden && panel.clientHeight > 0) callback(panel.scrollTop, scrolling);
+      });
+      return () => { stop?.(); if (offsetObserver.current === callback) offsetObserver.current = undefined; };
+    },
     // Hidden panels keep their last viewport/cache. Showing an unrelated panel
     // must not reset or rebuild every hidden discussion's virtual range.
     observeElementRect: (instance, callback) => {
@@ -120,6 +132,12 @@ export const VirtualCommentList = memo(function VirtualCommentList({ viewId, act
       return size > 0 ? size : instance.measurementsCache[index]?.size ?? estimateSize(index);
     },
   });
+  useLayoutEffect(() => {
+    const panel = getScrollElement();
+    // Also settle an interrupted hidden scroll and reconcile the retained native
+    // offset when showing a cached tab, without issuing any scroll or intent.
+    if (active && panel && !panel.hidden && panel.clientHeight > 0) offsetObserver.current?.(panel.scrollTop, false);
+  }, [active, getScrollElement]);
   const measureMountedRows = useCallback(() => {
     // A layout invalidation can occur during native scrolling. measureElement
     // deliberately skips its synchronous read then, and unchanged boxes need not

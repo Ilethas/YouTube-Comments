@@ -34,7 +34,9 @@ The screenshots use invented discussions and people in the actual Electron app.
 - Opens author channels and original video comments in your browser. Google Translate
   also opens there, sending comment text only when you explicitly choose Translate.
 - Backs up and restores the local library through Settings. The interface supports
-  English and Polish, with light, dark, and system appearance.
+  English and Polish, with System, Light, Dark, neutral Charcoal and imported JSON
+  themes. Optional local wallpaper sits behind the centered reader with adjustable
+  opacity and blur. See [appearance setup and example theme](docs/APPEARANCE.md).
 
 ## Running on Windows
 
@@ -198,6 +200,8 @@ Use Settings to create a SQLite backup before moving or replacing data. Restore
 replaces the full local profile database, with a confirmation and a safety backup.
 It includes saved windows, tabs, and reading state. Temporary bulk selection is
 not restored after restarting. Recovery files are retained beside the database.
+Custom theme definitions and wallpaper settings are included; wallpaper image files
+are separate profile assets and are **not** included. Keep your original image.
 Do not copy the live database while the app is open. See
 [backup and restore](docs/DATABASE.md) for recovery details.
 

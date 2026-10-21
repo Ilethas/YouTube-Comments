@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { migrations, migrateDatabase, schemaVersion } from './migrations';
 import { isDiscussionViewIntent, isViewIdentity } from '../../domain/discussion-view';
 import { normalizeTranslationCode } from '../../shared/preferences';
+import { isReaderAppearance } from '../../shared/appearance';
 import { isWindowGeometry } from '../../domain/window-geometry';
 
 export type BackupValidationReason = 'INVALID_BACKUP' | 'NEWER_BACKUP' | 'OLDER_BACKUP';
@@ -47,6 +48,11 @@ export function validateBackup(file: string): number {
       const preferences = db.prepare('SELECT * FROM preferences WHERE id=1').get();
       const code = preferences?.custom_translation_target;
       if (code !== null && normalizeTranslationCode(code) !== code || preferences?.translation_target === 'custom' && code === null) throw new BackupValidationError('INVALID_BACKUP');
+    }
+    if (version >= 15) {
+      const row = db.prepare('SELECT config_json FROM reader_appearance WHERE id=1').get();
+      const value: unknown = JSON.parse(String(row?.config_json));
+      if (!isReaderAppearance(value) || db.prepare('SELECT appearance FROM preferences WHERE id=1').get()?.appearance === 'custom' && !value.customThemeId) throw new BackupValidationError('INVALID_BACKUP');
     }
     requireEmpty(db, 'SELECT 1 FROM comments c LEFT JOIN comment_state s ON c.id=s.comment_id WHERE s.comment_id IS NULL LIMIT 1');
     if (version >= 3 && version <= 12 && db.prepare('SELECT count(*) AS n FROM workspace WHERE id=1').get()?.n !== 1) throw new BackupValidationError('INVALID_BACKUP');

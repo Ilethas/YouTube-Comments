@@ -15,7 +15,7 @@ let current;
 function tables(file) {
   const db = new DatabaseSync(file, { readOnly: true });
   try {
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 14);
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 15);
     assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     return Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
@@ -212,7 +212,7 @@ async function run() {
   assert.equal((await session.invoke('bootstrap')).items.length,0,'Fresh packaged production must not seed demo');
   assert.ok(fs.existsSync(database)); await close(session);
   tables(database); // Check current schema/integrity before adding any fixture.
-  report.checks.push('Fresh production schema 14 in independent disposable Windows profile environment; no demo');
+  report.checks.push('Fresh production schema 15 in independent disposable Windows profile environment; no demo');
   const itemId=seed(database);
   const {primaryViewId}=JSON.parse(fs.readFileSync(path.join(root,'native-identities.json')));
   session=await start(executable,environment,profile,'production-existing',undefined,primaryViewId);
@@ -220,7 +220,7 @@ async function run() {
   await session.wait("!!document.querySelector('.comment') && !!document.querySelector('.source-button')");
   assert.equal(boot.discussionCollapse[viewId(boot,itemId)].defaultCollapsed,true);
   assert.ok(boot.discussionCollapse[viewId(boot,itemId)].overrides.length>0);
-  report.checks.push('Existing schema 14 with sparse collapse default/exception, source header, real ASAR renderer/preload and node:sqlite');
+  report.checks.push('Existing schema 15 with sparse collapse default/exception, source header, real ASAR renderer/preload and node:sqlite');
   const panel='[role=tabpanel]:not([hidden])';
   // UI preferences, kept in React as well as persisted in SQLite.
   await session.js("document.getElementById('settings-toggle').click()");
@@ -229,18 +229,32 @@ async function run() {
     await control(session,'.preferences select',locale);
     await session.wait(`document.documentElement.lang===${JSON.stringify(locale)}`);
   }
-  for(const appearance of ['light','dark','system']) {
+  for(const appearance of ['light','dark','charcoal','system']) {
     await session.js(`(()=>{const e=document.querySelectorAll('.preferences select')[1]; e.value=${JSON.stringify(appearance)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     await session.wait(`document.documentElement.dataset.appearance===${JSON.stringify(appearance)}`);
   }
+  // New appearance features through the unmodified fused EXE and real native pickers.
+  const themeFile=path.join(root,'theme.json'); fs.copyFileSync(path.resolve(__dirname,'../docs/examples/warm-graphite.json'),themeFile);
+  const themeImport=session.invoke('importTheme'); themeImport.catch(()=>undefined); await native(session,'file',themeFile); await themeImport;
+  assert.equal((await session.invoke('bootstrap')).preferences.appearance,'custom');
+  assert.equal(await session.js('getComputedStyle(document.documentElement).colorScheme'),'dark');
+  fs.unlinkSync(themeFile);
+  const png=await session.js("(()=>{const c=document.createElement('canvas');c.width=900;c.height=600;const x=c.getContext('2d');const g=x.createLinearGradient(0,0,900,600);g.addColorStop(0,'#595349');g.addColorStop(1,'#243c37');x.fillStyle=g;x.fillRect(0,0,900,600);return c.toDataURL('image/png').split(',')[1]})()");
+  const imageFile=path.join(root,'wallpaper.png');fs.writeFileSync(imageFile,Buffer.from(png,'base64'));
+  const wallpaperImport=session.invoke('importWallpaper');wallpaperImport.catch(()=>undefined);await native(session,'file',imageFile);await wallpaperImport;fs.unlinkSync(imageFile);
+  await session.js(`${tabElement(itemId)}.click()`);await session.wait("!!document.querySelector('.reader-wallpaper')?.naturalWidth");
+  assert.equal(await session.js("getComputedStyle(document.querySelector('.reading-column')).opacity"),'1');
+  assert.equal(await session.js("getComputedStyle(document.querySelector('.reader-surface-layer')).backdropFilter"),'blur(8px)');
+  await session.js("document.getElementById('settings-toggle').click()");await session.wait("!!document.querySelector('#panel-settings:not([hidden]) .appearance-settings')");
+  report.checks.push('Charcoal and custom JSON theme, real native theme/image pickers, opaque local wallpaper protocol after original deletion, bounded blur with fully opaque text');
   assert.equal((await session.invoke('bootstrap')).preferences.translationTarget,'app');
-  await session.js("(()=>{const e=document.querySelectorAll('.preferences select')[2];e.value='de';e.dispatchEvent(new Event('change',{bubbles:true}));})()");
+  await session.js("(()=>{const e=document.querySelector('.translation-settings select');e.value='de';e.dispatchEvent(new Event('change',{bubbles:true}));})()");
   await session.wait("window.reader.bootstrap().then(r=>r.value.preferences.translationTarget==='de')");
   assert.equal((await session.invoke('bootstrap')).preferences.selectionControls,'on-demand');
   assert.equal((await session.invoke('bootstrap')).preferences.includeCollapsedInPrefix,true);
-  await session.js("(()=>{const e=document.querySelectorAll('.preferences select')[3];e.value='always';e.dispatchEvent(new Event('change',{bubbles:true}));})()");
+  await session.js("(()=>{const e=document.querySelector('.preferences > label:nth-last-of-type(2) select');e.value='always';e.dispatchEvent(new Event('change',{bubbles:true}));})()");
   await session.wait("window.reader.bootstrap().then(r=>r.value.preferences.selectionControls==='always')");
-  await session.js("document.querySelector('.preferences input[type=checkbox]').click()");
+  await session.js("document.querySelector('.preferences > label > input[type=checkbox]').click()");
   await session.wait("window.reader.bootstrap().then(r=>r.value.preferences.includeCollapsedInPrefix===false)");
   // Native Cancel exercises the real picker without selecting a test executable.
   const picker=session.invoke('chooseHelper',{kind:'yt-dlp'}); picker.catch(()=>undefined);
@@ -255,7 +269,7 @@ async function run() {
     assert.equal(status.mode,'configured'); assert.ok(['tested','untested'].includes(status.state),JSON.stringify(status));
     report.helpers.push({kind,state:status.state,version:status.version,path:status.path});
   }
-  report.checks.push('Library/Settings, EN/PL, System/Light/Dark, two helper statuses and native executable picker');
+  report.checks.push('Library/Settings, EN/PL, System/Light/Dark/Charcoal, two helper statuses and native executable picker');
   await session.js(`${tabElement(itemId)}.click()`);
   await session.wait(`!!document.querySelector('${panel} .comment')`);
   assert.equal(await session.js(`!!document.querySelector('${panel} .creator-author') && !!document.querySelector('${panel} .action-translate button[title]') && !!document.querySelector('${panel} .action-author button[title]')`),true,'Packaged reader exposes trusted creator and discoverable external actions');

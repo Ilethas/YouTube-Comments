@@ -2,7 +2,7 @@ export interface ThumbnailImage { mime: string; extension: 'jpg' | 'png' | 'webp
 
 /** Read bounded JPEG/PNG/WebP headers before decoding, limiting decompression
  * cost. SVG, GIF and arbitrary executable/document formats are excluded. */
-export function thumbnailImage(bytes: Buffer, mime: string): ThumbnailImage | undefined {
+export function thumbnailImage(bytes: Buffer, mime: string, limits = { minWidth: 320, minHeight: 180, pixels: 20000000 }): ThumbnailImage | undefined {
   let width = 0, height = 0, extension: ThumbnailImage['extension'];
   if (mime === 'image/png' && bytes.length >= 33 && bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) && bytes.toString('ascii', 12, 16) === 'IHDR') {
     extension = 'png'; width = bytes.readUInt32BE(16); height = bytes.readUInt32BE(20);
@@ -28,5 +28,5 @@ export function thumbnailImage(bytes: Buffer, mime: string): ThumbnailImage | un
     else if (type === 'VP8L' && bytes[20] === 47) { const bits = bytes.readUInt32LE(21); width = (bits & 16383) + 1; height = ((bits >>> 14) & 16383) + 1; }
   } else return undefined;
   // Missing maxres variants often return a 120x90 placeholder with HTTP 200.
-  return width >= 320 && height >= 180 && width <= 8192 && height <= 8192 && width * height <= 20000000 ? { mime, extension, width, height } : undefined;
+  return width >= limits.minWidth && height >= limits.minHeight && width <= 8192 && height <= 8192 && width * height <= limits.pixels ? { mime, extension, width, height } : undefined;
 }

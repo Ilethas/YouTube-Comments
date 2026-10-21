@@ -1,3 +1,7 @@
+import { AppearanceSettings } from './AppearanceSettings';
+import { ReaderBackdrop } from './ReaderBackdrop';
+import { applyAppearance } from './appearance';
+import { defaultReaderAppearance } from '../shared/appearance';
 import { MoveTabDialog } from './MoveTabDialog';
 import { ApplicationMenu } from './ApplicationMenu';
 import { useProfileProgress } from './use-profile-progress';
@@ -68,6 +72,11 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   }, collapse: initialState.discussionCollapse, saveCollapse: request => api.setDiscussionCollapse(request), saved: initialState.discussionViews, save: request => api.saveDiscussionView(request) });
   const [items, setItems] = useState(initialState.items);
   const [locale, setLocale] = useState<Locale>(initialState.preferences.locale);
+  const [readerAppearance, setReaderAppearance] = useState(initialState.preferences.readerAppearance ?? defaultReaderAppearance);
+  const [wallpaper, setWallpaper] = useState<{ id: string; url?: string; missing: boolean }>();
+  const [appearanceDirty, setAppearanceDirty] = useState(false);
+  const [appearanceDraftKey, setAppearanceDraftKey] = useState(0);
+  const translationDirty = useRef(false), appearanceDirtyRef = useRef(false);
   const [appearance, setAppearance] = useState<Appearance>(initialState.preferences.appearance);
   const [translationTarget, setTranslationTarget] = useState<TranslationTarget>(initialState.preferences.translationTarget);
   const [customTranslationTarget, setCustomTranslationTarget] = useState(initialState.preferences.customTranslationTarget);
@@ -90,7 +99,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const [transferFocus, setTransferFocus] = useState<string>();
   const provisional = useRef<{ token: string; session?: DiscussionViewSession }>();
   const settingsDirty = useRef(false);
-  const markSettingsDirty = useCallback((value: boolean) => { settingsDirty.current = value; }, []);
+  const markSettingsDirty = useCallback((value: boolean) => { translationDirty.current = value; settingsDirty.current = value || appearanceDirtyRef.current; }, []);
+  const markAppearanceDirty = useCallback((value: boolean) => { appearanceDirtyRef.current = value; setAppearanceDirty(value); settingsDirty.current = value || translationDirty.current; }, []);
 
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const [workspaceFocus, setWorkspaceFocus] = useState<{ tabId: string | null; revision: number; focusSequence?: number }>();
@@ -212,6 +222,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       setItems(next.items); setComments(next.comments); setSeenUndo(next.seenUndo);
       setWorkspace(next.workspace);
       setLocale(next.preferences.locale); setAppearance(next.preferences.appearance);
+      setReaderAppearance(next.preferences.readerAppearance ?? defaultReaderAppearance);
       setTranslationTarget(next.preferences.translationTarget); setCustomTranslationTarget(next.preferences.customTranslationTarget);
       setSelectionControls(next.preferences.selectionControls); setIncludeCollapsedInPrefix(next.preferences.includeCollapsedInPrefix);
     };
@@ -569,9 +580,21 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     document.documentElement.lang = locale;
     document.title = translator(locale)('appName');
   }, [locale]);
+  useLayoutEffect(() => {
+    const media = window.matchMedia?.('(prefers-color-scheme: dark)');
+    const apply = () => applyAppearance({ appearance, readerAppearance }, media?.matches ?? false);
+    apply(); media?.addEventListener('change', apply);
+    return () => media?.removeEventListener('change', apply);
+  }, [appearance, readerAppearance]);
   useEffect(() => {
-    document.documentElement.dataset.appearance = appearance;
-  }, [appearance]);
+    let current = true;
+    const id = readerAppearance.wallpaperId;
+    if (!id || !readerAppearance.wallpaperEnabled) { setWallpaper(undefined); return; }
+    void api.getWallpaper?.().then(result => {
+      if (current) setWallpaper({ id, url: result.ok && result.value || undefined, missing: !result.ok || !result.value });
+    }, () => { if (current) setWallpaper({ id, missing: true }); });
+    return () => { current = false; };
+  }, [api, readerAppearance.wallpaperId, readerAppearance.wallpaperEnabled, readerAppearance.revision]);
 
   const refreshItem = useCallback((itemId: string) => { void acquire(() => api.refresh({ itemId }), true); }, [acquire, api]);
   const acceptSeen = useCallback((itemId: string, value: SeenMutationResult) => {
@@ -735,12 +758,18 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
         }}>
           <option value="en">{t('en')}</option><option value="pl">{t('pl')}</option>
         </select></label>
-        <label>{t('appearance')}<select value={appearance} disabled={saving} onChange={event => {
-          const next = event.target.value as Appearance;
-          void save(() => api.updatePreferences({ appearance: next }), value => { if (!replica) setAppearance(value.appearance); }, undefined, { kind: 'updatePreferences', request: { appearance: next } });
-        }}>
-          {(['system', 'light', 'dark'] as const).map(value => <option key={value} value={value}>{t(value)}</option>)}
-        </select></label>
+        <AppearanceSettings key={appearanceDraftKey} preferences={{ appearance, readerAppearance }} locale={locale} disabled={saving || profileBusy} api={api}
+          onDirty={markAppearanceDirty} missingWallpaper={wallpaper?.missing ?? false}
+          save={change => save(() => api.updatePreferences(change), value => { if (!replica) { setAppearance(value.appearance); setReaderAppearance(value.readerAppearance ?? defaultReaderAppearance); } }, undefined, { kind: 'updatePreferences', request: change })}
+          imported={async action => {
+            // Imports have no unsaved renderer intent after rejection. Their
+            // preload-tracked promises still drain under M3, but invalid files
+            // must not poison the ordinary preference-save failure latch.
+            const result = await action();
+            if (result.sync) await replica?.reconcile(result.sync);
+            if (result.ok && result.value && !replica) { setAppearance(result.value.appearance); setReaderAppearance(result.value.readerAppearance ?? defaultReaderAppearance); }
+            return result.ok;
+          }} />
         <TranslationSettings preferences={{ translationTarget, customTranslationTarget }} onDirty={markSettingsDirty} locale={locale} disabled={saving}
           save={change => save(() => api.updatePreferences(change), value => {
             if (!replica) { setTranslationTarget(value.translationTarget); setCustomTranslationTarget(value.customTranslationTarget); }
@@ -770,14 +799,16 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     {removing && <RemovalDialog title={itemLabel(removing)} locale={locale} pending={removalPending}
       error={removalError ? t(removalError === 'ACQUISITION_BUSY' ? 'removalBusy' : 'removalFailed') : undefined}
       cancel={() => setRemoving(undefined)} remove={() => { void removeItem(); }} />}
-    {openItems.map(({ tab, item }) => <main key={tab.id} id={`panel-${tab.id}`} data-item-id={item.id} data-view-id={tab.id} role="tabpanel" aria-labelledby={`tab-${tab.id}`}
+    {openItems.map(({ tab, item }) => <ReaderBackdrop key={tab.id} active={activeId === tab.id}
+      url={wallpaper?.id === readerAppearance.wallpaperId && readerAppearance.wallpaperEnabled ? wallpaper.url : undefined}
+      failed={() => setWallpaper(current => current ? { id: current.id, missing: true } : current)}><main id={`panel-${tab.id}`} data-item-id={item.id} data-view-id={tab.id} role="tabpanel" aria-labelledby={`tab-${tab.id}`}
       className="reader-panel" hidden={activeId !== tab.id} tabIndex={0}>
       {(activeId === tab.id || views.has(tab.id)) && <DiscussionPanel viewId={tab.id} active={activeId === tab.id} frozen={movingId === tab.id} item={item} comments={comments[item.id]} session={views.get(tab.id, comments[item.id], item.id)}
         selectionControls={selectionControls} includeCollapsedInPrefix={includeCollapsedInPrefix}
         locale={locale} saving={saving && savingItemId === item.id} refreshDisabled={!!acquiring || !!progress}
         coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onAction={openCommentAction} onToggle={toggleComment}
         undo={seenUndo[item.id]} feedback={seenFeedback[item.id]} onBulk={bulkSeen} onUndo={undoSeen} onBulkModal={setBulkModalOpen} />}
-    </main>)}
+    </main></ReaderBackdrop>)}
   </div><p className="move-feedback" role="status" aria-live="polite" aria-atomic="true">{moveFeedback ? t(moveFeedback) : ''}</p>
   {movingId && !profileBusy && <div className="profile-operation-overlay" role="dialog" aria-modal="true" aria-label={t('movingTab')}>
     <p>{t('movingTab')}</p><button autoFocus onClick={() => { cancelledMove.current = true; moveAbort.current?.abort(); if (movingToken.current) void api.transfers?.cancel({ token: movingToken.current }); }}>{t('cancel')}</button>
@@ -786,7 +817,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     tabTitle={tabLabel(movingTab)} tabKind={tabIcon(movingTab)}
     fixedDestination={moveDialog.reserved?.start.destination}
     dirty={workspace.tabs.find(t => t.id === moveDialog.id)?.kind === 'settings' && settingsDirty.current}
-    cancel={() => { if (moveDialog.reserved) void api.transfers?.cancel({ token: moveDialog.reserved.token }); setMoveDialog(undefined); }} move={destination => { void transfer(moveDialog.id, destination, moveDialog.reserved); }} />}
+    cancel={() => { if (moveDialog.reserved) void api.transfers?.cancel({ token: moveDialog.reserved.token }); setMoveDialog(undefined); }} move={destination => { if (movingTab.kind === 'settings' && appearanceDirty) { setAppearanceDraftKey(key => key + 1); markAppearanceDirty(false); } void transfer(moveDialog.id, destination, moveDialog.reserved); }} />}
   {profileBusy && !showProfileProgress && <span className="visually-hidden" role="status">{t('profileQuiescing')}</span>}
   {showProfileProgress && <div className="profile-operation-overlay" role="dialog" aria-modal="true" tabIndex={-1} ref={profileOverlay} aria-label={t('profileQuiescing')}>
     <p role="status"><span className="acquisition-spinner" aria-hidden="true" /> {t('profileQuiescing')}</p>

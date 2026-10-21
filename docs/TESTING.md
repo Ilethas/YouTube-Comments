@@ -1,5 +1,72 @@
 # Testing strategy
 
+## Charcoal, custom JSON themes and reader wallpaper (2026-10-21)
+
+[ADR 0037](decisions/0037-validated-themes-and-reader-wallpaper.md) and the
+[appearance guide](APPEARANCE.md) describe schema 15, safe imports and the backup
+contract. Migrations 1–14 remain exact. All work is uncommitted for owner review.
+
+Automated evidence:
+
+- Full Vitest: **1,251 passed**. The five focused appearance files contain **28
+  tests** for exact original palettes/neutral Charcoal, versioned JSON rejection,
+  unsafe CSS/URLs/extra properties/control characters and trailing newlines, byte
+  and dimension bounds, invalid decoder output, missing/tampered images, failed
+  writes, native origin loss, import serialization, stale peer revisions, profile
+  isolation, migration rollback, verified v14 safety and staged older backups.
+  Component tests cover EN/PL labels/values, draft-only sliders and live palette
+  selection; actual keyboard/CSS evidence comes from Electron.
+- `test:appearance`: production main/preload/renderer, actual PNG/JPEG/WebP decode,
+  resizing and opaque local protocol/CSP; two native windows synchronize theme and
+  wallpaper changes, with real restart and full backup/restore. Deleted original
+  files still work; missing stored assets safely fall back with Settings notice.
+  A fictional 3,000-comment reader checks mounted row bounds, anchors after peer
+  opacity/blur changes, stationary image/surface, no inherited filter/opacity,
+  document/panel overflow, ruler bounds, resized/125% viewports, native Home/End/
+  Right slider input, one Apply write and forced-colors suppression.
+- All **22 serial `test:electron` harnesses pass**, including M3 profile barriers,
+  M4 migration, duplicates, equal native windows, M7 transfers, M8 synthetic drag,
+  selection/collapse/actions/thumbnails, 10k/50k restoration and final scroll-layout
+  regression. The final appearance run additionally imports invalid JSON through
+  Settings and immediately creates a real backup: rejected file feedback must not
+  set the durable-save failure latch or leave Close/Backup blocked. Pending imports
+  remain tracked by preload and main lifecycle/origin checks. Transport rejection
+  is localized and safely clears the Settings import-pending state.
+- Typecheck and ESLint pass. `make:zip` and `verify:artifacts` validate the complete
+  Windows x64 folder/ZIP, ASAR/runtime bytes and unchanged security fuses.
+- `test:packaged` passes on the extracted unmodified fused EXE with independently
+  isolated demo/production environments. Extended coverage uses **real Windows
+  native file dialogs** for JSON-theme and PNG imports, checks Charcoal/custom
+  color-scheme and opaque wallpaper rendering after original-file deletion,
+  then exercises existing native backup/restore, real relaunch and data equality.
+  No Setup/install/update/uninstall is executed.
+- `verify-presentation.cjs`: 21 local README links/anchors, six existing decoded
+  screenshots/provenance records and seven application icon frames pass. Existing
+  README screenshots are unchanged; ignored appearance diagnostic captures use
+  fictional data, not reference screenshot assets.
+
+During verification, an ephemeral WebP decoder needed an explicitly retained
+WebContentsView lifetime through asynchronous conversion; it is closed in `finally`.
+Chromium also emitted zero offsets while cached flex viewports were hidden, leaving
+native scrollTop intact but resetting the virtual range to the first rows. The
+reader now ignores hidden offsets, preserves cached measurements and reconciles the
+actual native offset on reactivation without scrolling, focus or intent writes.
+The appearance harness explicitly checks cached anchors with wallpaper/blur enabled;
+the scroll-layout harness also captures anchors after native wheel input has
+settled. Existing global checkbox
+assertions now target the active reader, because Settings can contain a deliberately
+disabled wallpaper-enable control. These changes retain the original assertions'
+reading/layout intent.
+
+Owner visual/physical review remains pending: personal wallpaper/contrast choices,
+native picker ergonomics, high-DPI/multiple-monitor appearance, physical scrolling
+and tab dragging/Close flicker (existing M8 P01–P25). Clipboard Copy remains
+UNVERIFIED where native clipboard formats cannot be safely snapshotted; harnesses
+preserve the owner's clipboard. Installed Squirrel and distribution license/notice
+review gates remain unchanged. Wallpaper image bytes are **not** in SQLite backups;
+validated theme definitions and wallpaper settings are included. No public release,
+identity/version change, commit, tag or push is authorized by these results.
+
 ## Post-M9.2 transfer feedback scrollbar fix (2026-10-21)
 
 Native Electron with the production entry and an offline 3,003-comment discussion

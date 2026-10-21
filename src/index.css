@@ -1,60 +1,4 @@
-:root {
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  color-scheme: light;
-  --background: #f2f4f6;
-  --surface: #ffffff;
-  --surface-raised: #f7f9fb;
-  --text: #202b37;
-  --muted: #596778;
-  --border: #d7dfe7;
-  --creator: #6f4093;
-  --accent: #235ba8;
-  --accent-soft: #eaf2fd;
-  --unseen: #235ba8;
-  --new-text: #715000;
-  --new-surface: #fff0bd;
-  --focus: #005fcc;
-  --danger: #a12935;
-  --danger-soft: #fcebed;
-}
-:root[data-appearance='dark'] {
-  color-scheme: dark;
-  --background: #151b23;
-  --surface: #1d2530;
-  --surface-raised: #242e3b;
-  --text: #e5eaf0;
-  --muted: #abb8c8;
-  --border: #3a4859;
-  --creator: #d4b0f0;
-  --accent: #9dc7ff;
-  --accent-soft: #223956;
-  --unseen: #9dc7ff;
-  --new-text: #ffdc88;
-  --new-surface: #4e4021;
-  --focus: #9dc7ff;
-  --danger: #ffadb5;
-  --danger-soft: #48232b;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-appearance='light']):not([data-appearance='dark']) {
-    color-scheme: dark;
-    --background: #151b23;
-    --surface: #1d2530;
-    --surface-raised: #242e3b;
-    --text: #e5eaf0;
-    --muted: #abb8c8;
-    --border: #3a4859;
-    --creator: #d4b0f0;
-  --accent: #9dc7ff;
-    --accent-soft: #223956;
-    --unseen: #9dc7ff;
-    --new-text: #ffdc88;
-    --new-surface: #4e4021;
-    --focus: #9dc7ff;
-  --danger: #ffadb5;
-  --danger-soft: #48232b;
-  }
-}
+:root { font-family: 'Segoe UI', system-ui, sans-serif; color-scheme: light; }
 * { box-sizing: border-box; }
 .startup-state { padding: 40px; }
 .save-error { padding: 12px 28px; background: var(--new-surface); color: var(--new-text); }
@@ -379,4 +323,21 @@ button > .action-icon { margin-right: 4px; }
   .move-tab-footer { padding: 12px 16px; }
   .move-tab-option { gap: 8px; padding: 10px; flex-wrap: wrap; }
   .move-tab-count { width: 100%; padding-left: 47px; }
+}
+
+/* Wallpaper layers never create fixed-position containing blocks for the reader.
+   The translucent surface is a single stationary viewport-sized sibling. */
+.discussion-viewport { position: relative; isolation: isolate; display: flex; flex: 1; min-height: 0; min-width: 0; }
+.discussion-viewport > .reader-panel { position: relative; z-index: 2; min-width: 0; }
+.reader-wallpaper { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; pointer-events: none; z-index: 0; }
+.reader-surface-layer { position: absolute; top: 0; bottom: 0; pointer-events: none; z-index: 1; background: color-mix(in srgb, var(--background) var(--reader-surface-opacity, 92%), transparent); backdrop-filter: blur(var(--reader-background-blur, 8px)); }
+.appearance-settings { width: min(600px, 100%); min-width: 0; margin: 0; padding: 14px; border: 1px solid var(--border); }
+.appearance-settings label { margin-block: 10px; max-width: 100%; gap: 10px; }
+.appearance-settings select { min-width: 0; max-width: 65%; }
+.appearance-settings h2 { margin-top: 20px; font-size: 16px; }
+.appearance-settings input[type='range'] { display: block; width: min(360px, 100%); accent-color: var(--accent); }
+.appearance-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 10px; }
+@media (forced-colors: active) {
+  .reader-wallpaper, .reader-surface-layer { display: none; }
+  .discussion-viewport { background: Canvas; }
 }

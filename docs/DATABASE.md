@@ -1,5 +1,22 @@
 # Database and durable data
 
+## Appearance configuration (schema 15)
+
+Migration 15 copies every preference field verbatim into the expanded appearance
+CHECK and adds one bounded, validated `reader_appearance.config_json` row. It holds
+the appearance CAS revision, up to 16 versioned theme definitions, selected custom
+theme identity, wallpaper digest/enablement, surface opacity and blur. Migrations
+1–14 remain exact. Pre-migration safety, exact historical schema validation and
+staged backup upgrade now cover 1–15; schema-15 JSON is validated before use.
+
+Theme definitions are profile configuration **inside SQLite backups**. Wallpaper
+JPEG files in `appearance/wallpapers/` are **outside SQLite backups**. Settings and
+docs state this explicitly. Missing/tampered images after restore produce an opaque
+fallback and localized Settings notice; saved themes still work. Immutable old
+images are retained for same-profile historical restores, without automatic pruning.
+See [Appearance](APPEARANCE.md) and [ADR 0037](decisions/0037-validated-themes-and-reader-wallpaper.md).
+Historical sections below retain their original schema numbers.
+
 ## Atomic tab ownership movement (M7, schema 14 unchanged)
 
 [ADR 0033](decisions/0033-atomic-cross-window-tab-transfer.md) uses the existing

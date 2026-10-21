@@ -459,11 +459,11 @@ it('schema 1 to 2 preserves legacy IDs, all remote fields, seen/preferences and 
   const db = raw(); schemaOne(db);
   const items = db.prepare('SELECT * FROM content_items').all(), old = db.prepare('SELECT * FROM comments ORDER BY position').all();
   migrateDatabase(db);
-  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(14);
+  expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(15);
   expect(db.prepare('SELECT * FROM content_items').all()).toMatchObject(items);
   expect(db.prepare('SELECT * FROM comments ORDER BY position').all()).toMatchObject(old);
   expect(db.prepare('SELECT * FROM comment_state ORDER BY comment_id').all()).toEqual([{ comment_id: 'old-child', seen: 0, revision: 0 }, { comment_id: 'old-root', seen: 1, revision: 0 }]);
-  expect(state().preferences).toEqual({ locale: 'pl', appearance: 'dark', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' });
+  expect(state().preferences).toMatchObject({ locale: 'pl', appearance: 'dark', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' });
   expect(comments()[1]).toMatchObject({ id: 'old-child', parentId: 'old-root', directParentId: 'old-root' });
   expect(repository.history().every(attempt => attempt.provenance.backend === 'synthetic-demo')).toBe(true);
   expect(raw().prepare('PRAGMA foreign_key_check').all()).toEqual([]);
@@ -501,7 +501,7 @@ it('migrates all 24 current schema-1 demo comments with their seen/preferences, 
   }
   migrateDatabase(db);
   expect(state().items).toMatchObject(items); expect(state().comments).toMatchObject(initialComments);
-  expect(state().preferences).toEqual({ locale: 'pl', appearance: 'dark', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' });
+  expect(state().preferences).toMatchObject({ locale: 'pl', appearance: 'dark', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' });
   expect(repository.history()).toHaveLength(4);
   repository.initializeDemo(); expect(Object.values(state().comments).flat()).toHaveLength(24);
 });

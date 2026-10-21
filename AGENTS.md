@@ -1,5 +1,18 @@
 # Project guidance
 
+## Appearance customization current boundary
+
+[ADR 0037](docs/decisions/0037-validated-themes-and-reader-wallpaper.md) adds
+Charcoal, strict version-1 semantic JSON themes and bounded profile-owned reader
+wallpaper on schema **15**. Migrations 1–14 remain exact. Themes are SQLite
+configuration included in backups; wallpaper image bytes are excluded, with a
+localized missing-asset fallback. Keep imports main-owned and authenticated, CAS
+and M3 fencing, the isolated no-preload/no-network WebP decoder, and bounded sibling
+blur surfaces outside fixed overlay/virtual row ancestors. `test:appearance`
+uses disposable real Electron windows. See [appearance](docs/APPEARANCE.md).
+Leave work uncommitted; existing owner physical/release gates remain pending.
+Earlier milestone sections retain their original schema/evidence boundaries.
+
 ## M9.2 review boundary
 
 [M9.2 verification](docs/M9_2_VERIFICATION.md) records final regression/distribution

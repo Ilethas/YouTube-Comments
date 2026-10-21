@@ -11,6 +11,11 @@ export function downgradeWindowFixture(db: DatabaseSync): void {
   try {
     migrateDatabase(reference, migrations.slice(0, 12));
     const sql = (name: string) => String(reference.prepare('SELECT sql FROM sqlite_schema WHERE name=?').get(name)?.sql);
+    if (db.prepare("SELECT 1 FROM sqlite_schema WHERE name='reader_appearance'").get()) {
+      db.exec('CREATE TEMP TABLE fixture_appearance_preferences AS SELECT * FROM preferences; DROP TABLE preferences; DROP TABLE reader_appearance;');
+      db.exec(sql('preferences'));
+      db.exec('INSERT INTO preferences SELECT * FROM fixture_appearance_preferences; DROP TABLE fixture_appearance_preferences;');
+    }
     for (const name of ['workspace_tabs', 'workspace', 'discussion_view_state', 'discussion_collapse', 'comment_collapse_overrides']) db.exec(sql(name));
     db.exec(`INSERT INTO workspace_tabs SELECT CASE t.kind WHEN 'discussion' THEN 'discussion:'||t.item_id ELSE t.kind END,t.kind,t.item_id,p.position
       FROM window_tabs p JOIN tab_instances t ON t.id=p.tab_id;

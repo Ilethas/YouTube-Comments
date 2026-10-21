@@ -1,5 +1,10 @@
 # Documentation map
 
+**Appearance customization (schema 15):** [Charcoal, JSON themes and wallpaper](APPEARANCE.md)
+documents safe import, profile storage, backup limits and owner verification.
+[ADR 0037](decisions/0037-validated-themes-and-reader-wallpaper.md) records the design.
+Historical milestone entries below retain their original schema/evidence boundaries.
+
 **Post-M9.2 tab keyboard fix:** [cause and verification](POST_M9_2_TAB_KEYBOARD.md)
 records the native click/disabled-focus reproduction and global active-tab
 Ctrl+Shift+PageUp/PageDown shortcuts. Changes remain uncommitted for owner review.
