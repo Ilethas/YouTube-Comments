@@ -5,7 +5,7 @@ import { buildCommunityCommand, buildYtDlpCommand } from './invocation';
 describe('pure helper specifications', () => {
   it('describes isolated yt-dlp JSON/comment extraction with bounded retries and no tolerant success flags', () => {
     const spec = buildYtDlpCommand({ videoUrl: 'https://www.youtube.com/watch?v=VidDemo_001&list=ignored', timeoutSeconds: 20, retries: 2, maxComments: 5 });
-    expect(spec).toEqual({ backend: 'yt-dlp', executable: 'yt-dlp', output: 'single-json-stdout', environmentAdditions: {}, arguments: ['--ignore-config', '--no-plugin-dirs', '--no-playlist', '--skip-download', '--dump-single-json', '--write-comments', '--socket-timeout', '20', '--retries', '2', '--extractor-retries', '2', '--extractor-args', 'youtube:max_comments=5', '--', 'https://www.youtube.com/watch?v=VidDemo_001'] });
+    expect(spec).toEqual({ backend: 'yt-dlp', executable: 'yt-dlp', output: 'single-json-stdout', environmentAdditions: {}, arguments: ['--ignore-config', '--no-plugin-dirs', '--no-playlist', '--skip-download', '--dump-single-json', '--write-comments', '--quiet', '--verbose', '--socket-timeout', '20', '--retries', '2', '--extractor-retries', '2', '--extractor-args', 'youtube:max_comments=5', '--', 'https://www.youtube.com/watch?v=VidDemo_001'] });
     expect(spec.arguments).not.toContain('--ignore-errors');
     expect(spec.arguments).not.toContain('--ignore-no-formats-error');
     expect(spec.arguments).not.toContain('--check-formats');

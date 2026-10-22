@@ -93,7 +93,7 @@ it('video fixture passes trusted builder, adapter, ingestion, repeat merge, seen
   expect(initial.every(comment => !comment.seen)).toBe(true);
   const command = execute.mock.calls[1][0];
   expect(command.executable).toBe(path.join(directory, 'yt-dlp.exe'));
-  expect(command.arguments).toEqual(['--ignore-config', '--no-plugin-dirs', '--no-playlist', '--skip-download', '--dump-single-json', '--write-comments', '--socket-timeout', '15', '--retries', '2', '--extractor-retries', '2', '--', videoUrl]);
+  expect(command.arguments).toEqual(['--ignore-config', '--no-plugin-dirs', '--no-playlist', '--skip-download', '--dump-single-json', '--write-comments', '--quiet', '--verbose', '--socket-timeout', '15', '--retries', '2', '--extractor-retries', '2', '--', videoUrl]);
   service.dispatch('toggleSeen', [{ itemId, commentId: initial[0].id, subtree: false, seen: true }]);
   // Second observation omits old comments, adds a new one and updates one remote text.
   const rows = payload.comments as Record<string, unknown>[];
@@ -207,22 +207,33 @@ it('verifies the selected Community executable conservatively before trusting ou
   }
 });
 
-it('counts probe time in the overall deadline and refuses output completed after it', async () => {
+it('accepts acquisition and refresh after five minutes with no extraction deadline and a bounded probe', async () => {
   const payload = await raw('yt-nested-a');
-  let now = 0;
-  const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   try {
+    let fetching = false;
     const execute = vi.fn<ExecuteProcess>(async request => {
-      if (request.arguments.includes('--version')) { now = 40; return outcome('2026.08.19'); }
-      expect(request.timeoutMs).toBe(60);
-      now = 101;
+      if (request.arguments.includes('--version')) { expect(request.timeoutMs).toBe(10000); return outcome('2026.08.19'); }
+      expect(request.timeoutMs).toBeUndefined();
+      fetching = true;
+      await new Promise(resolve => setTimeout(resolve, 300000));
       return outcome(JSON.stringify(payload));
     });
-    const extract = createLiveExtractor({ execute, resolve: resolver, deadlineMs: 100, clock: () => now });
-    const result = await extract({ sourceKind: 'youtube-video', sourceId: 'VidDemo_001', url: videoUrl }, new AbortController().signal);
-    expect(execute.mock.calls[0][0].timeoutMs).toBe(100);
-    expect(result).toMatchObject({ error: 'ACQUISITION_FAILED', extraction: { coverage: { kind: 'failed', reason: 'execution-deadline-or-shutdown' } } });
-  } finally { clock.mockRestore(); }
+    const service = new ReaderService(() => repository, ['en'], vi.fn(), extractor(execute));
+    const pending = service.dispatch('acquire', [{ url: videoUrl }]);
+    await vi.waitFor(() => expect(fetching).toBe(true));
+    await vi.advanceTimersByTimeAsync(300000);
+    const result = await pending;
+    if (!result.ok) throw new Error('Expected long acquisition');
+    const itemId = result.value.summary.itemId;
+    service.dispatch('bulkSeen', [{ itemId, seen: true, target: { kind: 'all' } }]);
+    fetching = false;
+    const refresh = service.dispatch('refresh', [{ itemId }]);
+    await vi.waitFor(() => expect(fetching).toBe(true));
+    await vi.advanceTimersByTimeAsync(300000);
+    expect(await refresh).toMatchObject({ ok: true, value: { summary: { inserted: 0 } } });
+    expect(repository.bootstrap(['en']).comments[itemId].every(comment => comment.seen)).toBe(true);
+  } finally { vi.useRealTimers(); }
 });
 
 it('child ENOENT maps to helper unavailable and helper warnings conservatively downgrade coverage', async () => {

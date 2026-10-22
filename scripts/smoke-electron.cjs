@@ -362,6 +362,13 @@ async function verifyWindow(window, nativeTheme) {
       assert.equal(await js("getComputedStyle(document.querySelector('.acquisition-spinner')).animationName"), 'acquisition-spin');
       assert.equal(await js("!!document.querySelector('.acquisition-status [role=status]') && !document.querySelector('.acquisition-status progress')"),true);
       assert.equal(await js("Array.from(document.querySelectorAll('.reader-panel:not([hidden]) input[type=checkbox]')).every(input => !input.disabled)"), true);
+      if (url.includes('/watch?')) {
+        await waitFor("document.querySelector('.acquisition-status [role=status]')?.textContent.includes('≈20%')", 'live comment counts');
+        const status = await js('window.reader.getAcquisitionProgress()');
+        assert.deepEqual(status.value.comments, { fetched: 1755, estimatedTotal: 8721 });
+        assert.ok(!JSON.stringify(status).includes('private'), 'Only validated numeric helper progress crosses IPC');
+        assert.equal(await js("!!document.querySelector('.acquisition-status button')"), true, 'Fetching still offers Cancel');
+      }
       await waitFor("document.querySelector('#source-url') === null && !document.body.innerText.includes('Pobieranie…')", 'acquisition acknowledgment');
       await waitFor("document.querySelector('.acquisition-spinner') === null", 'activity removed after settlement');
       assert.equal(await js("document.querySelector('[role=alert]') === null"), true);
@@ -776,6 +783,11 @@ if (process.versions.electron && process.type === 'browser') {
     assert.equal(options.shell, false);
     helperExecutions.push({file,probe:args.includes('--version')});
     const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: () => true });
+    if (!args.includes('--version') && path.basename(file).includes('yt-dlp')) {
+      assert.ok(args.includes('--quiet') && args.includes('--verbose'), 'JSON-safe comment diagnostics enabled');
+      setTimeout(() => child.stderr.emit('data', Buffer.from('[debug] private process info\n[youtube] Downloading comment API JSON page 51 (175')), 25);
+      setTimeout(() => child.stderr.emit('data', Buffer.from('5/~8721)\r\n')), 55);
+    }
     setTimeout(() => {
       let code = 0;
       if (args.includes('--version')) child.stdout.emit('data', Buffer.from(path.basename(file) === 'incompatible.exe' ? 'unsupported' : path.basename(file).includes('yt-dlp')
@@ -803,7 +815,7 @@ if (process.versions.electron && process.type === 'browser') {
         fs.writeFileSync(path.join(output, 'posts_unknown_20261003_120000.json'), JSON.stringify(raw));
       }
       child.emit('close', code);
-    }, args.includes('--version') ? 0 : 150);
+    }, args.includes('--version') ? 0 : 650);
     return child;
   };
   const { app, nativeTheme, dialog, shell } = require('electron');

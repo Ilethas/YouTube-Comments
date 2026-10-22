@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { setImmediate } from 'node:timers/promises';
 import type { AcquisitionResult, Result } from '../shared/reader-api';
 import type { AcquisitionNotification, AcquisitionProgress, AcquisitionStage, AcquisitionTimings } from '../shared/acquisition';
+import { isCommentProgress } from '../shared/acquisition';
 import type { ReaderRepository } from './persistence/reader-repository';
 import { parseAcquisitionTarget } from './acquisition-target';
 import type { AcquisitionTarget } from './acquisition-target';
@@ -65,10 +66,17 @@ export class AcquisitionService {
     let stage: AcquisitionStage = 'checking-helper', stageStarted = this.clock();
     const targetMs = stageStarted - started;
     const key = { 'checking-helper': 'helperMs', preparing: 'preparationMs', fetching: 'fetchMs', processing: 'processingMs', saving: 'savingMs' } as const;
+    let progressTimer: ReturnType<typeof setTimeout> | undefined;
+    let lastProgressAt = -Infinity;
+    const clearProgressTimer = () => { clearTimeout(progressTimer); progressTimer = undefined; };
     const advance = (next: AcquisitionStage) => {
+      if (this.active?.controller !== controller) return;
+      clearProgressTimer();
       const now = this.clock(); durations[key[stage]] += now - stageStarted; stageStarted = now; stage = next;
       if (this.active) {
-        this.active.progress = { ...this.active.progress, stage: next, cancellable: next !== 'saving' && !controller.signal.aborted };
+        const progress = { ...this.active.progress };
+        delete progress.comments;
+        this.active.progress = { ...progress, stage: next, cancellable: next !== 'saving' && !controller.signal.aborted };
         this.emit(this.active.progress);
       }
     };
@@ -76,7 +84,24 @@ export class AcquisitionService {
     this.emit(this.active.progress);
     try {
       let result;
-      try { result = await this.extract(target, signal, advance); }
+      try { result = await this.extract(target, signal, advance, value => {
+        if (this.active?.controller !== controller || signal.aborted || stage !== 'fetching'
+          || target.sourceKind !== 'youtube-video' || !isCommentProgress(value)) return;
+        const previous = this.active.progress.comments;
+        if (previous && (value.fetched < previous.fetched
+          || (value.fetched === previous.fetched && value.estimatedTotal === previous.estimatedTotal))) return;
+        // Copy approved numbers only, even when a test or future adapter supplies extras.
+        this.active.progress = { ...this.active.progress, comments: { fetched: value.fetched,
+          ...(value.estimatedTotal !== undefined ? { estimatedTotal: value.estimatedTotal } : {}) } };
+        const publish = () => {
+          clearProgressTimer();
+          if (this.active?.controller !== controller || signal.aborted || stage !== 'fetching') return;
+          lastProgressAt = this.clock(); this.emit(this.active.progress);
+        };
+        const remaining = 250 - (this.clock() - lastProgressAt);
+        if (remaining <= 0) publish();
+        else progressTimer ??= setTimeout(publish, remaining);
+      }); }
       catch { result = { error: 'ACQUISITION_FAILED' as const, extraction: { provenance: {
         backend: target.sourceKind === 'youtube-video' ? 'yt-dlp' : 'post-archiver-improved', version: 'unverified', evidence: [] },
         issues: [], coverage: { kind: 'failed' as const, reason: 'execution-failure' } } }; }
@@ -102,7 +127,7 @@ export class AcquisitionService {
         updated: attempt.counts.updated, warnings: attempt.issues.length,
       } } };
     } catch { return { ok: false, error: { code: 'STORAGE_UNAVAILABLE' } }; }
-    finally { this.active = undefined; this.activeTarget = undefined; this.emit({ operationId, settled: true }); settled(); }
+    finally { clearProgressTimer(); this.active = undefined; this.activeTarget = undefined; this.emit({ operationId, settled: true }); settled(); }
   }
   close(): Promise<void> { this.lifecycle.abort(); return this.completion; }
 }

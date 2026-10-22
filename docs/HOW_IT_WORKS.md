@@ -27,6 +27,19 @@ flowchart LR
 
 The user opens a supported item. React asks the main process to acquire it through a small typed API exposed by the preload script. React cannot run arbitrary commands or open the database. The main process identifies the source and uses the corresponding adapter: yt-dlp for a video, post-archiver-improved for an individual public Community Post.
 
+Acquisition and Refresh have no overall time limit. Large discussions can take
+several minutes; Cancel remains available until Saving begins, and quitting cancels
+active downloads and awaits helper cleanup. Individual network requests and helper
+identity checks remain bounded. Failed or cancelled extraction preserves stored
+discussion content and manual seen state.
+
+During video downloads, supported yt-dlp messages can show fetched comments and an
+estimated total, for example **Fetching comments — 1,755 / ~8,721 (≈20%)**. The total
+can change and fetched counts can lag the final result. The estimate never proves
+completeness; the percentage stays below 100 during fetching. If no recognized
+counts are available, the spinner, elapsed time and Cancel still work. Processing,
+Saving and Updating view remain separate stages. See [Extractors](EXTRACTORS.md).
+
 The helper's output is not yet our application data. The adapter validates and converts it into our own identities, comment text, parent relationships, authors, and available metadata. A missing timestamp or author property must remain honestly missing. Neither the UI nor the domain rules should need to know how one helper happens to spell a field. This separation lets us change helper versions or replace a backend without rewriting the reader. See [Extractors](EXTRACTORS.md) and [Architecture](ARCHITECTURE.md).
 
 Validated observations are merged into SQLite in a transaction. The first acquisition and later refreshes share the important preservation rules: new identities get unseen state; existing identities keep their local state. Refresh history records what happened. Pure helper command specifications and source field/coverage observations have offline fixtures (ADR 0003); normalized transactional ingestion/history is implemented in ADR 0004. Live execution and acquisition/refresh UI are implemented in ADRs 0005 and 0018.

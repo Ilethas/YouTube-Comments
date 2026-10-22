@@ -21,7 +21,7 @@ it.skipIf(process.platform !== 'win32')('real Windows cancellation terminates a 
     return child;
   });
   const pending = execute({ executable: process.execPath, arguments: ['-e', source], environmentAdditions: {},
-    timeoutMs: 10000, maxStdoutBytes: 1024, signal: controller.signal });
+    maxStdoutBytes: 1024, signal: controller.signal });
   const pid = await descendant;
   expect(Number.isSafeInteger(pid)).toBe(true);
   controller.abort();
@@ -49,6 +49,32 @@ it('deadline kills, waits for close, then returns failed timeout', async () => {
     process.emit('close', null);
     expect((await pending).status).toBe('timeout');
   } finally { vi.useRealTimers(); }
+});
+it('an unbounded extraction remains alive past 180 seconds and cancellation still awaits close', async () => {
+  vi.useFakeTimers();
+  try {
+    const process = child(), kill = vi.fn(), controller = new AbortController();
+    const pending = createProcessExecutor(() => process, kill)({ ...request, timeoutMs: undefined, signal: controller.signal });
+    let settled = false; void pending.then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(600000);
+    expect(kill).not.toHaveBeenCalled(); expect(settled).toBe(false);
+    controller.abort();
+    expect(kill).toHaveBeenCalledTimes(1); expect(settled).toBe(false);
+    process.emit('close', null);
+    expect((await pending).status).toBe('aborted');
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); }
+});
+it('streams stderr beyond the retained diagnostic limit while preserving JSON stdout', async () => {
+  const process = child(), chunks: Buffer[] = [];
+  const pending = createProcessExecutor(() => process)({ ...request, onStderr: chunk => chunks.push(chunk) });
+  process.stderr?.emit('data', Buffer.alloc(65536, 65));
+  process.stderr?.emit('data', Buffer.from('late progress\n'));
+  process.stdout?.emit('data', Buffer.from('{"comments":[]}'));
+  process.emit('close', 0);
+  const result = await pending;
+  expect(chunks).toHaveLength(2); expect(chunks[1].toString()).toBe('late progress\n');
+  expect(result.stderr).toHaveLength(65536); expect(JSON.parse(result.stdout)).toEqual({ comments: [] });
 });
 it('classifies ENOENT without sending its raw message', async () => {
   const process = child();

@@ -2,6 +2,10 @@
 
 Date: 2026-10-15. Status: accepted. Narrows Q-14 and Q-16; Q-21 remains separate.
 
+[ADR 0041](0041-unbounded-acquisition-and-comment-progress.md) supersedes this
+milestone's 180-second deadline and indeterminate-only progress policy. The
+cancellation, persistence, identity and lifecycle contracts below remain.
+
 ## Context and decision
 
 Anonymous helper operations take seconds with no trustworthy total comment count.

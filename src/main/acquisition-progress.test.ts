@@ -7,6 +7,7 @@ import { ReaderRepository } from './persistence/reader-repository';
 import { AcquisitionService } from './acquisition-service';
 import { createLiveExtractor } from './live-extraction';
 import type { ExecuteProcess, ProcessOutcome, ProcessRequest } from './helper-process';
+import type { ExtractLive } from './live-extraction';
 import type { AcquisitionNotification, AcquisitionProgress } from '../shared/acquisition';
 import { isAcquisitionNotification } from '../shared/acquisition';
 import { defaultQuery } from '../domain/discussion-query';
@@ -182,4 +183,70 @@ it('shutdown waits for child close and workspace cleanup without accepted or can
   await shutdown; await pending;
   expect((await readdir(directory)).filter(name => name.startsWith('youtube-comments-acquisition-'))).toEqual([]);
   expect(repo.history()).toEqual([]);
+});
+it('coalesces repeated counts, publishes trailing updates and fences cancelled or previous callbacks', async () => {
+  const raw = JSON.stringify(await payload(false));
+  const result = { extraction: normalizeYtDlp(raw, { provenance: { backend: 'yt-dlp', version: 'test', evidence: [] } }) };
+  const entered = gate<void>(), completed = gate<typeof result>();
+  let report: Parameters<ExtractLive>[3], advance: Parameters<ExtractLive>[2], now = 0;
+  const notifications: AcquisitionNotification[] = [];
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const service = new AcquisitionService(repo, ['en'], async (_target, _signal, stage, comments) => {
+    report = comments; advance = stage; stage?.('fetching'); entered.resolve(); return completed.promise;
+  }, value => notifications.push(value), () => now);
+  try {
+    const pending = service.acquire(video); await entered.promise;
+    const counts = () => notifications.filter((n): n is AcquisitionProgress => !('settled' in n) && !!n.comments);
+    report?.({ fetched: 1, estimatedTotal: 10 });
+    for (let i = 0; i < 100; i++) report?.({ fetched: 1, estimatedTotal: 10 });
+    expect(counts()).toHaveLength(1);
+    for (let i = 2; i <= 9; i++) report?.({ fetched: i, estimatedTotal: 10 });
+    report?.({ fetched: 8, estimatedTotal: 20 });
+    report?.({ fetched: 9, estimatedTotal: 20 });
+    report?.({ fetched: -1 });
+    report?.({ fetched: 100, stderr: 'private' } as unknown as { fetched: number });
+    expect(service.current()?.comments).toEqual({ fetched: 9, estimatedTotal: 20 });
+    now = 249; await vi.advanceTimersByTimeAsync(249); expect(counts()).toHaveLength(1);
+    now = 250; await vi.advanceTimersByTimeAsync(1);
+    expect(counts()).toHaveLength(2); expect(counts()[1].comments).toEqual({ fetched: 9, estimatedTotal: 20 });
+    report?.({ fetched: 10 }); // A trailing update must not outlive fetching.
+    advance?.('processing');
+    now = 500; await vi.advanceTimersByTimeAsync(250);
+    expect(counts()).toHaveLength(2); expect(service.current()?.comments).toBeUndefined();
+    completed.resolve(result); expect((await pending).ok).toBe(true);
+    const oldReport = report, oldAdvance = advance;
+    const next = service.acquire(video);
+    const before = notifications.length;
+    oldReport?.({ fetched: 100 }); oldAdvance?.('processing');
+    expect(notifications).toHaveLength(before);
+    const current = service.current(); if (!current) throw new Error('Expected second operation');
+    report?.({ fetched: 1 }); report?.({ fetched: 2 });
+    expect(service.cancel(current.operationId).ok).toBe(true);
+    const cancelled = notifications.length;
+    now = 750; await vi.advanceTimersByTimeAsync(250); report?.({ fetched: 3 });
+    expect(notifications.slice(cancelled).every(n => 'settled' in n)).toBe(true);
+    expect(await next).toMatchObject({ error: { code: 'ACQUISITION_CANCELLED' } });
+    expect(vi.getTimerCount()).toBe(0);
+    expect(JSON.stringify(notifications)).not.toContain('private');
+  } finally { vi.useRealTimers(); await service.close(); }
+});
+it('streamed diagnostic counts leave JSON ingest intact and late warnings still downgrade coverage', async () => {
+  const raw = JSON.stringify(await payload(false));
+  const notifications: AcquisitionNotification[] = [];
+  const execute: ExecuteProcess = async request => {
+    if (request.arguments.includes('--version')) return success('2026.08.19');
+    const text = '[youtube] Downloading comment API JSON page 51 (1755/~8721)\r\n';
+    for (const byte of Buffer.from(text)) request.onStderr?.(Buffer.from([byte]));
+    request.onStderr?.(Buffer.alloc(70000, 65));
+    request.onStderr?.(Buffer.from('\nWARNING: private raw text and path\n'));
+    // Retained stderr can be exhausted before a warning arrives.
+    return { ...success(raw), stderr: 'A'.repeat(65536) };
+  };
+  const service = new AcquisitionService(repo, ['en'], extract(execute), value => notifications.push(value));
+  const first = await service.acquire(video);
+  expect(first).toMatchObject({ ok: true, value: { summary: { inserted: 3, coverage: 'partial' } } });
+  expect(notifications.some(n => !('settled' in n) && n.comments?.fetched === 1755)).toBe(true);
+  expect(notifications.every(isAcquisitionNotification)).toBe(true);
+  expect(JSON.stringify(notifications)).not.toMatch(/private|stderr|path|raw text/);
+  expect(JSON.stringify(repo.history())).not.toContain('private');
 });

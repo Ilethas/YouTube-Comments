@@ -26,6 +26,21 @@ it('settlement retires IDs and late old progress cannot replace a new run', () =
   expect(state.accept({ operationId: 'first', settled: true })).toBe(next);
   expect(state.accept({ operationId: 'second', settled: true })).toBeNull();
 });
+it.each(['en', 'pl'] as const)('shows localized fetched counts, estimated totals and approximate percentages in %s', locale => {
+  const view = render(<AcquisitionStatus progress={{ ...progress, comments: { fetched: 1755, estimatedTotal: 8721 } }} locale={locale} cancel={vi.fn()} />);
+  const number = new Intl.NumberFormat(locale);
+  expect(screen.getByRole('status').textContent).toContain(`${number.format(1755)} / ~${number.format(8721)} (≈20%)`);
+  view.rerender(<AcquisitionStatus progress={{ ...progress, comments: { fetched: 9000 } }} locale={locale} cancel={vi.fn()} />);
+  expect(screen.getByRole('status').textContent).toContain(number.format(9000));
+  expect(screen.getByRole('status').textContent).not.toContain('%');
+  view.rerender(<AcquisitionStatus progress={{ ...progress, comments: { fetched: 9000, estimatedTotal: 9000 } }} locale={locale} cancel={vi.fn()} />);
+  expect(screen.getByRole('status').textContent).toContain('≈99%');
+  expect(screen.getByRole('status').textContent).not.toContain('100%');
+  view.rerender(<AcquisitionStatus progress={progress} locale={locale} cancel={vi.fn()} />);
+  expect(screen.getByRole('status').textContent).not.toContain('%');
+  expect(document.querySelector('.acquisition-spinner')).toBeTruthy();
+  expect(screen.getByRole('button')).toBeTruthy();
+});
 it('StrictMode and rerender maintain one subscription; snapshot cannot overtake newer events', async () => {
   const listeners = new Set<(value: AcquisitionNotification) => void>();
   let snapshot!: (value: Awaited<ReturnType<ReaderApi['getAcquisitionProgress']>>) => void;

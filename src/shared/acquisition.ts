@@ -1,5 +1,18 @@
 /** Safe application-owned notifications; never helper diagnostics or process identity. */
 export type AcquisitionStage = 'checking-helper' | 'preparing' | 'fetching' | 'processing' | 'saving';
+/** Helper observations only. The total is an estimate, never coverage evidence. */
+export interface CommentProgress {
+  readonly fetched: number;
+  readonly estimatedTotal?: number;
+}
+export function isCommentProgress(value: unknown): value is CommentProgress {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return Object.hasOwn(v, 'fetched') && Object.keys(v).every(key => key === 'fetched' || key === 'estimatedTotal')
+    && Number.isSafeInteger(v.fetched) && (v.fetched as number) >= 0
+    && (!Object.hasOwn(v, 'estimatedTotal') || (Number.isSafeInteger(v.estimatedTotal)
+      && (v.estimatedTotal as number) > 0 && (v.estimatedTotal as number) >= (v.fetched as number)));
+}
 /** Immutable run identity/start; cancellable turns false before accepted ingest. */
 export interface AcquisitionProgress {
   readonly operationId: string;
@@ -9,6 +22,7 @@ export interface AcquisitionProgress {
   readonly stage: AcquisitionStage;
   readonly startedAt: number;
   readonly cancellable: boolean;
+  readonly comments?: CommentProgress;
 }
 export type AcquisitionNotification = AcquisitionProgress | { readonly operationId: string; readonly settled: true };
 export const acquisitionProgressChannel = 'reader:acquisition-progress';
@@ -37,10 +51,11 @@ export function isAcquisitionNotification(value: unknown): value is AcquisitionN
   if (!id(v.operationId)) return false;
   if (v.settled === true) return Object.keys(v).length === 2 && Object.hasOwn(v, 'operationId') && Object.hasOwn(v, 'settled');
   const keys = ['operationId', 'kind', 'sourceKind', 'stage', 'startedAt', 'cancellable'];
-  return Object.keys(v).length === keys.length + (Object.hasOwn(v, 'itemId') ? 1 : 0)
+  return Object.keys(v).length === keys.length + (Object.hasOwn(v, 'itemId') ? 1 : 0) + (Object.hasOwn(v, 'comments') ? 1 : 0)
     && keys.every(key => Object.hasOwn(v, key)) && (!Object.hasOwn(v, 'itemId') || id(v.itemId))
     && (v.kind === 'acquire' || v.kind === 'refresh')
     && (v.sourceKind === 'youtube-video' || v.sourceKind === 'youtube-community-post')
+    && (!Object.hasOwn(v, 'comments') || (v.sourceKind === 'youtube-video' && v.stage === 'fetching' && isCommentProgress(v.comments)))
     && ['checking-helper', 'preparing', 'fetching', 'processing', 'saving'].includes(v.stage as string)
     && typeof v.startedAt === 'number' && Number.isFinite(v.startedAt) && v.startedAt >= 0
     && typeof v.cancellable === 'boolean' && (v.stage !== 'saving' || !v.cancellable);

@@ -47,7 +47,7 @@ if (process.versions.electron) {
     const fixture = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../src/main/extractors/__fixtures__/yt-nested-a.json')));
     let finishExtraction;
     service = new ReaderService(() => repository, ['en'], console.error,
-      async (_target, _signal, advance) => { advance('fetching'); await new Promise(resolve => { finishExtraction = resolve; }); return { extraction: normalizeYtDlp(JSON.stringify(fixture.raw), fixture.context) }; },
+      async (_target, _signal, advance, comments) => { advance('fetching'); comments({ fetched: 1755, estimatedTotal: 8721 }); await new Promise(resolve => { finishExtraction = resolve; }); return { extraction: normalizeYtDlp(JSON.stringify(fixture.raw), fixture.context) }; },
       {}, undefined, value => windows.sendAcquisitionProgress(value));
     registerReaderIpc(service, windows);
     seedPeerIdentity(windows, repository);
@@ -117,10 +117,13 @@ if (process.versions.electron) {
     const acquisition = invoke(a, 'acquire', { url: 'https://www.youtube.com/watch?v=VidDemo_001' });
     await wait(() => !!finishExtraction, 'accepted acquisition');
     const operation = await invoke(b, 'getAcquisitionProgress'); assert.equal(operation.ok, true); assert.equal(operation.value.stage, 'fetching');
+    assert.deepEqual(operation.value.comments, { fetched: 1755, estimatedTotal: 8721 });
     await wait(async () => (await js(a, 'window.m2Progress.length')) > 0 && (await js(b, 'window.m2Progress.length')) > 0, 'progress fanout');
+    for (const window of [a, b]) await wait(() => js(window, "document.querySelector('.acquisition-status [role=status]')?.textContent.includes('≈20%')"), 'numeric progress in both windows');
     const reconnect = new Promise(resolve => b.webContents.once('did-finish-load', resolve)); b.webContents.reload(); await reconnect;
     await wait(() => js(b, "!!document.querySelector('.app-shell') && !!document.querySelector('.acquisition-status')"), 'reconnected participant queries active progress');
     assert.equal((await invoke(b, 'getAcquisitionProgress')).value.operationId, operation.value.operationId);
+    await wait(() => js(b, "document.querySelector('.acquisition-status [role=status]')?.textContent.includes('≈20%')"), 'reloaded participant hydrates numeric progress');
     await js(b, "window.m2Progress=[];window.reader.onAcquisitionProgress(e=>window.m2Progress.push(e));void 0");
     finishExtraction(); finishExtraction = undefined;
     const acquired = await acquisition; assert.equal(acquired.ok, true); const itemId = acquired.value.summary.itemId;

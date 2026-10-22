@@ -28,6 +28,9 @@ function target(url: string, kind: 'video' | 'post'): string {
  * A configured comment limit is an invocation fact, not serialized completeness evidence. */
 export function buildYtDlpCommand(input: NetworkBounds & { readonly videoUrl: string; readonly maxComments?: number }): HelperCommandSpec {
   const args = ['--ignore-config', '--no-plugin-dirs', '--no-playlist', '--skip-download', '--dump-single-json', '--write-comments',
+    // Quiet routes screen messages to stderr; verbose makes extraction notes visible.
+    // --no-quiet would contaminate JSON stdout. --progress only covers media downloads.
+    '--quiet', '--verbose',
     '--socket-timeout', integer(input.timeoutSeconds, 1, Number.MAX_SAFE_INTEGER), '--retries', integer(input.retries, 0, Number.MAX_SAFE_INTEGER), '--extractor-retries', integer(input.retries, 0, Number.MAX_SAFE_INTEGER)];
   if (input.maxComments !== undefined) args.push('--extractor-args', `youtube:max_comments=${integer(input.maxComments, 1, Number.MAX_SAFE_INTEGER)}`);
   args.push('--', target(input.videoUrl, 'video'));

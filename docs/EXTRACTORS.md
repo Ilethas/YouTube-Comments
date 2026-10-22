@@ -46,8 +46,9 @@ If a development shell finds only a batch wrapper, configure the exact
 before `npm.cmd start`, as documented below and in Packaging. The PATH directory
 need not change. No batch contents are read and no renderer path input exists.
 
-Trusted builders use 15-second network timeouts and two helper retries; the
-overall deadline is 180 seconds including a probe of at most ten seconds.
+Trusted builders use 15-second network timeouts and two helper retries. Extraction
+has no overall deadline: it runs until completion, Cancel, shutdown or failure.
+The separate helper identity probe remains bounded to ten seconds.
 Community caps are 1,000 comments/1,000 replies and preserve partial invocation
 evidence. yt-dlp ordinary coverage is unknown; reported warnings conservatively
 downgrade it to partial. No zero exit/count heuristic proves completeness.
@@ -64,9 +65,10 @@ No cookies, image downloads or broken quiet flag. No raw archive retention.
 
 Stdout/archive is bounded at 128 MiB and stderr at 64 KiB. Fixed failure tokens,
 exit codes and adapter issues feed existing history; raw stderr, paths and
-payloads do not. Deadline/quit kills the owned process tree on Windows and waits
+payloads do not. Cancel/quit kills the owned process tree on Windows and waits
 for close before cleanup. Normal quit awaits cleanup; abrupt crash recovery,
-distribution and history retention remain open. ADR 0018 implements coarse progress and explicit user cancellation.
+distribution and history retention remain open. ADR 0018 implements explicit user
+cancellation; ADR 0041 adds live estimated comment counts without an overall deadline.
 
 ## Boundary and responsibilities
 
@@ -196,13 +198,13 @@ Adapter tests should use saved representative output fixtures, including unavail
 
 This pure milestone settles observation types, investigated versions/invocation intent, unknown/partial evidence and fixture provenance in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). ADR 0004 implements normalized ingestion, identity/conflict/relationship policy and baseline/history. ADR 0005 selects development resolution/version checks, owned config/output cleanup, conservative process failure, buffers/deadlines, one-live-operation scheduling and structured diagnostic storage. ADR 0018 implements user cancellation/progress; crash-temp recovery and diagnostic retention duration remain open. Do not silently turn one backend's incidental behavior into a product guarantee.
 
-## Coarse progress and cancellation instrumentation (ADR 0018)
+## Progress and cancellation instrumentation (ADRs 0018/0041)
 
 [ADR 0018](decisions/0018-acquisition-progress-and-safe-cancellation.md) instruments
 checking-helper (resolution plus version probe), preparing (workspace/config/command),
 fetching (owned child) and processing (file reading/normalization/cleanup). Main service
-adds non-cancellable saving and measures result bootstrap separately. No stage asserts
-a known total or percentage. Every acquisition still performs its existing bounded
+adds non-cancellable saving and measures result bootstrap separately. Every
+acquisition still performs its existing bounded
 identity probe and retains tested/untested policy; stage durations use a monotonic clock.
 
 A fresh per-operation signal is composed with shutdown via AbortSignal.any and reaches
@@ -214,6 +216,26 @@ Community cleanup remains awaited in finally. A Cancel acknowledgment is intent 
 fully settled cancellation waits for the original operation. No raw paths/commands,
 stderr, cookies or process handles enter progress payloads. Detailed safe timings return
 with successful acknowledgments, without SQLite timing records or raw-output retention.
+
+[ADR 0041](decisions/0041-unbounded-acquisition-and-comment-progress.md) removes the
+180-second extraction deadline. Installed yt-dlp 2026.08.19 supports
+`--dump-single-json --quiet --verbose`: final JSON stays on stdout and comment page/
+reply-thread notes appear on stderr. `--progress` alone does not enable these notes;
+`--no-quiet` contaminates stdout. The executor streams diagnostics privately beyond
+its retained 64 KiB buffer. Main incrementally parses at most a 1024-character line,
+handles CR/LF and split chunks, discards malformed/oversized lines and detects late
+warnings without retaining raw diagnostics. Only validated integer fetched counts
+and usable estimated totals enter the existing authenticated progress channel.
+
+Numeric notifications are deduplicated/coalesced at 250 ms with a trailing update;
+operation/stage/cancellation guards dispose timers and reject stale callbacks. The
+status uses localized counts, `~` total and an approximate percentage capped at 99
+during Fetching. A changed estimate may revise the percentage; a lower fetched
+observation is ignored. Counts can lag final output and never prove coverage or
+completion. Unknown formats, missing progress and Community keep the spinner,
+elapsed time and Cancel. Processing/Saving/Updating view retain their existing
+semantics. Successful completion depends on validated normalization and atomic
+ingest, not progress. No schema or stored-progress change is involved.
 
 
 ## Video thumbnail evidence (ADR 0025)

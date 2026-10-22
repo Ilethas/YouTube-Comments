@@ -19,11 +19,16 @@ export function AcquisitionStatus({ progress, locale, updating, cancel }: {
     return () => clearInterval(timer);
   }, [progress.operationId, progress.startedAt]);
   const stage = updating ? 'updating-view' : progress.stage;
+  const comments = stage === 'fetching' ? progress.comments : undefined;
+  const number = new Intl.NumberFormat(locale);
   const stageKey = { 'checking-helper': 'stageHelper', preparing: 'stagePreparing', fetching: 'stageFetching',
     processing: 'stageProcessing', saving: 'stageSaving', 'updating-view': 'stageView' } as const;
   return <div className="acquisition-status">
     <span className="acquisition-spinner" aria-hidden="true" />
-    <span role="status" title={t(progress.kind === 'refresh' ? 'refreshing' : 'acquiring')}>{t(progress.kind === 'refresh' ? 'operationRefresh' : 'operationAcquire')} <strong>{t(stageKey[stage])}</strong></span>
+    <span role="status" title={t(progress.kind === 'refresh' ? 'refreshing' : 'acquiring')}>{t(progress.kind === 'refresh' ? 'operationRefresh' : 'operationAcquire')} <strong>{t(stageKey[stage])}</strong>
+      {comments && <> — <span title={t('commentProgressEstimate')}>{number.format(comments.fetched)}{comments.estimatedTotal !== undefined
+        && <> / ~{number.format(comments.estimatedTotal)} (≈{number.format(Math.min(99, Math.floor(comments.fetched / comments.estimatedTotal * 100)))}%)</>}</span></>}
+    </span>
     <time aria-label={t('operationElapsed')}>{String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}</time>
     {!updating && progress.cancellable && <button disabled={cancelling} onClick={() => {
       setCancelling(true); void cancel().catch(() => undefined).finally(() => setCancelling(false));

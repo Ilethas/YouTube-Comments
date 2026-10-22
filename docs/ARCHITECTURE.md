@@ -432,7 +432,8 @@ path/status evidence crosses preload (ADR 0014). See [Extractors](EXTRACTORS.md)
 `acquisition-target.ts` owns supported URL validation/canonicalization;
 `helper-process.ts` owns environment/saved/PATH resolution, strict executable validation and no-shell asynchronous spawning;
 `live-extraction.ts` probes helper identity and tested-version confidence, builds trusted commands, owns anonymous
-Community temporary config/output, enforces deadlines and normalizes before writes.
+Community temporary config/output, retains bounded probes/network requests and
+normalizes before writes. Extraction has no overall deadline (ADR 0041).
 `acquisition-service.ts` coordinates the temporary single-live-operation lock,
 stored-identity refresh, repository ingestion and compact acknowledgment.
 `ReaderService` validates exact intent payloads. The IPC sender/frame/document
@@ -674,6 +675,15 @@ probes and awaits configuration/acquisition work before releasing SQLite. Raw di
 stay privileged; status paths are plain display evidence, never execution requests.
 
 ## Acquisition progress boundary (ADR 0018)
+
+[ADR 0041](decisions/0041-unbounded-acquisition-and-comment-progress.md) removes
+the extraction wall-clock deadline while retaining bounded identity probes,
+network requests/retries and output sizes. yt-dlp `--quiet --verbose` sends private
+comment notes to stderr beside JSON-only stdout. A bounded main parser adds only
+validated fetched/estimated-total integers to the existing notification, throttled
+at 250 ms and fenced by operation/stage/cancellation. Estimated percentages stay
+below 100 during Fetching and never establish coverage or completion. Unknown
+formats keep indeterminate progress; no raw helper diagnostics cross preload.
 
 Main retains one global remote operation with an opaque UUID, fresh operation controller
 and AbortSignal.any composition with shutdown. Exact active cancellable-ID matching

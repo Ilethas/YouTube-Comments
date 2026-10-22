@@ -1,5 +1,9 @@
 # Decisions and open questions
 
+[ADR 0041: Acquisition without an overall deadline and live comment counts](0041-unbounded-acquisition-and-comment-progress.md)
+removes the extraction wall-clock limit, retains bounded identity/network checks
+and adds private stderr parsing plus safe throttled estimated counts on schema 16.
+
 [ADR 0040: Profile theme files](0040-profile-theme-files.md) adds editable
 profile-local JSON, explicit Refresh, named selection, bounded main-owned scans
 and crash-safe associations while retaining schema 16 and SQLite backup snapshots.

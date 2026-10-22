@@ -11,9 +11,12 @@ export interface ProcessRequest {
   readonly arguments: readonly string[];
   readonly environmentAdditions: Readonly<Record<string, string>>;
   readonly cwd?: string;
-  readonly timeoutMs: number;
+  /** Omit for extraction; identity probes retain a finite deadline. */
+  readonly timeoutMs?: number;
   readonly maxStdoutBytes: number;
   readonly signal?: AbortSignal;
+  /** Main-only streaming diagnostic observer. Never forwarded over IPC. */
+  readonly onStderr?: (chunk: Buffer) => void;
 }
 export interface ProcessOutcome {
   readonly status: 'exited' | 'unavailable' | 'failed' | 'timeout' | 'output-limit' | 'aborted';
@@ -110,15 +113,17 @@ export function createProcessExecutor(launch: (file: string, args: string[], opt
         cwd: request.cwd, env: { ...process.env, ...request.environmentAdditions }, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch { status = 'failed'; finish(); return; }
     const stop = (reason: ProcessOutcome['status']) => { if (status === 'exited') { status = reason; kill(child); } };
-    const timer = setTimeout(() => stop('timeout'), Math.max(1, request.timeoutMs));
+    const timer = request.timeoutMs === undefined ? undefined : setTimeout(() => stop('timeout'), Math.max(1, request.timeoutMs));
     const abort = () => stop('aborted');
     request.signal?.addEventListener('abort', abort, { once: true });
+    if (request.signal?.aborted) abort();
     child.stdout?.on('data', (data: Buffer) => {
       outBytes += data.length;
       if (outBytes > request.maxStdoutBytes) stop('output-limit');
       else stdout.push(data);
     });
     child.stderr?.on('data', (data: Buffer) => {
+      if (status === 'exited') request.onStderr?.(data);
       if (errBytes < 65536) stderr.push(data.subarray(0, 65536 - errBytes));
       errBytes += data.length;
     });

@@ -1,5 +1,62 @@
 # Testing strategy
 
+## Acquisition deadlines and live comment progress (2026-10-22)
+
+[ADR 0041](decisions/0041-unbounded-acquisition-and-comment-progress.md) removes
+the overall extraction deadline and adds bounded private stderr parsing with safe
+numeric progress on the existing channel. Schema remains 16.
+
+- Full `npm.cmd test`: **1,308 passed, 1 optional live test skipped, 108 files**.
+  Regression coverage includes five-minute virtual acquisition/Refresh, unbounded
+  executor cancellation after ten virtual minutes, real Windows parent/descendant
+  cleanup, bounded probes/output, malformed and arbitrarily split CR/LF progress,
+  unknown/changing/underestimated totals, repeated counts, 250 ms trailing throttling,
+  cancellation/stage/operation fencing, exact IPC shapes, late warnings, JSON
+  normalization/ingest and existing failed-refresh/seen/NEW/Undo preservation.
+- TypeScript and ESLint passed with no warnings. Verified Windows x64 Forge package
+  passed (fresh executable/runtime/ASAR/fuse checks); no installer was executed.
+- Built-entry `node scripts/smoke-electron.cjs` passed write/read/readsystem phases,
+  including split process stderr through real preload/IPC to localized numeric UI,
+  available Cancel, responsive seen controls, JSON ingestion and persistence/restart.
+  Native Copy remains unverified because the clipboard contained formats Electron
+  could not snapshot; the harness preserved it.
+- `node scripts/smoke-shared-sync.cjs` passed numeric progress in two authorized
+  windows and current-count hydration after reload, along with existing M2 checks.
+  `node scripts/smoke-profile-lifecycle.cjs` and
+  `node scripts/smoke-profile-quit.cjs` passed drain/offline/Close/reload/Quit checks.
+
+The actual installed **yt-dlp 2026.08.19** executable was exercised anonymously on
+`https://www.youtube.com/watch?v=lEZ5UPPtaHA`. Three bounded 30-comment diagnostic
+comparisons found: `--progress` kept valid JSON but emitted no comment counts;
+`--no-quiet` mixed logs into stdout; `--quiet --verbose` kept valid JSON stdout and
+emitted stderr counts including 0, 1, 11 and 21 against `~8721`. Installed help and
+`YoutubeDL.py` confirmed quiet selects stderr for screen notes and verbose permits
+them, while `dump_single_json` still uses stdout. No helper files were modified.
+
+The separate opt-in production-extractor/service test then passed full acquisition,
+full Refresh and real subsequent-refresh cancellation in a disposable SQLite profile:
+**225 seconds for acquisition**, **8,703 stored comments**, **454.8 seconds combined**,
+and **1,696 numeric notifications**. Acquisition therefore genuinely exceeded the
+old limit; the reported estimate differed from retrieved data. Manual seen state
+survived Refresh, cancellation preserved the entire prior reader snapshot and
+recorded only failed cancellation history, and close/temporary-profile cleanup
+completed. Raw output/comment data was neither logged nor saved as a fixture.
+
+To repeat this optional network-dependent test with a direct installed executable:
+
+```powershell
+$env:YOUTUBE_COMMENTS_LIVE_YTDLP_EXE = 'C:\path\to\yt-dlp.exe'
+npx.cmd vitest run src/main/live-yt-dlp.test.ts
+Remove-Item Env:YOUTUBE_COMMENTS_LIVE_YTDLP_EXE
+```
+
+The twenty-minute timeout belongs only to this optional test harness; production
+extraction has no overall or inactivity deadline. Normal tests skip it. Upstream
+note text is a best-effort compatibility boundary: unknown versions/formats keep
+indeterminate progress, counts can lag final JSON, and estimates never certify
+coverage. Synchronous normalization/ingest remains unchanged. Existing owner
+physical-input, licensing and release gates remain pending; changes are uncommitted.
+
 ## Owner-edited Charcoal palette (2026-10-21)
 
 The edited `src/shared/themes/charcoal.json` remains authoritative. Renderer/native
