@@ -621,8 +621,13 @@ Latest activity uses the newest usable publication time anywhere in the complete
 tree. Estimated/coarse instants participate just as in date filtering. Unknown
 keys follow known keys, and all ties retain Original order. Missing metadata is
 never zero or a discovery/Refresh timestamp. Most liked is disabled with accessible
-localized explanation when no displayed root has known likes; a retained selection
-then effectively uses Original without forgetting the chosen mode.
+localized explanation when no root in the stored discussion has known likes,
+independently of applied search/seen/date filters. Empty results and results whose
+roots all have unknown likes keep Most liked available if another conversation
+has a known root count. Sorting still covers only the applied complete trees;
+all-unknown keys retain Original order. If stored root counts genuinely become
+unavailable, the selected Most liked preference is retained until usable counts
+return or the user chooses another mode.
 
 Sort is independent per discussion, survives close/reopen in one Reader lifetime,
 and clears on Library removal. ADR 0017 restores the saved sort after fresh query reconstruction, including all-unknown Most liked. Changing mode captures the virtual anchor ID/offset and restores that

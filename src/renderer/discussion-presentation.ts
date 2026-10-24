@@ -35,13 +35,19 @@ export interface ReaderPresentation {
 /** Project the applied complete-tree preorder, using its frozen parents even after
  * a failed Refresh evaluation. Live seen never changes membership or role.
  * A retained order joins live content without moving rows before Refresh captures
- * its anchor. New applied results and explicit sort changes compute fresh keys. */
+ * its anchor. New applied results and explicit sort changes compute fresh keys.
+ * Availability follows all current display roots, independently of frozen order. */
 export function projectReaderRows(comments: readonly Comment[], result: DiscussionViewResult, sort: DiscussionSort = 'original',
-  retainedOrder?: Pick<ReaderPresentation, 'orderedIds' | 'mostLikedAvailable'>): ReaderPresentation {
-  const byId = new Map(comments.map(comment => [comment.id, comment]));
-  const { ids: order, mostLikedAvailable } = retainedOrder
-    ? { ids: retainedOrder.orderedIds, mostLikedAvailable: retainedOrder.mostLikedAvailable }
-    : sortDiscussionTrees(result, byId, sort);
+  retainedOrder?: Pick<ReaderPresentation, 'orderedIds'>): ReaderPresentation {
+  const byId = new Map<string, Comment>();
+  let mostLikedAvailable = false;
+  // Reuse the existing full-discussion join, without constructing another tree.
+  // parentId is the safe display placement; source relationships stay untouched.
+  for (const comment of comments) {
+    byId.set(comment.id, comment);
+    if (!mostLikedAvailable && comment.parentId === null && comment.likeCount !== undefined) mostLikedAvailable = true;
+  }
+  const order = retainedOrder?.orderedIds ?? sortDiscussionTrees(result, byId, sort);
   const lastChild = new Map<string | null, string>(), firstChild = new Map<string | null, string>(), parents = new Set<string>();
   for (const id of order) {
     if (!byId.has(id)) continue;

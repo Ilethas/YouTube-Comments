@@ -33,8 +33,9 @@ export function sortDiscussionTrees(result: DiscussionViewResult, byId: Readonly
     tree.end = index + 1;
     if (publication !== undefined && (tree.activity === undefined || publication > tree.activity)) tree.activity = publication;
   }
-  const mostLikedAvailable = trees.some(tree => tree.likes !== undefined);
-  if (sort === 'original' || (sort === 'most-liked' && !mostLikedAvailable)) return { ids: original, mostLikedAvailable };
+  // All-unknown filtered roots keep Original order even when another, excluded
+  // conversation makes Most liked available for the discussion.
+  if (sort === 'original' || (sort === 'most-liked' && trees.every(tree => tree.likes === undefined))) return original;
   const key = (tree: ConversationKey) => sort === 'most-liked' ? tree.likes : sort === 'latest-activity' ? tree.activity : tree.publication;
   trees.sort((a, b) => {
     const left = key(a), right = key(b);
@@ -45,5 +46,5 @@ export function sortDiscussionTrees(result: DiscussionViewResult, byId: Readonly
   });
   const ids: string[] = [];
   for (const tree of trees) for (let index = tree.start; index < tree.end; index++) ids.push(original[index]);
-  return { ids, mostLikedAvailable };
+  return ids;
 }

@@ -46,6 +46,26 @@ it('live handoff retains frozen membership/order, stale flag, temporary range se
   expect(target.presentation(rows).orderedIds).toEqual(handoff.orderedIds);
   session.dispose(); target.dispose();
 });
+
+it('an empty Most liked view retains its mode and discussion availability across windows and shared Refresh', async () => {
+  const comments = rows.map(row => ({ ...row, seen: true, likeCount: row.parentId === null ? 0 : undefined }));
+  const session = new DiscussionViewSession(comments, engine());
+  session.setSort('most-liked'); session.edit({ ...defaultQuery, seen: 'unseen' }); await session.apply(comments);
+  const handoff = await session.prepareTransfer('view', 'video-demo', stamp, null);
+  expect(handoff.orderedIds).toEqual([]); expect(handoff.mostLikedAvailable).toBe(true);
+  const target = new DiscussionViewSession(comments, engine());
+  target.adoptTransfer(handoff, comments);
+  expect(target.presentation(comments).mostLikedAvailable).toBe(true);
+  expect(target.state.sort).toBe('most-liked');
+  const unknown = comments.map(row => ({ ...row, likeCount: undefined }));
+  await target.refresh(unknown);
+  expect(target.presentation(unknown).mostLikedAvailable).toBe(false);
+  expect(target.persistentIntent().sort).toBe('most-liked');
+  await target.refresh(comments);
+  expect(target.presentation(comments).mostLikedAvailable).toBe(true);
+  expect(target.state.result.visibleCommentIds).toEqual([]);
+  session.dispose(); target.dispose();
+});
 it('freezes source mutations without removing its React panel; cancellation resumes its working session', async () => {
   const { session } = await source(), item = items.find(i => i.id === 'video-demo'); if (!item) throw Error('fixture');
   const props = { viewId: 'view', item, comments: rows, session, locale: 'en' as const, saving: false, refreshDisabled: false, coverageLimited: false, onRefresh: vi.fn(), onToggle: vi.fn() };

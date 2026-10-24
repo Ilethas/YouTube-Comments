@@ -122,7 +122,8 @@ export class DiscussionViewSession {
   private restoreTask?: Promise<void>;
   private presentationCache?: { comments: readonly Comment[]; result: DiscussionViewResult; sort: DiscussionSort; value: ReaderPresentation };
   /** Share one projection across controls, navigation, reader and ruler. Draft,
-   * selection and pending-state notifications reuse the same immutable value. */
+   * selection and pending-state notifications reuse the same immutable value,
+   * including discussion-wide sort availability. */
   presentation(comments: readonly Comment[]): ReaderPresentation {
     this.currentComments = comments;
     const { result, sort } = this.state, cached = this.presentationCache;

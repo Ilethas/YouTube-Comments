@@ -94,6 +94,41 @@ it('live metadata joins retain accepted presentation until successful evaluation
   expect(session.presentation(changed).orderedIds).toEqual(['a', 'b']);
 });
 
+it('discussion availability follows committed roots while order remains frozen and Most liked intent survives loss and recovery', async () => {
+  const comments = [dateTestComment('unknown'), dateTestComment('known', undefined, { likeCount: 5 })];
+  const engine = executor(), session = new DiscussionViewSession(comments, engine);
+  session.setSort('most-liked');
+  expect(session.presentation(comments).orderedIds).toEqual(['known', 'unknown']);
+  const changed = comments.map(row => ({ ...row, likeCount: undefined }));
+  const joined = session.presentation(changed);
+  expect(joined.mostLikedAvailable).toBe(false);
+  expect(joined.orderedIds).toEqual(['known', 'unknown']);
+  engine.evaluate.mockResolvedValueOnce({ ok: false, error: 'QUERY_FAILED' });
+  await session.refresh(changed);
+  expect(session.presentation(changed)).toBe(joined);
+  await session.refresh(changed);
+  expect(session.presentation(changed).orderedIds).toEqual(['unknown', 'known']);
+  expect(session.persistentIntent().sort).toBe('most-liked');
+  await session.refresh(comments);
+  expect(session.presentation(comments).mostLikedAvailable).toBe(true);
+  expect(session.presentation(comments).orderedIds).toEqual(['known', 'unknown']);
+  expect(session.state.sort).toBe('most-liked');
+  session.dispose();
+});
+
+it('controls, navigation and draft renders reuse cached discussion availability without rereading root likes', () => {
+  let reads = 0;
+  const comments = [dateTestComment('known', undefined, { get likeCount() { reads++; return 0; } })];
+  const session = new DiscussionViewSession(comments, executor());
+  const presentation = session.presentation(comments), initialReads = reads;
+  expect(presentation.mostLikedAvailable).toBe(true);
+  session.edit({ ...session.state.draft, text: 'draft' }); session.select('known');
+  expect(session.presentation(comments)).toBe(presentation);
+  session.displayed(comments);
+  expect(reads).toBe(initialReads);
+  session.dispose();
+});
+
 it('match/unseen navigation follows sorted preorder, wraps and resolves from context without changing frozen membership', async () => {
   const comments = [dateTestComment('a', '2025-01-01T00:00:00Z'), dateTestComment('context', undefined, { parentId: 'a', text: 'context' }),
     dateTestComment('b', '2026-01-01T00:00:00Z'), dateTestComment('c', '2026-10-01T00:00:00Z')];

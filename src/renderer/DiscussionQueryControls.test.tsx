@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useSyncExternalStore } from 'react';
 import { DiscussionQueryControls } from './DiscussionQueryControls';
 import { DiscussionViewSession } from './discussion-view-session';
@@ -39,5 +39,41 @@ it.each(['en', 'pl'] as const)('%s time fields remain drafts until Apply, show a
   fireEvent.change(screen.getByLabelText(t('publicationPreset')), { target: { value: 'today' } });
   expect(clock.disabled).toBe(true); expect((screen.getByLabelText(t('bulkFromTime')) as HTMLInputElement).disabled).toBe(true);
   expect(comments.every(comment => !comment.seen)).toBe(true);
+  session.dispose();
+});
+
+it.each(['en', 'pl'] as const)('%s Most liked remains selectable and selected through empty Unseen results and genuine data changes', async locale => {
+  let comments = [dateTestComment('unknown', undefined, { seen: true }),
+    dateTestComment('known', undefined, { likeCount: 0, seen: true })];
+  const engine = { evaluate: vi.fn(async (...args: Parameters<typeof evaluateDiscussionQuery>) => evaluateDiscussionQuery(...args)), dispose: vi.fn() };
+  const session = new DiscussionViewSession(comments, engine);
+  const t = translator(locale);
+  function Controls() {
+    const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
+    return <DiscussionQueryControls state={state} presentation={session.presentation(comments)} locale={locale}
+      sort={sort => session.setSort(sort)} edit={draft => session.edit(draft)} apply={() => { void session.apply(comments); }} navigate={vi.fn()} unseenCount={0} />;
+  }
+  render(<Controls />);
+  const select = screen.getByLabelText<HTMLSelectElement>(t('sortConversations'));
+  const option = screen.getByRole<HTMLOptionElement>('option', { name: t('sortMostLiked') });
+  for (const [index, seen] of ['unseen', 'all', 'unseen'].entries()) {
+    fireEvent.change(screen.getByLabelText(t('seenFilter')), { target: { value: seen } });
+    fireEvent.click(screen.getByRole('button', { name: t('applyView') }));
+    await waitFor(() => expect(session.state.pending).toBe(false));
+    expect(session.state.result.matchCount).toBe(seen === 'all' ? 2 : 0);
+    expect(option.disabled).toBe(false);
+    expect(screen.queryByText(t('sortLikesUnavailable'))).toBeNull();
+    if (index === 0) fireEvent.change(select, { target: { value: 'most-liked' } });
+    expect(select.value).toBe('most-liked');
+    expect(session.persistentIntent().sort).toBe('most-liked');
+  }
+  // Genuine loss of root evidence disables the option without replacing intent.
+  comments = comments.map(comment => ({ ...comment, likeCount: undefined }));
+  await act(async () => { await session.refresh(comments); });
+  expect(option.disabled).toBe(true); expect(select.value).toBe('most-liked');
+  expect(screen.getByText(t('sortLikesUnavailable')).id).toBe(select.getAttribute('aria-describedby'));
+  expect(session.persistentIntent().sort).toBe('most-liked');
+  fireEvent.change(select, { target: { value: 'original' } });
+  expect(select.value).toBe('original');
   session.dispose();
 });

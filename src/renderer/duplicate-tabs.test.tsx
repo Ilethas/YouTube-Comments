@@ -94,6 +94,23 @@ it('flushes current debounced draft/collapse, hydrates a fresh worker before ren
   expect(within(panel()).getByLabelText<HTMLSelectElement>('Sort').value).toBe('newest');
   expect(repo.viewSnapshot(repo.initialWindowId(), source).collapse?.defaultCollapsed).toBe(true);
 });
+
+it('duplicates a persisted Most liked selection with an empty applied result and keeps it available', async () => {
+  const source = sourceId();
+  fireEvent.change(within(panel()).getByLabelText('Sort'), { target: { value: 'most-liked' } });
+  fireEvent.change(field(), { target: { value: 'no matching comments' } });
+  fireEvent.submit(required(panel().querySelector('form')));
+  await waitFor(() => expect(within(panel()).getByLabelText('Applied match position').textContent).toBe('0 / 0'));
+  const clone = await duplicate(source, true);
+  for (const id of [source, clone]) {
+    const sort = within(panel(id)).getByLabelText<HTMLSelectElement>('Sort');
+    expect(sort.value).toBe('most-liked');
+    expect(within(sort).getByRole<HTMLOptionElement>('option', { name: 'Most liked', hidden: true }).disabled).toBe(false);
+    expect(within(panel(id)).getByLabelText('Applied match position').textContent).toBe('0 / 0');
+    expect(within(panel(id)).queryByText('Like counts are unavailable for these conversations.')).toBeNull();
+    expect(repo.viewSnapshot(repo.initialWindowId(), id).intent).toMatchObject({ sort: 'most-liked', applied: { text: 'no matching comments' } });
+  }
+});
 it('fresh clone evaluation sees current shared seen while source membership remains frozen; Apply and temporary selection are independent', async () => {
   const source = sourceId();
   fireEvent.change(within(panel()).getByLabelText('Seen filter'), { target: { value: 'unseen' } });

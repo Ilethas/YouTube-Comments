@@ -57,6 +57,31 @@ it('Most liked uses only projected root evidence: zero is known, descendants and
   expect(projectReaderRows([], unrestrictedView([]), 'most-liked').mostLikedAvailable).toBe(false);
 });
 
+it.each([
+  { seen: 'unseen' as const },
+  { text: 'no matching text' },
+  { publication: { kind: 'custom' as const, from: '2027-01-01' } },
+])('Most liked stays available when filters exclude every conversation: %j', criteria => {
+  const comments = [comment('known-zero', early, { likeCount: 0, seen: true })];
+  const outcome = evaluateTestQuery(comments, { ...defaultQuery, ...criteria });
+  if (!outcome.ok) throw new Error('Query failed');
+  const presentation = projectReaderRows(comments, outcome.result, 'most-liked');
+  expect(presentation.orderedIds).toEqual([]);
+  expect(presentation.mostLikedAvailable).toBe(true);
+});
+
+it('Most liked availability includes excluded roots while sorting only the filtered complete conversations', () => {
+  const comments = [comment('excluded', early, { likeCount: 50, text: 'excluded' }),
+    comment('unknown', early), comment('reply', latest, { parentId: 'unknown', likeCount: 999 }),
+    comment('also-unknown', late)];
+  const outcome = evaluateTestQuery(comments, { ...defaultQuery, text: 'needle' });
+  if (!outcome.ok) throw new Error('Query failed');
+  const presentation = projectReaderRows(comments, outcome.result, 'most-liked');
+  expect(presentation.mostLikedAvailable).toBe(true);
+  expect(presentation.orderedIds).toEqual(['unknown', 'reply', 'also-unknown']);
+  expect(presentation.orderedIds).toEqual(outcome.result.visibleCommentIds);
+});
+
 it.each(['shallow', 'mixed', 'chain'] as const)('whole %s filtered trees retain exact reply structure, roles, ancestry and sibling metadata', shape => {
   const { comments } = generateDiscussion({ count: 1000, roots: 4, shape, maxDepth: 1000, matchIndexes: [10, 600, 999] });
   const changed = comments.map((row, index) => ({ ...row, publishedAt: new Date(Date.parse(early) + index * 1000).toISOString() }));
@@ -107,7 +132,7 @@ it('ruler keeps category identities while positions/targets follow sorted geomet
   expect(rulerMarkerCoordinate(sorted[0], buckets[0].geometry)).toBe(37.5);
 });
 
-it.each([10000, 50000])('%i projection reads publication once per displayed comment and root likes once, including deep chains', count => {
+it.each([10000, 50000])('%i projection prepares keys linearly and short-circuits discussion availability, including deep chains', count => {
   for (const shape of ['flat', 'chain'] as const) {
     let publicationReads = 0, likeReads = 0;
     const data = generateDiscussion({ count, shape, roots: shape === 'flat' ? count : 1, maxDepth: count });
@@ -116,7 +141,9 @@ it.each([10000, 50000])('%i projection reads publication once per displayed comm
       get publishedAt() { publicationReads++; return new Date(Date.parse(early) + index * 1000).toISOString(); },
       get likeCount() { likeReads++; return index; } }));
     const sorted = projectReaderRows(comments, result, 'latest-activity');
-    expect(publicationReads).toBe(count); expect(likeReads).toBe(shape === 'flat' ? count : 1);
+    expect(publicationReads).toBe(count);
+    // One extra root read finds known zero while indexing the whole discussion.
+    expect(likeReads).toBe((shape === 'flat' ? count : 1) + 1);
     expect(sorted.rows).toHaveLength(count);
     expect(sorted.rows.at(-1)?.depth).toBe(shape === 'flat' ? 0 : count - 1);
   }

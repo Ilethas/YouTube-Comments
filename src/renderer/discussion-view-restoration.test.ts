@@ -106,6 +106,19 @@ it('Most liked preference remains selected when every root key is unknown', asyn
   expect(session.persistentIntent().sort).toBe('most-liked');
 });
 
+it('restores saved Most liked with an empty Unseen view while retaining discussion-wide availability', async () => {
+  const seen = comments.map(row => ({ ...row, seen: true }));
+  const session = create(saved({ ...defaultQuery, seen: 'unseen' }, { sort: 'most-liked' }));
+  await session.restore(seen);
+  expect(session.presentation(seen).orderedIds).toEqual([]);
+  expect(session.presentation(seen).mostLikedAvailable).toBe(true);
+  expect(session.persistentIntent()).toMatchObject({ sort: 'most-liked', applied: { seen: 'unseen' } });
+  session.edit({ ...defaultQuery }); await session.apply(seen);
+  expect(session.state.sort).toBe('most-liked');
+  expect(session.presentation(seen).orderedIds).toEqual(['old', 'reply', 'today', 'week']);
+  session.dispose();
+});
+
 it.each([
   [{ commentId: 'old', offset: 31.5 }, 'reply', 'old', 31.5],
   [{ commentId: 'missing', offset: 20 }, 'reply', 'reply', 0],

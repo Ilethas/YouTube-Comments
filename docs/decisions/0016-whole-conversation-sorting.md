@@ -27,10 +27,13 @@ tie uses Original order. Publication uses ADR 0012's `ownPublicationInstant`:
 estimated/coarse usable instants participate; calendar/relative labels do not.
 No discovery, observation, item time or Refresh clock is substituted. Likes come
 only from the adapter-authorized reader projection, never raw evidence or
-descendant aggregation. Community authority remains unchanged. If every displayed
-root has unknown likes (including an empty view), Most liked is disabled with
-localized accessible explanation. A retained Most liked mode becomes effectively
-Original until known root likes are available again; its session choice is kept.
+descendant aggregation. Community authority remains unchanged. Most liked
+availability uses all safe display roots in the stored discussion, independently
+of applied filters. Empty or all-unknown filtered results do not disable it when
+another conversation has known root likes. If every stored root has unknown likes
+(including an empty discussion), Most liked is disabled with localized accessible
+explanation. A retained Most liked mode becomes effectively Original until known
+root likes are available again; its selected preference is kept.
 
 ## Presentation pipeline and complexity
 
@@ -47,8 +50,11 @@ and T trees. The existing live-comment ID join still indexes supplied comments.
 first/last sibling and linked ancestry metadata without changing Comment or query
 results. Session caching shares this projection across controls, navigation and
 reader; the ruler consumes those same rows and measured/estimated indexes. Live
-content joins reuse accepted order/availability while the applied result and mode
-are unchanged. Thus committed Refresh metadata cannot move a tree before anchor
+content joins reuse accepted order while the applied result and mode are unchanged.
+Discussion-wide availability is computed during the existing comment-ID join and
+cached with the presentation, without a separate forest projection or render-time
+scan. It follows current stored roots even while order is frozen or transferred.
+Thus committed Refresh metadata cannot move a tree before anchor
 capture at evaluation completion. Successful promotion or explicit sort change
 computes fresh keys; seen-only joins do not sort again.
 
