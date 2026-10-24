@@ -1,6 +1,6 @@
 {
   "source": "Actual Electron window loading the verified Forge-built main/preload/renderer; unmodified compositor capture",
-  "capturedAt": "2026-10-24T10:25:45.711Z",
+  "capturedAt": "2026-10-24T11:02:41.959Z",
   "electron": "44.4.5",
   "data": "Invented demo discussions in an owned disposable SQLite profile; offline geometric avatars",
   "appearance": "Built-in Charcoal; every rendered palette token checked against src/shared/themes/charcoal.json",
@@ -15,7 +15,7 @@
   "builtMainSha256": "24c10aa9448f1e190bf41413322df03db61c5ea309d17cba77bd77493f94b547",
   "rendererAssetsSha256": {
     "discussion-query.worker-DJ9IMWpC.js": "706fce715a73863a51a7f8400a5c2a5baf10f359c48ca4119bf1a3ce6461709f",
-    "index-BOayhu_v.js": "cdaa382292bc727df6442ded8412ea0aea40cdb6ac74ac1697e39130d4e96784",
+    "index-DfLXQ1CT.js": "1b591c4f665cb38a9849c9963d50279d2d5c5385433e1d45bd3eb7f3039c8e18",
     "index-DoO5AT03.css": "f87578cb0d18b8cf4b30a69b1612c13db512007f65af3bd82bb697668cd68fa4"
   },
   "files": [
@@ -23,7 +23,7 @@
       "file": "wallpaper-charcoal.png",
       "width": 1920,
       "height": 1080,
-      "sha256": "8f618fec8df8fb4fb6b81e90a9ecb3a23b50b3fd74499240832a6a41468a0c6d"
+      "sha256": "a18b076fd2795ba555a1cb8fa0640fcef7a9dbb4d653f2c06f54783b9a63aea0"
     }
   ],
   "viewportWidth": 1920

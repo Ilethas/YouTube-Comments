@@ -4,6 +4,7 @@ import type { Comment } from '../domain/discussion';
 import { demoNow } from '../shared/demo-presentation';
 import { Locale, publicationTime, translator } from './i18n';
 import { Avatar } from './Avatar';
+import { authorPresentation } from './author-presentation';
 import { recordRenderWork } from './render-work';
 import { seenHelp } from './shortcuts';
 import { CommentAction } from './CommentActions';
@@ -42,7 +43,7 @@ export const CommentArticle = memo(function CommentArticle({ viewId, isDemo = fa
   const t = translator(locale);
   const likes = comment.likeCount === undefined ? undefined : new Intl.NumberFormat(locale).format(comment.likeCount);
   const likesLabel = likes === undefined ? undefined : t('likes', { count: likes });
-  const author = comment.author?.displayName ?? comment.author?.handle ?? t('unknownAuthor');
+  const { name: author, handle } = authorPresentation(comment.author, t('unknownAuthor'));
   const time = comment.publishedAt ? publicationTime(comment.publishedAt, locale, now) : undefined;
   const creator = comment.source.kind === 'video' && comment.isCreator === true;
   const evidence = comment.publication?.instantEvidence ?? comment.publication;
@@ -63,7 +64,7 @@ export const CommentArticle = memo(function CommentArticle({ viewId, isDemo = fa
       <div className="comment-byline">
         <strong className={creator ? 'creator-author' : undefined}>{comment.actions?.author && onAction
           ? <CommentAction comment={comment} action="author" locale={locale} open={onAction} detail={author}>{author}</CommentAction> : author}</strong>
-        {comment.author?.handle && <span className="muted">{comment.author.handle}</span>}
+        {handle && <span className="muted">{handle}</span>}
         {creator && <span className="badge creator-badge">{t('creator')}</span>}
         {comment.isPinned && <span className="badge">{t('pinned')}</span>}
         {comment.actions?.permalink && onAction

@@ -83,6 +83,35 @@ Other selection/menu/keyboard assertions ran. Optional live helpers were not con
 
 ## Screenshots
 
+**v0.3.2 screenshot audit (2026-10-24):** All eight documented PNGs already
+reflect the current UI, so none were replaced. A fresh verified Windows x64 Forge
+package reproduced every main/renderer hash in both capture manifests. Fresh real
+Electron comparison captures used the existing fictional fixtures and disposable
+profiles, with output redirected only to ignored
+`.packaging-diagnostics/screenshot-audit/fresh/`.
+
+Visual review covered the reader, search, collapse/selection, Library, paired
+windows, Polish Move Tab dialog, Downloads and Charcoal/wallpaper example. Five
+comparison images were pixel-identical; the light reader differed by one pixel
+and Downloads only in its animated spinners. The wallpaper retained the same
+Carmine Rock artwork from the credited URL, layout and Charcoal palette, with
+85% reading-surface opacity and 8 px blur. Its rendered image varied slightly,
+without a UI discrepancy. README and appearance wording/references remain
+accurate. All screenshot references across README and docs resolve;
+`node scripts/verify-presentation.cjs` passed 25 README links/anchors, eight
+decoded PNGs with provenance and seven ICO frames. `git diff --check` passed.
+Application behavior, version and screenshot provenance remain unchanged.
+Earlier capture notes below describe their original increments.
+
+**Author byline deduplication (2026-10-24):** Equivalent display names and handles
+now appear once; distinct labels and the primary author action remain. Renderer
+regressions cover case, surrounding whitespace, one leading `@`, missing names and
+conservative comparisons without changing author metadata. All eight README
+screenshots were regenerated from the verified Forge build with the existing
+fixtures, layouts and themes. The Charcoal capture uses the original Carmine Rock
+artwork from the credited page through the established import adapter, at 85%
+opacity and 8 px blur. Capture manifests record the new build provenance.
+
 **Like metadata polish (2026-10-24):** Comment metadata now shows an inline
 thumbs-up icon and a visible localized number. The existing EN/PL likes wording
 remains the accessible label and tooltip; zero stays visible and unknown counts

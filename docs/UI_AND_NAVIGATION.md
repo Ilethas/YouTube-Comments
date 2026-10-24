@@ -336,8 +336,12 @@ list only the remaining checkbox shortcut. Undo and applied membership stay stab
 
 Positive video uploader evidence accents the author name and adds Creator/Autor text;
 Community and unknown evidence remain ordinary. Pinned, UNSEEN, MATCH, CONTEXT and
-NEW stay separate. Safe author names and video timestamps are underlined browser
-commands with small external glyphs, native focusable buttons, localized names and
+NEW stay separate. The author byline shows a separate handle only when it differs
+from the primary name after trimming surrounding whitespace, ignoring casing and
+removing one leading `@`. A missing or blank name falls back to the handle once;
+original author metadata and actions remain unchanged. Safe author names and video
+timestamps are underlined browser commands with small external glyphs, native
+focusable buttons, localized names and
 tooltips. Missing safe identity gives ordinary text. Estimated publication labels
 stay approximate. Community has no invented comment permalink; Open on YouTube in
 the heading explicitly opens its post. Actions neither mark nor select/navigate rows.

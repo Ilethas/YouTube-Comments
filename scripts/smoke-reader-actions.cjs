@@ -53,6 +53,9 @@ if (process.versions.electron) {
       const before = await js('window.reader.bootstrap().then(r=>r.ok ? {ok:true,value:{items:r.value.items,preferences:r.value.preferences,comments:Object.fromEntries(Object.entries(r.value.comments).map(([id,rows])=>[id,rows.slice(0,4)]))}} : r)'); assert.equal(before.ok, true);
       const item = before.value.items.find(item => item.sourceId === 'VidDemo_001');
       const comment = before.value.comments[item.id].find(comment => comment.source.commentId === sourceId);
+      assert.equal(comment.author.displayName, '@Creator');
+      assert.equal(comment.author.handle, '@creator');
+      assert.equal(comment.author.sourceId, channelId);
       const article = `Array.from(document.querySelectorAll('[role=tabpanel]:not([hidden]) article.comment')).find(row=>row.dataset.domainCommentId===${JSON.stringify(comment.id)})`;
       const seen = () => {
         // Main-side test inspection only. Never expose SQL to the renderer or
@@ -101,6 +104,9 @@ if (process.versions.electron) {
         await wait(`!${article}.querySelector(${JSON.stringify(selector)}).disabled`, 'action settled');
       }
       await preference(0,'en'); await preference(1,'light');
+      const byline = await js(`(()=>{const a=${article};return {name:a.querySelector('.action-author button').textContent,handle:a.querySelector('.comment-byline > .muted')?.textContent};})()`);
+      assert.equal(byline.name, '@Creator');
+      assert.equal(byline.handle, undefined, 'Equivalent handle is hidden while the primary author action remains');
       for (const [locale,theme] of [['en','light'],['pl','dark']]) {
         await preference(0,locale); await preference(1,theme);
         step = `creator ${theme}`;
@@ -165,7 +171,7 @@ if (process.versions.electron) {
       const {ReaderRepository,normalizeYtDlp}=require(toolsFile);
       const repo=ReaderRepository.open(path.join(root,'youtube-comments-development','reader.sqlite'));
       const fixture=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../src/main/extractors/__fixtures__/yt-nested-a.json'),'utf8'));
-      const raw={...fixture.raw,comments:Array.from({length:50000},(_,i)=>({id:i===0?sourceId:`UgGenerated${String(i).padStart(10,'0')}`,parent:'root',text:i===0?mixed:`Generated row ${i}`,author:i===0?'Creator':'Reader',author_id:i===0?channelId:undefined,author_is_uploader:i===0,timestamp:1758000000,_time_text:'about 2 weeks ago'}))};
+      const raw={...fixture.raw,comments:Array.from({length:50000},(_,i)=>({id:i===0?sourceId:`UgGenerated${String(i).padStart(10,'0')}`,parent:'root',text:i===0?mixed:`Generated row ${i}`,author:i===0?'@Creator':'Reader',author_url:i===0?'https://www.youtube.com/@creator':undefined,author_id:i===0?channelId:undefined,author_is_uploader:i===0,timestamp:1758000000,_time_text:'about 2 weeks ago'}))};
       repo.ingest(normalizeYtDlp(JSON.stringify(raw),fixture.context),undefined,true); repo.close();
       for (const phase of ['write','read']) {
         const env={...process.env,YOUTUBE_COMMENTS_DEMO_ROOT:root,READER_ACTION_PHASE:phase}; delete env.ELECTRON_RUN_AS_NODE;

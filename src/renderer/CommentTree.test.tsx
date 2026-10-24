@@ -11,6 +11,48 @@ import { initialComments } from '../fixtures/discussions';
 import { required } from './testing/required';
 import { translator } from './i18n';
 afterEach(() => { cleanup(); document.getSelection()?.removeAllRanges(); });
+it.each([
+  ['@janek144', '@janek144', '@janek144', undefined],
+  ['@Janek144', '@janek144', '@Janek144', undefined],
+  [' \t@Janek144 ', ' @janek144\n', ' \t@Janek144 ', undefined],
+  ['janek144', '@janek144', 'janek144', undefined],
+  ['@janek144', 'janek144', '@janek144', undefined],
+  [undefined, '@janek144', '@janek144', undefined],
+  ['', '@janek144', '@janek144', undefined],
+  ['  ', '@janek144', '@janek144', undefined],
+  ['John Smith', '@johnsmith123', 'John Smith', '@johnsmith123'],
+  ['John Smith', '@johnsmith', 'John Smith', '@johnsmith'],
+  ['janek.144', '@janek144', 'janek.144', '@janek144'],
+  ['Jánek144', '@janek144', 'Jánek144', '@janek144'],
+  ['@@janek144', '@janek144', '@@janek144', '@janek144'],
+  ['Janek 144', '@Janek144', 'Janek 144', '@Janek144'],
+  ['Janek', undefined, 'Janek', undefined],
+  ['Janek', ' \t', 'Janek', undefined],
+  [undefined, undefined, 'Unknown author', undefined],
+])('author byline %j / %j preserves its primary action and shows only a distinct handle', async (displayName, handle, expectedName, expectedHandle) => {
+  const author = Object.freeze({ displayName, handle, sourceId: 'UCOriginalAuthor', avatarUrl: 'https://example.invalid/avatar.png' });
+  const original = { ...author };
+  const comment = { ...initialComments['video-demo'][0], author, actions: { author: true, permalink: true, translate: true } };
+  const onAction = vi.fn(async () => ({ ok: true as const, value: null })), onToggle = vi.fn();
+  const { container } = render(<CommentArticle comment={comment} role="normal" rawHit={false} hasChildren={false} selected={false} locale="en" disabled={false} onToggle={onToggle} onAction={onAction} />);
+  const primary = required(container.querySelector<HTMLButtonElement>('.comment-byline strong .action-author button'));
+  expect(primary.textContent).toBe(expectedName);
+  expect(primary.getAttribute('aria-label')).toBe(`${translator('en')('openAuthor')}: ${expectedName}`);
+  expect(container.querySelector('.comment-byline > .muted')?.textContent).toBe(expectedHandle);
+  expect(screen.getByRole('article').getAttribute('aria-label')).toBe(expectedName);
+  primary.focus();
+  await userEvent.keyboard('{Enter}');
+  expect(onAction).toHaveBeenCalledExactlyOnceWith({ itemId: comment.itemId, commentId: comment.id, action: 'author' });
+  expect(onToggle).not.toHaveBeenCalled();
+  expect(comment.author).toBe(author);
+  expect(comment.author).toEqual(original);
+});
+it('missing author metadata retains the localized fallback without a secondary handle', () => {
+  const comment = { ...initialComments['video-demo'][0], author: undefined };
+  const { container } = render(<CommentArticle comment={comment} role="normal" rawHit={false} hasChildren={false} selected={false} locale="pl" disabled={false} onToggle={vi.fn()} />);
+  expect(container.querySelector('.comment-byline strong')?.textContent).toBe(translator('pl')('unknownAuthor'));
+  expect(container.querySelector('.comment-byline > .muted')).toBeNull();
+});
 it.each(['en', 'pl'] as const)('like metadata keeps localized accessible counts without adding an action (%s)', locale => {
   const comment = { ...initialComments['video-demo'][0], likeCount: 12345 };
   const onToggle = vi.fn();
