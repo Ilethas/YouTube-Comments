@@ -80,6 +80,17 @@ for (const [name, [width, height]] of Object.entries(screenshots)) {
     assert.match(downloads.fixture, /real Node fixture helper processes/);
   }
 }
+const wallpaperCapture = JSON.parse(read('docs/screenshots/wallpaper-capture.json'));
+assert.equal(wallpaperCapture.files.length, 1);
+const wallpaper = wallpaperCapture.files[0];
+assert.equal(wallpaper.file, 'wallpaper-charcoal.png');
+assert.deepEqual([wallpaper.width, wallpaper.height], [1920, 1080]);
+const wallpaperBytes = fs.readFileSync(path.join(root, 'docs/screenshots', wallpaper.file));
+png(wallpaperBytes, wallpaper.width, wallpaper.height);
+assert.equal(require('node:crypto').createHash('sha256').update(wallpaperBytes).digest('hex'), wallpaper.sha256);
+assert.match(wallpaperCapture.builtMainSha256, /^[a-f0-9]{64}$/);
+assert.ok(Object.keys(wallpaperCapture.rendererAssetsSha256).some(name => /^index-.*\.js$/.test(name)));
+for (const hash of Object.values(wallpaperCapture.rendererAssetsSha256)) assert.match(hash, /^[a-f0-9]{64}$/);
 const ico = fs.readFileSync(path.join(root, 'assets/application.ico'));
 assert.equal(ico.readUInt16LE(0), 0); assert.equal(ico.readUInt16LE(2), 1);
 const sizes = [16, 24, 32, 48, 64, 128, 256]; assert.equal(ico.readUInt16LE(4), sizes.length);
@@ -91,4 +102,4 @@ sizes.forEach((size, index) => {
   assert.equal(offset, end); png(ico.subarray(offset, offset + length), size, size); end += length;
 });
 assert.equal(end, ico.length);
-console.log(`PASS: ${links} local README links/anchors, ${Object.keys(screenshots).length} decoded screenshots with provenance, 7 CRC-checked 32-bit ICO frames`);
+console.log(`PASS: ${links} local README links/anchors, ${Object.keys(screenshots).length + 1} decoded screenshots with provenance (including wallpaper), 7 CRC-checked 32-bit ICO frames`);

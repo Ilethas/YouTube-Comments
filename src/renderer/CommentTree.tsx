@@ -40,6 +40,8 @@ export const commentTargetId = (id: string, viewId?: string) => `comment-${viewI
 export const CommentArticle = memo(function CommentArticle({ viewId, isDemo = false, bulkSelected = false, showSelection = false, onSelect, descendantCount = 0, hiddenUnseen = 0, hiddenMatches = 0, collapsed = false, onCollapse, comment, locale, disabled, onToggle, onAction, role, rawHit, selected, hasChildren, isNew = false, now = demoNow }: Props) {
   recordRenderWork('comment', viewId ?? comment.itemId);
   const t = translator(locale);
+  const likes = comment.likeCount === undefined ? undefined : new Intl.NumberFormat(locale).format(comment.likeCount);
+  const likesLabel = likes === undefined ? undefined : t('likes', { count: likes });
   const author = comment.author?.displayName ?? comment.author?.handle ?? t('unknownAuthor');
   const time = comment.publishedAt ? publicationTime(comment.publishedAt, locale, now) : undefined;
   const creator = comment.source.kind === 'video' && comment.isCreator === true;
@@ -78,7 +80,7 @@ export const CommentArticle = memo(function CommentArticle({ viewId, isDemo = fa
         </button>}
         {role !== 'normal' && <span className={`badge ${role}-badge`}>{t(role === 'match' ? 'activeMatch' : 'contextComment')}</span>}
         {role === 'context' && rawHit && <span className="badge raw-match-badge">{t('rawSearchHit')}</span>}
-        {comment.likeCount !== undefined && <span>{t('likes', { count: new Intl.NumberFormat(locale).format(comment.likeCount) })}</span>}
+        {likes !== undefined && <span className="comment-likes" role="img" aria-label={likesLabel} title={likesLabel}><ActionIcon name="like" />{likes}</span>}
         {!comment.seen && <span className="badge unseen-badge">{t('unseen')}</span>}
         {isNew && <span className="badge new-badge" title={t(isDemo ? 'newHelp' : 'newDiscoveryHelp')}>{t('new')}</span>}
         {comment.actions?.translate && onAction && <CommentAction comment={comment} action="translate" locale={locale} open={onAction} />}

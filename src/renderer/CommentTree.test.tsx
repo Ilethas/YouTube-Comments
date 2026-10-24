@@ -11,6 +11,24 @@ import { initialComments } from '../fixtures/discussions';
 import { required } from './testing/required';
 import { translator } from './i18n';
 afterEach(() => { cleanup(); document.getSelection()?.removeAllRanges(); });
+it.each(['en', 'pl'] as const)('like metadata keeps localized accessible counts without adding an action (%s)', locale => {
+  const comment = { ...initialComments['video-demo'][0], likeCount: 12345 };
+  const onToggle = vi.fn();
+  const { rerender } = render(<CommentArticle comment={comment} role="normal" rawHit={false} hasChildren={false} selected={false} locale={locale} disabled={false} onToggle={onToggle} />);
+  const count = new Intl.NumberFormat(locale).format(comment.likeCount);
+  const label = translator(locale)('likes', { count });
+  const likes = screen.getByRole('img', { name: label });
+  expect(likes.textContent).toBe(count);
+  expect(likes.title).toBe(label);
+  expect(likes.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  fireEvent.click(likes);
+  expect(onToggle).not.toHaveBeenCalled();
+  for (const likeCount of [0, undefined]) {
+    rerender(<CommentArticle comment={{ ...comment, likeCount }} role="normal" rawHit={false} hasChildren={false} selected={false} locale={locale} disabled={false} onToggle={onToggle} />);
+    if (likeCount === 0) expect(screen.getByRole('img', { name: translator(locale)('likes', { count: '0' }) }).textContent).toBe('0');
+    else expect(document.querySelector('.comment-likes')).toBeNull();
+  }
+});
 it.each([false, true])('NEW badge explanation follows explicit demo identity=%s, never a fixture-like application ID', isDemo => {
   const comment = { ...initialComments['video-demo'][0], itemId: isDemo ? 'renamed-demo' : 'video-demo' };
   render(<CommentArticle comment={comment} isDemo={isDemo} isNew role="normal" rawHit={false} hasChildren={false} selected={false} locale="en" disabled={false} onToggle={vi.fn()} />);

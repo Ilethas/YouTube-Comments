@@ -1,9 +1,14 @@
 {
-  "source": "Actual Electron window loading the Forge-built main/preload/renderer",
-  "capturedAt": "2026-10-19T20:10:29.423Z",
+  "source": "Actual Electron window loading the verified Forge-built main/preload/renderer",
+  "capturedAt": "2026-10-24T10:24:52.615Z",
   "electron": "44.4.5",
   "viewportWidth": 1360,
-  "builtMainSha256": "44320bded7440781e63e3b1e9e763a4a3f7932a94e193c093e8b1f4b54067e2f",
+  "builtMainSha256": "24c10aa9448f1e190bf41413322df03db61c5ea309d17cba77bd77493f94b547",
+  "rendererAssetsSha256": {
+    "discussion-query.worker-DJ9IMWpC.js": "706fce715a73863a51a7f8400a5c2a5baf10f359c48ca4119bf1a3ce6461709f",
+    "index-BOayhu_v.js": "cdaa382292bc727df6442ded8412ea0aea40cdb6ac74ac1697e39130d4e96784",
+    "index-DoO5AT03.css": "f87578cb0d18b8cf4b30a69b1612c13db512007f65af3bd82bb697668cd68fa4"
+  },
   "data": "Invented demo discussions in an owned disposable SQLite profile; offline geometric avatars",
   "multiWindow": "Paired unscaled compositor captures of two separate native readers; no OS chrome or desktop imagery. Not physical drag evidence.",
   "files": [
@@ -44,14 +49,14 @@
       "height": 1000,
       "provenance": {
         "source": "Actual Electron window loading the verified Forge-built main/preload/renderer",
-        "capturedAt": "2026-10-24T00:54:04.601Z",
+        "capturedAt": "2026-10-24T10:24:52.408Z",
         "electron": "44.4.5",
         "viewportWidth": 1360,
         "builtMainSha256": "24c10aa9448f1e190bf41413322df03db61c5ea309d17cba77bd77493f94b547",
         "rendererAssetsSha256": {
           "discussion-query.worker-DJ9IMWpC.js": "706fce715a73863a51a7f8400a5c2a5baf10f359c48ca4119bf1a3ce6461709f",
-          "index-3FLhX16x.js": "cba9c7ec0776e3028b23a2eea388273fee6f4e0e1a7e216cd8fb0751fa9c4e54",
-          "index-B2GLEpvX.css": "cffa5ea391d36e084707126f3046703a457107ffc5fe87684c89a9ca45c0c32a"
+          "index-BOayhu_v.js": "cdaa382292bc727df6442ded8412ea0aea40cdb6ac74ac1697e39130d4e96784",
+          "index-DoO5AT03.css": "f87578cb0d18b8cf4b30a69b1612c13db512007f65af3bd82bb697668cd68fa4"
         },
         "data": "Invented demo discussions in an owned disposable SQLite profile; offline geometric avatars",
         "downloads": {
@@ -116,10 +121,5 @@
         }
       }
     }
-  ],
-  "rendererAssetsSha256": {
-    "discussion-query.worker-DJ9IMWpC.js": "706fce715a73863a51a7f8400a5c2a5baf10f359c48ca4119bf1a3ce6461709f",
-    "index-DaBZUYnD.css": "f188b105b364ecfedda89f0b90b731297aeb2eb40a3a163b532f920db6ef08f5",
-    "index-lhvB-HdI.js": "4cdb91efb3d18b2d1ec3396e0f4544828bab754e2a91cac111f877192aca56ad"
-  }
+  ]
 }

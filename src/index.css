@@ -105,6 +105,8 @@ h2 { font-size: 15px; margin: 0; }
 time, .muted { color: var(--muted); }
 .comment-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; margin: 4px 0 5px; }
 .comment-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 11px; min-height: 18px; }
+.comment-likes { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.comment-likes > .action-icon { width: 13px; height: 13px; flex-basis: 13px; }
 .badge { display: inline-block; font-size: 10px; font-weight: 600; border-radius: 3px; padding: 1px 4px; background: var(--surface-raised); color: var(--muted); }
 .unseen-badge { background: var(--accent-soft); color: var(--unseen); }
 .new-badge { background: var(--new-surface); color: var(--new-text); }

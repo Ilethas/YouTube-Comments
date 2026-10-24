@@ -83,6 +83,19 @@ Other selection/menu/keyboard assertions ran. Optional live helpers were not con
 
 ## Screenshots
 
+**Like metadata polish (2026-10-24):** Comment metadata now shows an inline
+thumbs-up icon and a visible localized number. The existing EN/PL likes wording
+remains the accessible label and tooltip; zero stays visible and unknown counts
+stay omitted. The seven README views and the separate Charcoal/wallpaper example
+are refreshed from genuine Electron captures using fictional data. Presentation
+verification also decodes and checks the wallpaper image and its provenance hash.
+After a verified Forge build, run `node scripts/capture-readme.cjs` for the seven
+README views, then `node scripts/capture-readme.cjs --wallpaper-only="C:\path\to\carmine-rock.jpg"`
+with the original credited artwork for the wallpaper example. The latter uses
+the native import adapter in a disposable profile, Charcoal, 85% opacity and 8 px
+blur; it updates only that image and `wallpaper-capture.json`. No artwork source
+file is bundled. Run `node scripts/verify-presentation.cjs` to check all eight.
+
 **Download Manager addition (2026-10-24):** `downloads-light.png` (1360 × 1000)
 shows the finalized production UI with three active jobs, badge 3 and five queued
 jobs. Run `node scripts/capture-readme.cjs --downloads-only` after a verified Forge

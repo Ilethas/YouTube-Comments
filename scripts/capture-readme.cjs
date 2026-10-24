@@ -9,9 +9,12 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const project = path.resolve(__dirname, '..');
 const output = path.join(project, 'docs/screenshots');
 const downloadsOnly = process.argv.includes('--downloads-only');
+// Supply the original Carmine Rock image locally; never bundle the artwork.
+const wallpaperFile = process.argv.find(arg => arg.startsWith('--wallpaper-only='))?.slice('--wallpaper-only='.length);
+assert.ok(!(downloadsOnly && wallpaperFile), 'Select one capture mode');
 
 if (process.versions.electron) {
-  const { app, session, nativeImage } = require('electron');
+  const { app, session, nativeImage, dialog } = require('electron');
   const root = process.env.YOUTUBE_COMMENTS_DEMO_ROOT;
   assert.equal(path.dirname(root), os.tmpdir());
   assert.ok(path.basename(root).startsWith('reader-readme-'));
@@ -21,6 +24,11 @@ if (process.versions.electron) {
   }
   const watchdog = setTimeout(() => app.exit(1), 120000);
   const windows = [], captures = [];
+  if (wallpaperFile) dialog.showOpenDialog = async (parent, options) => {
+    assert.equal(parent, windows[0]);
+    assert.deepEqual(options.properties, ['openFile']);
+    return { canceled: false, filePaths: [wallpaperFile] };
+  };
   const helper = path.join(root, 'readme-yt-dlp.exe'), helperChildren = new Set();
   let helperStarts = 0;
   // This capture-only adapter substitutes real offline Node fixture children for
@@ -76,18 +84,20 @@ if (process.versions.electron) {
       await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(e instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event(e instanceof HTMLSelectElement?'change':'input',{bubbles:true}));})()`);
       await pause(100);
     }
-    async function save(name, height, { dialog = false, popover = false } = {}) {
-      window.setContentSize(1360, height);
+    async function save(name, height, { dialog = false, popover = false, width = 1360 } = {}) {
+      window.setContentSize(width, height);
       if (!dialog && !popover) await js('document.activeElement?.blur()');
       contents.sendInputEvent({ type: 'mouseMove', x: 1355, y: 955 });
       await pause(350);
       await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
       assert.equal(await js("!!document.querySelector('.query-error')"), false);
       assert.equal(await js("!!document.querySelector('dialog[open]')"), dialog);
+      assert.equal(await js(`Array.from(${panel}.querySelectorAll('.comment-meta')).some(e=>/Likes:|Polubienia:/.test(e.textContent))`), false);
+      assert.equal(await js(`Array.from(${panel}.querySelectorAll('.comment-likes')).every(e=>e.textContent.trim() && e.title===e.getAttribute('aria-label') && e.querySelector('svg[aria-hidden=true]'))`), true);
       const image = await contents.capturePage(); assert.equal(image.isEmpty(), false);
-      assert.deepEqual(image.getSize(), { width: 1360, height });
+      assert.deepEqual(image.getSize(), { width, height });
       const file = path.join(output, name); fs.writeFileSync(file, image.toPNG());
-      captures.push({ file: name, width: 1360, height });
+      captures.push({ file: name, width, height });
       console.log(`Captured ${name}: ${fs.statSync(file).size} bytes`);
     }
     const bootstrap = async w => {
@@ -148,6 +158,28 @@ if (process.versions.electron) {
     await wait(`Array.from(${panel}.querySelectorAll('.avatar img')).filter(e=>e.complete&&e.naturalWidth>0).length>=5`);
     assert.match(await js('location.href'), /\.vite\/renderer/);
     assert.equal(await js('typeof require'), 'undefined');
+    if (wallpaperFile) {
+      await invoke(window, 'importWallpaper');
+      const appearance = (await bootstrap(window)).preferences.readerAppearance;
+      await invoke(window, 'updatePreferences', { appearance: 'charcoal' });
+      await invoke(window, 'updatePreferences', { readerAppearance: {
+        expectedRevision: appearance.revision, customThemeId: appearance.customThemeId,
+        wallpaperEnabled: true, surfaceOpacity: 85, blur: 8,
+      } });
+      await wait("document.documentElement.dataset.appearance==='charcoal' && !!document.querySelector('.reader-wallpaper')?.naturalWidth");
+      const tokens = require('../src/shared/themes/charcoal.json').tokens;
+      for (const [token, value] of Object.entries(tokens)) assert.equal(
+        (await js(`getComputedStyle(document.documentElement).getPropertyValue(${JSON.stringify(token === 'unseen-surface' ? '--unseen-background' : '--' + token)})`)).trim().toLowerCase(), value.toLowerCase());
+      await save('wallpaper-charcoal.png', 1080, { width: 1920 });
+      const manifestFile = path.join(output, 'wallpaper-capture.json');
+      const original = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+      const sha256 = file => require('node:crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+      fs.writeFileSync(manifestFile, JSON.stringify({ ...original, ...buildProvenance(), viewportWidth: 1920,
+        source: 'Actual Electron window loading the verified Forge-built main/preload/renderer; unmodified compositor capture',
+        files: captures.map(entry => ({ ...entry, sha256: sha256(path.join(output, entry.file)) })),
+      }, null, 2) + '\n');
+      return;
+    }
     if (downloadsOnly) {
       await captureDownloads();
       const manifestFile = path.join(output, 'capture.json'), existing = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
@@ -314,7 +346,8 @@ if (process.versions.electron) {
       const env = { ...process.env, YOUTUBE_COMMENTS_DEMO_ROOT: root, YOUTUBE_COMMENTS_YTDLP_EXE: helper,
         YOUTUBE_COMMENTS_POST_ARCHIVER_EXE: '', README_CAPTURE_NODE_EXE: process.execPath };
       delete env.ELECTRON_RUN_AS_NODE;
-      const child = spawn(require('electron'), [__filename, ...(downloadsOnly ? ['--downloads-only'] : [])], { env, stdio: 'inherit', windowsHide: true });
+      const child = spawn(require('electron'), [__filename, ...(downloadsOnly ? ['--downloads-only'] : []),
+        ...(wallpaperFile ? [`--wallpaper-only=${path.resolve(wallpaperFile)}`] : [])], { env, stdio: 'inherit', windowsHide: true });
       await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error(`Screenshot Electron exited ${code}`))); });
     } finally {
       assert.equal(path.dirname(path.resolve(root)), path.resolve(os.tmpdir()));
