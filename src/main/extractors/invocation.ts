@@ -26,13 +26,16 @@ function target(url: string, kind: 'video' | 'post'): string {
 
 /** The investigated JSON-only/no-media intent, with explicit bounded network inputs.
  * A configured comment limit is an invocation fact, not serialized completeness evidence. */
-export function buildYtDlpCommand(input: NetworkBounds & { readonly videoUrl: string; readonly maxComments?: number }): HelperCommandSpec {
+export function buildYtDlpCommand(input: NetworkBounds & { readonly videoUrl: string; readonly maxComments?: number; readonly titleFile?: string }): HelperCommandSpec {
   const args = ['--ignore-config', '--no-plugin-dirs', '--no-playlist', '--skip-download', '--dump-single-json', '--write-comments',
     // Quiet routes screen messages to stderr; verbose makes extraction notes visible.
     // --no-quiet would contaminate JSON stdout. --progress only covers media downloads.
     '--quiet', '--verbose',
     '--socket-timeout', integer(input.timeoutSeconds, 1, Number.MAX_SAFE_INTEGER), '--retries', integer(input.retries, 0, Number.MAX_SAFE_INTEGER), '--extractor-retries', integer(input.retries, 0, Number.MAX_SAFE_INTEGER)];
   if (input.maxComments !== undefined) args.push('--extractor-args', `youtube:max_comments=${integer(input.maxComments, 1, Number.MAX_SAFE_INTEGER)}`);
+  // JSON-encoded title only, before deferred comments; stdout remains final JSON.
+  // Precision bounds helper output too; a truncated JSON value simply falls back.
+  if (input.titleFile) args.push('--print-to-file', 'pre_process:%(title|).4096j', input.titleFile.replace(/%/g, '%%'));
   args.push('--', target(input.videoUrl, 'video'));
   return { backend: 'yt-dlp', executable: 'yt-dlp', arguments: args, environmentAdditions: {}, output: 'single-json-stdout' };
 }

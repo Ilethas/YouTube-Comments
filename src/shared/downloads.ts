@@ -34,6 +34,8 @@ export interface DownloadsApi {
   onChanged(listener: (snapshot: DownloadsSnapshot) => void): () => void;
   cancel(request: { readonly operationId: string }): Promise<Result<null>>;
   retry(request: { readonly operationId: string }): Promise<Result<DownloadSubmission>>;
+  dismiss(request: { readonly operationId: string }): Promise<Result<null>>;
+  clearFinished(): Promise<Result<null>>;
 }
 export const downloadsChangedChannel = 'reader:downloads-changed';
 export const isDownloadIdentity = isCancelAcquisitionRequest;

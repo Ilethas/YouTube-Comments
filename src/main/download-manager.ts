@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { downloadLabel as label } from './download-label';
 import { AcquisitionService } from './acquisition-service';
 import { parseAcquisitionTarget } from './acquisition-target';
 import type { AcquisitionTarget } from './acquisition-target';
@@ -19,7 +20,6 @@ interface Entry {
   completion: Promise<Result<AcquisitionResult>>;
   resolve: (result: Result<AcquisitionResult>) => void;
 }
-const label = (value: string) => [...value.slice(0, 180)].map(c => c.charCodeAt(0) < 32 || c.charCodeAt(0) >= 127 && c.charCodeAt(0) <= 159 ? ' ' : c).join('').trim();
 /** Profile-owned FIFO scheduler. Slots include child cleanup, normalization and
  * synchronous ingestion. The existing AcquisitionService remains the executor. */
 export class DownloadManager {
@@ -103,6 +103,18 @@ export class DownloadManager {
     if (!entry || !['failed', 'cancelled'].includes(entry.job.state)) return { ok: false, error: { code: 'NOT_FOUND' } };
     return this.submit(entry.job.kind === 'refresh' && entry.job.itemId ? { kind: 'refresh', itemId: entry.job.itemId } : { kind: 'acquire', url: entry.target.url }, caller);
   }
+  /** Dismiss only session projections; durable extraction/history is untouched. */
+  dismiss(operationId: string): Result<null> {
+    const entry = this.entries.get(operationId);
+    if (!entry || downloadPending(entry.job)) return { ok: false, error: { code: 'NOT_FOUND' } };
+    this.entries.delete(operationId); this.changed(); return { ok: true, value: null };
+  }
+  clearFinished(): Result<null> {
+    let changed = false;
+    for (const [id, entry] of this.entries) if (!downloadPending(entry.job)) { this.entries.delete(id); changed = true; }
+    if (changed) this.changed();
+    return { ok: true, value: null };
+  }
   /** Compatibility for trusted callers/tests. Production renderers submit and
    * reconcile repository commits without an extraction-long IPC invocation. */
   async acquire(url: string, caller?: ReaderCallerContext): Promise<Result<AcquisitionResult>> { return this.wait(this.submit({ kind: 'acquire', url }, caller)); }
@@ -121,7 +133,13 @@ export class DownloadManager {
       entry.job = { ...previous, state: value.stage, startedAt: value.startedAt, cancellable: value.cancellable,
         ...(value.comments ? { comments: value.comments } : {}) };
       this.changed();
-    }, undefined, () => entry.job.operationId);
+    }, undefined, () => entry.job.operationId, title => {
+      // Stored discussions retain their known title throughout Refresh/Acquire.
+      if (entry.job.itemId || !downloadActive(entry.job)) return;
+      const safe = label(title);
+      if (!safe || safe === entry.job.label) return;
+      entry.job = { ...entry.job, label: safe }; this.changed();
+    });
     entry.executor = executor;
     const result = await (entry.job.kind === 'acquire' ? executor.acquire(entry.target.url, entry.origin) : executor.refresh(entry.job.itemId ?? '', entry.origin));
     if (result.ok && !this.stopping) {

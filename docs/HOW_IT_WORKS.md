@@ -36,6 +36,16 @@ while that document is still available, otherwise it stays in Library. Queues an
 recent outcomes are session-only, while attempts and the concurrency setting are
 durable. See [ADR 0042](decisions/0042-concurrent-download-manager.md).
 
+New video jobs initially show their video ID and can show the title once the
+running helper has obtained it, before comments finish downloading. Queued jobs
+may still show IDs; saved discussions keep their known titles. Title discovery
+uses the same helper process and is optional.
+
+Use × on a completed, failed or cancelled job, or **Clear finished**, to dismiss
+recent entries in every window. This only clears the session list; discussions,
+comments, seen state and extraction history stay stored. Queued/running jobs keep
+their separate Remove from queue/Cancel actions.
+
 The user opens a supported item. React asks the main process to acquire it through a small typed API exposed by the preload script. React cannot run arbitrary commands or open the database. The main process identifies the source and uses the corresponding adapter: yt-dlp for a video, post-archiver-improved for an individual public Community Post.
 
 Acquisition and Refresh have no overall time limit. Large discussions can take

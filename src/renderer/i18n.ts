@@ -7,6 +7,7 @@ const en = {
   downloads: 'Downloads', maximumConcurrentDownloads: 'Maximum concurrent downloads', downloadsEmpty: 'No downloads in this session.',
   activeDownloads: 'Active downloads', queuedDownloads: 'Queued', recentDownloads: 'Recent', closeDownloads: 'Close downloads',
   downloadQueued: 'Queued', refreshQueued: 'Refresh queued', downloadCompleted: 'Completed', downloadFailed: 'Failed', downloadCancelled: 'Cancelled',
+  dismissDownload: 'Dismiss job', clearFinishedDownloads: 'Clear finished',
   removeFromQueue: 'Remove from queue', retryDownload: 'Retry', downloadActionFailed: 'The job changed or the action failed. Try again.',
   downloadSessionHelp: 'Downloads continue when tabs or windows close. Queues and recent jobs are kept only for this session.',
 
@@ -220,6 +221,7 @@ const pl: Record<Key, string> & Record<string, string> = {
   downloads: 'Pobieranie', maximumConcurrentDownloads: 'Maksymalna liczba równoczesnych pobrań', downloadsEmpty: 'Brak pobrań w tej sesji.',
   activeDownloads: 'Aktywne pobrania', queuedDownloads: 'W kolejce', recentDownloads: 'Ostatnie', closeDownloads: 'Zamknij panel pobierania',
   downloadQueued: 'W kolejce', refreshQueued: 'Odświeżanie w kolejce', downloadCompleted: 'Zakończono', downloadFailed: 'Błąd', downloadCancelled: 'Anulowano',
+  dismissDownload: 'Ukryj zadanie', clearFinishedDownloads: 'Wyczyść zakończone',
   removeFromQueue: 'Usuń z kolejki', retryDownload: 'Ponów', downloadActionFailed: 'Zadanie uległo zmianie lub operacja nie powiodła się. Spróbuj ponownie.',
   downloadSessionHelp: 'Pobieranie trwa po zamknięciu kart lub okien. Kolejka i ostatnie zadania są przechowywane tylko w tej sesji.',
 

@@ -355,9 +355,11 @@ button > .action-icon { margin-right: 4px; }
 .downloads-panel h2 { font-size: 12px; color: var(--muted); margin: 16px 0 6px; }
 .downloads-panel ul { list-style: none; padding: 0; margin: 0; }
 .download-job { padding: 10px 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
-.download-job > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.download-job-heading { display: flex; align-items: center; gap: 8px; }
+.download-job-heading > strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.download-dismiss { flex: none; padding: 0 6px; min-width: 26px; min-height: 26px; font-size: 18px; line-height: 1; }
 .download-meta, .download-job small { color: var(--muted); font-size: 12px; }
-.download-status { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.download-status { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .download-job progress { width: 100%; height: 4px; accent-color: var(--accent); }
 .download-controls { display: flex; flex-wrap: wrap; gap: 6px; }
 .downloads-panel button { white-space: normal; }

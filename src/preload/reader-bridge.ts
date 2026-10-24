@@ -53,6 +53,8 @@ export function createReaderBridge(rawInvoke: (channel: string, ...args: unknown
   } satisfies TabTransferApi) : undefined;
   return Object.freeze({
     downloads: Object.freeze({
+      dismiss: request => invoke(readerChannels.dismissDownload, request),
+      clearFinished: () => invoke(readerChannels.clearFinishedDownloads),
       submit: request => invoke(readerChannels.submitDownload, request),
       current: () => invoke(readerChannels.getDownloads),
       cancel: request => invoke(readerChannels.cancelDownload, request),

@@ -126,6 +126,7 @@ export interface ReaderApi {
 }
 
 export const readerChannels = {
+  dismissDownload: 'reader:dismiss-download', clearFinishedDownloads: 'reader:clear-finished-downloads',
   submitDownload: 'reader:submit-download', getDownloads: 'reader:get-downloads', cancelDownload: 'reader:cancel-download', retryDownload: 'reader:retry-download',
   refreshThemes: 'reader:refresh-themes', openThemesFolder: 'reader:open-themes-folder', saveThemeCopy: 'reader:save-theme-copy',
   exportTheme: 'reader:export-theme', importTheme: 'reader:import-theme', importWallpaper: 'reader:import-wallpaper', getWallpaper: 'reader:get-wallpaper',

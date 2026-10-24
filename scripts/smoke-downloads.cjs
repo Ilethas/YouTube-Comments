@@ -32,8 +32,9 @@ if (process.versions.electron) {
     const repository = ReaderRepository.open(databasePath), windows = new WindowCoordinator(pathToFileURL(page).href, preload);
     const fixture = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../src/main/extractors/__fixtures__/yt-nested-a.json'), 'utf8'));
     const starts = [], signals = new Map(), releases = new Map(); let restart = false;
-    const service = new ReaderService(() => repository, ['en'], console.error, async (target, signal, advance, report) => {
+    const service = new ReaderService(() => repository, ['en'], console.error, async (target, signal, advance, report, title) => {
       starts.push(target.sourceId); signals.set(target.sourceId, signal); advance('fetching'); report({ fetched: 1755, estimatedTotal: 8721 });
+      title(`Early title ${target.sourceId}`);
       await new Promise(resolve => { releases.set(target.sourceId, resolve); if (signal.aborted) resolve(); else signal.addEventListener('abort', resolve, { once: true }); });
       advance('processing');
       return { extraction: normalizeYtDlp(JSON.stringify({ ...fixture.raw, id: target.sourceId }), fixture.context) };
@@ -53,6 +54,11 @@ if (process.versions.electron) {
     await wait(() => starts.length === 3, 'three active helpers');
     let snap = await current(b); assert.equal(snap.jobs.filter(active).length, 3); assert.equal(snap.jobs.filter(j => j.state === 'queued').length, 5);
     assert.deepEqual(await current(a), snap);
+    assert.equal(snap.jobs.filter(active).every(j => j.label === `Early title ${j.sourceId}` && j.comments.fetched === 1755), true);
+    assert.equal(snap.jobs.filter(j => j.state === 'queued').every(j => j.label === j.sourceId), true);
+    assert.equal((await invoke(b, 'downloads.dismiss', { operationId: submitted[0].operationId })).error.code, 'NOT_FOUND');
+    assert.equal((await invoke(b, 'downloads.dismiss', { operationId: submitted[7].operationId })).error.code, 'NOT_FOUND');
+    assert.equal((await invoke(b, 'downloads.dismiss', { operationId: submitted[0].operationId, extra: true })).error.code, 'INVALID_REQUEST');
     for (const w of [a, b]) await wait(() => js(w, "document.querySelector('.downloads-badge')?.textContent==='3'"), 'active-only badge');
     const same = await invoke(b, 'downloads.submit', { kind: 'acquire', url: 'https://youtu.be/Video_00000?t=2' }); assert.equal(same.value.reused, true); assert.equal(same.value.job.operationId, submitted[0].operationId);
     assert.equal(starts.length, 3);
@@ -98,6 +104,28 @@ if (process.versions.electron) {
     const refreshing = await invoke(a, 'downloads.submit', { kind: 'refresh', itemId });
     const dedup = await invoke(b, 'downloads.submit', { kind: 'refresh', itemId }); assert.equal(dedup.value.job.operationId, refreshing.value.job.operationId);
     for (const w of [a, b]) await wait(() => js(w, "document.querySelector('.reader-panel:not([hidden]) .download-status')?.textContent.includes('≈20%')"), 'same discussion status across windows');
+    assert.equal((await current(b)).jobs.find(j => j.operationId === refreshing.value.job.operationId).label, completed.label, 'known title retained');
+    await js(b, "document.getElementById('downloads-toggle').click();void 0");
+    for (const mode of ['light', 'dark', 'charcoal', 'custom']) {
+      if (mode === 'custom') {
+        const definition = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../src/shared/themes/charcoal.json'), 'utf8'));
+        definition.name = 'Download spinner fixture'; definition.tokens.accent = '#db8fd4'; definition.tokens.border = '#596473';
+        repository.importTheme(definition, ['en'], repository.readerAppearance().revision);
+      } else await invoke(b, 'updatePreferences', { appearance: mode });
+      await wait(() => js(b, `document.documentElement.dataset.appearance===${JSON.stringify(mode)}`), 'spinner theme ' + mode);
+      const evidence = await js(b, `(()=>{
+        const roots=[document.querySelector('.downloads-panel'),document.querySelector('.reader-panel:not([hidden])')];
+        return roots.map(root=>{const status=root.querySelector('.download-status:has(.acquisition-spinner)'), spinner=status.querySelector('.acquisition-spinner'), text=spinner.nextElementSibling;
+          const animations=spinner.getAnimations();animations.forEach(a=>{a.pause();a.currentTime=0;});
+          const r=spinner.getBoundingClientRect(), t=text.getBoundingClientRect(), css=getComputedStyle(spinner);
+          const probe=document.createElement('span');probe.style.color='var(--accent)';probe.style.borderColor='var(--border)';status.append(probe);
+          const accent=getComputedStyle(probe).color, border=getComputedStyle(probe).borderColor;probe.remove();animations.forEach(a=>a.play());
+          return {width:r.width,height:r.height,gap:t.left-r.right,center:Math.abs((r.top+r.height/2)-(t.top+t.height/2)),
+            animation:css.animationName,top:css.borderTopColor,bottom:css.borderBottomColor,accent,border};});
+      })()`);
+      for (const e of evidence) { assert.equal(e.width, 16, mode); assert.equal(e.height, 16, mode); assert.equal(e.gap, 6, mode); assert.ok(e.center <= 1, mode); assert.equal(e.animation, 'acquisition-spin'); assert.equal(e.top, e.accent); assert.equal(e.bottom, e.border); }
+    }
+    await js(b, "document.getElementById('downloads-toggle').click();void 0");
     await invoke(b, 'toggleSeen', { itemId, commentId, seen: true, subtree: false });
     const reload = new Promise(resolve => b.webContents.once('did-finish-load', resolve)); windows.requestReload(b); await reload; await ready(b);
     await wait(() => js(b, "document.querySelector('.download-status')?.textContent.includes('≈20%')"), 'reloaded job hydration');
@@ -119,6 +147,27 @@ if (process.versions.electron) {
     await wait(() => releases.has('Video_99999'), 'orphan fetching'); await invoke(c, 'closeWindow'); await wait(() => c.isDestroyed(), 'acquire origin close');
     releases.get('Video_99999')(); await wait(async () => (await current(b)).jobs.find(j => j.operationId === orphan.value.job.operationId).state === 'completed', 'orphan Library commit');
     assert.deepEqual((await state(b)).workspace, peerWorkspace);
+    // UI dismissal is session-only; both renderers accept the new revision.
+    const beforeDismiss = await state(b), historyBeforeDismiss = repository.history();
+    await js(b, "document.getElementById('downloads-toggle').click();void 0");
+    const dismissId = orphan.value.job.operationId;
+    await wait(() => js(b, `!!document.querySelector('[data-download-id="${dismissId}"]')?.closest('li').querySelector('.download-dismiss')`), 'settled dismiss control');
+    await js(b, `document.querySelector('[data-download-id="${dismissId}"]').closest('li').querySelector('.download-dismiss').click();void 0`);
+    await wait(async () => !(await current(b)).jobs.some(j => j.operationId === dismissId), 'per-job dismissal');
+    assert.equal((await invoke(b, 'downloads.dismiss', { operationId: dismissId })).error.code, 'NOT_FOUND');
+    assert.equal((await invoke(b, 'downloads.retry', { operationId: dismissId })).error.code, 'NOT_FOUND');
+    const d = windows.createReaderWindow(); await ready(d);
+    assert.deepEqual(await current(d), await current(b));
+    const clearingPending = await invoke(d, 'downloads.submit', { kind: 'refresh', itemId });
+    await wait(async () => (await current(b)).jobs.find(j => j.operationId === clearingPending.value.job.operationId)?.state === 'fetching', 'clear preserves running job');
+    await js(b, "Array.from(document.querySelectorAll('.downloads-panel button')).find(e=>e.textContent==='Clear finished').click();void 0");
+    await wait(async () => (await current(b)).jobs.length === 1, 'clear finished');
+    assert.deepEqual(await current(d), await current(b));
+    assert.equal((await current(d)).jobs[0].operationId, clearingPending.value.job.operationId);
+    assert.deepEqual(await state(b), beforeDismiss); assert.deepEqual(repository.history(), historyBeforeDismiss);
+    releases.get(completed.sourceId)(); await wait(async () => !(await current(b)).jobs.some(pending), 'remaining refresh completes');
+    await invoke(d, 'closeWindow'); await wait(() => d.isDestroyed(), 'dismissal peer close');
+    await js(b, "document.getElementById('downloads-toggle').click();void 0");
     // Real M3 backup/confirmed replacement fences and drains the complete queue.
     assert.equal((await invoke(b, 'createBackup')).value.status, 'created');
     for (let i = 10; i < 18; i++) assert.equal((await invoke(b, 'downloads.submit', { kind: 'acquire', url: `https://youtu.be/Video_${String(i).padStart(5, '0')}` })).ok, true);
@@ -133,7 +182,7 @@ if (process.versions.electron) {
     const restoredRepo = ReaderRepository.open(databasePath);
     assert.equal(restoredRepo.preferences(['en']).maximumConcurrentDownloads, 2); assert.equal(restoredRepo.bootstrap(['en']).comments[itemId].find(c => c.id === commentId).seen, true);
     restoredRepo.close(); clearTimeout(watchdog);
-    console.log('Downloads Electron PASS: 8/3 scheduling, settings UI/M2, dedup, independent cancellation, 3-window events/hydration/reload, local status, seen preservation, tab/native Close, retry, Library-only orphan, backup and confirmed restore drain.');
+    console.log('Downloads Electron PASS: scheduling, early titles/progress across windows, queued fallback, stored titles, spinner dimensions/alignment/colors in Light/Dark/Charcoal/custom in panel/header, dismiss/clear UI and IPC/revisions, stored data preservation, cancellation, reload/Close, retry, backup/restore drain.');
     b.destroy(); app.quit();
   }).catch(error => { console.error(error); app.exit(1); });
 } else {

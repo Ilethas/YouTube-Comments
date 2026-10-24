@@ -25,6 +25,8 @@ The screenshots use invented discussions and people in the actual Electron app.
 - Downloads independent discussions concurrently and starts queued jobs automatically.
   Settings > **Maximum concurrent downloads** offers 1–4 (default 3). The global
   **Downloads** panel shows progress and job controls; its badge counts active jobs only.
+  Available video titles appear before completion. **×** or **Clear finished** hides
+  finished jobs without deleting saved discussions.
 - Keeps discussions in a local SQLite library, with nested replies and collapsible threads.
 - Lets you mark comments seen or unseen yourself. Reading and scrolling never mark them.
 - Searches comment text and authors, with optional regex, seen, publication-date,

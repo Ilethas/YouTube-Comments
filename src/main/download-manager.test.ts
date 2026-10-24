@@ -175,6 +175,12 @@ it('validates submission/cancellation/retry arity, leases, safe snapshots and pr
   expect(service.dispatch('cancelDownload', [{ operationId: 'x', pid: 1 }])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
   expect(service.dispatch('retryDownload', [])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
   const revoked = { windowId: repo.initialWindowId(), rendererLease: 'old', isCurrent: () => false };
+  for (const operation of ['dismissDownload', 'clearFinishedDownloads'] as const) {
+    expect(service.dispatch(operation, operation === 'dismissDownload' ? [{ operationId: 'old' }] : [], revoked)).toMatchObject({ error: { code: 'FORBIDDEN' } });
+    expect(service.dispatch(operation, [{ operationId: 'x', extra: true }])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
+  }
+  expect(service.dispatch('dismissDownload', [])).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
+  expect(service.dispatch('dismissDownload', [{ operationId: 'missing' }])).toMatchObject({ error: { code: 'NOT_FOUND' } });
   expect(service.dispatch('submitDownload', [{ kind: 'acquire', url: url(1) }], revoked)).toMatchObject({ error: { code: 'FORBIDDEN' } });
   const accepted = value(service.dispatch('submitDownload', [{ kind: 'acquire', url: url(1) }])).job;
   await wait(() => starts.length === 1); finish.get(accepted.sourceId)?.();
@@ -184,4 +190,52 @@ it('validates submission/cancellation/retry arity, leases, safe snapshots and pr
   expect(service.dispatch('removeLibraryItem', [{ itemId }])).toMatchObject({ error: { code: 'ACQUISITION_BUSY' } });
   expect(isDownloadsSnapshot(value(service.dispatch('getDownloads', [])))).toBe(true);
   await service.shutdown(); repositoryClosed = true;
+});
+it('dismisses completed/failed/cancelled projections and clears only settled entries without any repository change', async () => {
+  const a: DownloadsSnapshot[] = [], b: DownloadsSnapshot[] = [];
+  manager.onChanged(v => a.push(v)); manager.onChanged(v => b.push(v));
+  const one = submit(1), two = submit(2), three = submit(3), queued = submit(4), running = submit(5);
+  manager.cancel(three.operationId);
+  await wait(() => starts.length === 3);
+  expect(manager.dismiss(one.operationId).ok).toBe(false);
+  expect(manager.dismiss(running.operationId).ok).toBe(false);
+  finish.get(one.sourceId)?.(); finish.get(two.sourceId)?.(true);
+  await wait(() => jobs().filter(j => !downloadPending(j)).length === 3);
+  const itemId = required(jobs().find(j => j.operationId === one.operationId)?.itemId);
+  repo.bulkSeen({ itemId, seen: true, target: { kind: 'all' } });
+  const before = repo.bootstrap(['en']), history = repo.history(), stamp = repo.stamp();
+  expect(manager.dismiss(queued.operationId).ok).toBe(false);
+  for (const job of [one, two, three]) {
+    const revision = manager.snapshot().revision;
+    expect(manager.dismiss(job.operationId).ok).toBe(true);
+    expect(manager.snapshot().revision).toBeGreaterThan(revision);
+    expect(manager.dismiss(job.operationId)).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    expect(manager.retry(job.operationId).ok).toBe(false);
+  }
+  const cancelled = submit(6); manager.cancel(cancelled.operationId);
+  expect(manager.clearFinished().ok).toBe(true);
+  expect(jobs().every(downloadPending)).toBe(true);
+  expect(jobs()).toHaveLength(2);
+  expect(repo.bootstrap(['en'])).toEqual(before); expect(repo.history()).toEqual(history); expect(repo.stamp()).toEqual(stamp);
+  expect(a).toEqual(b); expect(a.every(isDownloadsSnapshot)).toBe(true);
+  const revision = manager.snapshot().revision; manager.clearFinished(); expect(manager.snapshot().revision).toBe(revision);
+});
+it('publishes sanitized per-job early titles beside progress, fences late callbacks and retains stored titles', async () => {
+  await manager.close();
+  const callbacks = new Map<string, NonNullable<Parameters<ExtractLive>[4]>>();
+  manager = new DownloadManager(repo, ['en'], (target, signal, stage, progress, title) => {
+    callbacks.set(target.sourceId, required(title)); return extract(target, signal, stage, progress);
+  });
+  const one = submit(1), two = submit(2); await wait(() => starts.length === 2);
+  callbacks.get(one.sourceId)?.('  <b>Title</b>\u0000\n\u202e' + 'x'.repeat(250));
+  const updated = required(jobs().find(j => j.operationId === one.operationId));
+  expect(updated.label.startsWith('<b>Title</b>')).toBe(true); expect(updated.label).toHaveLength(178);
+  expect(updated.comments).toEqual({ fetched: 1755, estimatedTotal: 8721 }); expect(updated.sourceId).toBe(one.sourceId);
+  callbacks.get(two.sourceId)?.('Second title'); expect(jobs()[1].label).toBe('Second title');
+  expect(isDownloadsSnapshot(manager.snapshot())).toBe(true);
+  manager.cancel(two.operationId); const afterCancel = manager.snapshot(); callbacks.get(two.sourceId)?.('late'); expect(manager.snapshot()).toEqual(afterCancel);
+  finish.get(one.sourceId)?.(); await wait(() => jobs().every(j => !downloadPending(j)));
+  const stored = jobs()[0], refresh = value(manager.submit({ kind: 'refresh', itemId: required(stored.itemId) })).job;
+  await wait(() => starts.length === 3); const before = manager.snapshot(); callbacks.get(one.sourceId)?.('Replace known title');
+  expect(manager.snapshot()).toEqual(before); expect(jobs().find(j => j.operationId === refresh.operationId)?.label).toBe(stored.label);
 });

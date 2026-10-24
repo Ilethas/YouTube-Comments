@@ -186,7 +186,7 @@ export class ReaderService {
   dispatch(operation: 'getSharedMetadata', args: readonly unknown[], caller?: ReaderCallerContext): Result<SharedMetadata>;
   dispatch(operation: 'getDownloads', args: readonly unknown[], caller?: ReaderCallerContext): Result<DownloadsSnapshot>;
   dispatch(operation: 'submitDownload' | 'retryDownload', args: readonly unknown[], caller?: ReaderCallerContext): Result<DownloadSubmission>;
-  dispatch(operation: 'cancelDownload', args: readonly unknown[], caller?: ReaderCallerContext): Result<null>;
+  dispatch(operation: 'cancelDownload' | 'dismissDownload' | 'clearFinishedDownloads', args: readonly unknown[], caller?: ReaderCallerContext): Result<null>;
   dispatch(operation: 'getAcquisitionProgress', args: readonly unknown[], caller?: ReaderCallerContext): Result<AcquisitionProgress | null>;
   dispatch(operation: 'cancelAcquisition', args: readonly unknown[], caller?: ReaderCallerContext): Result<null>;
   dispatch(operation: 'saveDiscussionView' | 'setDiscussionCollapse', args: readonly unknown[], caller?: ReaderCallerContext): Result<null>;
@@ -236,11 +236,13 @@ export class ReaderService {
       return this.appearancePending;
     }
     if (operation === 'getWallpaper') return args.length ? { ok: false, error: { code: 'INVALID_REQUEST' } } : this.getWallpaper();
-    if (['getDownloads', 'submitDownload', 'cancelDownload', 'retryDownload'].includes(operation)) {
-      if (operation === 'getDownloads' ? args.length !== 0 : args.length !== 1 || (operation === 'submitDownload' ? !isSubmitDownloadRequest(args[0]) : !isDownloadIdentity(args[0]))) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+    if (['getDownloads', 'submitDownload', 'cancelDownload', 'retryDownload', 'dismissDownload', 'clearFinishedDownloads'].includes(operation)) {
+      if (operation === 'getDownloads' || operation === 'clearFinishedDownloads' ? args.length !== 0 : args.length !== 1 || (operation === 'submitDownload' ? !isSubmitDownloadRequest(args[0]) : !isDownloadIdentity(args[0]))) return { ok: false, error: { code: 'INVALID_REQUEST' } };
       if (caller && !caller.isCurrent()) return { ok: false, error: { code: 'FORBIDDEN' } };
       if (!this.acquisition) return { ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } };
       if (operation === 'getDownloads') return { ok: true, value: this.acquisition.snapshot() };
+      if (operation === 'clearFinishedDownloads') return this.acquisition.clearFinished();
+      if (operation === 'dismissDownload' && isDownloadIdentity(args[0])) return this.acquisition.dismiss(args[0].operationId);
       if (operation === 'submitDownload' && isSubmitDownloadRequest(args[0])) {
         const result = this.acquisition.submit(args[0], caller);
         if (result.ok && !result.value.reused && args[0].kind === 'refresh') {

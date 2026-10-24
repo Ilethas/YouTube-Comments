@@ -12,7 +12,8 @@ const job: DownloadJob = { operationId: 'job-1', sourceKind: 'youtube-video', so
   label: 'Fictional discussion', state: 'fetching', createdAt: 1000, startedAt: 1000, cancellable: true, comments: { fetched: 1755, estimatedTotal: 8721 } };
 const snapshot = (revision: number, jobs: readonly DownloadJob[] = [job]): DownloadsSnapshot => ({ profileEpoch: 'epoch', revision, jobs });
 function api(): DownloadsApi {
-  return { current: vi.fn(async () => ({ ok: true as const, value: snapshot(0, []) })), onChanged: vi.fn(() => () => undefined),
+  return { dismiss: vi.fn(async () => ({ ok: true as const, value: null })), clearFinished: vi.fn(async () => ({ ok: true as const, value: null })),
+    current: vi.fn(async () => ({ ok: true as const, value: snapshot(0, []) })), onChanged: vi.fn(() => () => undefined),
     submit: vi.fn(async () => ({ ok: true as const, value: { job, reused: false } })), retry: vi.fn(async () => ({ ok: true as const, value: { job, reused: false } })), cancel: vi.fn(async () => ({ ok: true as const, value: null })) };
 }
 afterEach(cleanup);
@@ -63,4 +64,17 @@ it('shows empty state without badge; recent jobs offer Retry/Open and no cancell
 it('local discussion status reflects queued and processing states without estimating completeness', () => {
   const view = render(<DownloadStatus job={{ ...job, state: 'queued' }} locale="en" />); expect(screen.getByText('Refresh queued')).toBeTruthy();
   view.rerender(<DownloadStatus job={{ ...job, state: 'processing' }} locale="en" />); expect(document.body.textContent).toContain('Processing'); expect(document.body.textContent).not.toContain('%');
+});
+it.each(['en', 'pl'] as const)('offers localized dismissal only for settled jobs and keeps the snapshot authoritative in %s', async locale => {
+  const service = api(), t = translator(locale);
+  const settled = ['completed', 'failed', 'cancelled'].map((state, i) => ({ ...job, state, operationId: `settled-${i}`, cancellable: false } as DownloadJob));
+  render(<Downloads jobs={[job, { ...job, operationId: 'queued', state: 'queued' }, ...settled]} api={service} locale={locale} open={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button'));
+  const buttons = screen.getAllByRole('button', { name: `${t('dismissDownload')} — ${job.label}` });
+  expect(buttons).toHaveLength(3);
+  fireEvent.click(buttons[0]); await waitFor(() => expect(service.dismiss).toHaveBeenCalledWith({ operationId: 'settled-2' }));
+  expect(screen.getAllByRole('button', { name: `${t('dismissDownload')} — ${job.label}` })).toHaveLength(3);
+  fireEvent.click(screen.getByRole('button', { name: t('clearFinishedDownloads') }));
+  await waitFor(() => expect(service.clearFinished).toHaveBeenCalledWith());
+  expect(service.cancel).not.toHaveBeenCalled();
 });

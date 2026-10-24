@@ -10,7 +10,7 @@ it('exposes a frozen download intent namespace, validates safe events and dispos
   let receive!: (value: unknown) => void;
   const api = createReaderBridge(invoke, undefined, undefined, undefined, undefined, listener => { receive = listener; return unsubscribe; });
   const downloads = api.downloads; if (!downloads) throw Error('Missing Downloads API');
-  expect(Object.isFrozen(downloads)).toBe(true); expect(Object.keys(downloads).sort()).toEqual(['cancel', 'current', 'onChanged', 'retry', 'submit']);
+  expect(Object.isFrozen(downloads)).toBe(true); expect(Object.keys(downloads).sort()).toEqual(['cancel', 'clearFinished', 'current', 'dismiss', 'onChanged', 'retry', 'submit']);
   const listener = vi.fn(), remove = downloads.onChanged(listener);
   const snapshot = { profileEpoch: 'epoch', revision: 2, jobs: [{ operationId: 'job', sourceKind: 'youtube-video', sourceId: 'VidDemo_001',
     kind: 'acquire', label: 'Video', state: 'fetching', createdAt: 1, startedAt: 2, cancellable: true, comments: { fetched: 1, estimatedTotal: 10 } }] };
@@ -20,6 +20,8 @@ it('exposes a frozen download intent namespace, validates safe events and dispos
   await downloads.cancel({ operationId: 'job' }); await downloads.retry({ operationId: 'job' });
   expect(invoke.mock.calls).toEqual([[readerChannels.submitDownload, { kind: 'acquire', url: 'https://youtu.be/VidDemo_001' }],
     [readerChannels.getDownloads], [readerChannels.cancelDownload, { operationId: 'job' }], [readerChannels.retryDownload, { operationId: 'job' }]]);
+  await downloads.dismiss({ operationId: 'job' }); await downloads.clearFinished();
+  expect(invoke.mock.calls.slice(-2)).toEqual([[readerChannels.dismissDownload, { operationId: 'job' }], [readerChannels.clearFinishedDownloads]]);
 });
 
 it('exposes only explicit intent and progress methods without a generic privileged transport', async () => {

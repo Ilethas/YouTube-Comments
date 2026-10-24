@@ -44,14 +44,14 @@
       "height": 1000,
       "provenance": {
         "source": "Actual Electron window loading the verified Forge-built main/preload/renderer",
-        "capturedAt": "2026-10-24T00:20:47.633Z",
+        "capturedAt": "2026-10-24T00:54:04.601Z",
         "electron": "44.4.5",
         "viewportWidth": 1360,
-        "builtMainSha256": "44f1561ad02aff5bd9fd12ef7c070939ecd721767a3608bcec5bffcbf2c26bd0",
+        "builtMainSha256": "24c10aa9448f1e190bf41413322df03db61c5ea309d17cba77bd77493f94b547",
         "rendererAssetsSha256": {
           "discussion-query.worker-DJ9IMWpC.js": "706fce715a73863a51a7f8400a5c2a5baf10f359c48ca4119bf1a3ce6461709f",
-          "index-BEJGBrca.js": "fbcf1acb02a2b754d0feddbfe92806cdbe903e859334ca4085a94bd7aff9c21f",
-          "index-BpWcLSq5.css": "7bf1ec4e5a60e7cc31ff1f77823a0fe96e996c2972f34f2eb4839e471df1f88b"
+          "index-3FLhX16x.js": "cba9c7ec0776e3028b23a2eea388273fee6f4e0e1a7e216cd8fb0751fa9c4e54",
+          "index-B2GLEpvX.css": "cffa5ea391d36e084707126f3046703a457107ffc5fe87684c89a9ca45c0c32a"
         },
         "data": "Invented demo discussions in an owned disposable SQLite profile; offline geometric avatars",
         "downloads": {

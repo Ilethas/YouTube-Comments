@@ -45,8 +45,9 @@ removal rejects any source with a pending job, including queued acquisitions.
 Closing the last application window still follows the platform's ordinary app
 shutdown policy, which cancels/drains downloads before exiting.
 
-`reader.downloads` exposes small validated Submit, Current, Cancel and Retry
-intents plus Changed notifications through the authenticated IPC registry.
+`reader.downloads` exposes small validated Submit, Current, Cancel, Retry, Dismiss
+and Clear finished intents plus Changed notifications through the authenticated
+IPC registry.
 Changed carries a full bounded safe snapshot with the repository profile epoch
 and a separate main-service download revision. This revision never resets when
 an aborted pre-offline restore rebuilds the manager. Preload validates exact
@@ -78,9 +79,32 @@ Every window has a Downloads button beside Library/Settings. Its badge counts
 running slots, excluding queued and settled jobs. A bounded scrolling nonmodal
 panel groups Active, Queued and Recent jobs, exposes Cancel/Remove from queue,
 Retry and Open, and shows safe labels, intent, stage, elapsed time and estimates.
+Settled rows also offer a compact accessible ×; Clear finished removes all settled
+rows. Both change only the manager's session list and broadcast a new download
+revision. Pending jobs reject dismissal. Unknown/already-dismissed UUIDs reject;
+clearing an empty recent list is a no-op. No SQLite/history/content writes occur,
+and the 32-settled-entry bound remains unchanged.
 It floats without resizing the reader. Escape, outside pointer/focus dismissal
 and focus return support keyboard use. English/Polish strings and semantic theme
 tokens cover standard/custom themes and wallpaper readers.
+The status is an aligned inline flex container: its animated 16 px ring retains
+its dimensions and a 6 px text gap in both the panel and discussion header.
+
+New video jobs can receive an early title from the existing yt-dlp extraction
+process via `--print-to-file 'pre_process:%(title|).4096j' <owned-file>`.
+No additional invocation, request or API key is introduced. Main creates a unique
+temporary workspace and a writable empty metadata file, polls serially at 100 ms,
+and accepts only a JSON string from a regular file with at most 8192 bytes (fixed
+8193-byte read including overflow detection, strict UTF-8 decoding). Helper template
+precision bounds the written title too; truncated/malformed values are optional.
+The display projection removes controls/bidi overrides and bounds labels to 180
+UTF-16 units. Only that label reaches revisioned job snapshots. It never changes
+source identity or substitutes for final extractor metadata/normalization/ingestion.
+Known stored titles are retained; queued jobs and unavailable metadata keep IDs.
+Pollers stop and pending reads finish before the existing awaited workspace cleanup
+on success, failure, cancellation or shutdown. Workspace setup failure disables
+this optional title channel. Missing/unreadable/invalid titles never fail acquisition.
+See the installed-version verification and limits in [Extractors](../EXTRACTORS.md).
 
 Discussion status matches source identity, so duplicates share status and suppress
 duplicate Refresh while pending. The former global single-operation strip is

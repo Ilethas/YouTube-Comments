@@ -19,7 +19,8 @@ export class AcquisitionService {
   private completion: Promise<void> = Promise.resolve();
   constructor(private readonly repository: ReaderRepository, private readonly languages: readonly string[],
     private readonly extract: ExtractLive, private readonly notify: (value: AcquisitionNotification) => void = () => undefined,
-    private readonly clock: () => number = () => performance.now(), private readonly operationId: () => string = randomUUID) {}
+    private readonly clock: () => number = () => performance.now(), private readonly operationId: () => string = randomUUID,
+    private readonly title: (value: string) => void = () => undefined) {}
   owns(sourceKind: string | undefined, sourceId: string): boolean {
     return this.activeTarget?.sourceKind === sourceKind && this.activeTarget?.sourceId === sourceId;
   }
@@ -102,6 +103,8 @@ export class AcquisitionService {
         const remaining = 250 - (this.clock() - lastProgressAt);
         if (remaining <= 0) publish();
         else progressTimer ??= setTimeout(publish, remaining);
+      }, title => {
+        if (this.active?.controller === controller && !signal.aborted && target.sourceKind === 'youtube-video') this.title(title);
       }); }
       catch { result = { error: 'ACQUISITION_FAILED' as const, extraction: { provenance: {
         backend: target.sourceKind === 'youtube-video' ? 'yt-dlp' : 'post-archiver-improved', version: 'unverified', evidence: [] },

@@ -252,6 +252,40 @@ semantics. Successful completion depends on validated normalization and atomic
 ingest, not progress. No schema or stored-progress change is involved.
 
 
+## Early video job titles (ADR 0042 follow-up)
+
+The existing extraction adds `--print-to-file 'pre_process:%(title|).4096j'`
+with a main-owned temporary filename. `--dump-single-json --write-comments
+--quiet --verbose` remains in effect: stdout still contains only final JSON;
+stderr still carries private diagnostic progress. No extra request or yt-dlp
+process obtains the title. Filename percent signs are escaped as template literals.
+
+`python scripts/verify-ytdlp-title.py` passed against installed **2026.08.19**.
+It uses the installed CLI parser and actual `YoutubeDL` processing pipeline with
+an offline fixture extractor whose deferred `__post_extractor` is the hook used
+by YouTube comments. At entry to that hook, the JSON title file already exists
+and stdout is empty; after completion, stdout parses as one final JSON document
+containing the comments. This checks ordering under the production flags without
+network access; comparison with the original CLI options changes only
+`print_to_file`, preserving simulation and extraction settings. It is not a new
+live YouTube extraction/compatibility claim for
+other helper versions. Upstream describes the option in its
+[CLI documentation](https://github.com/yt-dlp/yt-dlp/blob/master/README.md#verbosity-and-simulation-options);
+the ordering is visible in
+[`process_video_result`/`post_extract`](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py).
+
+The side channel is optional display evidence. Main reads regular files only,
+bounds each read to 8193 bytes and rejects content over 8192 bytes, malformed UTF-8,
+non-string JSON and empty text. Serial 100 ms polling tolerates partial writes;
+only the first valid sanitized label is delivered. JSON output precision is 4096
+characters; truncation that produces invalid JSON keeps the source-ID fallback.
+Controls/bidi overrides are removed and labels are limited to 180 UTF-16 units.
+Raw metadata, helper paths and generated filenames never enter job notifications.
+Stored discussions keep their known title, and final extraction/storage remains
+authoritative. Polling stops and reads finish before per-child workspace removal,
+including cancellation/error/shutdown. If optional workspace setup fails, extraction
+uses its original invocation. The existing cleanup-failure safety policy remains.
+
 ## Video thumbnail evidence (ADR 0025)
 
 The single-video yt-dlp JSON fields `thumbnail` and `thumbnails` now populate the

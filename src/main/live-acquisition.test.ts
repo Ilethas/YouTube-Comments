@@ -93,7 +93,7 @@ it('video fixture passes trusted builder, adapter, ingestion, repeat merge, seen
   expect(initial.every(comment => !comment.seen)).toBe(true);
   const command = execute.mock.calls[1][0];
   expect(command.executable).toBe(path.join(directory, 'yt-dlp.exe'));
-  expect(command.arguments).toEqual(['--ignore-config', '--no-plugin-dirs', '--no-playlist', '--skip-download', '--dump-single-json', '--write-comments', '--quiet', '--verbose', '--socket-timeout', '15', '--retries', '2', '--extractor-retries', '2', '--', videoUrl]);
+  expect(command.arguments).toEqual(['--ignore-config', '--no-plugin-dirs', '--no-playlist', '--skip-download', '--dump-single-json', '--write-comments', '--quiet', '--verbose', '--socket-timeout', '15', '--retries', '2', '--extractor-retries', '2', '--print-to-file', 'pre_process:%(title|).4096j', path.join(required(command.cwd), 'title.json'), '--', videoUrl]);
   service.dispatch('toggleSeen', [{ itemId, commentId: initial[0].id, subtree: false, seen: true }]);
   // Second observation omits old comments, adds a new one and updates one remote text.
   const rows = payload.comments as Record<string, unknown>[];

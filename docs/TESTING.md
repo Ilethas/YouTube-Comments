@@ -1,5 +1,48 @@
 # Testing strategy
 
+## Download Manager follow-up (2026-10-24, schema 17 unchanged)
+
+The focused spinner, early-title and settled-dismissal changes retain the
+profile-owned scheduler, M2/M3 boundaries and session-only 32-entry recent bound.
+
+- Full Vitest suite: **1,360 passed, one optional live test skipped, 112 files**.
+  Title tests cover arrival while children are gated, concurrent isolated files,
+  progress coexistence, strict UTF-8/size/JSON validation, partial writes, missing
+  metadata/workspace fallback, one-time delivery, old/cancelled callback fencing,
+  known stored titles and cleanup after success/failure/throw/abort. Real offline
+  Node helper children exercise the production process executor on completion and
+  Windows cancellation, with the workspace removed only after child close.
+- `python scripts/verify-ytdlp-title.py` passes with installed **2026.08.19**:
+  actual yt-dlp CLI parsing/pipeline, title file before deferred comments, empty
+  stdout until final JSON, and no other parsed extraction-option changes. This
+  is an offline ordering check, not a live YouTube extraction; see
+  [Extractors](EXTRACTORS.md#early-video-job-titles-adr-0042-follow-up).
+- Final-build `npm.cmd run test:downloads` passes real secured preload/IPC/SQLite
+  and multiple native windows: title/count snapshots, queued-ID fallback, known
+  titles, per-job ×/Clear finished UI, cross-window/late-window dismissal revisions,
+  active/queued rejection, invalid/stale IDs and exact stored state/history
+  preservation. Existing scheduling, dedup, cancellation, reload/Close, retry,
+  backup/restore and seen preservation checks also pass.
+- The same Electron harness checks actual rendered **16 × 16 px** spinner boxes,
+  **6 px** text gaps, vertical centering, animation and semantic accent/border colors
+  in both Downloads and discussion-header contexts for Light, Dark, Charcoal and
+  an activated custom theme. Animation is sampled at its zero-angle frame for
+  deterministic box geometry, then resumed.
+- Typecheck, ESLint, script syntax and the final Windows x64 Forge production
+  package/runtime/ASAR/fuse verification pass. Presentation verification still
+  passes 25 local README links, seven manifested PNGs and seven icon frames; this
+  increment does not replace screenshots or their provenance.
+- The broad `test:electron` run passed every preceding harness through M8.2 and
+  scroll geometry, then failed the final notification native-hover pause assertion
+  (`smoke-scroll-layout.cjs:225`). After other tests completed, the unchanged
+  `node scripts/smoke-scroll-layout.cjs --notifications` passed in isolation:
+  hover/focus pauses, all actual timeout values, pending/error/manual semantics,
+  cross-window Settings and reload. Thus all constituent harnesses have passing
+  evidence, with this initial native-hover failure retained as a verification
+  limitation rather than hidden or fixed outside the requested scope.
+
+Physical input/release/installer gates from earlier milestones remain unchanged.
+
 ## Download Manager README capture (2026-10-24)
 
 After the finalized feature passed its verification, a fresh validated Windows

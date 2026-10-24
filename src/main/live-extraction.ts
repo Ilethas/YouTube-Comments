@@ -13,10 +13,11 @@ import { executeProcess, createHelperResolver } from './helper-process';
 import type { ExecuteProcess, ResolveHelper, ProcessOutcome } from './helper-process';
 import { probeHelper } from './helper-probe';
 import { YtDlpProgressParser } from './extractors/yt-dlp-progress';
+import { watchVideoTitle } from './early-video-title';
 
 export type LiveExtraction = { readonly extraction: NormalizedExtraction; readonly error?: ErrorCode };
 export type ExtractLive = (target: AcquisitionTarget, signal: AbortSignal, stage?: (stage: AcquisitionStage) => void,
-  comments?: (progress: CommentProgress) => void) => Promise<LiveExtraction>;
+  comments?: (progress: CommentProgress) => void, title?: (title: string) => void) => Promise<LiveExtraction>;
 const maxOutput = 128 * 1024 * 1024;
 
 /** Main-only execution orchestration. Every diagnostic is an application-owned token;
@@ -24,7 +25,7 @@ const maxOutput = 128 * 1024 * 1024;
 export function createLiveExtractor(options: { readonly execute?: ExecuteProcess; readonly resolve?: ResolveHelper;
   readonly temporaryRoot?: string } = {}): ExtractLive {
   const execute = options.execute ?? executeProcess, resolve = options.resolve ?? createHelperResolver();
-  return async (target, signal, stage = () => undefined, comments = () => undefined) => {
+  return async (target, signal, stage = () => undefined, comments = () => undefined, title = () => undefined) => {
     const community = target.sourceKind === 'youtube-community-post';
     const name = community ? 'post-archiver' : 'yt-dlp';
     const backend = community ? 'post-archiver-improved' : 'yt-dlp';
@@ -34,6 +35,7 @@ export function createLiveExtractor(options: { readonly execute?: ExecuteProcess
       provenance: { backend, version, evidence }, issues: [], coverage: { kind: 'failed', reason },
     } });
     let workspace: string | undefined;
+    let stopTitle: (() => Promise<void>) | undefined;
     const processFailure = (outcome: ProcessOutcome) => {
       if (outcome.status === 'exited' && outcome.exitCode === 0) return undefined;
       if (outcome.exitCode !== undefined) evidence.push(`exit-code:${outcome.exitCode}`);
@@ -66,13 +68,24 @@ export function createLiveExtractor(options: { readonly execute?: ExecuteProcess
           await writeFile(configFile, JSON.stringify({ scraping: { cookies_file: null, download_images: false } }), 'utf8');
           spec = buildCommunityCommand({ postUrl: target.url, outputDirectory, configFile, maxComments: 1000, maxReplies: 1000, timeoutSeconds: 15, retries: 2 });
           evidence.push('application-comment-limit:1000', 'application-reply-limit:1000');
-        } else spec = buildYtDlpCommand({ videoUrl: target.url, timeoutSeconds: 15, retries: 2 });
+        } else {
+          let titleFile: string | undefined;
+          try {
+            workspace = await mkdtemp(path.join(options.temporaryRoot ?? os.tmpdir(), 'youtube-comments-acquisition-'));
+            const candidate = path.join(workspace, 'title.json');
+            await writeFile(candidate, '', { encoding: 'utf8', flag: 'wx' });
+            titleFile = candidate;
+            stopTitle = watchVideoTitle(titleFile, signal, title);
+          } catch { /* Optional title discovery never blocks acquisition. */ }
+          spec = buildYtDlpCommand({ videoUrl: target.url, timeoutSeconds: 15, retries: 2, titleFile });
+        }
         if (signal.aborted) return failure('ACQUISITION_FAILED', 'execution-aborted');
         stage('fetching');
         const progress = new YtDlpProgressParser(value => { if (!signal.aborted) comments(value); });
         const outcome = await execute({ executable, arguments: spec.arguments, environmentAdditions: spec.environmentAdditions,
           cwd: workspace, maxStdoutBytes: maxOutput, signal,
           ...(!community ? { onStderr: (chunk: Buffer) => progress.push(chunk) } : {}) });
+        await stopTitle?.(); stopTitle = undefined;
         if (!community) progress.end();
         const executionFailure = processFailure(outcome);
         if (executionFailure) return executionFailure;
@@ -105,6 +118,7 @@ export function createLiveExtractor(options: { readonly execute?: ExecuteProcess
     };
     try { result = await attempt(); }
     finally {
+      await stopTitle?.();
       if (workspace) {
         try { await rm(workspace, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
         catch { result = failure('ACQUISITION_FAILED', 'workspace-cleanup-failed'); }
