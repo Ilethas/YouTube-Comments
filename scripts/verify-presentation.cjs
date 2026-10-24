@@ -53,7 +53,7 @@ function png(bytes, width, height) {
 }
 const screenshots = { 'reader-light.png': [1360, 1000], 'search-dark.png': [1360, 880],
   'collapse-selection-light.png': [1360, 920], 'library-light.png': [1360, 680],
-  'multi-window-light.png': [1848, 1000], 'move-tab-pl-dark.png': [1360, 880] };
+  'multi-window-light.png': [1848, 1000], 'move-tab-pl-dark.png': [1360, 880], 'downloads-light.png': [1360, 1000] };
 const capture = JSON.parse(read('docs/screenshots/capture.json'));
 assert.deepEqual(capture.files.map(entry => entry.file).sort(), Object.keys(screenshots).sort());
 assert.match(capture.builtMainSha256, /^[a-f0-9]{64}$/);
@@ -66,6 +66,19 @@ for (const [name, [width, height]] of Object.entries(screenshots)) {
   png(bytes, width, height);
   const entry = capture.files.find(file => file.file === name);
   assert.deepEqual([entry.width, entry.height], [width, height]);
+  // Later additions keep their own build provenance without attributing older
+  // unchanged screenshots to the latest application binary.
+  const provenance = entry.provenance ?? capture;
+  assert.match(provenance.builtMainSha256, /^[a-f0-9]{64}$/);
+  assert.ok(Object.keys(provenance.rendererAssetsSha256).some(asset => /^index-.*\.js$/.test(asset)));
+  for (const hash of Object.values(provenance.rendererAssetsSha256)) assert.match(hash, /^[a-f0-9]{64}$/);
+  if (name === 'downloads-light.png') {
+    const downloads = provenance.downloads;
+    assert.deepEqual([downloads.maximumConcurrentDownloads, downloads.active, downloads.queued], [3, 3, 5]);
+    assert.equal(downloads.jobs.filter(job => job.state === 'fetching' && job.comments).length, 3);
+    assert.equal(downloads.jobs.filter(job => job.state === 'queued').length, 5);
+    assert.match(downloads.fixture, /real Node fixture helper processes/);
+  }
 }
 const ico = fs.readFileSync(path.join(root, 'assets/application.ico'));
 assert.equal(ico.readUInt16LE(0), 0); assert.equal(ico.readUInt16LE(2), 1);

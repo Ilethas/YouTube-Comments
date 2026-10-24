@@ -112,7 +112,7 @@ it('video fixture passes trusted builder, adapter, ingestion, repeat merge, seen
   expect(repository.bootstrap(['en']).comments[itemId][0].seen).toBe(true);
 });
 
-it('single lock rejects overlap while seen and preferences still succeed, reading current state at merge', async () => {
+it('same-source overlap reuses the job while seen and preferences still succeed, reading current state at merge', async () => {
   const payload = await raw('yt-nested-a');
   let finish: (() => void) | undefined;
   const execute = videoProcess(payload);
@@ -127,8 +127,9 @@ it('single lock rejects overlap while seen and preferences still succeed, readin
   const itemId = first.value.summary.itemId, id = first.value.state.comments[itemId][0].id;
   const pending = service.dispatch('refresh', [{ itemId }]);
   await vi.waitFor(() => expect(finish).toBeDefined());
-  expect(await service.dispatch('acquire', [{ url: postUrl }])).toEqual({ ok: false, error: { code: 'ACQUISITION_BUSY' } });
-  expect(await service.dispatch('refresh', [{ itemId }])).toEqual({ ok: false, error: { code: 'ACQUISITION_BUSY' } });
+  const same = service.dispatch('submitDownload', [{ kind: 'refresh', itemId }]);
+  expect(same).toMatchObject({ ok: true, value: { reused: true } });
+  expect(execute).toHaveBeenCalledTimes(4); // Two probes/extractions, no duplicate child.
   expect(service.dispatch('toggleSeen', [{ itemId, commentId: id, subtree: false, seen: true }]).ok).toBe(true);
   expect(service.dispatch('updatePreferences', [{ locale: 'pl' }]).ok).toBe(true);
   finish?.();
@@ -258,7 +259,7 @@ it('shutdown aborts pending extraction, awaits cleanup, and never ingests after 
   });
   const service = new ReaderService(() => repository, ['en'], vi.fn(), extract);
   const pending = service.dispatch('acquire', [{ url: videoUrl }]);
-  expect(started).toBe(true);
+  await vi.waitFor(() => expect(started).toBe(true));
   await service.shutdown();
   expect(await pending).toMatchObject({ error: { code: 'ACQUISITION_FAILED' } });
   repository = ReaderRepository.open(path.join(directory, 'reader.sqlite'));

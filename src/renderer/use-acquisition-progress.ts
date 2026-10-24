@@ -16,10 +16,11 @@ export class AcquisitionProgressState {
     return this.current;
   }
 }
-export function useAcquisitionProgress(api: ReaderApi) {
+export function useAcquisitionProgress(api: ReaderApi, enabled = true) {
   const model = useRef(new AcquisitionProgressState());
   const [progress, setProgress] = useState<AcquisitionProgress | null>(null);
   useEffect(() => {
+    if (!enabled) return;
     let mounted = true, notified = false;
     const unsubscribe = api.onAcquisitionProgress(value => {
       if (!mounted || !isAcquisitionNotification(value)) return;
@@ -31,6 +32,6 @@ export function useAcquisitionProgress(api: ReaderApi) {
         setProgress(model.current.accept(result.value));
     }).catch(() => undefined);
     return () => { mounted = false; unsubscribe(); };
-  }, [api]);
+  }, [api, enabled]);
   return progress;
 }

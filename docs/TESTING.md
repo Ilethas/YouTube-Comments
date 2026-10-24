@@ -1,5 +1,82 @@
 # Testing strategy
 
+## Download Manager README capture (2026-10-24)
+
+After the finalized feature passed its verification, a fresh validated Windows
+Forge package was built and `node scripts/capture-readme.cjs --downloads-only`
+captured `docs/screenshots/downloads-light.png` at 1360 × 1000. The actual built
+main/preload/renderer accepted eight jobs through authenticated IPC. Three real
+offline Node helper children passed the normal identity probes and emitted
+deterministic diagnostic counts through the production executor/parser; five jobs
+remained queued. The capture asserted the real badge 3, three fetching rows and
+five queued rows, then cancelled one real child and verified a queued job started.
+Normal application shutdown drained the remaining children and removed the owned
+temporary profile. No live YouTube requests, renderer state injection, DOM text
+replacement or image composition was used for this screenshot.
+
+The PNG was opened and visually reviewed. SHA-256 comparison confirmed all seven
+pre-existing PNGs, including the Charcoal/wallpaper example, remain unchanged.
+The additional image has separate build/runtime/fixture provenance in
+`docs/screenshots/capture.json`; older screenshots retain their original hashes.
+`node scripts/verify-presentation.cjs` passed **25 local README links/anchors,
+seven decoded manifested PNGs and seven CRC-checked ICO frames**. Capture/helper/
+verifier scripts passed Node syntax checks. This documentation/capture increment
+changes no application code, version or schema and makes no live-download claim.
+
+## Concurrent Download Manager (2026-10-24, schema 17)
+
+[ADR 0042](decisions/0042-concurrent-download-manager.md) adds deterministic queue,
+preferences, IPC and renderer tests plus `npm.cmd run test:downloads` (also first
+in `test:electron`). The new Electron harness uses three secured real windows,
+the built production preload/renderer, actual IPC/SQLite and gated fixture
+extractions. It makes no YouTube requests and never uses a normal profile.
+
+Verified during this increment:
+
+- Full final `npm.cmd test`: **1,336 passed, one optional live test skipped, 111 files**.
+  Focused renderer/preload checks also passed **112 tests**, including the narrow
+  Download Manager bridge test. Queue tests cover limits 1–4, eight/three,
+  FIFO, live limit changes, deduplication/mixed intents, independent cancellation,
+  child-cleanup slot retention, failed-slot release, retry IDs, bounded history,
+  source removal fencing, concurrent serialized merges and preserved seen/Undo.
+  Final scheduler checks: **17 passed**, including explicit old stage/count callback
+  rejection against a newer same-source attempt.
+- Migration tests cover additive v16→17, checked values/defaults, rollback,
+  unchanged historical safety snapshots, M2 preference commits, reopening and
+  staged older/current backup round trips. Migrations 1–16 remain unchanged.
+- `test:downloads` passes identical three-window snapshots/events/counts,
+  late-window/reload hydration, active-only badge, Settings UI synchronization,
+  local shared discussion status, tab/native Close, Retry, exact cancellation,
+  origin-loss Library-only commit, busy backup and confirmed restore draining
+  queued/running jobs before offline replacement. No privileged diagnostics occur
+  in notifications.
+- Production-entry `smoke-profile-quit.cjs` now holds three fixture helper children
+  and five queued jobs during pending view/Undo saves. Repeated actual Quit joins
+  one M3 drain, aborts all three, starts none of the five and keeps SQLite/native
+  authority alive until every held child emits close. Shutdown writes no attempts.
+  The child seam is deterministic; real Windows descendant cleanup remains covered
+  separately by the existing process-executor tests.
+- TypeScript and ESLint pass. `build:renderer` passes (existing Vite CJS/chunk-size
+  notices); the Windows x64 Forge package passes fresh runtime/ASAR/fuse validation.
+  Core built-entry Electron write/read/readsystem checks pass with the new panel,
+  preserving manual state, NEW, queries, collapse, Undo and restart persistence.
+- All constituent `test:electron` harnesses passed, including appearance, worker
+  restoration, backup/crash recovery, actions, collapse/selection, thumbnails,
+  M1–M8 windows/IPC/ownership/transfers, reader polish and actual notification
+  timeouts. The aggregate run initially stopped at M4's premature close-time
+  measurement; M4 passed after waiting for the painted anchor to settle, preserving
+  its one-pixel/identity assertions. The remaining harnesses ran separately. The
+  notification rerun explicitly releases native hover/focus before measuring each
+  automatic timeout; all original duration/geometry assertions remain. No reader
+  anchoring or notification production behavior was changed for these checks.
+
+Routine tests use deterministic fixtures; no concurrent live YouTube run is claimed.
+Queue/recent history intentionally disappears on restart. Physical keyboard/mouse,
+assistive-technology announcements, narrow-window panel placement and a visual pass
+through Light/Dark/Charcoal/custom themes with wallpapers remain owner checks.
+Existing physical drag, installer, signing/license and release gates remain pending.
+No installer execution, version bump or publication is part of this increment.
+
 ## Acquisition deadlines and live comment progress (2026-10-22)
 
 [ADR 0041](decisions/0041-unbounded-acquisition-and-comment-progress.md) removes

@@ -4,6 +4,12 @@ import type { Locale } from '../shared/preferences';
 import type { RulerBucket } from './discussion-ruler';
 
 const en = {
+  downloads: 'Downloads', maximumConcurrentDownloads: 'Maximum concurrent downloads', downloadsEmpty: 'No downloads in this session.',
+  activeDownloads: 'Active downloads', queuedDownloads: 'Queued', recentDownloads: 'Recent', closeDownloads: 'Close downloads',
+  downloadQueued: 'Queued', refreshQueued: 'Refresh queued', downloadCompleted: 'Completed', downloadFailed: 'Failed', downloadCancelled: 'Cancelled',
+  removeFromQueue: 'Remove from queue', retryDownload: 'Retry', downloadActionFailed: 'The job changed or the action failed. Try again.',
+  downloadSessionHelp: 'Downloads continue when tabs or windows close. Queues and recent jobs are kept only for this session.',
+
   openThemesFolder: 'Open themes folder', refreshThemes: 'Refresh themes', saveThemeCopy: 'Save editable copy in themes folder',
   themesRefreshed: 'Themes refreshed. Rejected files keep their last valid palette when available.', rejectedThemes: 'Rejected theme files',
   exportTheme: 'Export theme as JSON…', themeToExport: 'Theme to export', currentTheme: 'Current theme',
@@ -162,7 +168,7 @@ const en = {
   currentlyOpen: 'Open tab', activate: 'Activate', open: 'Open', noLibraryMatches: 'No discussions match this metadata filter.',
   removeFromLibrary: 'Remove from Library', removeTitle: 'Remove locally stored discussion?', remove: 'Remove',
   removeDescription: 'This permanently deletes the locally stored discussion and comments, seen state, and refresh history. It does not affect YouTube.',
-  removalBusy: 'This discussion is being acquired or refreshed. Wait for it to finish before removing it.',
+  removalBusy: 'This discussion has a queued or running download. Finish or cancel it before removing the discussion.',
   removalFailed: 'Removal could not be saved. The discussion remains in Library.',
   externalTools: 'External tools', externalToolsHelp: 'Choose installed executables for this profile. Changes apply to later acquisition and Refresh.',
   helperEnvironment: 'Controlled by environment', helperCustom: 'Custom executable', helperAutomatic: 'Detected automatically',
@@ -190,7 +196,7 @@ const en = {
   invalidUrl: 'Enter a supported HTTPS YouTube video or individual Community Post URL.',
   helperUnavailable: "The helper is unavailable or invalid. Check Settings, its executable override or PATH. Windows requires a direct .exe file.",
   acquisitionFailed: 'The discussion could not be acquired. Stored comments are unchanged. Check the connection and try again.',
-  acquisitionBusy: 'Another acquisition is already running. Wait for it to finish.',
+  acquisitionBusy: 'The download queue is full. Wait for jobs to finish or remove queued jobs.',
   notRefreshable: 'This discussion cannot be refreshed from YouTube.', itemNotFound: 'This stored discussion could not be found.',
   appName: 'Discussion reader', demo: 'Demo', backToTop: 'Back to top', selectionMore: 'More selection actions', language: 'Language', appearance: 'Appearance',
   en: 'English', pl: 'Polski', system: 'System', light: 'Light', dark: 'Dark',
@@ -211,6 +217,12 @@ const en = {
 export type TranslationKey = keyof typeof en;
 type Key = TranslationKey;
 const pl: Record<Key, string> & Record<string, string> = {
+  downloads: 'Pobieranie', maximumConcurrentDownloads: 'Maksymalna liczba równoczesnych pobrań', downloadsEmpty: 'Brak pobrań w tej sesji.',
+  activeDownloads: 'Aktywne pobrania', queuedDownloads: 'W kolejce', recentDownloads: 'Ostatnie', closeDownloads: 'Zamknij panel pobierania',
+  downloadQueued: 'W kolejce', refreshQueued: 'Odświeżanie w kolejce', downloadCompleted: 'Zakończono', downloadFailed: 'Błąd', downloadCancelled: 'Anulowano',
+  removeFromQueue: 'Usuń z kolejki', retryDownload: 'Ponów', downloadActionFailed: 'Zadanie uległo zmianie lub operacja nie powiodła się. Spróbuj ponownie.',
+  downloadSessionHelp: 'Pobieranie trwa po zamknięciu kart lub okien. Kolejka i ostatnie zadania są przechowywane tylko w tej sesji.',
+
   openThemesFolder: 'Otwórz folder motywów', refreshThemes: 'Odśwież motywy', saveThemeCopy: 'Zapisz edytowalną kopię w folderze motywów',
   themesRefreshed: 'Motywy odświeżone. Odrzucone pliki zachowują ostatnią poprawną paletę, jeśli jest dostępna.', rejectedThemes: 'Odrzucone pliki motywów',
   exportTheme: 'Eksportuj motyw jako JSON…', themeToExport: 'Motyw do eksportu', currentTheme: 'Bieżący motyw',
@@ -368,7 +380,7 @@ const pl: Record<Key, string> & Record<string, string> = {
   currentlyOpen: 'Otwarta karta', activate: 'Aktywuj', open: 'Otwórz', noLibraryMatches: 'Brak dyskusji pasujących do filtra metadanych.',
   removeFromLibrary: 'Usuń z Biblioteki', removeTitle: 'Usunąć lokalnie zapisaną dyskusję?', remove: 'Usuń',
   removeDescription: 'Spowoduje to trwałe usunięcie lokalnie zapisanej dyskusji i komentarzy, stanu przeczytania oraz historii odświeżania. Nie wpłynie to na YouTube.',
-  removalBusy: 'Ta dyskusja jest właśnie pobierana lub odświeżana. Poczekaj na zakończenie przed usunięciem.',
+  removalBusy: 'Ta dyskusja ma pobieranie w kolejce lub w toku. Zakończ je lub anuluj przed usunięciem dyskusji.',
   removalFailed: 'Nie udało się zapisać usunięcia. Dyskusja pozostaje w Bibliotece.',
   externalTools: 'Programy pomocnicze', externalToolsHelp: 'Wybierz zainstalowane pliki wykonywalne dla tego profilu. Zmiany dotyczą kolejnego pobierania i odświeżania.',
   helperEnvironment: 'Kontrolowany przez środowisko', helperCustom: 'Własny plik wykonywalny', helperAutomatic: 'Wykryty automatycznie',
@@ -396,7 +408,7 @@ const pl: Record<Key, string> & Record<string, string> = {
   invalidUrl: 'Podaj obsługiwany adres HTTPS filmu YouTube lub pojedynczego postu społeczności.',
   helperUnavailable: "Program pomocniczy jest niedostępny lub nieprawidłowy. Sprawdź Ustawienia, ścieżkę w środowisku lub PATH. Windows wymaga bezpośredniego pliku .exe.",
   acquisitionFailed: 'Nie udało się pobrać dyskusji. Zapisane komentarze pozostały bez zmian. Sprawdź połączenie i spróbuj ponownie.',
-  acquisitionBusy: 'Trwa już inne pobieranie. Poczekaj na jego zakończenie.',
+  acquisitionBusy: 'Kolejka pobierania jest pełna. Poczekaj na zakończenie zadań lub usuń zadania z kolejki.',
   notRefreshable: 'Tej dyskusji nie można odświeżyć z YouTube.', itemNotFound: 'Nie znaleziono zapisanej dyskusji.',
   appName: 'Czytnik dyskusji', demo: 'Demo', backToTop: 'Wróć na górę', selectionMore: 'Więcej działań zaznaczenia', language: 'Język', appearance: 'Wygląd',
   en: 'English', pl: 'Polski', system: 'Systemowy', light: 'Jasny', dark: 'Ciemny',

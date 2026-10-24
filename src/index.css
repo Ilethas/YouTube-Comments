@@ -30,7 +30,7 @@ button, input, select { cursor: pointer; }
 .move-feedback { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .notification-close { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; padding: 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-raised); color: var(--text); }
 .transfer-feedback .notification-overlay { z-index: 10001; }
-.notification-settings { width: min(520px, 100%); }
+.notification-settings, .download-settings { width: min(520px, 100%); }
 .notification-settings label { margin-top: 12px; }
 .app-toolbar { padding: 7px 16px; display: flex; align-items: center; gap: 16px; background: var(--surface); flex-shrink: 0; }
 .brand, .preferences, .preferences label { display: flex; align-items: center; gap: 12px; }
@@ -348,3 +348,18 @@ button > .action-icon { margin-right: 4px; }
   .reader-wallpaper, .reader-surface-layer { display: none; }
   .discussion-viewport { background: Canvas; }
 }
+
+/* Profile-owned downloads float above content without changing reader geometry. */
+.downloads-panel { position: fixed; top: 52px; right: 12px; width: min(420px, calc(100vw - 24px)); max-height: calc(100dvh - 76px); overflow-y: auto; overscroll-behavior: contain; z-index: 20; padding: 12px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 24px #0004; }
+.downloads-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.downloads-panel h2 { font-size: 12px; color: var(--muted); margin: 16px 0 6px; }
+.downloads-panel ul { list-style: none; padding: 0; margin: 0; }
+.download-job { padding: 10px 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.download-job > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.download-meta, .download-job small { color: var(--muted); font-size: 12px; }
+.download-status { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.download-job progress { width: 100%; height: 4px; accent-color: var(--accent); }
+.download-controls { display: flex; flex-wrap: wrap; gap: 6px; }
+.downloads-panel button { white-space: normal; }
+.downloads-badge { display: inline-block; min-width: 1.4em; margin-left: 5px; border-radius: 10px; padding: 0 4px; color: var(--text); background: var(--surface-raised); font-size: 11px; }
+@media (max-width: 760px) { .app-toolbar { flex-wrap: wrap; gap: 6px; } .workspace-actions { flex-wrap: wrap; } .item-actions { flex-wrap: wrap; gap: 8px; } .downloads-panel { top: 96px; max-height: calc(100dvh - 112px); } }

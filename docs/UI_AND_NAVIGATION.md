@@ -1,5 +1,30 @@
 # UI and navigation
 
+## Downloads and concurrency settings
+
+Every native window has **Downloads / Pobieranie** beside Library and Settings.
+The badge counts running jobs, including Processing/Saving, and excludes queued
+and recent jobs. The scrolling panel groups Active, Queued and Recent, with
+Cancel/Remove from queue, Retry and Open stored discussion. It shows safe titles,
+intent, stage, elapsed time and live comment estimates. Fetching percentages stay
+below 100 and never prove coverage. Escape returns focus to the toolbar button;
+outside pointer/focus dismisses the nonmodal panel. It floats above the reader
+and uses semantic theme colors.
+
+Settings > **Maximum concurrent downloads / Maksymalna liczba równoczesnych pobrań**
+offers 1–4, default 3. Saves use the acknowledged preference queue and synchronize
+across windows. Increasing the limit starts waiting jobs; decreasing it lets current
+jobs finish. Starts are FIFO. Equivalent URLs and mixed Acquire/Refresh requests
+share one pending job. Retry creates a fresh attempt or joins one already pending.
+
+Every open view of a refreshing discussion displays the same queued/stage/counts
+status by source identity. Its Refresh button stays disabled while pending; other
+discussions and the URL form remain available. Acquire opens in its still-authorized
+requesting document; after origin loss it saves to Library without opening a peer
+tab. Closing tabs/windows or reloading does not cancel work. Queues/recent results
+disappear on restart. Quit cancels/drains work; backup rejects busy attempts;
+confirmed restore stops/drains work. See [ADR 0042](decisions/0042-concurrent-download-manager.md).
+
 ## Notifications
 
 Settings > Notifications / Powiadomienia offers Automatic / Automatyczny and
@@ -753,28 +778,29 @@ ADR 0010 chooses renderer virtualization, measurement and overscan. Query schedu
 
 A small meaningful UI/E2E suite is expected later. Choose a few workflows that cross important boundaries, such as baseline acquisition followed by refresh, saved seen edits followed by a matching bulk action and Apply, or navigation through a virtualized discussion and restored tabs. These are candidates, not an exhaustive UI-test checklist. Keep most state, search, scope, and discovery edge cases in the fast domain/integration suites described in [testing](TESTING.md), with focused UI checks for the ruler, languages, and themes where useful.
 
-## Global acquisition progress (ADR 0018)
+## Acquisition progress and cancellation (ADRs 0018, 0041 and 0042)
 
-A compact surface below the application toolbar survives workspace tab switches.
-English/Polish operation type, coarse stage, elapsed mm:ss and indeterminate progress
-remain separate from comments/coverage. Cancel is explicit and available only before
-Saving; there is no percentage or keyboard cancellation binding. Escape retains its
-existing contextual form/dialog behavior. Add/Open and all Refresh buttons stay disabled
-for the single operation; reading, scrolling, local seen writes, query edits, Settings
-and workspace navigation stay available during fetch.
+The global Downloads panel replaces ADR 0018's original single-operation strip.
+Each queued/running job has its own English/Polish intent, stage, elapsed time and
+Cancel/Remove from queue control. Video helper observations show fetched counts,
+estimated totals and approximate percentages capped below 100 while fetching;
+missing observations retain indeterminate progress. Estimates never prove coverage.
+Add/Open and other discussions' Refresh controls remain available. Only a source
+already queued/running suppresses its Refresh, across all duplicate tabs/windows.
+Reading, scrolling, manual seen edits, queries and workspace navigation stay usable.
 
-One validated preload subscription is cleaned up on unmount/StrictMode probes. A
-read-only current-operation snapshot hydrates reload without overtaking newer events.
-Settled operation IDs reject late notifications. Renderer elapsed ticking uses one
-startedAt offset then performance.now, with no main clock events. Only safe source/app
-identity travels in progress; arbitrary input URLs and helper paths are not reflected.
+Subscriptions clean up on unmount/StrictMode. Revisioned subscribe-first snapshots
+hydrate new/reloaded windows without replacing newer events. Progress contains only
+safe identities, labels, states and approved numbers; helper diagnostics stay private.
+Cancel uses an exact job ID before Saving. Queued cancellation starts no helper;
+active cancellation settles after child cleanup, preserving saved discussion data.
+There is no keyboard cancellation shortcut; Escape dismisses the Downloads panel.
 
-Successful remote commit preserves acknowledged counts, warnings and coverage, then
-shows Updating view without Cancel while the existing session reevaluates last applied
-criteria and restores sort/anchor. Query errors retain their own feedback. Completion
-shows inserted/updated/warnings and total main seconds. User cancellation is neutral:
-"Refresh cancelled. Saved discussion was unchanged." Failure remains the existing
-localized stable error. No stale busy surface remains after settlement.
+Completion, failure and cancellation remain in the bounded Recent list, with Retry
+for eligible attempts and Open for success. Committed content arrives independently
+through M2 and reevaluates the session's applied criteria while retaining drafts,
+sort and anchors. Query errors retain their own feedback. Job completion alone is
+not a substitute for repository reconciliation. See [Downloads and settings](#downloads-and-concurrency-settings).
 
 
 ## Optional video header thumbnail (ADR 0025)

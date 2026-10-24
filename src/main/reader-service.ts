@@ -14,7 +14,9 @@ import { ReaderRepository, StateConflictError, ViewOwnershipError, UndoConflictE
 import { isSetDiscussionCollapseRequest } from '../domain/discussion-collapse';
 import { isSaveDiscussionViewRequest } from '../domain/discussion-view';
 import { UnsupportedSchemaError } from './persistence/migrations';
-import { AcquisitionService } from './acquisition-service';
+import { DownloadManager } from './download-manager';
+import { isSubmitDownloadRequest, isDownloadIdentity } from '../shared/downloads';
+import type { DownloadsSnapshot, DownloadSubmission } from '../shared/downloads';
 import { createLiveExtractor } from './live-extraction';
 import type { ExtractLive } from './live-extraction';
 import { InvalidWorkspaceMoveError } from '../domain/workspace';
@@ -44,7 +46,7 @@ export interface DataBackupOptions {
   readonly restart: () => void;
   readonly checkpoint?: RestoreCheckpoint;
 }
-type ServiceValue = ThemeRefreshResult | DuplicateTabResult | SharedViewSnapshot | SharedSnapshot | SharedItemSnapshot | SharedMetadata | ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | AcquisitionResult | HelperStatus | DataBackupResult | string | null;
+type ServiceValue = DownloadsSnapshot | DownloadSubmission | ThemeRefreshResult | DuplicateTabResult | SharedViewSnapshot | SharedSnapshot | SharedItemSnapshot | SharedMetadata | ReaderState | SeenMutationResult | Preferences | WorkspaceState | AcquisitionProgress | AcquisitionResult | HelperStatus | DataBackupResult | string | null;
 
 /** Small use-case boundary: validate before touching persistence; failures carry
  * stable codes. Diagnostics are reported only on the privileged side. */
@@ -104,7 +106,15 @@ export class ReaderService {
   private readonly commitObservers = new Set<(commit: SharedCommit) => void>();
   onSharedCommit(listener: (commit: SharedCommit) => void): () => void { this.commitObservers.add(listener); return () => { this.commitObservers.delete(listener); }; }
   private repository?: ReaderRepository;
-  private acquisition?: AcquisitionService;
+  private acquisition?: DownloadManager;
+  private downloadRevision = 0;
+  private readonly downloadObservers = new Set<(value: DownloadsSnapshot) => void>();
+  onDownloadsChanged(listener: (value: DownloadsSnapshot) => void): () => void { this.downloadObservers.add(listener); return () => { this.downloadObservers.delete(listener); }; }
+  private observeDownloads(): void {
+    const notify = (value: DownloadsSnapshot) => { for (const listener of this.downloadObservers) { try { listener(value); } catch { /* Lost recipient. */ } } };
+    this.acquisition?.onChanged(notify);
+    if (this.acquisition && this.downloadObservers.size) notify(this.acquisition.snapshot());
+  }
   private helpers?: HelperSettingsService;
   private failure?: 'STORAGE_UNAVAILABLE' | 'UNSUPPORTED_SCHEMA';
   private dataPending?: Promise<Result<DataBackupResult>>;
@@ -141,8 +151,9 @@ export class ReaderService {
         this.appearanceAssets?.options.themes?.refresh(current.themes, themes => repository.replaceThemes(themes, this.languages, current.revision));
       } catch { /* Fail closed to the last validated SQLite snapshot. */ }
       this.helpers = new HelperSettingsService(this.repository, this.helperOptions);
-      this.acquisition = new AcquisitionService(this.repository, this.languages,
-        this.extract ?? createLiveExtractor({ resolve: this.helpers.resolve, execute: this.helperOptions.execute }), this.notifyProgress);
+      this.acquisition = new DownloadManager(this.repository, this.languages,
+        this.extract ?? createLiveExtractor({ resolve: this.helpers.resolve, execute: this.helperOptions.execute }), this.notifyProgress, () => ++this.downloadRevision);
+      this.observeDownloads();
       this.failure = undefined;
     }
     catch (error) {
@@ -173,6 +184,9 @@ export class ReaderService {
   dispatch(operation: 'duplicateTab', args: readonly unknown[], caller?: ReaderCallerContext): Result<DuplicateTabResult>;
   dispatch(operation: 'getDiscussionView', args: readonly unknown[], caller?: ReaderCallerContext): Result<SharedViewSnapshot>;
   dispatch(operation: 'getSharedMetadata', args: readonly unknown[], caller?: ReaderCallerContext): Result<SharedMetadata>;
+  dispatch(operation: 'getDownloads', args: readonly unknown[], caller?: ReaderCallerContext): Result<DownloadsSnapshot>;
+  dispatch(operation: 'submitDownload' | 'retryDownload', args: readonly unknown[], caller?: ReaderCallerContext): Result<DownloadSubmission>;
+  dispatch(operation: 'cancelDownload', args: readonly unknown[], caller?: ReaderCallerContext): Result<null>;
   dispatch(operation: 'getAcquisitionProgress', args: readonly unknown[], caller?: ReaderCallerContext): Result<AcquisitionProgress | null>;
   dispatch(operation: 'cancelAcquisition', args: readonly unknown[], caller?: ReaderCallerContext): Result<null>;
   dispatch(operation: 'saveDiscussionView' | 'setDiscussionCollapse', args: readonly unknown[], caller?: ReaderCallerContext): Result<null>;
@@ -198,7 +212,7 @@ export class ReaderService {
       this.dataPending = this.runDataOperation(operation, caller).finally(() => { this.dataPending = undefined; });
       return this.dataPending;
     }
-    const read = ['getAcquisitionProgress', 'getSharedSnapshot', 'getSharedMetadata', 'getDiscussionView', 'getWallpaper', 'bootstrap'].includes(operation);
+    const read = ['getDownloads', 'getAcquisitionProgress', 'getSharedSnapshot', 'getSharedMetadata', 'getDiscussionView', 'getWallpaper', 'bootstrap'].includes(operation);
     if (this.stopping || this.restartPending || !read && !checkpoint && (this.lifecycle ? this.lifecycle.blocks(caller) : this.dataPending)) return { ok: false, error: { code: 'DATA_BUSY' } };
     if (operation === 'refreshThemes' || operation === 'openThemesFolder' || operation === 'saveThemeCopy') {
       if (operation === 'saveThemeCopy' ? args.length !== 1 || !isThemeExportRequest(args[0]) : args.length !== 0) return { ok: false, error: { code: 'INVALID_REQUEST' } };
@@ -222,6 +236,20 @@ export class ReaderService {
       return this.appearancePending;
     }
     if (operation === 'getWallpaper') return args.length ? { ok: false, error: { code: 'INVALID_REQUEST' } } : this.getWallpaper();
+    if (['getDownloads', 'submitDownload', 'cancelDownload', 'retryDownload'].includes(operation)) {
+      if (operation === 'getDownloads' ? args.length !== 0 : args.length !== 1 || (operation === 'submitDownload' ? !isSubmitDownloadRequest(args[0]) : !isDownloadIdentity(args[0]))) return { ok: false, error: { code: 'INVALID_REQUEST' } };
+      if (caller && !caller.isCurrent()) return { ok: false, error: { code: 'FORBIDDEN' } };
+      if (!this.acquisition) return { ok: false, error: { code: this.failure ?? 'STORAGE_UNAVAILABLE' } };
+      if (operation === 'getDownloads') return { ok: true, value: this.acquisition.snapshot() };
+      if (operation === 'submitDownload' && isSubmitDownloadRequest(args[0])) {
+        const result = this.acquisition.submit(args[0], caller);
+        if (result.ok && !result.value.reused && args[0].kind === 'refresh') {
+          try { const item = this.repository?.getStoredItem(args[0].itemId); if (item) void this.thumbnails?.cache.check(item, true).catch(() => undefined); } catch { /* Presentation cannot fail Refresh. */ }
+        }
+        return result;
+      }
+      if (isDownloadIdentity(args[0])) return operation === 'retryDownload' ? this.acquisition.retry(args[0].operationId, caller) : this.acquisition.cancel(args[0].operationId);
+    }
     if (operation === 'getAcquisitionProgress') return args.length === 0
       ? { ok: true, value: this.acquisition?.current() ?? null } : { ok: false, error: { code: 'INVALID_REQUEST' } };
     if (operation === 'cancelAcquisition') {
@@ -293,7 +321,7 @@ export class ReaderService {
       else if (operation === 'toggleSeen' && isToggleSeenRequest(args[0])) value = this.repository.toggleSeen(args[0]);
       else if (operation === 'bulkSeen' && isBulkSeenRequest(args[0])) value = this.repository.bulkSeen(args[0]);
       else if (operation === 'undoSeen' && isUndoSeenRequest(args[0])) value = this.repository.undoSeen(args[0].itemId, args[0].expectedOperationId);
-      else if (operation === 'updatePreferences' && isPreferenceChange(args[0])) value = this.repository.updatePreferences(args[0], this.languages);
+      else if (operation === 'updatePreferences' && isPreferenceChange(args[0])) { value = this.repository.updatePreferences(args[0], this.languages); this.acquisition?.schedule(); }
       else if (operation === 'removeLibraryItem' && isRefreshRequest(args[0])) {
         const itemId = args[0].itemId;
         const item = this.repository.bootstrap(this.languages, windowId).items.find(item => item.id === itemId);
@@ -458,11 +486,11 @@ export class ReaderService {
     const originLost = () => caller !== undefined && !caller.isCurrent();
     let closed = false, settled = false;
     try {
-      if (operation === 'createBackup' && this.acquisition?.current()) return { ok: false, error: { code: 'DATA_BUSY' } };
+      if (operation === 'createBackup' && this.acquisition?.busy()) return { ok: false, error: { code: 'DATA_BUSY' } };
       if (this.lifecycle) { await this.lifecycle.begin(operation === 'createBackup' ? 'backup' : 'restore'); this.flushNativeCheckpoint(); this.lifecycle.executePhase(); }
       const locale = repository.preferences(this.languages).locale;
       if (operation === 'createBackup') {
-        if (this.acquisition?.current()) return { ok: false, error: { code: 'DATA_BUSY' } };
+        if (this.acquisition?.busy()) return { ok: false, error: { code: 'DATA_BUSY' } };
         await this.helpers?.settle();
         if (this.stopping || originLost()) return { ok: true, value: { status: 'cancelled' } };
         const destination = await options.dialogs.save(locale, caller);
@@ -505,8 +533,9 @@ export class ReaderService {
       this.lifecycle?.release(true);
       if (settled) {
         this.helpers = new HelperSettingsService(repository, this.helperOptions);
-        this.acquisition = new AcquisitionService(repository, this.languages,
-          this.extract ?? createLiveExtractor({ resolve: this.helpers.resolve, execute: this.helperOptions.execute }), this.notifyProgress);
+        this.acquisition = new DownloadManager(repository, this.languages,
+          this.extract ?? createLiveExtractor({ resolve: this.helpers.resolve, execute: this.helperOptions.execute }), this.notifyProgress, () => ++this.downloadRevision);
+        this.observeDownloads();
       }
       return { ok: false, error: { code: error instanceof BackupValidationError ? error.reason
         : operation === 'createBackup' ? 'DATA_WRITE_FAILED' : 'RESTORE_FAILED' } };

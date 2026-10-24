@@ -2,6 +2,10 @@
 
 Date: 2026-10-03. Status: accepted for Windows development acquisition.
 
+[ADR 0042](0042-concurrent-download-manager.md) supersedes the temporary
+single-acquisition lock below with concurrent main-owned scheduling and prompt
+submission. The original helper execution/security decision remains historical evidence.
+
 ## Context and evidence
 
 ADR 0003's pinned adapters and ADR 0004's accumulating SQLite merge are

@@ -5,6 +5,23 @@ import { defaultQuery } from '../domain/discussion-query';
 import { profileChannels } from '../shared/profile-operation';
 import { transferChannels } from '../shared/tab-transfer';
 
+it('exposes a frozen download intent namespace, validates safe events and disposes subscriptions', async () => {
+  const invoke = vi.fn(async () => ({ ok: true, value: null })), unsubscribe = vi.fn();
+  let receive!: (value: unknown) => void;
+  const api = createReaderBridge(invoke, undefined, undefined, undefined, undefined, listener => { receive = listener; return unsubscribe; });
+  const downloads = api.downloads; if (!downloads) throw Error('Missing Downloads API');
+  expect(Object.isFrozen(downloads)).toBe(true); expect(Object.keys(downloads).sort()).toEqual(['cancel', 'current', 'onChanged', 'retry', 'submit']);
+  const listener = vi.fn(), remove = downloads.onChanged(listener);
+  const snapshot = { profileEpoch: 'epoch', revision: 2, jobs: [{ operationId: 'job', sourceKind: 'youtube-video', sourceId: 'VidDemo_001',
+    kind: 'acquire', label: 'Video', state: 'fetching', createdAt: 1, startedAt: 2, cancellable: true, comments: { fetched: 1, estimatedTotal: 10 } }] };
+  for (const invalid of [null, { ...snapshot, executable: 'private' }, { ...snapshot, jobs: [{ ...snapshot.jobs[0], stderr: 'private' }] }]) receive(invalid);
+  expect(listener).not.toHaveBeenCalled(); receive(snapshot); expect(listener).toHaveBeenCalledWith(snapshot); remove(); expect(unsubscribe).toHaveBeenCalledOnce();
+  await downloads.submit({ kind: 'acquire', url: 'https://youtu.be/VidDemo_001' }); await downloads.current();
+  await downloads.cancel({ operationId: 'job' }); await downloads.retry({ operationId: 'job' });
+  expect(invoke.mock.calls).toEqual([[readerChannels.submitDownload, { kind: 'acquire', url: 'https://youtu.be/VidDemo_001' }],
+    [readerChannels.getDownloads], [readerChannels.cancelDownload, { operationId: 'job' }], [readerChannels.retryDownload, { operationId: 'job' }]]);
+});
+
 it('exposes only explicit intent and progress methods without a generic privileged transport', async () => {
   const invoke = vi.fn(async () => ({ ok: true, value: {} }));
   const api = createReaderBridge(invoke);
@@ -12,7 +29,7 @@ it('exposes only explicit intent and progress methods without a generic privileg
   expect(invoke.mock.calls.splice(0)).toEqual([[readerChannels.exportTheme, { source: 'charcoal' }]]);
   await api.refreshThemes?.(); await api.openThemesFolder?.(); await api.saveThemeCopy?.({ source: 'light' });
   expect(invoke.mock.calls.splice(0)).toEqual([[readerChannels.refreshThemes], [readerChannels.openThemesFolder], [readerChannels.saveThemeCopy, { source: 'light' }]]);
-  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'closeWindow', 'createBackup', 'duplicateTab', 'exportTheme', 'getAcquisitionProgress', 'getDiscussionView', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'getWallpaper', 'importTheme', 'importWallpaper', 'moveTab', 'newWindow', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThemesFolder', 'openThumbnail', 'quitApplication', 'refresh', 'refreshThemes', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'saveThemeCopy', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences', 'windowReady']);
+  expect(Object.keys(api).sort()).toEqual(['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'closeWindow', 'createBackup', 'downloads', 'duplicateTab', 'exportTheme', 'getAcquisitionProgress', 'getDiscussionView', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'getWallpaper', 'importTheme', 'importWallpaper', 'moveTab', 'newWindow', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThemesFolder', 'openThumbnail', 'quitApplication', 'refresh', 'refreshThemes', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'saveThemeCopy', 'setDiscussionCollapse', 'toggleSeen', 'undoSeen', 'updatePreferences', 'windowReady']);
   await api.getDiscussionView({ viewId: 'owned-view' });
   await api.duplicateTab({ sourceViewId: 'owned-view', expectedRevision: 3, intentRevision: 2, collapseRevision: 1 });
   expect(invoke.mock.calls.splice(0)).toEqual([[readerChannels.getDiscussionView, { viewId: 'owned-view' }], [readerChannels.duplicateTab, { sourceViewId: 'owned-view', expectedRevision: 3, intentRevision: 2, collapseRevision: 1 }]]);

@@ -15,7 +15,7 @@ let current;
 function tables(file) {
   const db = new DatabaseSync(file, { readOnly: true });
   try {
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16);
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17);
     assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     return Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
@@ -212,7 +212,7 @@ async function run() {
   assert.equal((await session.invoke('bootstrap')).items.length,0,'Fresh packaged production must not seed demo');
   assert.ok(fs.existsSync(database)); await close(session);
   tables(database); // Check current schema/integrity before adding any fixture.
-  report.checks.push('Fresh production schema 16 in independent disposable Windows profile environment; no demo');
+  report.checks.push('Fresh production schema 17 in independent disposable Windows profile environment; no demo');
   const itemId=seed(database);
   const {primaryViewId}=JSON.parse(fs.readFileSync(path.join(root,'native-identities.json')));
   session=await start(executable,environment,profile,'production-existing',undefined,primaryViewId);
@@ -220,7 +220,7 @@ async function run() {
   await session.wait("!!document.querySelector('.comment') && !!document.querySelector('.source-button')");
   assert.equal(boot.discussionCollapse[viewId(boot,itemId)].defaultCollapsed,true);
   assert.ok(boot.discussionCollapse[viewId(boot,itemId)].overrides.length>0);
-  report.checks.push('Existing schema 16 with sparse collapse default/exception, source header, real ASAR renderer/preload and node:sqlite');
+  report.checks.push('Existing schema 17 with sparse collapse default/exception, source header, real ASAR renderer/preload and node:sqlite');
   const panel='[role=tabpanel]:not([hidden])';
   // UI preferences, kept in React as well as persisted in SQLite.
   await session.js("document.getElementById('settings-toggle').click()");

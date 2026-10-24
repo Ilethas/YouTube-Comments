@@ -1,5 +1,10 @@
 # Decisions and open questions
 
+[ADR 0042: Concurrent Download Manager](0042-concurrent-download-manager.md)
+adds main-owned FIFO scheduling, canonical deduplication, independent cancellation,
+revisioned cross-window job snapshots and a Downloads popover. Schema 17 persists
+the 1–4 concurrency preference (default 3); queue/recent jobs remain session-only.
+
 [ADR 0041: Acquisition without an overall deadline and live comment counts](0041-unbounded-acquisition-and-comment-progress.md)
 removes the extraction wall-clock limit, retains bounded identity/network checks
 and adds private stderr parsing plus safe throttled estimated counts on schema 16.
@@ -264,7 +269,7 @@ Prefer small records about significant decisions, such as SQLite integration, pa
 
 - [0019 — Consistent SQLite backup and safe restore](0019-consistent-sqlite-backup-and-safe-restore.md): accepted; complete online SQLite snapshots, native dialogs, exact staged validation/migration, verified safety, offline replacement/startup crash recovery, mutation barrier/relaunch, and automatic pre-migration safety. Narrows Q-18; retention/portability/export and release packaging remain separate.
 
-- [0018 - Acquisition progress and safe cancellation](0018-acquisition-progress-and-safe-cancellation.md): accepted; one global operation, opaque IDs, validated progress subscription, per-operation/shutdown signal composition, atomic-save cutoff, failed cancelled history, child/temp cleanup and diagnostic monotonic timings. Narrows Q-14/Q-16; Q-21 and release work stay separate.
+- [0018 - Acquisition progress and safe cancellation](0018-acquisition-progress-and-safe-cancellation.md): accepted; original single-operation scheduling superseded by ADR 0042; opaque IDs, validated progress subscription, per-operation/shutdown signal composition, atomic-save cutoff, failed cancelled history, child/temp cleanup and diagnostic monotonic timings. Narrows Q-14/Q-16; Q-21 and release work stay separate.
 
 - [0017 - Persistent discussion view restoration](0017-persistent-discussion-view-restoration.md): accepted; schema 8, exact bounded intent validation, draft/applied separation, lazy fresh worker reconstruction, sort, stable anchor/offset/selection, coalesced serialized saves and per-view fallback. Resolves current Q-10; ADR 0023 resolves collapse; optional badge details remain.
 
@@ -285,7 +290,7 @@ Prefer small records about significant decisions, such as SQLite integration, pa
 - [0003 — Extractor observations and normalization](0003-extractor-observations-and-normalization.md): accepted; pure remote observations, backend adapters/specs, field authority, relationship evidence, partial/unknown coverage and sanitized fixture provenance. No acquisition execution or persistence ingestion.
 - [0004 — Durable observation merge, history and identity](0004-durable-observation-merge.md): accepted; schema 2 with preserving migration, scoped uniqueness, injected IDs/clock, authoritative field merge, safe relationship projection, baseline/attempt history and conservative subset acceptance. No live execution or acquisition UI.
 
-- [0005 — Live helper execution and acquisition IPC](0005-live-helper-execution-and-acquisition-ipc.md): accepted; main-only no-shell PATH/version-checked acquisition, temporary anonymous output/config, conservative outcomes/deadlines/diagnostics, one-live-operation scheduling, narrow acquire/refresh IPC and minimal localized UI. Helpers are not bundled.
+- [0005 — Live helper execution and acquisition IPC](0005-live-helper-execution-and-acquisition-ipc.md): accepted; main-only no-shell PATH/version-checked acquisition, temporary anonymous output/config, conservative outcomes/deadlines/diagnostics, original single-operation scheduling (superseded by ADR 0042), narrow acquire/refresh IPC and minimal localized UI. Helpers are not bundled.
 
 - [0006 — Compact reader and persistent tabs](0006-compact-reader-and-persistent-tabs.md): accepted; schema 3 distinguishes Library/workspace, persists closable unique tabs/order/active ID, adds Library reopen, avatar authority/anonymous rendering, compact chrome/header/comments, main-only helper executable overrides and evidence-backed Community count-label normalization.
 

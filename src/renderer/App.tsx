@@ -1,3 +1,7 @@
+import { Downloads } from './Downloads';
+import { useDownloads } from './use-downloads';
+import { downloadPending } from '../shared/downloads';
+import type { SubmitDownloadRequest } from '../shared/downloads';
 import { AppearanceSettings } from './AppearanceSettings';
 import { ReaderBackdrop } from './ReaderBackdrop';
 import { applyAppearance } from './appearance';
@@ -97,6 +101,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const cancelledMove = useRef(false);
   const movingToken = useRef<string>();
   const moveAbort = useRef<AbortController>();
+  const [maximumConcurrentDownloads, setMaximumConcurrentDownloads] = useState(initialState.preferences.maximumConcurrentDownloads);
+  const downloads = useDownloads(api.downloads);
   const [notificationDismissal, setNotificationDismissal] = useState(initialState.preferences.notificationDismissal);
   const [notificationDurationSeconds, setNotificationDurationSeconds] = useState(initialState.preferences.notificationDurationSeconds);
   const { notification, show: showNotification, settle: settleNotification, dismiss: dismissNotification } = useNotification<'movingTab' | 'tabMoved' | 'tabReceived' | 'moveFailed'>();
@@ -152,7 +158,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const [acquiring, setAcquiring] = useState<'acquiring' | 'refreshing'>();
   const [acquisitionError, setAcquisitionError] = useState<ErrorCode>();
   const [acquisitionStatus, setAcquisitionStatus] = useState<string>();
-  const progress = useAcquisitionProgress(api);
+  const progress = useAcquisitionProgress(api, !api.downloads);
   const [updatingView, setUpdatingView] = useState<AcquisitionProgress>();
   const [completion, setCompletion] = useState<Pick<AcquisitionResult, 'summary' | 'timings'>>();
   const [cancelledKind, setCancelledKind] = useState<'acquire' | 'refresh'>();
@@ -229,6 +235,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       setReaderAppearance(next.preferences.readerAppearance ?? defaultReaderAppearance);
       setTranslationTarget(next.preferences.translationTarget); setCustomTranslationTarget(next.preferences.customTranslationTarget);
       setSelectionControls(next.preferences.selectionControls); setIncludeCollapsedInPrefix(next.preferences.includeCollapsedInPrefix);
+      setMaximumConcurrentDownloads(next.preferences.maximumConcurrentDownloads);
       setNotificationDismissal(next.preferences.notificationDismissal); setNotificationDurationSeconds(next.preferences.notificationDurationSeconds);
     };
     const unsubscribe = replica.subscribe(apply);
@@ -561,7 +568,7 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
   const openSource = useCallback((itemId: string) => api.openSource({ itemId }), [api]);
   const openCommentAction = useCallback((request: Parameters<ReaderApi['openCommentAction']>[0]) => api.openCommentAction(request), [api]);
   const t = translator(locale);
-  const operationProgress = updatingView ?? progress;
+  const operationProgress = api.downloads ? undefined : updatingView ?? progress;
   const openItems = workspace.tabs.flatMap(tab => { if (tab.kind !== 'discussion') return []; const item = items.find(item => item.id === tab.itemId); return item ? [{ tab, item }] : []; });
   const libraryTab = workspace.tabs.find(tab => tab.kind === 'library');
   const settingsTab = workspace.tabs.find(tab => tab.kind === 'settings');
@@ -602,7 +609,19 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     return () => { current = false; };
   }, [api, readerAppearance.wallpaperId, readerAppearance.wallpaperEnabled, readerAppearance.revision]);
 
-  const refreshItem = useCallback((itemId: string) => { void acquire(() => api.refresh({ itemId }), true); }, [acquire, api]);
+  const submitDownload = useCallback(async (request: SubmitDownloadRequest) => {
+    if (dataBusy.current || !api.downloads) return;
+    setAcquisitionError(undefined);
+    try {
+      const result = await api.downloads.submit(request);
+      if (!result.ok) setAcquisitionError(result.error.code);
+      else if (request.kind === 'acquire') { setUrl(''); setShowAcquisition(false); }
+    } catch { setAcquisitionError('ACQUISITION_FAILED'); }
+  }, [api]);
+  const refreshItem = useCallback((itemId: string) => {
+    if (api.downloads) void submitDownload({ kind: 'refresh', itemId });
+    else void acquire(() => api.refresh({ itemId }), true);
+  }, [acquire, api, submitDownload]);
   const acceptSeen = useCallback((itemId: string, value: SeenMutationResult) => {
     // Production shared values enter only through the replica subscription.
     // Command callbacks retain feedback without reinstalling an older value.
@@ -701,18 +720,19 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
     <header className="app-toolbar">
       <div className="brand"><ApplicationMenu api={api} locale={locale} disabled={profileBusy || cloning || !!movingId} /><strong>{t('appName')}</strong></div>
       <div className="workspace-actions">
-        <button title={shortcutHint(locale, 'open-url')} disabled={!!acquiring || !!progress} aria-expanded={showAcquisition} aria-controls="acquisition-form" onClick={() => { setShowAcquisition(value => !value); }}>{t('acquire')}</button>
+        <button title={shortcutHint(locale, 'open-url')} disabled={!api.downloads && (!!acquiring || !!progress)} aria-expanded={showAcquisition} aria-controls="acquisition-form" onClick={() => { setShowAcquisition(value => !value); }}>{t('acquire')}</button>
         <button id="library-toggle" disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openLibrary({ expectedRevision: workspace.revision })); }}><ActionIcon name="library" />{t('library')}</button>
+        {api.downloads && <Downloads jobs={downloads} api={api.downloads} locale={locale} open={id => { void workspaceAction(() => api.openStoredItem({ itemId: id, expectedRevision: workspace.revision })); }} />}
         <button id="settings-toggle" title={shortcutHint(locale, 'keyboard-help')} disabled={workspaceSaving} onClick={() => { void workspaceAction(() => api.openSettings({ expectedRevision: workspace.revision })); }}><ActionIcon name="settings" />{t('settings')}</button>
       </div>
     </header>
     {showAcquisition && <form id="acquisition-form" className="acquisition-bar" onKeyDown={event => {
       if (event.key === 'Escape') { setShowAcquisition(false); document.querySelector<HTMLButtonElement>('[aria-controls="acquisition-form"]')?.focus(); }
-    }} onSubmit={event => { event.preventDefault(); if (url.trim()) void acquire(() => api.acquire({ url })); }}>
+    }} onSubmit={event => { event.preventDefault(); if (url.trim()) { if (api.downloads) void submitDownload({ kind: 'acquire', url }); else void acquire(() => api.acquire({ url })); } }}>
       <label htmlFor="source-url">{t('sourceUrl')}</label>
       <input id="source-url" type="text" inputMode="url" value={url} placeholder={t('urlPlaceholder')} autoFocus
         onChange={event => setUrl(event.target.value)} autoComplete="off" spellCheck={false} />
-      <button type="submit" title={shortcutHint(locale, 'submit', t('openUrl'))} disabled={!!acquiring || !!progress || !url.trim()}>{t('openUrl')}</button>
+      <button type="submit" title={shortcutHint(locale, 'submit', t('openUrl'))} disabled={!url.trim() || !api.downloads && (!!acquiring || !!progress)}>{t('openUrl')}</button>
       <button type="button" title={shortcutHint(locale, 'cancel')} onClick={() => setShowAcquisition(false)}><ActionIcon name="cancel" />{t('cancel')}</button>
     </form>}
     {operationProgress ? <AcquisitionStatus key={operationProgress.operationId} progress={operationProgress} locale={locale} updating={!!updatingView}
@@ -800,6 +820,14 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
           }}>{notificationDurations.map(seconds => <option key={seconds} value={seconds}>{seconds} {t('notificationSeconds')}</option>)}</select></label>}
           <p className="reader-help">{t('notificationHelp')}</p>
         </section>
+        <section className="download-settings" aria-labelledby="download-settings-title">
+          <h2 id="download-settings-title">{t('downloads')}</h2>
+          <label>{t('maximumConcurrentDownloads')}<select value={maximumConcurrentDownloads} disabled={saving} onChange={event => {
+            const next = Number(event.target.value) as typeof maximumConcurrentDownloads;
+            void save(() => api.updatePreferences({ maximumConcurrentDownloads: next }), value => { if (!replica) setMaximumConcurrentDownloads(value.maximumConcurrentDownloads); }, undefined, { kind: 'updatePreferences', request: { maximumConcurrentDownloads: next } });
+          }}>{[1, 2, 3, 4].map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+          <p className="reader-help">{t('downloadSessionHelp')}</p>
+        </section>
       </div>
         <p className="reader-help">{t('translationPrivacy')}</p>
         <ExternalTools api={api} locale={locale} active={activeTab?.kind === 'settings'} />
@@ -823,7 +851,8 @@ function Reader({ initialState, api, replica }: { initialState: ReaderState; api
       className="reader-panel" hidden={activeId !== tab.id} tabIndex={0}>
       {(activeId === tab.id || views.has(tab.id)) && <DiscussionPanel viewId={tab.id} active={activeId === tab.id} frozen={movingId === tab.id} item={item} comments={comments[item.id]} session={views.get(tab.id, comments[item.id], item.id)}
         selectionControls={selectionControls} includeCollapsedInPrefix={includeCollapsedInPrefix}
-        locale={locale} saving={saving && savingItemId === item.id} refreshDisabled={!!acquiring || !!progress}
+        locale={locale} saving={saving && savingItemId === item.id} download={downloads.slice().reverse().find(job => job.sourceKind === item.sourceKind && job.sourceId === item.sourceId)}
+        refreshDisabled={api.downloads ? downloads.some(job => job.sourceKind === item.sourceKind && job.sourceId === item.sourceId && downloadPending(job)) : !!acquiring || !!progress}
         coverageLimited={acquisitionStatus === item.id} onRefresh={refreshItem} onOpenSource={openSource} onAction={openCommentAction} onToggle={toggleComment}
         undo={seenUndo[item.id]} feedback={seenFeedback[item.id]} onBulk={bulkSeen} onUndo={undoSeen} onBulkModal={setBulkModalOpen} />}
     </main></ReaderBackdrop>)}

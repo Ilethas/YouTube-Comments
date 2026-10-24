@@ -1,5 +1,19 @@
 # Extractors and normalization
 
+## Concurrent scheduling (ADR 0042)
+
+The profile-owned `DownloadManager` schedules independent existing acquisition
+executors, default three and configurable from one to four. Queued/running jobs
+deduplicate canonical video/post identity, including Acquire/Refresh overlap.
+Each executor retains its own abort controller, helper probe, bounded network
+requests/output, 250 ms safe numeric progress and Windows process-tree cleanup.
+There is no global extraction deadline. Slots remain occupied through processing,
+saving and awaited cleanup; SQLite ingestion stays synchronous and serialized.
+Cancellation before Saving cannot partially replace stored discussion data.
+Main keeps raw diagnostics/extracted payloads private. Session-only queue/recent
+results use authenticated revisioned snapshots across windows; existing durable
+attempt history remains authoritative. See [ADR 0042](decisions/0042-concurrent-download-manager.md).
+
 Pure backend adapters, a source-independent observation contract, sanitized fixtures, and command-spec builders are implemented in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). Normalized fixture ingestion into SQLite is implemented in [ADR 0004](decisions/0004-durable-observation-merge.md). Main-only live public helper execution, acquisition/refresh orchestration and minimal renderer controls are implemented in [ADR 0005](decisions/0005-live-helper-execution-and-acquisition-ipc.md). Helpers use installed executables selected by startup environment, saved Settings or safe direct PATH; they are not bundled artifacts. Start with [How it works](HOW_IT_WORKS.md); the surrounding process boundary is described in [Architecture](ARCHITECTURE.md).
 
 ## Supported acquisition targets
@@ -196,7 +210,7 @@ choices belong in [Packaging](PACKAGING.md).
 
 Adapter tests should use saved representative output fixtures, including unavailable metadata, malformed records, unexpected parent order, and partial output. Tests must prove that backend-specific types stop at the adapter boundary. Normal CI must not require network access or an installed extractor. Optional live checks are a separate suite; see [Testing](TESTING.md).
 
-This pure milestone settles observation types, investigated versions/invocation intent, unknown/partial evidence and fixture provenance in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). ADR 0004 implements normalized ingestion, identity/conflict/relationship policy and baseline/history. ADR 0005 selects development resolution/version checks, owned config/output cleanup, conservative process failure, buffers/deadlines, one-live-operation scheduling and structured diagnostic storage. ADR 0018 implements user cancellation/progress; crash-temp recovery and diagnostic retention duration remain open. Do not silently turn one backend's incidental behavior into a product guarantee.
+This pure milestone settles observation types, investigated versions/invocation intent, unknown/partial evidence and fixture provenance in [ADR 0003](decisions/0003-extractor-observations-and-normalization.md). ADR 0004 implements normalized ingestion, identity/conflict/relationship policy and baseline/history. ADR 0005 introduced development resolution/version checks, owned config/output cleanup, conservative process failure, bounded buffers and structured diagnostic storage. ADR 0018 adds cancellation/progress; ADR 0041 removes the overall extraction deadline; ADR 0042 replaces the original single-operation lock with concurrent scheduling. Crash-temp recovery and diagnostic retention duration remain open. Do not silently turn one backend's incidental behavior into a product guarantee.
 
 ## Progress and cancellation instrumentation (ADRs 0018/0041)
 

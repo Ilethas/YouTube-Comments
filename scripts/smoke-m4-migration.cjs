@@ -76,6 +76,16 @@ if (process.versions.electron) {
         assert.deepEqual(state.discussionViews,checkpoint.views); assert.deepEqual(state.discussionCollapse,checkpoint.collapse);
         assert.ok(state.seenUndo['video-demo'],'shared recovery survived restore');
         await wait(() => js(`document.querySelector('[data-view-id="${id}"] .query-search input')?.value==='pending legacy draft'`),'restored reading intent');
+        // Query controls mount before variable-height anchor correction finishes.
+        // Quit only after the actual painted native viewport has restored the
+        // checkpoint, retaining the original one-pixel Close assertion below.
+        window.showInactive();
+        await wait(() => js('document.visibilityState === "visible"'), 'painted restart viewport');
+        const anchor = checkpoint.views[id].anchor;
+        await js(`new Promise(resolve => { let stable=0; const tick=()=>{ const panel=document.querySelector('[data-view-id="${id}"]'),row=panel?.querySelector('[data-comment-id="${anchor.commentId}"]');
+          const offset=row ? panel.getBoundingClientRect().top-row.getBoundingClientRect().top : Infinity;
+          stable=Math.abs(offset-${JSON.stringify(anchor.offset)})<1 ? stable+1 : 0;
+          if(stable>=4) resolve(); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); })`);
         app.quit();
       }
       console.log(`M4 Electron PASS ${phase}: schema 14, one reader, opaque identity, lossless legacy state, distant dormant reopen, backup/restore/restart.`);
@@ -122,7 +132,7 @@ if (process.versions.electron) {
               anchor:{commentId:row.anchor_comment_id,offset:row.anchor_offset},selected:row.selected_comment_id,
             }]));
             for(const [id,view] of Object.entries(views)) {
-              assert.ok(Math.abs(view.anchor.offset-checkpoint.views[id].anchor.offset)<1,'native measurement stays within one CSS pixel');
+              assert.ok(Math.abs(view.anchor.offset-checkpoint.views[id].anchor.offset)<1,`native measurement stays within one CSS pixel: ${id} ${view.anchor.offset} vs ${checkpoint.views[id].anchor.offset}; ${view.anchor.commentId} vs ${checkpoint.views[id].anchor.commentId}`);
               assert.deepEqual({...view,anchor:{...view.anchor,offset:checkpoint.views[id].anchor.offset}},checkpoint.views[id],'Close preserves semantic intent and logical identities');
             }
             checkpoint.views=views;fs.writeFileSync(checkpointFile,JSON.stringify(checkpoint));

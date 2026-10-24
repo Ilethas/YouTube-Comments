@@ -83,8 +83,25 @@ Other selection/menu/keyboard assertions ran. Optional live helpers were not con
 
 ## Screenshots
 
-Run `node scripts/capture-readme.cjs` after a verified Forge build. Actual production
-main/preload/React entries use an owned OS-temp SQLite profile and isolated Chromium
+**Download Manager addition (2026-10-24):** `downloads-light.png` (1360 × 1000)
+shows the finalized production UI with three active jobs, badge 3 and five queued
+jobs. Run `node scripts/capture-readme.cjs --downloads-only` after a verified Forge
+build to replace only this image. The six baseline PNGs below and the existing
+Charcoal/wallpaper example remain unchanged. A normal capture run regenerates the
+six baseline views plus the new Downloads view.
+
+The new image is an unedited Electron `capturePage()` of the real built
+main/preload/renderer. Three real offline Node helper fixture processes run through
+the production probe/executor/parser/scheduler; eight accepted Acquire/Refresh
+requests create the real active/queued state. No renderer job data or DOM text is
+injected and no YouTube request occurs. The capture checks badge/counts, then
+cancels one real child and verifies automatic queue advancement before shutdown
+drains the rest. `capture.json` records separate per-image build hashes and fixture
+provenance for this addition, retaining the older images' original provenance.
+Presentation verification now checks seven manifested PNGs and the README links.
+
+The six M9.2 baseline captures used actual production
+main/preload/React entries with an owned OS-temp SQLite profile and isolated Chromium
 paths, invented people/discussions and offline geometric avatars. Other HTTPS
 requests are rejected; helper overrides are empty. No DOM text replacement, owner
 data, desktop imagery or shipped test hook is used. The temporary profile is removed.

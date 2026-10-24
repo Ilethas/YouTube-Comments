@@ -1,5 +1,23 @@
 # Architecture
 
+## Concurrent downloads (schema 17)
+
+[ADR 0042](decisions/0042-concurrent-download-manager.md) adds a profile-owned
+`DownloadManager` around the existing per-operation `AcquisitionService` executor.
+It admits prompt submissions, deduplicates canonical sources and starts queued
+jobs FIFO under the shared 1–4 concurrency preference (default 3). Slots include
+processing, atomic saving and child cleanup. Jobs survive tab/window Close and
+Reload. Confirmed restore and Quit stop the queue and drain every executor.
+Backup rejects queued/running work. Same-source Library removal is fenced.
+
+Authenticated preload `downloads` intents and bounded revisioned snapshots supply
+all windows, using subscribe-before-snapshot hydration and 250 ms numeric progress.
+M2 repository commits continue to reconcile content and each window's workspace;
+discussion status matches source identity across duplicate views. The Downloads
+popover replaces production's single-operation strip without reader layout space.
+Only the concurrency preference persists; jobs/recent results are session-only.
+The historical sections below retain their earlier milestone boundaries.
+
 ## Appearance configuration (schema 15)
 
 [ADR 0037](decisions/0037-validated-themes-and-reader-wallpaper.md) adds strict
@@ -163,7 +181,8 @@ Native initial Close keeps authority until drain; controlled reload and explicit
 use the same protocol. Failed or later-cancelled Close remains usable. Shared service
 shutdown belongs to application Quit/last-window settlement, never a peer close.
 
-Backup keeps verified online snapshots and acquisition-busy policy. Restore retains
+Backup keeps verified online snapshots and rejects while any downloads are queued
+or running. Restore retains
 captured native-dialog ownership, staging, explicit confirmation, independent safety,
 offline recovery and full relaunch. After affirmative acceptance it is app-owned;
 RESTARTING fences every old-profile command before offline storage begins. Crashes
@@ -413,8 +432,8 @@ ADR 0017 adds validated bootstrap discussion-view intent and main-owned schema-8
 
 Main owns confirmed local removal transactions; the native renderer dialog is the
 user confirmation surface, not a privileged SQL capability. Synthetic baseline
-provenance produces the driver-free removable flag. The canonical active acquisition
-target blocks same-source removal with ACQUISITION_BUSY. Other local workspace
+provenance produces the driver-free removable flag. Any queued or running canonical
+source blocks same-source removal with ACQUISITION_BUSY. Other local workspace
 operations/removals stay available. Deferred FK checks commit the item/history cycle
 atomically; failure preserves all rows. Renderer removed-ID reconciliation excludes
 deleted items from delayed content snapshots, alongside workspace revision protection.
@@ -670,7 +689,8 @@ PATH is fail-closed for configured sources. Helper identity/confidence probes ar
 extraction; the resolver reads current saved settings for every later acquisition.
 Settings checks lazily once when first viewed, with explicit Recheck and acknowledged
 Choose/reset status; ordinary Reader/bootstrap renders launch no probes. Configuration
-commands serialize separately from the unchanged acquisition lock. Normal quit aborts
+commands retain their own serialized lane; downloads now use ADR 0042's bounded
+concurrent queue instead of the original acquisition lock. Normal quit aborts
 probes and awaits configuration/acquisition work before releasing SQLite. Raw diagnostics
 stay privileged; status paths are plain display evidence, never execution requests.
 
@@ -685,13 +705,15 @@ at 250 ms and fenced by operation/stage/cancellation. Estimated percentages stay
 below 100 during Fetching and never establish coverage or completion. Unknown
 formats keep indeterminate progress; no raw helper diagnostics cross preload.
 
-Main retains one global remote operation with an opaque UUID, fresh operation controller
+ADR 0018 originally retained one global remote operation. ADR 0042 now gives each
+scheduled job the same executor safety with an opaque UUID, fresh operation controller
 and AbortSignal.any composition with shutdown. Exact active cancellable-ID matching
 protects newer operations from stale clicks. Validated cancelAcquisition({operationId})
 and getAcquisitionProgress() use existing sender/top-frame/document checks. One narrow
 main-to-renderer channel sends exact safe AcquisitionProgress or ID-scoped settlement;
 preload strips Electron events, validates payloads and returns listener cleanup. Main
-sends only to the owning expected document. There is no generic bus or process control.
+sends only to authenticated current documents. Production consumes the revisioned
+Download Manager snapshots described above. There is no generic bus or process control.
 
 The synchronous atomic ingest is the cancellation linearization boundary: Saving and
 cancellable=false are published immediately before it with no await. Earlier accepted

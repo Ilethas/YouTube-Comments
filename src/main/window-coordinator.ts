@@ -1,3 +1,5 @@
+import { downloadsChangedChannel } from '../shared/downloads';
+import type { DownloadsSnapshot } from '../shared/downloads';
 import { transferChannels } from '../shared/tab-transfer';
 import type { TransferEvent } from '../shared/tab-transfer';
 import { sharedCommitChannel } from '../shared/reader-sync';
@@ -259,13 +261,14 @@ export class WindowCoordinator {
 
   /** Send only to current authenticated documents. A dead/throwing recipient
    * cannot interrupt delivery to peers or a committed repository mutation. */
-  private fanout(channel: string, value: SharedCommit | AcquisitionNotification): void {
+  private fanout(channel: string, value: SharedCommit | AcquisitionNotification | DownloadsSnapshot): void {
     for (const record of this.records.values()) {
       try {
         if (record.caller && this.live(record, record.caller)) record.window.webContents.send(channel, value);
       } catch { /* Destruction may race the final send. */ }
     }
   }
+  sendDownloads(value: DownloadsSnapshot): void { this.fanout(downloadsChangedChannel, value); }
   sendSharedCommit(value: SharedCommit): void { this.fanout(sharedCommitChannel, value); }
   sendAcquisitionProgress(value: AcquisitionNotification): void { this.fanout(acquisitionProgressChannel, value); }
 

@@ -9,8 +9,9 @@ import { parseAcquisitionTarget } from './acquisition-target';
 import type { AcquisitionTarget } from './acquisition-target';
 import type { ExtractLive } from './live-extraction';
 
-/** One global remote operation. Cancellation linearizes before synchronous ingest;
- * progress observers cannot interrupt an accepted transaction. */
+/** One isolated remote executor; DownloadManager schedules an instance per job.
+ * Cancellation linearizes before synchronous ingest; progress observers cannot
+ * interrupt an accepted transaction. */
 export class AcquisitionService {
   private active?: { progress: AcquisitionProgress; controller: AbortController };
   private activeTarget?: AcquisitionTarget;

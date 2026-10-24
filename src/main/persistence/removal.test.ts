@@ -1,7 +1,7 @@
 import { required } from '../../renderer/testing/required';
 import { viewVersion , storedTab, viewIdentity } from '../testing/view-identity';
 import { displayedToggle } from '../testing/displayed-seen';
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
@@ -136,11 +136,12 @@ it('removal includes failed history recorded for its source before first success
 it('unrelated removal stays available while a different source is being acquired and cannot reappear in its result', async () => {
   const id = insert();
   const other = repository.ingest(normalizeYtDlp(JSON.stringify({ ...fixture.raw, id: 'OtherDemo01' }), fixture.context), undefined, true).itemId as string;
-  let finish: (value: Awaited<ReturnType<ExtractLive>>) => void = () => undefined;
+  let finish: ((value: Awaited<ReturnType<ExtractLive>>) => void) | undefined;
   const service = new ReaderService(() => repository, ['en'], () => undefined, () => new Promise(resolve => { finish = resolve; }));
   const pending = service.dispatch('refresh', [{ itemId: id }]);
   expect(service.dispatch('removeLibraryItem', [{ itemId: other }]).ok).toBe(true);
-  finish({ extraction });
+  await vi.waitFor(() => expect(finish).toBeDefined());
+  finish?.({ extraction });
   const result = await pending;
   if (!result.ok) throw new Error('Expected refresh');
   expect(result.value.state.items.some(item => item.id === other)).toBe(false);
@@ -148,7 +149,7 @@ it('unrelated removal stays available while a different source is being acquired
 });
 it.each(['acquire', 'refresh'] as const)('rejects removal of the same source during %s; local workspace actions stay available', async operation => {
   const id = insert();
-  let finish: (value: Awaited<ReturnType<ExtractLive>>) => void = () => undefined;
+  let finish: ((value: Awaited<ReturnType<ExtractLive>>) => void) | undefined;
   const service = new ReaderService(() => repository, ['en'], () => undefined, () => new Promise(resolve => { finish = resolve; }));
   const pending = operation === 'acquire' ? service.dispatch('acquire', [{ url: 'https://youtu.be/VidDemo_001' }]) : service.dispatch('refresh', [{ itemId: id }]);
   expect(service.dispatch('removeLibraryItem', [{ itemId: id }])).toMatchObject({ error: { code: 'ACQUISITION_BUSY' } });
@@ -156,7 +157,8 @@ it.each(['acquire', 'refresh'] as const)('rejects removal of the same source dur
   expect(service.dispatch('openSettings', [{ expectedRevision: repository.workspace().revision }]).ok).toBe(true);
   expect(service.dispatch('moveTab', [{ tabId: required(repository.workspace().tabs.find(t => t.kind === 'settings')).id, toIndex: 0, expectedRevision: repository.workspace().revision }]).ok).toBe(true);
   const before = repository.workspace();
-  finish({ extraction }); expect((await pending).ok).toBe(true);
+  await vi.waitFor(() => expect(finish).toBeDefined());
+  finish?.({ extraction }); expect((await pending).ok).toBe(true);
   expect(repository.workspace().tabs).toEqual(before.tabs);
   const removed = service.dispatch('removeLibraryItem', [{ itemId: id }]); expect(removed.ok).toBe(true);
   repository.close(); repository = ReaderRepository.open(file);

@@ -6,6 +6,10 @@ Date: 2026-10-15. Status: accepted. Narrows Q-14 and Q-16; Q-21 remains separate
 milestone's 180-second deadline and indeterminate-only progress policy. The
 cancellation, persistence, identity and lifecycle contracts below remain.
 
+[ADR 0042](0042-concurrent-download-manager.md) supersedes the single global
+operation and status strip below. Each scheduled job retains these executor safety
+contracts; the Downloads panel and revisioned snapshots now present concurrent work.
+
 ## Context and decision
 
 Anonymous helper operations take seconds with no trustworthy total comment count.

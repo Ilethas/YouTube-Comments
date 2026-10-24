@@ -1,5 +1,9 @@
 # Multiple equal windows: proposed architecture
 
+**Current acquisition scheduling:** [ADR 0042](decisions/0042-concurrent-download-manager.md)
+supersedes this proposal's global acquisition lock with the profile-owned concurrent
+Download Manager. The historical window/lifecycle design below retains its context.
+
 **M9.1, 2026-10-19:** [performance/verification report](M9_1_PERFORMANCE.md)
 records the first aggregate 2/4-window 10k/50k baseline and targeted removal of
 unused duplicate comment evidence from reader snapshots. Schema **14**, M2–M8
@@ -128,7 +132,8 @@ flowchart TB
 
 Keep **one ReaderService and one ReaderRepository instance** for the profile.
 Synchronous transactions already provide one commit order; one service also owns
-the global acquisition lock, helper queue, backup barrier and shutdown. Per-window
+the shared Download Manager (ADR 0042 replaces the original global acquisition
+lock), helper queue, backup barrier and shutdown. Per-window
 services would create competing locks, inconsistent barriers and multiple connections
 to close during restore. They provide no renderer isolation benefit: separate
 sandboxed windows already isolate React/DOM/workers. A future main-owned DB worker
@@ -325,8 +330,9 @@ existing offline restore recovery before opening any window.
 | Thumbnail request/source browser action | Complete already authorized action safely; destroyed recipient is ignored. Recheck current item/canonical identity/cache grant as today; broadcast only useful image metadata/invalidation, not filesystem paths. |
 | Query worker | Per-view generation. Close disposes after settled/accepted intent; transfer uses a bounded handoff. A peer window never inherits worker/DOM objects. |
 
-Global acquisition remains one operation: multiple windows do not imply concurrent
-extractors. Progress/current/completion notifications go to every authorized live
+The original proposal kept one acquisition operation. ADR 0042 now permits 1–4
+independent jobs under one profile-owned scheduler, with source deduplication and
+an automatic queue. Progress/current/completion snapshots go to every authorized live
 window and newly opened windows can query current state. Content commit is the
 authoritative event; operation-progress settlement arriving first must not be used
 to infer that peer data is already synchronized.

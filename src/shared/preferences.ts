@@ -9,6 +9,7 @@ export const notificationDurations = [3, 5, 10, 15, 30] as const;
 export type NotificationDuration = typeof notificationDurations[number];
 export const defaultNotificationPreferences = { notificationDismissal: 'automatic', notificationDurationSeconds: 5 } as const;
 export interface Preferences {
+  readonly maximumConcurrentDownloads: 1 | 2 | 3 | 4;
   readonly notificationDismissal: NotificationDismissal;
   readonly notificationDurationSeconds: NotificationDuration;
   readonly readerAppearance?: import('./appearance').ReaderAppearance;

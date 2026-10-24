@@ -1,5 +1,22 @@
 # Product requirements
 
+## Concurrent downloads (ADR 0042)
+
+Main owns independent queued acquisition/Refresh jobs, with FIFO starts and a
+durable shared concurrency setting of 1–4 (default 3). Queued/running canonical
+sources deduplicate across windows and mixed intents. A slot lasts through cleanup
+and atomic saving. Increasing the limit fills available slots; decreasing it never
+terminates running work. Exact job cancellation and Retry remain independent.
+
+Every window exposes a compact Downloads panel with active-only badge, queue,
+recent outcomes, safe labels/stages/counts/estimates/elapsed time, cancellation,
+Retry and Open. Discussion views share source-level status and suppress duplicate
+Refresh. Submission acknowledges promptly, and revisioned subscribe-first job
+hydration complements existing shared repository synchronization. Tabs/windows do
+not own jobs. Acquire opens only in available authorized requesting documents.
+Shutdown/confirmed restore cancel/drain the queue; backup rejects pending work.
+Queues/recent results are session-only; schema 17 persists only concurrency.
+
 ## Comment selection, menus and reading prefixes (ADR 0024)
 
 The reader supports independent per-discussion session bulk selection with explicit

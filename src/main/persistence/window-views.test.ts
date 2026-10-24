@@ -19,7 +19,7 @@ afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) { if
 const sharedTables = ['content_items', 'comments', 'comment_state', 'seen_operations', 'seen_operation_entries', 'extraction_attempts', 'preferences', 'helper_settings'];
 const rows = (db: DatabaseSync, table: string) => db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all();
 const upgradedRows = (table: string, before: ReturnType<typeof rows>) => table === 'preferences'
-  ? before.map(row => ({ ...row, notification_dismissal: 'automatic', notification_duration_seconds: 5 })) : before;
+  ? before.map(row => ({ ...row, notification_dismissal: 'automatic', notification_duration_seconds: 5, maximum_concurrent_downloads: 3 })) : before;
 function fixture(empty = false) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'reader-m4-')); roots.push(root);
   const file = path.join(root, 'reader.sqlite');

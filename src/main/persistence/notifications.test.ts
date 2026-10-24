@@ -28,7 +28,7 @@ it('migrates v15 additively, preserving preferences/data/topology and an exact v
   expect(validateBackup(path.join(recoveryDirectory(file), String(safety)))).toBe(15);
   repo = ReaderRepository.open(file); expect(repo.preferences(['en'])).toMatchObject(defaultNotificationPreferences); repo.close(); repo = undefined;
   const migrated = new DatabaseSync(file); expect(rows(migrated)).toEqual(before);
-  expect(migrated.prepare('SELECT * FROM preferences').get()).toEqual({ ...preferences, notification_dismissal: 'automatic', notification_duration_seconds: 5 }); migrated.close();
+  expect(migrated.prepare('SELECT * FROM preferences').get()).toEqual({ ...preferences, notification_dismissal: 'automatic', notification_duration_seconds: 5, maximum_concurrent_downloads: 3 }); migrated.close();
   expect(validateBackup(file)).toBe(schemaVersion);
 });
 it('acknowledges both modes and every duration, publishes shared preference commits, reopens and backs up/restores', async () => {

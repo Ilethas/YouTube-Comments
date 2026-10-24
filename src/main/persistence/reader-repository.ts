@@ -375,7 +375,7 @@ export class ReaderRepository {
   preferences(languages: readonly string[]): Preferences {
     const row = this.db.prepare('SELECT * FROM preferences WHERE id = 1').get();
     if (!row) throw new Error('Missing preferences');
-    return { notificationDismissal: row.notification_dismissal as Preferences['notificationDismissal'],
+    return { maximumConcurrentDownloads: row.maximum_concurrent_downloads as Preferences['maximumConcurrentDownloads'], notificationDismissal: row.notification_dismissal as Preferences['notificationDismissal'],
       notificationDurationSeconds: row.notification_duration_seconds as Preferences['notificationDurationSeconds'],
       readerAppearance: this.readerAppearance(), locale: row.locale === null ? initialLocale(languages) : row.locale as Preferences['locale'],
       appearance: row.appearance as Preferences['appearance'], translationTarget: row.translation_target as Preferences['translationTarget'],
@@ -798,6 +798,7 @@ export class ReaderRepository {
         if (change.translationTarget === 'custom' && !custom) throw new InvalidPreferenceError();
         this.db.prepare('UPDATE preferences SET translation_target = ?, custom_translation_target = ? WHERE id = 1').run(change.translationTarget, custom ?? null);
       }
+      else if ('maximumConcurrentDownloads' in change) this.db.prepare('UPDATE preferences SET maximum_concurrent_downloads = ? WHERE id = 1').run(change.maximumConcurrentDownloads);
       else if ('notificationDismissal' in change) this.db.prepare('UPDATE preferences SET notification_dismissal = ? WHERE id = 1').run(change.notificationDismissal);
       else if ('notificationDurationSeconds' in change) this.db.prepare('UPDATE preferences SET notification_duration_seconds = ? WHERE id = 1').run(change.notificationDurationSeconds);
       else if ('selectionControls' in change) this.db.prepare('UPDATE preferences SET selection_controls = ? WHERE id = 1').run(change.selectionControls);

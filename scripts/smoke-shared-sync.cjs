@@ -27,7 +27,7 @@ if (process.versions.electron) {
       await new Promise(resolve => { releaseUndo = resolve; });
     }
     const result = await handler(event, ...args);
-    if (delayReply && ['reader:toggle-seen', 'reader:refresh'].includes(channel)) {
+    if (delayReply && ['reader:toggle-seen', 'reader:submit-download'].includes(channel)) {
       delayReply = false;
       await new Promise(resolve => { releaseReply = resolve; });
     }
@@ -119,11 +119,15 @@ if (process.versions.electron) {
     const operation = await invoke(b, 'getAcquisitionProgress'); assert.equal(operation.ok, true); assert.equal(operation.value.stage, 'fetching');
     assert.deepEqual(operation.value.comments, { fetched: 1755, estimatedTotal: 8721 });
     await wait(async () => (await js(a, 'window.m2Progress.length')) > 0 && (await js(b, 'window.m2Progress.length')) > 0, 'progress fanout');
-    for (const window of [a, b]) await wait(() => js(window, "document.querySelector('.acquisition-status [role=status]')?.textContent.includes('≈20%')"), 'numeric progress in both windows');
+    for (const window of [a, b]) {
+      await js(window, "document.getElementById('downloads-toggle').click();void 0");
+      await wait(() => js(window, "document.querySelector('.downloads-panel .download-status')?.textContent.includes('≈20%')"), 'numeric progress in both windows');
+    }
     const reconnect = new Promise(resolve => b.webContents.once('did-finish-load', resolve)); b.webContents.reload(); await reconnect;
-    await wait(() => js(b, "!!document.querySelector('.app-shell') && !!document.querySelector('.acquisition-status')"), 'reconnected participant queries active progress');
+    await wait(() => js(b, "!!document.querySelector('.app-shell') && !!document.querySelector('.downloads-badge')"), 'reconnected participant queries active progress');
     assert.equal((await invoke(b, 'getAcquisitionProgress')).value.operationId, operation.value.operationId);
-    await wait(() => js(b, "document.querySelector('.acquisition-status [role=status]')?.textContent.includes('≈20%')"), 'reloaded participant hydrates numeric progress');
+    await js(b, "document.getElementById('downloads-toggle').click();void 0");
+    await wait(() => js(b, "document.querySelector('.downloads-panel .download-status')?.textContent.includes('≈20%')"), 'reloaded participant hydrates numeric progress');
     await js(b, "window.m2Progress=[];window.reader.onAcquisitionProgress(e=>window.m2Progress.push(e));void 0");
     finishExtraction(); finishExtraction = undefined;
     const acquired = await acquisition; assert.equal(acquired.ok, true); const itemId = acquired.value.summary.itemId;
@@ -135,6 +139,7 @@ if (process.versions.electron) {
     delayReply = true;
     await js(a, "document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click();void 0"); await wait(() => !!finishExtraction, 'refresh fetching'); finishExtraction(); finishExtraction = undefined;
     await wait(() => !!releaseReply, 'held refresh reply');
+    await wait(async () => (await invoke(b, 'downloads.current')).value.jobs.some(job => job.kind === 'refresh' && job.itemId === itemId && job.state === 'completed'), 'Refresh commits while submission acknowledgment is held');
     assert.equal((await invoke(b, 'removeLibraryItem', { itemId })).ok, true);
     await wait(() => js(a, `!${tabElement(itemId)}`), 'peer removal');
     releaseReply(); releaseReply = undefined; await pause(100);
@@ -164,7 +169,7 @@ if (process.versions.electron) {
       const child = spawn(require('electron'), [__filename], { env, stdio: 'inherit', windowsHide: true });
       await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error('M2 exited '+code))); });
       const { DatabaseSync } = require('node:sqlite'), db = new DatabaseSync(path.join(root, 'reader.sqlite'), { readOnly: true });
-      try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16); assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok'); } finally { db.close(); }
+      try { assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17); assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok'); } finally { db.close(); }
     } finally {
       assert.ok(path.dirname(root) === os.tmpdir() && path.basename(root).startsWith('reader-m2-'));
       fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

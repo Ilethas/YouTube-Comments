@@ -286,7 +286,7 @@ if (process.versions.electron) {
       {
         const acquisition = invoke(a, 'acquire', { url: 'https://www.youtube.com/watch?v=' + extraction.raw.id });
         await wait(() => !!releaseFetch, 'fixture acquisition child');
-        for (const w of [a, b, c]) await wait(() => js(w, '!!document.querySelector(".acquisition-status")'), 'shared acquisition progress');
+        for (const w of [a, b, c]) await wait(() => js(w, '!!document.querySelector(".downloads-badge")'), 'shared acquisition progress');
         releaseFetch(); releaseFetch = undefined; const acquired = await acquisition;
         const remote = acquired.summary.itemId, remoteTab = (await boot(a)).workspace.activeTabId;
         await moved(a, remoteTab); const release = await holdMove(a, remoteTab, b);

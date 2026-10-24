@@ -229,7 +229,7 @@ it('preserves populated schema-7 data while staging its known migration', async 
   const { discussion_view_state, discussion_collapse, comment_collapse_overrides, ...preserved } = after;
   expect(discussion_collapse).toEqual([]); expect(comment_collapse_overrides).toEqual([]);
   expect(discussion_view_state).toEqual([]);
-  expect(preserved).toEqual({ ...before, preferences: before.preferences.map(row => ({ ...row, translation_target: 'app', custom_translation_target: null, selection_controls: 'on-demand', include_collapsed_in_prefix: 1, notification_dismissal: 'automatic', notification_duration_seconds: 5 })) });
+  expect(preserved).toEqual({ ...before, preferences: before.preferences.map(row => ({ ...row, translation_target: 'app', custom_translation_target: null, selection_controls: 'on-demand', include_collapsed_in_prefix: 1, notification_dismissal: 'automatic', notification_duration_seconds: 5, maximum_concurrent_downloads: 3 })) });
   expect(readFileSync(source)).toEqual(original);
 });
 
@@ -245,7 +245,7 @@ it('protects populated schema 8 before migration and restores schema-8 backups o
   expect(snapshots).toHaveLength(1); expect(validateBackup(path.join(recoveryDirectory(source), snapshots[0]))).toBe(8);
   const directory = await prepareRestore(source, file), candidate = path.join(directory, 'candidate.sqlite');
   expect(validateBackup(candidate)).toBe(schemaVersion); expect(readFileSync(source)).toEqual(original);
-  expect(historicalProfileRows(candidate)).toEqual({ ...before, discussion_collapse: [], comment_collapse_overrides: [], preferences: before.preferences.map(row => ({ ...row, translation_target: 'app', custom_translation_target: null, selection_controls: 'on-demand', include_collapsed_in_prefix: 1, notification_dismissal: 'automatic', notification_duration_seconds: 5 })) });
+  expect(historicalProfileRows(candidate)).toEqual({ ...before, discussion_collapse: [], comment_collapse_overrides: [], preferences: before.preferences.map(row => ({ ...row, translation_target: 'app', custom_translation_target: null, selection_controls: 'on-demand', include_collapsed_in_prefix: 1, notification_dismissal: 'automatic', notification_duration_seconds: 5, maximum_concurrent_downloads: 3 })) });
   await repo().createBackup(path.join(directory, 'safety.sqlite')); close();
   await installRestore(file, directory); expect(await recoverProfile(file)).toBe('restored');
   repository = ReaderRepository.open(file);

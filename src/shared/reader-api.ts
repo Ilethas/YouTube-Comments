@@ -39,7 +39,7 @@ export interface ToggleSeenRequest {
   readonly subtree: boolean;
   readonly seen: boolean;
 }
-export type PreferenceChange = { readonly locale: Locale } | { readonly appearance: Appearance } | { readonly translationTarget: TranslationTarget; readonly customTranslationTarget?: string }
+export type PreferenceChange = { readonly maximumConcurrentDownloads: Preferences['maximumConcurrentDownloads'] } | { readonly locale: Locale } | { readonly appearance: Appearance } | { readonly translationTarget: TranslationTarget; readonly customTranslationTarget?: string }
   | { readonly notificationDismissal: Preferences['notificationDismissal'] } | { readonly notificationDurationSeconds: Preferences['notificationDurationSeconds'] }
   | { readonly readerAppearance: ReaderAppearanceChange } | { readonly removeWallpaper: { readonly expectedRevision: number } } | { readonly deleteTheme: { readonly id: string; readonly expectedRevision: number } } | { readonly selectTheme: { readonly id: string; readonly expectedRevision: number } }
   | { readonly selectionControls: SelectionControls } | { readonly includeCollapsedInPrefix: boolean };
@@ -71,6 +71,7 @@ export interface AcquisitionResult {
 
 /** Intent-only capabilities. No generic invoke, SQL, executable input or Node handles. */
 export interface ReaderApi {
+  readonly downloads?: import('./downloads').DownloadsApi;
   readonly transfers?: import('./tab-transfer').TabTransferApi;
   /** Payload-free readiness for this authenticated native window only. */
   windowReady?(): Promise<Result<null>>;
@@ -112,6 +113,7 @@ export interface ReaderApi {
   bulkSeen(request: BulkSeenRequest): Promise<Result<SeenMutationResult>>;
   undoSeen(request: UndoSeenRequest): Promise<Result<SeenUndoResult>>;
   updatePreferences(change: PreferenceChange): Promise<Result<Preferences>>;
+  /** Legacy completion facade; new UI submits through downloads instead. */
   acquire(request: AcquireRequest): Promise<Result<AcquisitionResult>>;
   refresh(request: RefreshRequest): Promise<Result<AcquisitionResult>>;
   openStoredItem(request: OpenStoredItemRequest): Promise<Result<WorkspaceState>>;
@@ -124,6 +126,7 @@ export interface ReaderApi {
 }
 
 export const readerChannels = {
+  submitDownload: 'reader:submit-download', getDownloads: 'reader:get-downloads', cancelDownload: 'reader:cancel-download', retryDownload: 'reader:retry-download',
   refreshThemes: 'reader:refresh-themes', openThemesFolder: 'reader:open-themes-folder', saveThemeCopy: 'reader:save-theme-copy',
   exportTheme: 'reader:export-theme', importTheme: 'reader:import-theme', importWallpaper: 'reader:import-wallpaper', getWallpaper: 'reader:get-wallpaper',
   getDiscussionView: 'reader:discussion-view', duplicateTab: 'reader:duplicate-tab',
@@ -181,7 +184,8 @@ export function isToggleSeenRequest(value: unknown): value is ToggleSeenRequest 
     && identifier(value.itemId) && identifier(value.commentId) && typeof value.subtree === 'boolean' && typeof value.seen === 'boolean';
 }
 export function isPreferenceChange(value: unknown): value is PreferenceChange {
-  return (exactKeys(value, ['notificationDismissal']) && ['automatic', 'manual'].includes(value.notificationDismissal as string))
+  return (exactKeys(value, ['maximumConcurrentDownloads']) && [1, 2, 3, 4].includes(value.maximumConcurrentDownloads as number))
+    || (exactKeys(value, ['notificationDismissal']) && ['automatic', 'manual'].includes(value.notificationDismissal as string))
     || (exactKeys(value, ['notificationDurationSeconds']) && notificationDurations.includes(value.notificationDurationSeconds as Preferences['notificationDurationSeconds']))
     || (exactKeys(value, ['readerAppearance']) && isReaderAppearanceChange(value.readerAppearance))
     || (exactKeys(value, ['removeWallpaper']) && exactKeys(value.removeWallpaper, ['expectedRevision']) && isRevision(value.removeWallpaper.expectedRevision))

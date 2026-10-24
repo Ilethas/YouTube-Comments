@@ -5,6 +5,9 @@ by [ADR 0015](0015-safe-usability-intents-and-helper-confidence.md) on 2026-10-1
 The text below records the original decision. Native selection, schema 7,
 precedence, executable validation and lifecycle remain accepted.
 
+[ADR 0042](0042-concurrent-download-manager.md) replaces the original
+single-acquisition scheduling assumption with the concurrent Download Manager.
+
 ## Context
 
 Startup environment overrides and safe direct PATH lookup already permit pinned

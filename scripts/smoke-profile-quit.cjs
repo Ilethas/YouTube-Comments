@@ -16,6 +16,22 @@ if (process.versions.electron) {
   process.on('uncaughtException', fail);
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
   let release, releaseSeen, holdSeen = true, staged = 0, drainedUndo = 0, count = 0, verified = false, closed = false, drains = 0;
+  // Deterministic process seam before production main imports child_process.
+  // Real descendant termination is covered by helper-process tests; this proves
+  // production Quit waits for every executor's close and never starts the queue.
+  const childProcess = require('node:child_process'), originalSpawn = childProcess.spawn;
+  const { EventEmitter } = require('node:events'), { PassThrough } = require('node:stream');
+  const helper = path.join(root, 'fixture-yt-dlp.exe'); fs.writeFileSync(helper, 'test-only process adapter');
+  process.env.YOUTUBE_COMMENTS_YTDLP_EXE = helper;
+  let launchedDownloads = 0, killedDownloads = 0; const finishDownloads = [];
+  childProcess.spawn = (file, args, options) => {
+    if (file !== helper) return originalSpawn(file, args, options);
+    assert.equal(options.shell, false);
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: () => { killedDownloads++; return true; } });
+    if (args.includes('--version')) queueMicrotask(() => { child.stdout.emit('data', Buffer.from('2026.08.19')); child.emit('close', 0); });
+    else { launchedDownloads++; finishDownloads.push(() => child.emit('close', 1)); }
+    return child;
+  };
   const { DatabaseSync } = require('node:sqlite'), close = DatabaseSync.prototype.close;
   DatabaseSync.prototype.close = function () { closed = true; return close.call(this); };
   const handle = ipcMain.handle.bind(ipcMain);
@@ -40,6 +56,10 @@ if (process.versions.electron) {
       const copy = await js('window.reader.duplicateTab('+JSON.stringify({sourceViewId:source,expectedRevision:before.workspace.revision,intentRevision:version.intentRevision,collapseRevision:version.collapseRevision})+')');
       assert.equal(copy.ok,true);
       await wait(() => js('!!document.getElementById('+JSON.stringify('panel-'+copy.value.view.viewId)+')?.querySelector("input[type=search]")'), 'duplicate hydration');
+      const accepted = await js("Promise.all(Array.from({length:8},(_,i)=>window.reader.downloads.submit({kind:'acquire',url:'https://youtu.be/Video_'+String(i).padStart(5,'0')})))");
+      assert.equal(accepted.every(result => result.ok), true);
+      await wait(() => launchedDownloads === 3, 'three production download executors');
+      assert.equal((await js('window.reader.downloads.current()')).value.jobs.filter(j => j.state === 'queued').length, 5);
       const bulk = await js('window.reader.bulkSeen({itemId:"video-demo",seen:true,target:{kind:"all"}})'); assert.equal(bulk.ok,true);
       await wait(() => js('!!document.querySelector(".reader-panel:not([hidden]) .bulk-area > .text-button")'), 'displayed recovery');
       await js('(()=>{const e=document.getElementById('+JSON.stringify('panel-'+source)+').querySelector("input[type=search]");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(e,"quit-source-pending");e.dispatchEvent(new Event("input",{bubbles:true}));})()');
@@ -55,12 +75,17 @@ if (process.versions.electron) {
       await wait(() => !!release, 'Quit waiting on final checkpoint');
       assert.equal(window.isDestroyed(), false); assert.equal(closed, false, 'SQLite stays open until renderer drain');
       assert.equal(await js("document.querySelector('.app-shell').inert"), true);
-      verified = true; release();
+      release();
+      await wait(() => killedDownloads === 3, 'Quit aborts every active executor');
+      assert.equal(closed, false, 'SQLite stays open until all helper close events');
+      assert.equal(window.isDestroyed(), false); assert.equal(launchedDownloads, 3, 'queued work never starts during Quit');
+      verified = true; for (const finish of finishDownloads) finish();
     })().catch(fail));
   });
   app.on('will-quit', () => {
     assert.equal(verified, true); assert.equal(closed, true); assert.equal(drainedUndo, 1, 'accepted queued Undo drains exactly once'); clearTimeout(watchdog);
-    console.log('M3 built-entry Quit PASS: repeated explicit Quit joins one global drain; pending UI draft commits before SQLite closes; exactly one production reader.');
+    assert.equal(launchedDownloads, 3); assert.equal(killedDownloads, 3);
+    console.log('M3 built-entry Quit PASS: repeated Quit joins one drain, final views/Undo save, 3 running and 5 queued downloads cancel, every helper closes before SQLite.');
   });
   require(path.resolve(__dirname, '../.vite/build/main.js'));
 } else {
@@ -72,11 +97,12 @@ if (process.versions.electron) {
       await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error('M3 Quit exited '+code))); });
       const { DatabaseSync } = require('node:sqlite'), db = new DatabaseSync(path.join(root, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17);
         const rows = db.prepare('SELECT draft_query_json FROM discussion_view_intent WHERE item_id=?').all('video-demo');
         assert.deepEqual(rows.map(row=>JSON.parse(row.draft_query_json).text).sort(), ['quit-pending','quit-source-pending']);
         assert.equal(db.prepare("SELECT seen FROM comment_state WHERE comment_id='v3'").get().seen,0);
         assert.equal(db.prepare("SELECT count(*) AS n FROM seen_operations WHERE item_id='video-demo'").get().n,0);
+        assert.equal(db.prepare("SELECT count(*) AS n FROM extraction_attempts WHERE source_id LIKE 'Video_%'").get().n, 0, 'shutdown writes no extraction attempts');
         assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
       } finally { db.close(); }
     } finally {

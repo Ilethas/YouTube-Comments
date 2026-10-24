@@ -1,4 +1,4 @@
-// Real built-entry Electron screenshots. No production profile, live helpers,
+// Real built-entry Electron screenshots. No production profile, live YouTube,
 // remote requests, DOM text replacement, or test behavior in application code.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -8,6 +8,7 @@ const { spawn } = require('node:child_process');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const project = path.resolve(__dirname, '..');
 const output = path.join(project, 'docs/screenshots');
+const downloadsOnly = process.argv.includes('--downloads-only');
 
 if (process.versions.electron) {
   const { app, session, nativeImage } = require('electron');
@@ -20,6 +21,21 @@ if (process.versions.electron) {
   }
   const watchdog = setTimeout(() => app.exit(1), 120000);
   const windows = [], captures = [];
+  const helper = path.join(root, 'readme-yt-dlp.exe'), helperChildren = new Set();
+  let helperStarts = 0;
+  // This capture-only adapter substitutes real offline Node fixture children for
+  // the profile's placeholder helper. All probing, scheduling, stderr parsing,
+  // progress IPC and Windows process-tree cancellation remain production code.
+  const childProcess = require('node:child_process'), originalSpawn = childProcess.spawn;
+  childProcess.spawn = (file, args, options) => {
+    if (file !== helper) return originalSpawn(file, args, options);
+    assert.equal(options.shell, false); assert.equal(options.windowsHide, true);
+    const child = originalSpawn(process.env.README_CAPTURE_NODE_EXE, [path.join(project, 'scripts/readme-download-helper.cjs'), ...args], options);
+    if (!args.includes('--version')) {
+      helperStarts++; helperChildren.add(child); child.once('close', () => helperChildren.delete(child));
+    }
+    return child;
+  };
   // These fixture URLs are evidence for invented demo avatars. Serve original
   // geometric portraits offline; cancel every other HTTPS request.
   app.on('ready', () => {
@@ -60,9 +76,9 @@ if (process.versions.electron) {
       await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(e instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event(e instanceof HTMLSelectElement?'change':'input',{bubbles:true}));})()`);
       await pause(100);
     }
-    async function save(name, height, { dialog = false } = {}) {
+    async function save(name, height, { dialog = false, popover = false } = {}) {
       window.setContentSize(1360, height);
-      if (!dialog) await js('document.activeElement?.blur()');
+      if (!dialog && !popover) await js('document.activeElement?.blur()');
       contents.sendInputEvent({ type: 'mouseMove', x: 1355, y: 955 });
       await pause(350);
       await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
@@ -92,10 +108,53 @@ if (process.versions.electron) {
       await wait('!!document.querySelector("[role=menu]")');
       await js(`Array.from(document.querySelectorAll('[role=menuitem]')).find(b=>b.querySelector('span')?.textContent===${JSON.stringify(label)}).click()`);
     }
+    const buildProvenance = () => ({
+      source: 'Actual Electron window loading the verified Forge-built main/preload/renderer',
+      capturedAt: new Date().toISOString(), electron: process.versions.electron, viewportWidth: 1360,
+      builtMainSha256: require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(project, '.vite/build/main.js'))).digest('hex'),
+      rendererAssetsSha256: Object.fromEntries(fs.readdirSync(path.join(project, '.vite/renderer/main_window/assets')).map(name => [name,
+        require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(project, '.vite/renderer/main_window/assets', name))).digest('hex')])),
+      data: 'Invented demo discussions in an owned disposable SQLite profile; offline geometric avatars',
+    });
+    async function captureDownloads() {
+      await invoke(window, 'updatePreferences', { locale: 'en' });
+      await invoke(window, 'updatePreferences', { appearance: 'light' });
+      await activate();
+      await wait("document.documentElement.lang==='en' && document.documentElement.dataset.appearance==='light'");
+      for (const [index, item] of fixture.downloadItems.entries()) await invoke(window, 'downloads.submit', index % 2 === 0
+        ? { kind: 'refresh', itemId: item.id } : { kind: 'acquire', url: `https://www.youtube.com/watch?v=${item.sourceId}` });
+      await wait("window.reader.downloads.current().then(r=>r.ok && r.value.jobs.filter(j=>j.state==='fetching' && !!j.comments).length===3 && r.value.jobs.filter(j=>j.state==='queued').length===5)");
+      const snapshot = await invoke(window, 'downloads.current');
+      assert.equal(helperStarts, 3); assert.equal(helperChildren.size, 3);
+      assert.equal((await bootstrap(window)).preferences.maximumConcurrentDownloads, 3);
+      await js("document.getElementById('downloads-toggle').click()");
+      await wait("document.querySelector('.downloads-badge')?.textContent==='3' && document.querySelectorAll('.downloads-panel [data-state=fetching]').length===3 && document.querySelectorAll('.downloads-panel [data-state=queued]').length===5");
+      await pause(1300); // Let the real elapsed-time controls advance before capture.
+      await save('downloads-light.png', 1000, { popover: true });
+      const entry = captures.at(-1);
+      entry.provenance = { ...buildProvenance(), downloads: {
+        maximumConcurrentDownloads: 3, active: 3, queued: 5,
+        fixture: 'Three real Node fixture helper processes, production scheduler/executor/progress IPC, no live YouTube requests or injected renderer job state',
+        jobs: snapshot.jobs.map(({ kind, label, state, comments }) => ({ kind, label, state, ...(comments ? { comments } : {}) })),
+      } };
+      // Exercise real cleanup and automatic advancement after preserving the
+      // captured state: cancelling one child starts exactly one queued job.
+      const first = snapshot.jobs.find(job => job.state === 'fetching');
+      await invoke(window, 'downloads.cancel', { operationId: first.operationId });
+      await wait(`window.reader.downloads.current().then(r=>r.ok && r.value.jobs.find(j=>j.operationId===${JSON.stringify(first.operationId)})?.state==='cancelled' && r.value.jobs.filter(j=>j.state==='fetching').length===3 && r.value.jobs.filter(j=>j.state==='queued').length===4)`);
+      assert.equal(helperStarts, 4);
+    }
     await wait(`!!${panel}?.querySelector('.virtual-reader')`);
     await wait(`Array.from(${panel}.querySelectorAll('.avatar img')).filter(e=>e.complete&&e.naturalWidth>0).length>=5`);
     assert.match(await js('location.href'), /\.vite\/renderer/);
     assert.equal(await js('typeof require'), 'undefined');
+    if (downloadsOnly) {
+      await captureDownloads();
+      const manifestFile = path.join(output, 'capture.json'), existing = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+      existing.files = [...existing.files.filter(entry => entry.file !== 'downloads-light.png'), ...captures];
+      fs.writeFileSync(manifestFile, JSON.stringify(existing, null, 2) + '\n');
+      return;
+    }
     await save('reader-light.png', 1000);
 
     await js("document.getElementById('settings-toggle').click()");
@@ -176,14 +235,9 @@ if (process.versions.electron) {
     await wait('document.querySelectorAll(".move-tab-window-list input").length===1');
     await save('move-tab-pl-dark.png', 880, { dialog: true });
     await js('document.querySelector("dialog[open]").dispatchEvent(new Event("cancel",{cancelable:true}))');
+    await captureDownloads();
     fs.writeFileSync(path.join(output, 'capture.json'), JSON.stringify({
-      source: 'Actual Electron window loading the Forge-built main/preload/renderer',
-      capturedAt: new Date().toISOString(),
-      electron: process.versions.electron, viewportWidth: 1360,
-      builtMainSha256: require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(project, '.vite/build/main.js'))).digest('hex'),
-      rendererAssetsSha256: Object.fromEntries(fs.readdirSync(path.join(project, '.vite/renderer/main_window/assets')).map(name => [name,
-        require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(project, '.vite/renderer/main_window/assets', name))).digest('hex')])),
-      data: 'Invented demo discussions in an owned disposable SQLite profile; offline geometric avatars',
+      ...buildProvenance(),
       multiWindow: 'Paired unscaled compositor captures of two separate native readers; no OS chrome or desktop imagery. Not physical drag evidence.',
       files: captures,
     }, null, 2) + '\n');
@@ -244,17 +298,23 @@ if (process.versions.electron) {
           const result = repo.ingest(normalizeYtDlp(JSON.stringify({ ...raw, id, title, comments: comments.slice(0, count) }), template.context));
           otherItemId ??= result.itemId;
         }
+        for (const [index, title] of ['Choosing a reading lamp', 'An afternoon in the garden', 'A simple camera setup', 'Making space for books'].entries())
+          repo.ingest(normalizeYtDlp(JSON.stringify({ ...raw, id: `ReadmeDl00${index + 5}`, title: `${title} — demo discussion`, comments: comments.slice(0, 8) }), template.context));
         repo.changeWorkspace('openLibrary'); repo.changeWorkspace('openSettings'); repo.changeWorkspace('openStoredItem', itemId);
         repo.updatePreferences({ locale: 'en' }, ['en']); repo.updatePreferences({ appearance: 'light' }, ['en']);
         repo.updatePreferences({ selectionControls: 'always' }, ['en']);
-        fs.writeFileSync(path.join(root, 'capture.json'), JSON.stringify({ itemId, otherItemId }));
+        const downloadItems = repo.bootstrap(['en']).items.map(({ id, sourceId }) => ({ id, sourceId }));
+        assert.equal(downloadItems.length, 8);
+        fs.writeFileSync(path.join(root, 'capture.json'), JSON.stringify({ itemId, otherItemId, downloadItems }));
       } finally { repo.close(); }
       fs.mkdirSync(output, { recursive: true });
-      // No helper status/path is captured; explicit empty overrides prevent probes
-      // from discovering machine-specific tools if Settings is briefly opened.
-      const env = { ...process.env, YOUTUBE_COMMENTS_DEMO_ROOT: root, YOUTUBE_COMMENTS_YTDLP_EXE: '', YOUTUBE_COMMENTS_POST_ARCHIVER_EXE: '' };
+      // No installed tool is used. The capture adapter routes this profile-owned
+      // placeholder to real offline fixture processes; no helper paths appear.
+      const helper = path.join(root, 'readme-yt-dlp.exe'); fs.writeFileSync(helper, 'capture-only helper adapter');
+      const env = { ...process.env, YOUTUBE_COMMENTS_DEMO_ROOT: root, YOUTUBE_COMMENTS_YTDLP_EXE: helper,
+        YOUTUBE_COMMENTS_POST_ARCHIVER_EXE: '', README_CAPTURE_NODE_EXE: process.execPath };
       delete env.ELECTRON_RUN_AS_NODE;
-      const child = spawn(require('electron'), [__filename], { env, stdio: 'inherit', windowsHide: true });
+      const child = spawn(require('electron'), [__filename, ...(downloadsOnly ? ['--downloads-only'] : [])], { env, stdio: 'inherit', windowsHide: true });
       await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error(`Screenshot Electron exited ${code}`))); });
     } finally {
       assert.equal(path.dirname(path.resolve(root)), path.resolve(os.tmpdir()));

@@ -1,5 +1,17 @@
 # Database and durable data
 
+## Download concurrency preference (schema 17)
+
+Migration 17 adds checked integer `maximum_concurrent_downloads` to `preferences`:
+1, 2, 3 or 4, default 3. Migrations 1–16 remain exact. The forward migration retains
+all existing rows and uses the existing verified pre-migration snapshot. Exact
+historical backup validation recognizes schema 17 and upgrades older supported
+backups only on staged copies. Preference saves acknowledge and publish ordinary
+M2 preference commits, so all windows use the same limit after reopening/restoring.
+Queue entries, progress and recent results are session-only; durable extraction
+attempts retain their existing history/coverage/seen/NEW semantics. No job table
+or crash-resumable queue is introduced. See [ADR 0042](decisions/0042-concurrent-download-manager.md).
+
 ## Notification preferences (schema 16)
 
 Migration 16 adds checked `notification_dismissal` (`automatic`/`manual`, default

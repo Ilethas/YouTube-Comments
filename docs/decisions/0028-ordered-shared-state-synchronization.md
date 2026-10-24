@@ -117,7 +117,10 @@ once per session; peer saved-view/collapse acknowledgments do not overwrite it.
 Mounted Settings follows committed preferences; an edited custom-code draft stays
 local until explicit Save. Helper invalidations discard stale status replies.
 
-One AcquisitionService remains global. Progress fans out to all current authorized
+This milestone originally kept one global AcquisitionService. [ADR 0042](0042-concurrent-download-manager.md)
+now schedules independent executors under one profile-owned Download Manager;
+revisioned bounded job snapshots hydrate every window. The original progress stream
+described here remains a compatibility facade. Progress fans out to all current authorized
 documents, and its existing query supplies the current operation to newcomers.
 Progress settlement is ephemeral and does not acknowledge replica synchronization.
 The repository publishes the committed ingest independently of the initiating

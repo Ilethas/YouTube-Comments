@@ -1,5 +1,25 @@
 # Project guidance
 
+## Concurrent downloads current boundary
+
+[ADR 0042](docs/decisions/0042-concurrent-download-manager.md) adds the profile-owned
+DownloadManager and schema **17** concurrency preference (1–4, default 3).
+Migrations 1–16 remain exact. Main schedules FIFO, deduplicates queued/running
+canonical sources across intents/windows, and retains slots through saving and
+child cleanup. Reuse per-job AcquisitionService safety, 250 ms count throttling,
+exact-ID cancellation and Windows descendant termination. Tabs/Close/Reload never
+own job lifetimes. Backup rejects pending work; confirmed restore and Quit stop,
+cancel and drain all jobs before SQLite closes. Queue/recent jobs are session-only,
+bounded to 128 pending/32 settled. Subscribe-first revisioned job snapshots supply
+all authorized windows; M2 still owns committed reader state. Preserve M3 fences,
+seen/NEW/Undo/view semantics and source-level removal protection. Leave uncommitted.
+
+The finalized Downloads README screenshot uses three real offline fixture helper
+children and five queued jobs through the production scheduler. After a verified
+Forge build, `node scripts/capture-readme.cjs --downloads-only` updates only this
+capture and its per-image provenance, preserving the other PNGs. Presentation
+verification covers seven manifested PNGs plus existing README links/icon frames.
+
 ## File-based theme management current boundary
 
 [ADR 0040](docs/decisions/0040-profile-theme-files.md) adds profile-owned editable
@@ -45,7 +65,7 @@ Earlier milestone sections retain their original schema/evidence boundaries.
 [M9.2 verification](docs/M9_2_VERIFICATION.md) records final regression/distribution
 checks, refreshed fictional-data Electron screenshots and remaining owner gates.
 Use `node scripts/capture-readme.cjs` after a Forge build and
-`node scripts/verify-presentation.cjs` for the six current PNGs/links/icon frames.
+`node scripts/verify-presentation.cjs` for the current PNG inventory/links/icon frames.
 The paired-window image combines two actual native content captures; it does not
 certify physical dragging. P01–P25 in the M8 manual matrix remain pending, including
 physical Close-flicker confirmation. ZIP remains recommended; installed Squirrel
@@ -271,7 +291,7 @@ ADR 0024 adds selection, menus and explicit selected/prefix scopes.
 
 - [ADR 0019](docs/decisions/0019-consistent-sqlite-backup-and-safe-restore.md) implements complete asynchronous SQLite backup and confirmed full-profile restore in Settings, with native main-owned dialogs and payload-free intents. Flush renderer seen/view queues before snapshots; main rejects later mutations, settles children/helpers, verifies a separate current-data safety snapshot, checkpoints WAL/selects DELETE and closes connections before offline replacement. Immutable phases and startup recovery preserve safety/previous/failed artifacts without pruning. Unknown/modified/newer schemas reject; known older backups migrate only on staged copies. Startup creates verified pre-migration snapshots before schema changes. Never copy an open live file, downgrade, seed an existing/restored empty profile, or create an empty fallback after failed recovery. Use disposable profiles for verification. Retention management, future portability/format versioning, export and installer/portable finalization remain outside ADR 0019; Windows application/ZIP packaging is implemented separately in ADR 0020.
 
-- One global live Acquire/Refresh owns an opaque operation ID and a fresh controller composed with shutdown. Only exact active cancellable IDs accept Cancel; stale IDs cannot affect later operations. Typed safe progress has no raw process details or percentages. Saving/cancellable=false linearizes immediately before synchronous atomic ingest. Pre-save cancellation records only failed `user-cancelled` target history, preserving accepted attempts/NEW/comments/seen/Undo/views and creating no item/tab. Await child close and temp cleanup before settlement; successful remote commit may then show non-cancellable Updating view (ADR 0018).
+- Each scheduled Acquire/Refresh owns an opaque operation ID and a fresh controller composed with shutdown (ADR 0042 supersedes the original single lock). Only exact active cancellable IDs accept Cancel; stale IDs cannot affect later attempts. Typed safe progress contains only approved numeric estimates and stages. Saving/cancellable=false linearizes immediately before synchronous atomic ingest. Pre-save user cancellation records only failed `user-cancelled` target history, preserving accepted attempts/NEW/comments/seen/Undo/views and creating no item/tab. Queued cancellation starts no attempt. Await child close and temp cleanup before releasing its slot; M2 delivers successful commits to every reader.
 
 - Each discussion view instance has optional durable semantic draft/applied queries, sort, stable comment anchor/row offset and selection. Hydrate a session only once from bootstrap; later acknowledgments never overwrite live intent. Restart freshly evaluates saved applied criteria against current durable comments/seen/NEW with fresh now/system zone, then sorts/restores identities without focus or seen writes. No result IDs, resolved numeric dates, measurements, errors or pending state persist. Coalesce/serialize full-intent saves; close retains state, removal deletes it. Corrupt rows and failed restoration fall back per discussion (ADR 0017).
 

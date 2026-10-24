@@ -244,6 +244,14 @@ if (process.versions.electron) {
       for (const seconds of [3,5,10,15,30]) {
         await invoke(source, 'updatePreferences', {notificationDurationSeconds:seconds});
         await move(source, ids.view, targetNumber); await ready(source); await status(source, messages.sent); await status(target, messages.received);
+        // The earlier native pending-close click can leave a stationary pointer
+        // inside a later overlay. Test pure timeouts with BOTH independent pause
+        // sources explicitly released, rather than relying on message geometry.
+        for (const w of [source, target]) {
+          w.focus(); w.webContents.focus();
+          w.webContents.sendInputEvent({type:'mouseMove',x:10,y:180});
+          await js(w, 'document.activeElement?.blur();void 0');
+        }
         const before = await geometry(target, 'automatic '+seconds, messages.received);
         await pause(seconds*1000+150); await empty(source); await empty(target);
         const after = await geometry(target, 'expired '+seconds);

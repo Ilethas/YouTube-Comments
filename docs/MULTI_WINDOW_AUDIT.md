@@ -1,5 +1,9 @@
 # Multi-window readiness audit
 
+**Current acquisition scheduling:** [ADR 0042](decisions/0042-concurrent-download-manager.md)
+supersedes the historical single-acquisition assumptions below. Main now owns a
+bounded concurrent queue and revisioned job snapshots shared by every window.
+
 **M8 update, 2026-10-19:** [ADR 0034](decisions/0034-native-html-tab-dragging.md)
 replaces pointer capture with HTML DnD, adds source-only main reservations and exact
 recipient offers, and reuses M7 checkpoints/atomic ownership. A replaceable guarded

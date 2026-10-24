@@ -20,7 +20,7 @@ it('preserves v14 preferences, topology and data with verified pre-migration saf
   const safety = readdirSync(recoveryDirectory(file)).find(name => name.startsWith('pre-migration-'));
   expect(safety).toBeTruthy(); expect(validateBackup(path.join(recoveryDirectory(file), String(safety)))).toBe(14); expect(readFileSync(file)).toEqual(bytes);
   repo = ReaderRepository.open(file); expect(repo.readerAppearance()).toEqual(defaultReaderAppearance); repo.close(); repo = undefined;
-  const migrated = new DatabaseSync(file); expect(migrated.prepare('SELECT * FROM preferences').get()).toEqual({ ...preferences, notification_dismissal: 'automatic', notification_duration_seconds: 5 }); expect(migrated.prepare('SELECT * FROM app_windows').all()).toEqual(windows); migrated.close();
+  const migrated = new DatabaseSync(file); expect(migrated.prepare('SELECT * FROM preferences').get()).toEqual({ ...preferences, notification_dismissal: 'automatic', notification_duration_seconds: 5, maximum_concurrent_downloads: 3 }); expect(migrated.prepare('SELECT * FROM app_windows').all()).toEqual(windows); migrated.close();
   expect(validateBackup(file)).toBe(schemaVersion);
 });
 it('persists themes and wallpaper intent, publishes preferences, fences stale peers and deletes safely', async () => {

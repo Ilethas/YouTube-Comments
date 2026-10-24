@@ -1,5 +1,12 @@
 # Documentation map
 
+**Concurrent Downloads (schema 17):** a main-owned queue, default three concurrent
+jobs, shared 1–4 setting, canonical deduplication and synchronized Downloads panels
+and discussion status. See [ADR 0042](decisions/0042-concurrent-download-manager.md),
+[UI/settings](UI_AND_NAVIGATION.md#downloads-and-concurrency-settings),
+[database](DATABASE.md#download-concurrency-preference-schema-17) and
+[testing](TESTING.md). Jobs are session-only; migrations 1–16 remain exact.
+
 **Notification dismissal (schema 16):** Settings offers Automatic/Manual mode,
 five durations, accessible close and hover/focus pause for tab-transfer feedback.
 See [ADR 0039](decisions/0039-configurable-notification-dismissal.md),

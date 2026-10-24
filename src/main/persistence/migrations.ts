@@ -250,6 +250,9 @@ export const migrations: readonly Migration[] = [{ version: 1, apply: db => db.e
     CHECK(notification_dismissal IN ('automatic','manual'));
   ALTER TABLE preferences ADD COLUMN notification_duration_seconds INTEGER NOT NULL DEFAULT 5
     CHECK(notification_duration_seconds IN (3,5,10,15,30));
+`) }, { version: 17, apply: db => db.exec(`
+  ALTER TABLE preferences ADD COLUMN maximum_concurrent_downloads INTEGER NOT NULL DEFAULT 3
+    CHECK(maximum_concurrent_downloads IN (1,2,3,4));
 `) }];
 export const schemaVersion = migrations[migrations.length - 1].version;
 

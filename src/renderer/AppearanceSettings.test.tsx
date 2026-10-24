@@ -22,7 +22,7 @@ it('lists custom names in one appearance selector and atomically reactivates an 
 });
 it('refreshes through reconciliation, reports individual files and disables file mutations during a wallpaper draft', async () => {
   const preferences: Preferences = { appearance: 'light', readerAppearance: defaultReaderAppearance, locale: 'en', translationTarget: 'app',
-    selectionControls: 'on-demand', includeCollapsedInPrefix: true, notificationDismissal: 'automatic', notificationDurationSeconds: 5 };
+    selectionControls: 'on-demand', includeCollapsedInPrefix: true, maximumConcurrentDownloads: 3, notificationDismissal: 'automatic', notificationDurationSeconds: 5 };
   const api = { refreshThemes: vi.fn(async () => ({ ok: true as const, value: { preferences, issues: [{ file: 'bad.json', reason: 'invalid' as const }, { file: 'extra.json', reason: 'limit' as const }] } })),
     openThemesFolder: vi.fn(async () => ({ ok: true as const, value: null })), saveThemeCopy: vi.fn(async () => ({ ok: true as const, value: preferences })) };
   const imported = vi.fn(async (action: () => Promise<unknown>) => { await action(); return true; });

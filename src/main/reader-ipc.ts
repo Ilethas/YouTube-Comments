@@ -47,6 +47,7 @@ export function registerReaderIpc(service: ReaderService, windows: WindowCoordin
       return service.dispatch(operation, args, caller);
     });
   }
+  service.onDownloadsChanged?.(value => windows.sendDownloads(value));
   if (!service.attachLifecycle) return;
   const lifecycle = new ProfileOperationCoordinator(() => windows.participants(), (caller, event) => windows.sendProfileEvent(caller, event),
     () => service.profileStamp(), (caller, command) => service.drainCheckpoint(caller, command), 15000, (command, caller) => service.profileCheckpointAllowed(command, caller));

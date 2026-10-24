@@ -293,7 +293,7 @@ async function verifyWindow(window, nativeTheme) {
   await waitFor("document.querySelector('[role=tabpanel]:not([hidden]) .query-controls') !== null", 'bootstrap');
   await verifyHelperSettings();
   if (phase === 'environment') return;
-  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'closeWindow', 'createBackup', 'duplicateTab', 'exportTheme', 'getAcquisitionProgress', 'getDiscussionView', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'getWallpaper', 'importTheme', 'importWallpaper', 'lifecycle', 'moveTab', 'newWindow', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThemesFolder', 'openThumbnail', 'quitApplication', 'refresh', 'refreshThemes', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'saveThemeCopy', 'setDiscussionCollapse', 'toggleSeen', 'transfers', 'undoSeen', 'updatePreferences', 'windowReady']);
+  assert.deepEqual(await js('Object.keys(window.reader).sort()'), ['acquire', 'activateTab', 'bootstrap', 'bulkSeen', 'cancelAcquisition', 'checkThumbnail', 'chooseHelper', 'clearHelper', 'closeTab', 'closeWindow', 'createBackup', 'downloads', 'duplicateTab', 'exportTheme', 'getAcquisitionProgress', 'getDiscussionView', 'getHelperStatus', 'getSharedMetadata', 'getSharedSnapshot', 'getThumbnail', 'getWallpaper', 'importTheme', 'importWallpaper', 'lifecycle', 'moveTab', 'newWindow', 'onAcquisitionProgress', 'onSharedCommit', 'openCommentAction', 'openLibrary', 'openSettings', 'openSource', 'openStoredItem', 'openThemesFolder', 'openThumbnail', 'quitApplication', 'refresh', 'refreshThemes', 'removeLibraryItem', 'restoreBackup', 'saveDiscussionView', 'saveThemeCopy', 'setDiscussionCollapse', 'toggleSeen', 'transfers', 'undoSeen', 'updatePreferences', 'windowReady']);
   assert.equal(await js('Object.isFrozen(window.reader.transfers)'), true);
   assert.deepEqual(await js('Object.keys(window.reader.transfers).sort()'), ['adopted', 'begin', 'cancel', 'destinations', 'endDrag', 'hoverDrag', 'move', 'offerDrag', 'onEvent', 'prepareDrag', 'ready', 'startDrag']);
   assert.deepEqual(await js('Object.keys(window.reader.lifecycle).sort()'), ['ack', 'command', 'current', 'onEvent', 'plan', 'refuse', 'resume', 'settleAccepted', 'stage', 'submit']);
@@ -357,21 +357,24 @@ async function verifyWindow(window, nativeTheme) {
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(url)});
         input.dispatchEvent(new Event('input', {bubbles:true})); })()`);
       await waitFor("!document.querySelector('.acquisition-bar button').disabled", 'URL ready');
+      await js("if(document.getElementById('downloads-toggle').getAttribute('aria-expanded')!=='true')document.getElementById('downloads-toggle').click();void 0");
       await js("document.querySelector('.acquisition-bar button').click()");
       await waitFor("document.querySelector('.acquisition-spinner') !== null", 'acquisition spinner');
       assert.equal(await js("getComputedStyle(document.querySelector('.acquisition-spinner')).animationName"), 'acquisition-spin');
-      assert.equal(await js("!!document.querySelector('.acquisition-status [role=status]') && !document.querySelector('.acquisition-status progress')"),true);
+      assert.equal(await js("!!document.querySelector('.downloads-panel .download-status') && !document.querySelector('.downloads-panel progress[value=\"100\"]')"),true);
       assert.equal(await js("Array.from(document.querySelectorAll('.reader-panel:not([hidden]) input[type=checkbox]')).every(input => !input.disabled)"), true);
       if (url.includes('/watch?')) {
-        await waitFor("document.querySelector('.acquisition-status [role=status]')?.textContent.includes('≈20%')", 'live comment counts');
+        await waitFor("document.querySelector('.downloads-panel .download-status')?.textContent.includes('≈20%')", 'live comment counts');
         const status = await js('window.reader.getAcquisitionProgress()');
         assert.deepEqual(status.value.comments, { fetched: 1755, estimatedTotal: 8721 });
         assert.ok(!JSON.stringify(status).includes('private'), 'Only validated numeric helper progress crosses IPC');
-        assert.equal(await js("!!document.querySelector('.acquisition-status button')"), true, 'Fetching still offers Cancel');
+        assert.equal(await js("!!document.querySelector('.downloads-panel .download-controls button')"), true, 'Fetching still offers Cancel');
       }
       await waitFor("document.querySelector('#source-url') === null && !document.body.innerText.includes('Pobieranie…')", 'acquisition acknowledgment');
       await waitFor("document.querySelector('.acquisition-spinner') === null", 'activity removed after settlement');
       assert.equal(await js("document.querySelector('[role=alert]') === null"), true);
+      await js("document.getElementById('downloads-toggle').click();void 0");
+      await waitFor("document.querySelector('.reader-panel:not([hidden]) .item-actions button')!==null", 'acquired reader synchronized');
       return snapshot();
     }
     state = await acquire('https://www.youtube.com/watch?v=VidDemo_001');
@@ -511,7 +514,7 @@ async function verifyWindow(window, nativeTheme) {
     state = await snapshot();
     const validState = state;
     await js("document.querySelector('[role=tabpanel]:not([hidden]) .item-actions button').click()");
-    await waitFor("document.querySelector('[role=alert]') !== null", 'failed refresh');
+    await waitFor("document.querySelector('.reader-panel:not([hidden]) .download-status[data-state=failed]') !== null", 'failed refresh');
     assert.deepEqual(await snapshot(), validState);
     state = await acquire('https://www.youtube.com/post/UgkDemoPost_0123456789');
     const post = state.items.find(item => item.sourceId === 'UgkDemoPost_0123456789');
@@ -873,7 +876,7 @@ if (process.versions.electron && process.type === 'browser') {
       const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(path.join(directory, 'youtube-comments-development', 'reader.sqlite'), { readOnly: true });
       try {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17);
         assert.equal(db.prepare('SELECT count(*) AS count FROM helper_settings').get().count,0);
         assert.equal(db.prepare('SELECT count(*) AS count FROM extraction_attempts').get().count, 7);
         assert.equal(db.prepare("SELECT count(*) AS count FROM extraction_attempts WHERE backend <> 'synthetic-demo'").get().count, 3);

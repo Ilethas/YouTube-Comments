@@ -1,3 +1,5 @@
+import { DownloadStatus } from './Downloads';
+import type { DownloadJob } from '../shared/downloads';
 import { ActionIcon } from './ActionIcon';
 import type { OpenCommentAction } from './CommentActions';
 import { memo, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -34,6 +36,7 @@ interface Props {
   locale: Locale;
   saving: boolean;
   refreshDisabled: boolean;
+  download?: DownloadJob;
   coverageLimited: boolean;
   onRefresh: (itemId: string) => void;
   onOpenSource?: (itemId: string) => Promise<Result<null>>;
@@ -56,7 +59,7 @@ function VideoDescription({ id, text, locale }: { id: string; text: string; loca
 
 /** Mounted content is independent of its workspace visibility wrapper.
  * Session notifications update only this discussion; draft edits reuse the forest. */
-export const DiscussionPanel = memo(function DiscussionPanel({ viewId, active = true, frozen = false, selectionControls = 'on-demand', includeCollapsedInPrefix = true, item, comments, session, locale, saving, refreshDisabled, coverageLimited, onRefresh, onOpenSource, onToggle, onAction, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
+export const DiscussionPanel = memo(function DiscussionPanel({ viewId, active = true, frozen = false, selectionControls = 'on-demand', includeCollapsedInPrefix = true, item, comments, session, locale, saving, refreshDisabled, download, coverageLimited, onRefresh, onOpenSource, onToggle, onAction, undo, feedback, onBulk, onUndo, onBulkModal }: Props) {
   recordRenderWork('panel', viewId ?? item.id);
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const [menu, setMenu] = useState<CommentMenuTarget>();
@@ -64,6 +67,7 @@ export const DiscussionPanel = memo(function DiscussionPanel({ viewId, active = 
   useEffect(() => { setMenu(undefined); }, [active, frozen, view.result, view.sort, view.collapse, comments]);
   const presentation = session.presentation(comments);
   const t = translator(locale);
+  const limited = coverageLimited || download?.state === 'completed' && download.coverage !== undefined && download.coverage !== 'complete';
   const now = useMemo(() => item.isDemo ? demoNow : Date.now(), [item]);
   const newIds = useMemo(() => readerNewCommentIds(item, comments), [item, comments]);
   const time = item.publishedAt ? publicationTime(item.publishedAt, locale, now) : undefined;
@@ -74,8 +78,9 @@ export const DiscussionPanel = memo(function DiscussionPanel({ viewId, active = 
         <div className="reading-column">
           <header className={`item-header ${item.kind}`}>
             <div className="item-actions"><div className="eyebrow">{t(item.kind)} {item.isDemo && <span className="demo-label">{t('demo')}</span>}</div>
-              <span className="item-status" title={t(coverageLimited ? 'coverageNotice' : item.isDemo ? 'demoNotice' : 'localNotice')}
-                role={coverageLimited ? 'status' : undefined}>{t(coverageLimited ? 'coverageShort' : 'savedShort')}</span>
+              <span className="item-status" title={t(limited ? 'coverageNotice' : item.isDemo ? 'demoNotice' : 'localNotice')}
+                role={limited ? 'status' : undefined}>{t(limited ? 'coverageShort' : 'savedShort')}</span>
+              {download && <DownloadStatus job={download} locale={locale} />}
               {!item.isDemo && <button disabled={refreshDisabled} onClick={() => { onRefresh(item.id); }}><ActionIcon name="refresh" />{t('refresh')}</button>}
             </div>
             <div className="item-title"><h1>{item.kind === 'video' ? item.title : item.author?.displayName ?? t('unknownAuthor')}</h1>

@@ -22,6 +22,9 @@ The screenshots use invented discussions and people in the actual Electron app.
 
 ## What it does
 
+- Downloads independent discussions concurrently and starts queued jobs automatically.
+  Settings > **Maximum concurrent downloads** offers 1–4 (default 3). The global
+  **Downloads** panel shows progress and job controls; its badge counts active jobs only.
 - Keeps discussions in a local SQLite library, with nested replies and collapsible threads.
 - Lets you mark comments seen or unseen yourself. Reading and scrolling never mark them.
 - Searches comment text and authors, with optional regex, seen, publication-date,
@@ -180,6 +183,11 @@ Closing a tab or window does not remove its discussions from Library.
 
 ## More screenshots
 
+Three active jobs (badge **3**) and five queued jobs in the global Downloads panel.
+Captured from the built app with real offline fixture helpers and invented discussions:
+
+![Light reader with the global Downloads panel, three active jobs with estimated comment counts, queued jobs, and toolbar badge 3](docs/screenshots/downloads-light.png)
+
 An applied search with an unread filter, keeping replies in context:
 
 ![Dark reader with an applied audio search, unread filter, match badges, and overview ruler](docs/screenshots/search-dark.png)
@@ -198,7 +206,7 @@ are placed side by side; this is not evidence of physical dragging):
 
 The [Move Tab dialog in Polish and dark mode](docs/screenshots/move-tab-pl-dark.png)
 shows the destination choices. [Capture details](docs/M9_2_VERIFICATION.md#screenshots)
-describe the fictional data and verification.
+describe the fictional data, fixture helpers and verification.
 
 ## Your data
 

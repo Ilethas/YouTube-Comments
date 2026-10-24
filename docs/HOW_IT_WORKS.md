@@ -25,6 +25,17 @@ flowchart LR
 
 ## From a URL to stored comments
 
+Downloads are application-wide. The main process queues supported URLs and
+Refresh requests, normally starting three at once. Settings offers one through
+four concurrent jobs. Downloads beside Library/Settings shows running jobs,
+waiting jobs and recent outcomes; its badge counts only running jobs. The same
+discussion shares one job even across different URLs, tabs and windows. Local
+discussion status shows the shared queued/stage/counts state. Closing or reloading
+a window leaves work running. Completed Acquire opens in its requesting window
+while that document is still available, otherwise it stays in Library. Queues and
+recent outcomes are session-only, while attempts and the concurrency setting are
+durable. See [ADR 0042](decisions/0042-concurrent-download-manager.md).
+
 The user opens a supported item. React asks the main process to acquire it through a small typed API exposed by the preload script. React cannot run arbitrary commands or open the database. The main process identifies the source and uses the corresponding adapter: yt-dlp for a video, post-archiver-improved for an individual public Community Post.
 
 Acquisition and Refresh have no overall time limit. Large discussions can take

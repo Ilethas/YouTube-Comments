@@ -1,3 +1,4 @@
+import { isDownloadsSnapshot } from '../shared/downloads';
 import { isTransferEvent, transferChannels } from '../shared/tab-transfer';
 import type { TabTransferApi } from '../shared/tab-transfer';
 import { isSharedCommit } from '../shared/reader-sync';
@@ -12,7 +13,8 @@ export function createReaderBridge(rawInvoke: (channel: string, ...args: unknown
   subscribe: (listener: (value: unknown) => void) => () => void = () => () => undefined,
   sharedSubscribe: (listener: (value: unknown) => void) => () => void = () => () => undefined,
   profileSubscribe?: (listener: (value: unknown) => void) => () => void,
-  transferSubscribe?: (listener: (value: unknown) => void) => () => void): ReaderApi {
+  transferSubscribe?: (listener: (value: unknown) => void) => () => void,
+  downloadsSubscribe?: (listener: (value: unknown) => void) => () => void): ReaderApi {
   const pending = new Set<Promise<unknown>>();
   const tracked = new Set<string>(['refreshThemes', 'saveThemeCopy', 'importTheme', 'importWallpaper', 'duplicateTab', 'toggleSeen', 'bulkSeen', 'undoSeen', 'updatePreferences', 'openStoredItem', 'activateTab', 'closeTab', 'openLibrary', 'openSettings', 'moveTab', 'removeLibraryItem', 'chooseHelper', 'clearHelper', 'getHelperStatus'].map(key => readerChannels[key as keyof typeof readerChannels]));
   const invoke = (channel: string, ...args: unknown[]) => {
@@ -50,6 +52,13 @@ export function createReaderBridge(rawInvoke: (channel: string, ...args: unknown
     onEvent: listener => transferSubscribe(value => { if (isTransferEvent(value)) listener(value); }),
   } satisfies TabTransferApi) : undefined;
   return Object.freeze({
+    downloads: Object.freeze({
+      submit: request => invoke(readerChannels.submitDownload, request),
+      current: () => invoke(readerChannels.getDownloads),
+      cancel: request => invoke(readerChannels.cancelDownload, request),
+      retry: request => invoke(readerChannels.retryDownload, request),
+      onChanged: listener => downloadsSubscribe?.(value => { if (isDownloadsSnapshot(value)) listener(value); }) ?? (() => undefined),
+    } as import('../shared/downloads').DownloadsApi),
     ...(transfers ? { transfers } : {}),
     windowReady: () => invoke('reader:window-ready') as Promise<import('../shared/reader-api').Result<null>>,
     closeWindow: () => invoke('reader:window-close') as Promise<import('../shared/reader-api').Result<null>>,

@@ -60,7 +60,7 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() { /* jsdom has no layout. */ } unobserve() { /* Test only. */ } disconnect() { /* Test only. */ } });
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: function(this: HTMLElement, options: ScrollToOptions) { this.scrollTop = options.top ?? 0; } });
   vi.mocked(createQueryExecutor).mockImplementation(() => ({ evaluate: async (comments, query) => evaluateDiscussionQuery(comments, query), dispose: vi.fn() } as QueryExecutor as ReturnType<typeof createQueryExecutor>));
-  state = { viewInstances: {}, discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items, comments: initialComments, preferences: { ...defaultNotificationPreferences, locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' },
+  state = { viewInstances: {}, discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items, comments: initialComments, preferences: { ...defaultNotificationPreferences, maximumConcurrentDownloads: 3, locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' },
     workspace: { tabs: items.map(item => discussionTab(item.id)), activeTabId: discussionTab(items[0].id).id, revision: 0 } };
   const open: ReaderApi['openStoredItem'] = async ({ itemId }) => {
     state = { ...state, workspace: openWorkspaceTab(state.workspace, discussionTab(itemId)) };
@@ -472,7 +472,7 @@ function acquired(): AcquisitionResult {
   const item = { ...items[0], id: 'acquired-video', isDemo: false, removable: true, sourceId: 'abcdefghijk', title: 'Acquired video' };
   const comment = { ...initialComments['video-demo'][0], id: 'acquired-comment', itemId: item.id, parentId: null, seen: false, text: 'Acquired comment' };
   return { operationId: 'fixture-operation', timings: { targetMs: 0, helperMs: 0, preparationMs: 0, fetchMs: 0, processingMs: 0, savingMs: 0, bootstrapMs: 0, totalMs: 0 },
-    state: { viewInstances: {}, discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { ...defaultNotificationPreferences, locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' },
+    state: { viewInstances: {}, discussionCollapse: {}, discussionViews: {}, seenUndo: {}, items: [...items, item], comments: { ...initialComments, [item.id]: [comment] }, preferences: { ...defaultNotificationPreferences, maximumConcurrentDownloads: 3, locale: 'en', appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' },
     workspace: { tabs: [...items, item].map(item => discussionTab(item.id)), activeTabId: discussionTab(item.id).id, revision: 1 } },
     summary: { itemId: item.id, coverage: 'unknown', inserted: 1, updated: 0, warnings: 0 } };
 }
@@ -747,7 +747,7 @@ it('failed removal stays visible with storage feedback, and busy removal explain
   expect(screen.getByRole('tab', { name: /Acquired video/ })).toBeTruthy();
   api.removeLibraryItem = vi.fn(async () => ({ ok: false as const, error: { code: 'ACQUISITION_BUSY' as const } }));
   await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
-  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Wait for it'));
+  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('queued or running download'));
 });
 it('an older acquisition content snapshot cannot resurrect an unrelated removed item', async () => {
   state = acquired().state;
@@ -1362,7 +1362,7 @@ it('bulk no-op/error retains prior acknowledged checkboxes and durable Undo', as
 });
 
 it.each(['en', 'pl'] as const)('global progress remains visible through tab switches; cancellation is neutral in %s', async locale => {
-  state = { ...acquired().state, preferences: { ...defaultNotificationPreferences, locale, appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' } };
+  state = { ...acquired().state, preferences: { ...defaultNotificationPreferences, maximumConcurrentDownloads: 3, locale, appearance: 'system', selectionControls: 'on-demand', includeCollapsedInPrefix: true, translationTarget: 'app' } };
   let listener!: (value: AcquisitionNotification) => void;
   let finish!: (value: Result<AcquisitionResult>) => void;
   api.onAcquisitionProgress = callback => { listener = callback; return () => undefined; };
